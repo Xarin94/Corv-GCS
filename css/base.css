@@ -1,0 +1,111 @@
+/**
+ * base.css - Base Element Styles
+ * Body, scene container, HUD canvas, shared scrollbar
+ */
+
+body {
+    margin: 0;
+    overflow: hidden;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    font-family: var(--font-ui);
+    user-select: none;
+}
+
+#scene-container {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: var(--bg-scene);
+}
+
+#hud-canvas {
+    position: absolute;
+    inset: 0;
+    z-index: var(--z-hud);
+    pointer-events: none;
+    background: transparent;
+}
+
+/* ============= NUMBER INPUT FIX (Electron/Chromium) ============= */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+input, textarea, select {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* ============= SHARED SCROLLBAR ============= */
+.custom-scroll,
+.gcs-sidebar,
+.nd-sidebar-content,
+.fplan-list,
+.gcs-param-list,
+.gcs-mission-list,
+.gcs-rally-list,
+.params-table-wrapper,
+.mission-wp-list,
+.config-param-tree {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 210, 255, 0.15) transparent;
+}
+
+.custom-scroll::-webkit-scrollbar,
+.gcs-sidebar::-webkit-scrollbar,
+.nd-sidebar-content::-webkit-scrollbar,
+.fplan-list::-webkit-scrollbar,
+.gcs-param-list::-webkit-scrollbar,
+.gcs-mission-list::-webkit-scrollbar,
+.gcs-rally-list::-webkit-scrollbar,
+.params-table-wrapper::-webkit-scrollbar,
+.mission-wp-list::-webkit-scrollbar,
+.config-param-tree::-webkit-scrollbar {
+    width: 4px;
+}
+
+.custom-scroll::-webkit-scrollbar-track,
+.gcs-sidebar::-webkit-scrollbar-track,
+.nd-sidebar-content::-webkit-scrollbar-track,
+.fplan-list::-webkit-scrollbar-track,
+.gcs-param-list::-webkit-scrollbar-track,
+.gcs-mission-list::-webkit-scrollbar-track,
+.gcs-rally-list::-webkit-scrollbar-track,
+.params-table-wrapper::-webkit-scrollbar-track,
+.mission-wp-list::-webkit-scrollbar-track,
+.config-param-tree::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scroll::-webkit-scrollbar-thumb,
+.gcs-sidebar::-webkit-scrollbar-thumb,
+.nd-sidebar-content::-webkit-scrollbar-thumb,
+.fplan-list::-webkit-scrollbar-thumb,
+.gcs-param-list::-webkit-scrollbar-thumb,
+.gcs-mission-list::-webkit-scrollbar-thumb,
+.gcs-rally-list::-webkit-scrollbar-thumb,
+.params-table-wrapper::-webkit-scrollbar-thumb,
+.mission-wp-list::-webkit-scrollbar-thumb,
+.config-param-tree::-webkit-scrollbar-thumb {
+    background: rgba(0, 210, 255, 0.2);
+    border-radius: 2px;
+}
+
+.custom-scroll::-webkit-scrollbar-thumb:hover,
+.gcs-sidebar::-webkit-scrollbar-thumb:hover,
+.nd-sidebar-content::-webkit-scrollbar-thumb:hover,
+.fplan-list::-webkit-scrollbar-thumb:hover,
+.gcs-param-list::-webkit-scrollbar-thumb:hover,
+.gcs-mission-list::-webkit-scrollbar-thumb:hover,
+.gcs-rally-list::-webkit-scrollbar-thumb:hover,
+.params-table-wrapper::-webkit-scrollbar-thumb:hover,
+.mission-wp-list::-webkit-scrollbar-thumb:hover,
+.config-param-tree::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 210, 255, 0.4);
+}

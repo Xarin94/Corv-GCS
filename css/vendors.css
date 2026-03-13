@@ -1,0 +1,33 @@
+/**
+ * vendors.css - Third-party Library Overrides
+ * Leaflet customizations and other vendor styles
+ */
+
+/* Hide Leaflet attribution */
+.leaflet-control-attribution {
+    display: none !important;
+}
+
+/* Leaflet controls: match app styling for visibility */
+.leaflet-control-zoom,
+.leaflet-bar {
+    border: 1px solid rgba(0, 210, 255, 0.6) !important;
+    box-shadow: none !important;
+}
+
+.leaflet-bar a,
+.leaflet-control-zoom a {
+    background: var(--bg-solid) !important;
+    color: var(--text-main) !important;
+    border-bottom: 1px solid rgba(0, 210, 255, 0.35) !important;
+}
+
+.leaflet-bar a:hover,
+.leaflet-control-zoom a:hover {
+    background: var(--bg-solid-hover) !important;
+    color: var(--accent-cyan) !important;
+}
+
+.leaflet-bar a:last-child {
+    border-bottom: none !important;
+}

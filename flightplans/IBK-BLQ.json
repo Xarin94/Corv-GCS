@@ -1,0 +1,24 @@
+{
+    "id": "IBK-BLQ",
+    "name": "Innsbruck → Bologna",
+    "departure": {
+        "icao": "LOWI",
+        "name": "Innsbruck Airport"
+    },
+    "arrival": {
+        "icao": "LIPE",
+        "name": "Bologna Guglielmo Marconi Airport"
+    },
+    "waypoints": [
+        { "id": "LOWI", "lat": 47.2602, "lon": 11.3439, "type": "airport" },
+        { "id": "RTT", "lat": 47.0833, "lon": 11.3167, "type": "vor" },
+        { "id": "BZO", "lat": 46.4603, "lon": 11.3264, "type": "vor" },
+        { "id": "EVANO", "lat": 46.2167, "lon": 11.3000, "type": "waypoint" },
+        { "id": "RONAG", "lat": 45.8500, "lon": 11.2833, "type": "waypoint" },
+        { "id": "VIC", "lat": 45.5722, "lon": 11.5297, "type": "vor" },
+        { "id": "PERON", "lat": 45.2833, "lon": 11.4500, "type": "waypoint" },
+        { "id": "RIDGO", "lat": 44.8000, "lon": 11.3500, "type": "waypoint" },
+        { "id": "BOA", "lat": 44.5353, "lon": 11.2886, "type": "vor" },
+        { "id": "LIPE", "lat": 44.5354, "lon": 11.2887, "type": "airport" }
+    ]
+}

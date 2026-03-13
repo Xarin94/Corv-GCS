@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(node -e \"console.log\\(require\\(''electron''\\)\\)\")",
+      "Bash(./node_modules/.bin/electron .)",
+      "Bash(./node_modules/.bin/electron -e \"console.log\\(require\\(''electron''\\)\\)\")",
+      "Bash(git ls-tree:*)",
+      "Bash(node --check:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(curl -sI \"https://firmware.ardupilot.org/Copter/stable/\")",
+      "Bash(curl -s \"https://firmware.ardupilot.org/Copter/stable/\")"
+    ]
+  }
+}

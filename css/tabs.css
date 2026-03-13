@@ -1,0 +1,1131 @@
+/**
+ * tabs.css - GCS Tab Navigation Bar & Sub-tabs
+ */
+
+#gcs-tab-bar {
+    position: fixed;
+    top: 60px;
+    left: 0;
+    right: 0;
+    height: 32px;
+    background: var(--glass-panel-toolbar);
+    border-bottom: 1px solid rgba(0, 210, 255, 0.1);
+    display: flex;
+    align-items: stretch;
+    z-index: var(--z-chrome);
+    padding-left: 12px;
+    padding-right: 8px;
+    backdrop-filter: blur(10px);
+}
+
+#gcs-tab-bar button.ui-btn.square {
+    width: 30px;
+    height: 30px;
+    align-self: center;
+    margin-left: 2px;
+}
+
+.gcs-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-dim);
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    padding: 0 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.gcs-tab:hover {
+    color: var(--text-main);
+    background: rgba(0, 210, 255, 0.04);
+}
+
+.gcs-tab.active {
+    color: var(--accent-cyan);
+    border-bottom: 2px solid var(--accent-cyan);
+    background: rgba(0, 210, 255, 0.06);
+}
+
+/* Tab content containers */
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: contents;
+}
+
+/* For non-flight-data tabs, they are block-level */
+#tab-flight-plan,
+#tab-setup,
+#tab-sys-config {
+    position: fixed;
+    top: 92px; /* 60px header + 32px tab bar */
+    left: 0;
+    right: 240px; /* Space for GCS sidebar */
+    bottom: 48px; /* Space for command bar */
+    overflow-y: auto;
+    background: var(--bg-color);
+}
+
+#tab-flight-plan.active {
+    display: flex;
+    flex-direction: column;
+}
+#tab-sys-config.active {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Setup tab: horizontal flex with vertical nav + content */
+#tab-setup.active {
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+}
+
+/* Flight plan: flex column handled above (line 76) */
+
+/* When flight-data tab is active, it uses 'display: contents' so
+   the existing layout continues to work */
+#tab-flight-data.active {
+    display: contents;
+}
+
+/* Adjust main content areas for tab bar height */
+body.has-tabs #hud-wrapper {
+    top: 92px !important;
+}
+
+body.has-tabs #ui-layer {
+    padding-top: 102px; /* 92px + original 10px padding */
+}
+
+body.has-tabs.mode-split {
+    padding-top: 92px;
+}
+
+/* ============= SUB-TAB BAR ============= */
+.sub-tab-bar {
+    display: flex;
+    align-items: stretch;
+    height: 30px;
+    width: 100%;
+    max-width: 900px;
+    background: transparent;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+    padding: 0 20px;
+    box-sizing: border-box;
+    margin-top: 12px;
+}
+
+.sub-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-dim);
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    padding: 0 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.sub-tab:hover {
+    color: var(--text-main);
+    background: rgba(0, 210, 255, 0.03);
+}
+
+.sub-tab.active {
+    color: var(--accent-cyan);
+    border-bottom-color: var(--accent-cyan);
+}
+
+.sub-tab-scroll {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    width: 100%;
+}
+
+.sub-tab-content {
+    display: none;
+}
+
+.sub-tab-content.active {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding: 24px 20px;
+    justify-content: center;
+    align-items: flex-start;
+    max-width: 900px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* ============= PANEL LAYOUTS ============= */
+.tab-panel-left {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding: 30px 20px;
+    justify-content: flex-start;
+    align-items: flex-start;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.setup-panel-column {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.tab-panel-center {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding: 30px 20px;
+    justify-content: center;
+    align-items: flex-start;
+    max-width: 900px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.setup-panel {
+    background: var(--glass-panel);
+    border: 1px solid rgba(0, 210, 255, 0.12);
+    border-radius: 6px;
+    padding: 16px;
+    width: 320px;
+    flex-shrink: 0;
+}
+
+.setup-panel.wide {
+    width: 500px;
+}
+
+.setup-panel.full-width {
+    width: 100%;
+    max-width: 860px;
+}
+
+.setup-panel .panel-header {
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    letter-spacing: 2px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(0, 210, 255, 0.1);
+    margin-bottom: 12px;
+}
+
+.setup-panel .cfg-row {
+    margin-bottom: 10px;
+}
+
+.setup-panel .cfg-row label {
+    display: block;
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+
+.setup-panel .cfg-val {
+    font-family: var(--font-data);
+    font-size: 12px;
+    color: var(--text-main);
+}
+
+.setup-panel .cfg-select {
+    width: 100%;
+    background: var(--glass-panel-input);
+    border: 1px solid var(--border-input);
+    color: var(--text-main);
+    font-family: var(--font-ui);
+    font-size: 11px;
+    padding: 6px 8px;
+    border-radius: 3px;
+    outline: none;
+}
+
+.setup-panel .cfg-select:focus {
+    border-color: var(--accent-cyan);
+}
+
+/* Compact select variant */
+.cfg-select-sm {
+    flex: 1;
+    font-size: 10px !important;
+}
+
+/* Narrow input variant */
+.input-narrow {
+    width: 60px !important;
+}
+
+/* Connect button styling */
+.gcs-btn-connect {
+    background: rgba(0, 180, 0, 0.2) !important;
+    border-color: var(--accent-green) !important;
+    color: var(--accent-green) !important;
+}
+
+/* ============= MISSION PLAN LAYOUT ============= */
+.tab-panel-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+.mission-map-container {
+    flex: 1;
+    position: relative;
+}
+
+/* Vehicle marker on mission map */
+.vehicle-map-marker {
+    background: none !important;
+    border: none !important;
+}
+
+/* Mission map toolbar (grouped icon buttons) */
+.mission-toolbar {
+    display: flex;
+    flex-direction: column;
+    border: none !important;
+    box-shadow: none !important;
+    background: none !important;
+}
+.mission-tb-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    background: var(--glass-panel-dark);
+    color: #aab;
+    text-decoration: none;
+    border: 1px solid rgba(0, 210, 255, 0.15);
+    border-bottom: none;
+}
+.mission-tb-btn:last-child {
+    border-bottom: 1px solid rgba(0, 210, 255, 0.15);
+}
+.mission-tb-btn svg {
+    flex-shrink: 0;
+}
+.mission-tb-btn:hover {
+    background: rgba(0, 210, 255, 0.15);
+    color: #fff;
+}
+.mission-tb-btn.active {
+    background: rgba(0, 210, 255, 0.22);
+    color: var(--accent-cyan);
+    border-color: rgba(0, 210, 255, 0.35);
+}
+
+/* Waypoint sequence label on map */
+.mission-wp-label {
+    background: none;
+    border: none;
+    box-shadow: none;
+}
+.mission-wp-label span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    font-size: 9px;
+    font-weight: 700;
+    color: #fff;
+    font-family: var(--font-ui);
+    text-shadow: 0 0 3px rgba(0,0,0,0.8);
+    pointer-events: none;
+}
+
+/* Altitude profile panel */
+#alt-profile-panel {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 150px;
+    z-index: 500;
+    border-top: 1px solid rgba(0, 210, 255, 0.2);
+    pointer-events: none;
+}
+#alt-profile-canvas {
+    width: 100%;
+    height: 100%;
+}
+
+/* 3D Mission terrain strip — fixed at bottom of flight plan */
+.mission-3d-strip {
+    height: 170px;
+    min-height: 170px;
+    border-top: 1px solid rgba(0, 210, 255, 0.2);
+    background: rgba(5, 12, 20, 0.95);
+}
+.mission-3d-strip canvas {
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+}
+.mission-3d-strip canvas:active {
+    cursor: grabbing;
+}
+
+.mission-wp-panel {
+    width: 280px;
+    background: var(--glass-panel);
+    border-left: 1px solid rgba(0, 210, 255, 0.12);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.mission-wp-panel .panel-header {
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    letter-spacing: 2px;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(0, 210, 255, 0.1);
+}
+
+.mission-wp-toolbar {
+    display: flex;
+    gap: 6px;
+    padding: 8px;
+    align-items: center;
+    border-bottom: 1px solid var(--border-subtle);
+    flex-wrap: wrap;
+}
+
+.mission-wp-alt-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mission-wp-alt-row label {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-dim);
+    font-weight: 600;
+}
+
+.mission-wp-edit-hint {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px;
+    background: rgba(0, 210, 255, 0.08);
+    border-bottom: 1px solid rgba(0, 210, 255, 0.15);
+    font-family: var(--font-ui);
+    font-size: 9px;
+    color: var(--accent-cyan);
+    letter-spacing: 0.3px;
+}
+.mission-wp-edit-hint .gcs-btn-sm {
+    padding: 1px 6px;
+    font-size: 8px;
+    background: rgba(0, 210, 255, 0.1);
+    border: 1px solid rgba(0, 210, 255, 0.2);
+    color: var(--accent-cyan);
+    cursor: pointer;
+    border-radius: 2px;
+}
+.mission-wp-edit-hint .gcs-btn-sm:hover {
+    background: rgba(0, 210, 255, 0.2);
+}
+
+/* Per-waypoint parameter editing panel */
+.mission-wp-params {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(0, 210, 255, 0.1);
+    background: rgba(0, 210, 255, 0.04);
+}
+.mission-param-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 3px;
+}
+.mission-param-row label {
+    font-family: var(--font-ui);
+    font-size: 9px;
+    color: var(--text-dim);
+    min-width: 75px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.mission-param-input {
+    width: 58px !important;
+    min-width: 58px;
+}
+.mission-param-unit {
+    font-family: var(--font-data);
+    font-size: 9px;
+    color: var(--text-muted);
+    min-width: 24px;
+}
+#mission-wp-cmd optgroup {
+    font-family: var(--font-ui);
+    font-weight: 700;
+    color: var(--accent-cyan);
+    font-size: 10px;
+}
+.mission-wp-param-summary {
+    font-size: 9px;
+    color: var(--text-muted);
+    opacity: 0.8;
+}
+
+.mission-wp-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.mission-wp-info {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 10px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.mission-info-text {
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-dim);
+}
+
+.mission-wp-controls {
+    padding: 4px 8px;
+    display: flex;
+    gap: 6px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.mission-wp-controls .gcs-btn {
+    flex: 1;
+}
+
+.mission-wp-del {
+    background: none;
+    border: none;
+    color: rgba(255,100,100,0.6);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 0 4px;
+    line-height: 1;
+    transition: color 0.2s;
+}
+
+.mission-wp-del:hover {
+    color: #ff4444;
+}
+
+/* ============= PID TUNING ============= */
+.pid-grid {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.pid-group {
+    flex: 1;
+    min-width: 120px;
+}
+
+.pid-title {
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}
+
+.pid-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.pid-row label {
+    font-family: var(--font-ui);
+    font-size: 11px;
+    color: var(--text-dim);
+    min-width: 16px;
+    font-weight: 600;
+}
+
+.pid-input {
+    flex: 1;
+    background: var(--glass-panel-input);
+    border: 1px solid var(--border-input);
+    color: var(--text-main);
+    font-family: var(--font-data);
+    font-size: 11px;
+    padding: 4px 6px;
+    border-radius: 3px;
+    outline: none;
+    width: 80px;
+}
+
+.pid-input:focus {
+    border-color: var(--accent-cyan);
+}
+
+/* ============= CONFIG PARAMETER TREE ============= */
+.config-param-tree {
+    max-height: 400px;
+    overflow-y: auto;
+    background: var(--bg-gcs-list);
+    border: 1px solid var(--border-subtle);
+    border-radius: 3px;
+}
+
+/* ============= FLIGHT MODES GRID ============= */
+.fltmode-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fltmode-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.fltmode-row:last-child {
+    border-bottom: none;
+}
+
+.fltmode-label {
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    min-width: 60px;
+    letter-spacing: 0.5px;
+}
+
+.fltmode-select {
+    flex: 1;
+    background: var(--glass-panel-input);
+    border: 1px solid var(--border-input);
+    color: var(--text-main);
+    font-family: var(--font-ui);
+    font-size: 11px;
+    padding: 5px 8px;
+    border-radius: 3px;
+    outline: none;
+}
+
+.fltmode-select:focus {
+    border-color: var(--accent-cyan);
+}
+
+.fltmode-pwm {
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-dim);
+    min-width: 60px;
+    text-align: right;
+}
+
+/* ============= FAILSAFE CONFIG ============= */
+.failsafe-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.failsafe-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.failsafe-label {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-dim);
+    min-width: 100px;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.failsafe-input {
+    flex: 1;
+    max-width: 120px;
+    background: var(--glass-panel-input);
+    border: 1px solid var(--border-input);
+    color: var(--text-main);
+    font-family: var(--font-data);
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    outline: none;
+}
+
+.failsafe-input:focus {
+    border-color: var(--accent-cyan);
+}
+
+.failsafe-select {
+    flex: 1;
+    max-width: 180px;
+    background: var(--glass-panel-input);
+    border: 1px solid var(--border-input);
+    color: var(--text-main);
+    font-family: var(--font-ui);
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    outline: none;
+}
+
+.failsafe-select:focus {
+    border-color: var(--accent-cyan);
+}
+
+/* ============= EXTENDED TUNING SLIDERS ============= */
+.tuning-slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.tuning-slider-label {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-dim);
+    min-width: 120px;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.tuning-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    outline: none;
+}
+
+.tuning-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    cursor: pointer;
+}
+
+.tuning-slider-val {
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--text-main);
+    min-width: 50px;
+    text-align: right;
+}
+
+/* ============= RADIO CALIBRATION ============= */
+.rc-cal-channel {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.rc-cal-channel:last-child { border-bottom: none; }
+
+.rc-cal-label {
+    font-family: var(--font-ui);
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--text-dim);
+    min-width: 32px;
+    letter-spacing: 0.5px;
+}
+
+.rc-cal-bar-outer {
+    flex: 1;
+    height: 12px;
+    background: var(--glass-panel-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+}
+
+.rc-cal-bar-fill {
+    position: absolute;
+    top: 1px; bottom: 1px;
+    background: var(--accent-cyan);
+    opacity: 0.7;
+    border-radius: 1px;
+    transition: left 0.05s, width 0.05s;
+}
+
+.rc-cal-bar-center {
+    position: absolute;
+    left: 50%; top: 0; bottom: 0;
+    width: 1px;
+    background: rgba(255,255,255,0.15);
+}
+
+.rc-cal-val {
+    font-family: var(--font-data);
+    font-size: 9px;
+    color: var(--text-main);
+    min-width: 34px;
+    text-align: right;
+}
+
+.rc-cal-minmax {
+    font-family: var(--font-data);
+    font-size: 8px;
+    color: var(--text-dim);
+    min-width: 60px;
+    text-align: center;
+}
+
+/* ============= CALIBRATION WIZARD ============= */
+.cal-wizard-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.cal-wizard-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+}
+
+.cal-icon {
+    font-size: 14px;
+    color: var(--accent-cyan);
+}
+
+.cal-wizard-status {
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-dim);
+    min-width: 80px;
+    text-align: right;
+}
+
+.cal-wizard-status.running {
+    color: var(--accent-orange);
+}
+
+.cal-wizard-status.done {
+    color: var(--accent-green);
+}
+
+.cal-wizard-progress {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.cal-progress-bar {
+    height: 6px;
+    background: var(--glass-panel-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.cal-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent-cyan);
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+
+.cal-progress-msg {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 6px;
+    text-align: center;
+    letter-spacing: 0.5px;
+}
+
+/* ============= VIBRATION DISPLAY ============= */
+.vib-canvas {
+    width: 100%;
+    height: 200px;
+    background: var(--glass-panel-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: 3px;
+    display: block;
+}
+
+.vib-legend {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 8px;
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--text-main);
+}
+
+.vib-legend-item { display: flex; align-items: center; gap: 4px; }
+
+.vib-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.vib-clips {
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: center;
+    margin-top: 4px;
+}
+
+.vib-threshold-info {
+    font-family: var(--font-ui);
+    font-size: 9px;
+    color: var(--text-dim);
+    text-align: center;
+    margin-top: 4px;
+    opacity: 0.6;
+}
+
+/* ============= SETUP VERTICAL NAV ============= */
+.setup-vertical-nav {
+    width: 180px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border-accent);
+    overflow-y: auto;
+    padding: 8px 0;
+    background: var(--bg-color);
+}
+
+.setup-nav-group-label {
+    font-family: var(--font-ui);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    padding: 12px 16px 4px;
+    opacity: 0.6;
+}
+
+.setup-nav-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    border-left: 3px solid transparent;
+    color: var(--text-dim);
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.setup-nav-btn:hover {
+    color: var(--text-main);
+    background: rgba(0, 210, 255, 0.04);
+}
+
+.setup-nav-btn.active {
+    color: var(--accent-cyan);
+    border-left-color: var(--accent-cyan);
+    background: rgba(0, 210, 255, 0.06);
+}
+
+.setup-content-area {
+    flex: 1;
+    overflow-y: auto;
+    min-width: 0;
+}
+
+/* ============= SERVO / RELAY ============= */
+.servo-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+}
+
+.servo-bar-cell {
+    background: var(--glass-panel-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: 3px;
+    padding: 4px;
+    text-align: center;
+}
+
+.servo-bar-label {
+    font-family: var(--font-ui);
+    font-size: 8px;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+    display: block;
+    margin-bottom: 2px;
+}
+
+.servo-bar-outer {
+    height: 60px;
+    width: 16px;
+    margin: 0 auto;
+    background: var(--bg-overlay-half);
+    border: 1px solid var(--border-subtle);
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+}
+
+.servo-bar-fill {
+    position: absolute;
+    bottom: 0; left: 1px; right: 1px;
+    background: var(--accent-cyan);
+    opacity: 0.7;
+    border-radius: 1px;
+    transition: height 0.1s;
+}
+
+.servo-bar-val {
+    font-family: var(--font-data);
+    font-size: 9px;
+    color: var(--text-main);
+    display: block;
+    margin-top: 2px;
+}
+
+.relay-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.relay-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 140px;
+}
+
+.relay-label {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-dim);
+    font-weight: 600;
+    min-width: 55px;
+}
+
+.relay-btn.on {
+    background: rgba(0, 180, 0, 0.2) !important;
+    border-color: var(--accent-green) !important;
+    color: var(--accent-green) !important;
+}
+
+.servo-manual-section {
+    margin-top: 8px;
+}
+
+/* ============= SURVEY / GRID ============= */
+.mission-survey-section {
+    padding: 8px;
+    border-top: 1px solid var(--border-subtle);
+}
+.mission-survey-section .panel-header {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    letter-spacing: 1.5px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(0,210,255,0.1);
+    margin-bottom: 8px;
+}
+.survey-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+.survey-row label {
+    font-family: var(--font-ui);
+    font-size: 9px;
+    color: var(--text-dim);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+.survey-btn-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+.survey-btn-row .gcs-btn {
+    flex: 1;
+    font-size: 9px;
+    padding: 4px 0;
+}
+.survey-btn-row .gcs-btn.survey-clear-btn {
+    background: rgba(255, 60, 60, 0.15);
+    border-color: rgba(255, 60, 60, 0.3);
+    color: #ff6666;
+}
+.survey-btn-row .gcs-btn.survey-clear-btn:hover {
+    background: rgba(255, 60, 60, 0.25);
+}
+.survey-info {
+    font-family: var(--font-data);
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    text-align: center;
+}

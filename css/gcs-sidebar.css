@@ -1,0 +1,651 @@
+/**
+ * gcs-sidebar.css - GCS Control Sidebar
+ * Based on nd-panel.css sidebar pattern
+ */
+
+/* Sidebar container */
+.gcs-sidebar {
+    position: fixed;
+    right: 0;
+    top: 60px;
+    bottom: 48px;
+    width: 240px;
+    background: var(--glass-panel-toolbar);
+    border-left: 1px solid var(--border-accent);
+    z-index: var(--z-chrome);
+    overflow-y: auto;
+    overflow-x: hidden;
+    transition: transform 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+.gcs-sidebar.collapsed {
+    transform: translateX(100%);
+}
+
+.gcs-sidebar-content {
+    padding: 8px 0;
+}
+
+/* Toggle button */
+.gcs-toggle-btn {
+    position: fixed;
+    right: 240px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 48px;
+    background: var(--bg-gcs-toggle);
+    border: 1px solid var(--border-accent);
+    border-right: none;
+    border-radius: 4px 0 0 4px;
+    color: var(--accent-cyan);
+    cursor: pointer;
+    z-index: var(--z-chrome-toggle);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: right 0.3s ease, background 0.2s;
+}
+
+.gcs-toggle-btn:hover {
+    background: var(--bg-gcs-toggle-hover);
+}
+
+.gcs-toggle-btn.collapsed {
+    right: 0;
+}
+
+/* Section structure */
+.gcs-sidebar-section {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.gcs-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px;
+    cursor: pointer;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    user-select: none;
+    transition: background 0.2s;
+}
+
+.gcs-section-header:hover {
+    background: rgba(0, 210, 255, 0.05);
+}
+
+.gcs-section-header .collapse-icon {
+    font-size: 8px;
+    transition: transform 0.2s;
+    color: var(--text-dim);
+}
+
+.gcs-sidebar-section.collapsed .collapse-icon {
+    transform: rotate(-90deg);
+}
+
+.gcs-section-body {
+    padding: 6px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.gcs-sidebar-section.collapsed .gcs-section-body {
+    display: none;
+}
+
+/* Buttons */
+.gcs-btn {
+    width: 100%;
+    background: var(--bg-gcs-btn);
+    border: 1px solid var(--border-input);
+    color: var(--text-main);
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 7px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    letter-spacing: 0.8px;
+    transition: all 0.2s;
+    text-align: center;
+}
+
+.gcs-btn:hover {
+    background: var(--bg-gcs-btn-hover);
+    border-color: var(--accent-cyan);
+}
+
+.gcs-btn:active {
+    transform: scale(0.97);
+}
+
+.gcs-btn-half {
+    width: calc(50% - 3px);
+}
+
+.gcs-btn-row {
+    display: flex;
+    gap: 6px;
+}
+
+/* Input */
+.gcs-input {
+    width: 100%;
+    background: var(--bg-gcs-input);
+    border: 1px solid var(--border-input);
+    color: var(--text-main);
+    font-family: var(--font-data);
+    font-size: 11px;
+    padding: 6px 8px;
+    border-radius: 3px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.gcs-input::placeholder {
+    color: var(--text-dim);
+}
+
+.gcs-input:focus {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 4px rgba(0, 210, 255, 0.2);
+}
+
+/* Checkbox */
+.gcs-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    color: var(--text-main);
+    cursor: pointer;
+    padding: 4px 0;
+}
+
+.gcs-checkbox input[type="checkbox"] {
+    accent-color: var(--accent-cyan);
+}
+
+/* Parameter list */
+.gcs-param-list {
+    max-height: 200px;
+    overflow-y: auto;
+    background: var(--bg-gcs-list);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 210, 255, 0.15) transparent;
+}
+
+.gcs-param-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    font-family: var(--font-data);
+    font-size: 10px;
+}
+
+.gcs-param-item:hover {
+    background: rgba(0, 210, 255, 0.05);
+}
+
+.gcs-param-name {
+    color: var(--text-main);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gcs-param-val {
+    color: var(--accent-cyan);
+    min-width: 60px;
+    text-align: right;
+}
+
+.gcs-param-val input {
+    width: 60px;
+    background: var(--bg-gcs-input);
+    border: 1px solid var(--border-input);
+    color: var(--accent-cyan);
+    font-family: var(--font-data);
+    font-size: 10px;
+    padding: 2px 4px;
+    text-align: right;
+    border-radius: 2px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.gcs-param-val input:focus {
+    border-color: var(--accent-cyan);
+}
+
+.gcs-param-controls {
+    display: flex;
+    gap: 6px;
+}
+
+/* Progress bar */
+.gcs-param-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.gcs-progress-bar {
+    flex: 1;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.gcs-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent-cyan);
+    transition: width 0.3s;
+}
+
+.gcs-progress-text {
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-dim);
+    min-width: 40px;
+    text-align: right;
+}
+
+/* Mission list */
+.gcs-mission-list,
+.gcs-rally-list {
+    max-height: 150px;
+    overflow-y: auto;
+    background: var(--bg-gcs-list);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 210, 255, 0.15) transparent;
+}
+
+.gcs-mission-item {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-main);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+}
+
+.wp-row-main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+}
+
+.wp-row-main .wp-cmd-name {
+    flex: 1;
+    min-width: 0;
+}
+
+.wp-row-params {
+    padding-left: 34px;
+    line-height: 1.3;
+}
+.gcs-mission-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.gcs-mission-item.active {
+    background: rgba(0, 210, 255, 0.08);
+    color: var(--accent-cyan);
+}
+
+.gcs-mission-item.selected {
+    background: rgba(0, 210, 255, 0.15);
+    border-left: 2px solid var(--accent-cyan);
+}
+
+.gcs-mission-item.dragging {
+    opacity: 0.4;
+}
+
+.gcs-mission-item.drag-over {
+    border-top: 2px solid var(--accent-cyan);
+}
+
+.wp-drag-handle {
+    cursor: grab;
+    color: #556;
+    display: flex;
+    align-items: center;
+    padding: 0 1px;
+}
+.wp-drag-handle svg {
+    flex-shrink: 0;
+}
+.wp-drag-handle:hover {
+    color: var(--accent-cyan);
+}
+
+.wp-color-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.gcs-mission-seq {
+    color: var(--accent-cyan);
+    font-weight: 600;
+    min-width: 16px;
+    text-align: center;
+}
+
+.wp-alt-value {
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.wp-asl-value {
+    color: #ff9800;
+    font-size: 10px;
+    opacity: 0.85;
+}
+
+.wp-terrain-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-right: 3px;
+    vertical-align: middle;
+    animation: wp-blink 1s ease-in-out infinite;
+}
+.wp-terrain-dot.safe { background: #44ff44; }
+.wp-terrain-dot.danger { background: #ff3333; }
+
+@keyframes wp-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+}
+
+/* Vehicle info grid */
+.gcs-info-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 10px;
+    align-items: center;
+}
+
+.gcs-info-grid .gcs-info-lbl {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+}
+
+.gcs-info-grid .gcs-info-val {
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--text-main);
+    text-align: right;
+}
+
+/* Info labels */
+.gcs-mission-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+}
+
+.gcs-info-lbl {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+}
+
+.gcs-info-val {
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--text-main);
+}
+
+/* Message log textarea */
+.gcs-msg-log {
+    width: 100%;
+    height: 180px;
+    background: var(--bg-gcs-list);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+    color: var(--text-main);
+    font-family: var(--font-data);
+    font-size: 10px;
+    line-height: 1.5;
+    padding: 6px 8px;
+    resize: vertical;
+    outline: none;
+    box-sizing: border-box;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 210, 255, 0.15) transparent;
+}
+
+.gcs-msg-log::placeholder {
+    color: var(--text-dim);
+}
+
+/* Scrollbar styles now unified in base.css */
+
+/* ==================== PARAMETERS PAGE (Full-screen overlay) ==================== */
+.params-page {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--glass-panel-solid);
+    z-index: var(--z-modal);
+    flex-direction: column;
+    backdrop-filter: blur(20px);
+}
+
+.params-page.open {
+    display: flex;
+}
+
+.params-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border-accent);
+    flex-shrink: 0;
+}
+
+.params-page-title {
+    font-family: var(--font-ui);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    letter-spacing: 3px;
+}
+
+.params-page-close {
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: var(--text-main);
+    font-size: 22px;
+    width: 36px;
+    height: 36px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.params-page-close:hover {
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+}
+
+.params-page-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 24px;
+    overflow: hidden;
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.params-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.params-toolbar .gcs-btn {
+    width: auto;
+    padding: 7px 14px;
+    flex-shrink: 0;
+}
+
+.params-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 120px;
+}
+
+.params-search {
+    flex: 1;
+    min-width: 180px;
+    background: var(--bg-gcs-input);
+    border: 1px solid var(--border-input);
+    color: var(--text-main);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    padding: 7px 12px;
+    border-radius: 3px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.params-search::placeholder {
+    color: var(--text-dim);
+}
+
+.params-search:focus {
+    border-color: var(--accent-cyan);
+}
+
+.params-table-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 210, 255, 0.15) transparent;
+}
+
+.params-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.params-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.params-table th {
+    background: var(--glass-panel-toolbar);
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    letter-spacing: 1.5px;
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-accent);
+}
+
+.params-col-name { width: 28%; }
+.params-col-value { width: 18%; }
+.params-col-desc { width: 54%; }
+
+.params-table td {
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    font-size: 11px;
+    vertical-align: middle;
+}
+
+.params-table tr:hover td {
+    background: rgba(0, 210, 255, 0.04);
+}
+
+.params-table .param-name {
+    font-family: var(--font-data);
+    font-weight: 600;
+    color: var(--text-main);
+    word-break: break-all;
+}
+
+.params-table .param-val-input {
+    width: 100%;
+    background: var(--bg-gcs-input);
+    border: 1px solid var(--border-input);
+    color: var(--accent-cyan);
+    font-family: var(--font-data);
+    font-size: 11px;
+    padding: 4px 6px;
+    border-radius: 3px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.params-table .param-val-input:focus {
+    border-color: var(--accent-cyan);
+}
+
+.params-table .param-desc {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.4;
+}
+
+/* Scrollbar styles now unified in base.css */

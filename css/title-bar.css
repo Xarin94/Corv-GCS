@@ -1,0 +1,76 @@
+/**
+ * title-bar.css - Custom Window Title Bar Styles
+ * Frameless window controls with hover reveal
+ */
+
+#title-bar-zone {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 40px;
+    z-index: var(--z-titlebar);
+    background: transparent;
+    pointer-events: auto;
+}
+
+#title-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 32px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    background: var(--bg-titlebar-gradient);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+#title-bar-zone:hover #title-bar {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.title-bar-drag {
+    flex: 1;
+    height: 100%;
+    -webkit-app-region: drag;
+}
+
+.title-bar-buttons {
+    display: flex;
+    height: 100%;
+    -webkit-app-region: no-drag;
+}
+
+.title-btn {
+    width: 46px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    color: var(--text-main);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+}
+
+.title-btn svg {
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+}
+
+.title-btn:hover {
+    background: rgba(255,255,255,0.1);
+    color: var(--text-main);
+}
+
+.title-btn.close:hover {
+    background: #e81123;
+    color: white;
+}

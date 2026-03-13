@@ -1,0 +1,224 @@
+/* ============================================
+   JOYSTICK / GAMEPAD CONFIGURATION PANEL
+   ============================================ */
+
+#joystick-panel {
+    width: 520px;
+}
+
+/* Gamepad select row */
+.joystick-gamepad-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.joystick-scan-btn {
+    width: auto !important;
+    padding: 4px 10px !important;
+    margin: 0 !important;
+    flex-shrink: 0;
+}
+
+/* Axis mapping rows */
+.joystick-axis-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.joystick-axis-row:last-child {
+    border-bottom: none;
+}
+
+.joystick-axis-label {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-dim);
+    min-width: 44px;
+    letter-spacing: 0.5px;
+}
+
+.joystick-axis-value {
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-main);
+    min-width: 40px;
+    text-align: right;
+}
+
+/* Channel select within axis row */
+.joystick-axis-row .cfg-select {
+    width: auto;
+    min-width: 64px;
+    padding: 2px 4px;
+    font-size: 10px;
+}
+
+/* Invert checkbox */
+.joystick-inv-label {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-family: var(--font-ui);
+    font-size: 9px;
+    color: var(--text-dim);
+    cursor: pointer;
+    min-width: 38px;
+}
+
+.joystick-inv-label input[type="checkbox"] {
+    width: 12px;
+    height: 12px;
+    accent-color: var(--accent-cyan);
+    cursor: pointer;
+}
+
+/* Deadzone slider container */
+.joystick-dz-group {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    min-width: 70px;
+}
+
+.joystick-dz-label {
+    font-family: var(--font-ui);
+    font-size: 8px;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+}
+
+.joystick-dz-val {
+    font-family: var(--font-data);
+    font-size: 9px;
+    color: var(--text-dim);
+    min-width: 22px;
+    text-align: right;
+}
+
+/* Range input styling */
+.joystick-axis-row input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 2px;
+    outline: none;
+    flex: 1;
+    min-width: 30px;
+}
+
+.joystick-axis-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    cursor: pointer;
+    border: none;
+}
+
+.joystick-axis-row input[type="range"]::-webkit-slider-thumb:hover {
+    background: #fff;
+}
+
+/* Live bar */
+.joystick-bar-container {
+    flex: 1;
+    min-width: 50px;
+    height: 10px;
+    background: rgba(10, 15, 22, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+}
+
+.joystick-bar-center {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.15);
+    z-index: 1;
+}
+
+.joystick-bar-fill {
+    position: absolute;
+    top: 1px;
+    bottom: 1px;
+    background: var(--accent-cyan);
+    opacity: 0.7;
+    border-radius: 1px;
+    transition: left 0.03s linear, width 0.03s linear;
+}
+
+/* Channel output preview grid */
+#joystick-channel-preview {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 3px;
+    margin-top: 4px;
+}
+
+.joystick-ch-cell {
+    background: rgba(10, 15, 22, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    padding: 3px 2px;
+    text-align: center;
+    font-family: var(--font-data);
+    font-size: 9px;
+    color: var(--text-dim);
+    line-height: 1.2;
+}
+
+.joystick-ch-cell .ch-label {
+    font-family: var(--font-ui);
+    font-size: 7px;
+    color: rgba(255, 255, 255, 0.25);
+    letter-spacing: 0.5px;
+    display: block;
+}
+
+.joystick-ch-cell.active {
+    color: var(--accent-cyan);
+    border-color: rgba(0, 210, 255, 0.25);
+}
+
+/* Status indicator */
+.joystick-status-active {
+    color: var(--accent-green) !important;
+}
+
+.joystick-status-warning {
+    color: var(--accent-orange) !important;
+}
+
+/* Section divider */
+.joystick-section-label {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    letter-spacing: 0.5px;
+    margin-top: 10px;
+    margin-bottom: 4px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-accent);
+}
+
+/* No gamepad placeholder */
+.joystick-placeholder {
+    color: var(--text-dim);
+    font-size: 11px;
+    font-family: var(--font-ui);
+    padding: 12px 0;
+    text-align: center;
+}

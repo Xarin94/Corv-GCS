@@ -1,0 +1,226 @@
+/**
+ * panels.css - Floating Panel Styles
+ * Config panel, telemetry panel, storyline player
+ */
+
+/* STORYLINE PLAYER (Hidden by default) */
+#storyline-panel {
+    position: absolute;
+    bottom: 8%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40%;
+    height: 40px;
+    background: var(--bg-solid);
+    border: 1px solid var(--accent-cyan);
+    display: none;
+    align-items: center;
+    padding: 0 1%;
+    gap: 1%;
+    pointer-events: auto;
+    z-index: var(--z-overlay);
+    border-radius: 4px;
+}
+
+/* When moved into the split map container, keep it above Leaflet panes */
+body.mode-split #split-map-container #storyline-panel {
+    z-index: var(--z-leaflet-over);
+    width: calc(100% - 16px);
+    max-width: 560px;
+    left: 50%;
+    bottom: 10px;
+    transform: translateX(-50%);
+}
+
+#storyline-panel.visible {
+    display: flex;
+    animation: slideUp 0.3s ease;
+}
+
+.play-btn {
+    background: transparent;
+    border: 1px solid var(--accent-cyan);
+    color: var(--accent-cyan);
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+#storyline-panel #replay-speed {
+    height: 30px;
+    background: transparent;
+    border: 1px solid var(--accent-cyan);
+    color: var(--accent-cyan);
+    font-family: var(--font-data);
+    font-size: 11px;
+    padding: 0 6px;
+    outline: none;
+}
+
+#storyline-panel #replay-speed option {
+    color: #000;
+}
+
+input[type=range] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+}
+
+input[type=range]::-webkit-slider-runnable-track {
+    height: 2px;
+    background: var(--bg-slider-track);
+}
+
+input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 12px;
+    width: 12px;
+    background: var(--accent-cyan);
+    margin-top: -5px;
+}
+
+/* FLOATING PANELS */
+.floating-panel {
+    position: absolute;
+    top: 10%;
+    width: clamp(250px, 18vw, 350px);
+    background: var(--glass-panel);
+    border: 1px solid var(--accent-cyan);
+    padding: 1.5%;
+    display: none;
+    pointer-events: auto;
+    z-index: var(--z-floating);
+    backdrop-filter: blur(5px);
+}
+
+.floating-panel.visible {
+    display: block;
+    animation: fadeIn 0.2s ease;
+}
+
+#config-panel {
+    right: 2%;
+}
+
+#telemetry-panel {
+    left: 2%;
+    border-left: 3px solid var(--accent-cyan);
+    font-family: var(--font-data);
+}
+
+.panel-header {
+    font-size: clamp(10px, 0.9vw, 14px);
+    color: var(--accent-cyan);
+    border-bottom: 1px solid rgba(0,210,255,0.3);
+    padding-bottom: 1vh;
+    margin-bottom: 2vh;
+    letter-spacing: 2px;
+    font-weight: bold;
+}
+
+/* Config Elements */
+.cfg-row {
+    margin-bottom: 2vh;
+}
+
+.cfg-row label {
+    display: block;
+    font-size: clamp(9px, 0.7vw, 12px);
+    color: var(--text-dim);
+    margin-bottom: 0.5vh;
+}
+
+.cfg-row input[type="number"] {
+    width: 100%;
+    background: var(--glass-panel-input);
+    border: 1px solid var(--border-input);
+    color: var(--text-main);
+    padding: 1vh;
+    font-family: var(--font-data);
+    font-size: clamp(11px, 0.9vw, 14px);
+    box-sizing: border-box;
+}
+
+.file-upload-btn {
+    display: inline-block;
+    width: 100%;
+    padding: 1.2vh;
+    background: rgba(26, 26, 26, 0.9);
+    border: 1px dashed rgba(255, 255, 255, 0.15);
+    color: var(--text-dim);
+    font-size: clamp(9px, 0.7vw, 12px);
+    text-align: center;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.file-upload-btn:hover {
+    border-color: var(--accent-cyan);
+    color: white;
+}
+
+/* Config Panel Additional Styles */
+.hidden-input {
+    display: none;
+}
+
+.status-msg {
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 5px;
+    text-align: right;
+}
+
+.cfg-select {
+    width: 100%;
+    background: var(--glass-panel-input);
+    border: 1px solid var(--border-input);
+    color: var(--text-main);
+    padding: 8px;
+    font-family: var(--font-data);
+    font-size: 12px;
+    box-sizing: border-box;
+}
+
+.cfg-slider {
+    width: 100%;
+}
+
+/* Storyline Player Time Label */
+.time-label {
+    font-family: var(--font-data);
+    font-size: 12px;
+    color: var(--text-main);
+}
+
+/* Telemetry Elements */
+.telem-section {
+    margin-bottom: 2vh;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding-bottom: 0.5vh;
+}
+
+.telem-section.no-border {
+    border-bottom: none;
+}
+
+.telem-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: clamp(10px, 0.9vw, 14px);
+    margin-bottom: 0.4vh;
+}
+
+.t-lbl {
+    color: var(--text-dim);
+}
+
+.t-val {
+    color: var(--text-main);
+}

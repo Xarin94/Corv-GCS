@@ -1,0 +1,143 @@
+/**
+ * variables.css - CSS Custom Properties (Design Tokens)
+ * All color, typography, spacing, and z-index variables
+ */
+
+:root {
+    /* Colors - Primary */
+    --bg-color: #080c12;
+    --accent-cyan: #00d2ff;
+    --accent-red: #ff0000;
+    --accent-active: #ff9900;
+    --accent-green: #44ff44;
+    --accent-orange: #ffaa00;
+
+    /* Colors - Text */
+    --text-main: #ffffff;
+    --text-dim: #6e7f8d;
+    --text-muted: #889999;
+    --text-nav: #88aacc;
+
+    /* Colors - Instrument inputs */
+    --input-green: #00ff00;
+    --input-cyan: #00ffff;
+
+    /* Glass panels */
+    --glass-panel: rgba(10, 15, 20, 0.95);
+    --glass-panel-toolbar: rgba(8, 12, 18, 0.97);
+    --glass-panel-dark: rgba(5, 12, 20, 0.95);
+    --glass-panel-input: rgba(10, 15, 22, 0.9);
+    --glass-panel-solid: rgba(4, 8, 14, 0.98);
+    --glass-panel-btn: rgba(0, 30, 50, 0.9);
+    --glass-panel-btn-hover: rgba(0, 50, 80, 0.95);
+    --glass-panel-section: rgba(0, 15, 25, 0.5);
+
+    /* Solid backgrounds (buttons, overlays) */
+    --bg-solid: rgba(0, 0, 0, 0.9);
+    --bg-solid-hover: rgba(0, 0, 0, 0.95);
+    --bg-overlay: rgba(0, 0, 0, 0.85);
+    --bg-overlay-mid: rgba(0, 0, 0, 0.8);
+    --bg-overlay-light: rgba(0, 0, 0, 0.6);
+    --bg-overlay-half: rgba(0, 0, 0, 0.5);
+    --bg-scene: #000;
+    --bg-nd: #0a0a12;
+    --bg-slider-track: #333;
+    --bg-cmd-btn: rgba(30, 40, 55, 0.9);
+    --bg-cmd-btn-hover: rgba(50, 65, 85, 0.9);
+    --bg-cmd-select: rgba(20, 30, 40, 0.9);
+    --bg-gcs-btn: rgba(20, 30, 45, 0.9);
+    --bg-gcs-btn-hover: rgba(35, 50, 70, 0.9);
+    --bg-gcs-input: rgba(10, 15, 22, 0.9);
+    --bg-gcs-list: rgba(5, 8, 12, 0.9);
+    --bg-gcs-toggle: rgba(8, 12, 18, 0.95);
+    --bg-gcs-toggle-hover: rgba(20, 30, 45, 0.95);
+    --bg-titlebar-gradient: linear-gradient(to bottom, rgba(0,0,0,0.95), rgba(0,0,0,0));
+    --bg-dialog: #1a1f2e;
+    --bg-dialog-input: #0d1117;
+
+    /* Borders */
+    --border-accent: rgba(0, 210, 255, 0.15);
+    --border-accent-mid: rgba(0, 210, 255, 0.4);
+    --border-accent-strong: rgba(0, 210, 255, 0.6);
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-input: rgba(255, 255, 255, 0.1);
+    --border-section: rgba(0, 150, 200, 0.2);
+    --border-section-mid: rgba(0, 150, 200, 0.4);
+
+    /* Typography */
+    --font-ui: 'Rajdhani', sans-serif;
+    --font-data: 'Roboto Mono', monospace;
+
+    /* Z-Index Scale */
+    --z-content: 10;
+    --z-ui-layer: 20;
+    --z-nd-sidebar: 50;
+    --z-overlay: 100;
+    --z-floating: 200;
+    --z-pane: 500;
+    --z-leaflet-over: 2000;
+    --z-hud: 5000;
+    --z-chrome: 9000;
+    --z-chrome-toggle: 9100;
+    --z-modal: 15000;
+    --z-titlebar: 20000;
+    --z-loading: 25000;
+}
+
+/* ============= LIGHT THEME (CAD-style gray) ============= */
+[data-theme="light"] {
+    /* Colors - Primary */
+    --bg-color: #d4d4d4;
+
+    /* Colors - Text */
+    --text-main: #1a1a1a;
+    --text-dim: #4a5568;
+    --text-muted: #555e66;
+    --text-nav: #2a4a6a;
+
+    /* Colors - Instrument inputs */
+    --input-green: #007a00;
+    --input-cyan: #007a8a;
+
+    /* Glass panels */
+    --glass-panel: rgba(200, 205, 210, 0.95);
+    --glass-panel-toolbar: rgba(195, 200, 205, 0.97);
+    --glass-panel-dark: rgba(190, 195, 200, 0.95);
+    --glass-panel-input: rgba(220, 225, 228, 0.9);
+    --glass-panel-solid: rgba(200, 205, 210, 0.98);
+    --glass-panel-btn: rgba(185, 195, 208, 0.9);
+    --glass-panel-btn-hover: rgba(170, 182, 198, 0.95);
+    --glass-panel-section: rgba(195, 202, 210, 0.5);
+
+    /* Solid backgrounds */
+    --bg-solid: rgba(200, 205, 212, 0.9);
+    --bg-solid-hover: rgba(190, 198, 208, 0.95);
+    --bg-overlay: rgba(205, 210, 215, 0.85);
+    --bg-overlay-mid: rgba(200, 205, 212, 0.8);
+    --bg-overlay-light: rgba(200, 205, 212, 0.6);
+    --bg-overlay-half: rgba(205, 210, 215, 0.5);
+    --bg-scene: #c8c8c8;
+    --bg-nd: #c4c4cc;
+    --bg-slider-track: #bbb;
+    --bg-cmd-btn: rgba(200, 208, 218, 0.9);
+    --bg-cmd-btn-hover: rgba(185, 195, 210, 0.9);
+    --bg-cmd-select: rgba(210, 218, 225, 0.9);
+    --bg-gcs-btn: rgba(200, 208, 218, 0.9);
+    --bg-gcs-btn-hover: rgba(185, 195, 210, 0.9);
+    --bg-gcs-input: rgba(220, 225, 228, 0.9);
+    --bg-gcs-list: rgba(215, 220, 225, 0.9);
+    --bg-gcs-toggle: rgba(195, 200, 205, 0.95);
+    --bg-gcs-toggle-hover: rgba(185, 192, 200, 0.95);
+    --bg-titlebar-gradient: linear-gradient(to bottom, rgba(210,215,218,0.95), rgba(210,215,218,0));
+    --bg-dialog: #d0d4da;
+    --bg-dialog-input: #dde0e5;
+
+    /* Borders */
+    --border-accent: rgba(0, 150, 200, 0.25);
+    --border-accent-mid: rgba(0, 150, 200, 0.5);
+    --border-accent-strong: rgba(0, 150, 200, 0.7);
+    --border-subtle: rgba(0, 0, 0, 0.12);
+    --border-input: rgba(0, 0, 0, 0.15);
+    --border-section: rgba(0, 120, 160, 0.3);
+    --border-section-mid: rgba(0, 120, 160, 0.5);
+}

@@ -1,0 +1,150 @@
+/**
+ * fpv.css - FPV Camera Stream Styles
+ * Canvas overlay, connection dialog, and status message
+ */
+
+/* ============== FPV CANVAS ============== */
+#fpv-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    background: #000;
+}
+
+/* ============== FPV STATUS MESSAGE ============== */
+.fpv-status-msg {
+    position: absolute;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--z-ui-layer, 50);
+    background: rgba(0, 20, 0, 0.85);
+    border: 1px solid rgba(0, 210, 255, 0.6);
+    color: rgba(0, 255, 127, 1);
+    font-family: var(--font-ui, 'Rajdhani', sans-serif);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 1px;
+    padding: 8px 20px;
+    pointer-events: none;
+    white-space: nowrap;
+}
+
+.fpv-status-msg.error {
+    color: #ff4444;
+    border-color: rgba(255, 68, 68, 0.6);
+}
+
+/* ============== FPV BUTTON ACTIVE STATE ============== */
+#btn-fpv.active {
+    color: var(--accent-cyan, #00d2ff);
+    background: rgba(0, 210, 255, 0.15);
+    border-color: var(--accent-cyan, #00d2ff);
+}
+
+/* Pulsing dot when streaming */
+#btn-fpv.streaming::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ff3333;
+    animation: fpv-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes fpv-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+/* ============== FPV CONNECTION DIALOG ============== */
+.fpv-dialog-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.7);
+    justify-content: center;
+    align-items: center;
+}
+
+.fpv-dialog-backdrop.visible {
+    display: flex;
+}
+
+.fpv-dialog {
+    background: var(--bg-solid, #0a0a0a);
+    border: 1px solid rgba(0, 210, 255, 0.55);
+    min-width: 340px;
+    max-width: 420px;
+}
+
+.fpv-dialog .panel-header {
+    padding: 12px 16px;
+    font-family: var(--font-ui, 'Rajdhani', sans-serif);
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: var(--accent-cyan, #00d2ff);
+    border-bottom: 1px solid rgba(0, 210, 255, 0.3);
+}
+
+.fpv-dialog-body {
+    padding: 16px;
+}
+
+.fpv-dialog-body .cfg-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+}
+
+.fpv-dialog-body .cfg-row label {
+    font-family: var(--font-ui, 'Rajdhani', sans-serif);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--text-dim, #888);
+}
+
+.fpv-dialog-body .failsafe-input {
+    background: var(--bg-solid-hover, #1a1a1a);
+    border: 1px solid rgba(0, 210, 255, 0.4);
+    color: var(--text-main, #eee);
+    padding: 4px 8px;
+    font-family: var(--font-data, 'Roboto Mono', monospace);
+    font-size: 12px;
+    outline: none;
+}
+
+.fpv-dialog-body .failsafe-input:focus {
+    border-color: var(--accent-cyan, #00d2ff);
+}
+
+.fpv-dialog-hint {
+    margin-top: 12px;
+    padding: 8px;
+    background: rgba(0, 210, 255, 0.05);
+    border-left: 2px solid rgba(0, 210, 255, 0.3);
+    font-family: var(--font-data, 'Roboto Mono', monospace);
+    font-size: 10px;
+    line-height: 1.5;
+    color: var(--text-dim, #888);
+}
+
+.fpv-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.fpv-dialog-actions .gcs-btn {
+    min-width: 90px;
+}

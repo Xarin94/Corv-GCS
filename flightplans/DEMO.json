@@ -1,0 +1,19 @@
+{
+    "id": "DEMO",
+    "name": "Demo Route (Alps)",
+    "departure": {
+        "icao": "---",
+        "name": "Demo Start"
+    },
+    "arrival": {
+        "icao": "---",
+        "name": "Demo End"
+    },
+    "waypoints": [
+        { "id": "START", "lat": 46.0, "lon": 11.0, "type": "waypoint" },
+        { "id": "WPT01", "lat": 46.2, "lon": 11.3, "type": "waypoint" },
+        { "id": "WPT02", "lat": 46.4, "lon": 11.1, "type": "waypoint" },
+        { "id": "WPT03", "lat": 46.6, "lon": 11.4, "type": "waypoint" },
+        { "id": "END", "lat": 46.8, "lon": 11.2, "type": "waypoint" }
+    ]
+}

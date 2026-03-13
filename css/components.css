@@ -1,0 +1,386 @@
+/**
+ * components.css - UI Component Styles
+ * Buttons, data cells, panels, controls
+ */
+
+/* HEADER / BRAND */
+.brand {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: var(--text-main);
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.brand-logo {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    border-radius: 6px;
+}
+
+.brand span {
+    color: var(--accent-cyan);
+}
+
+/* FPS Counter */
+.fps-counter {
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 8px 10px;
+    opacity: 0.7;
+}
+
+.controls-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Split view: tighter buttons */
+body.mode-split #global-header .controls {
+    gap: 8px;
+}
+
+body.mode-split .controls-group {
+    gap: 8px;
+}
+
+body.mode-split button.ui-btn {
+    padding: 6px 10px;
+    font-size: 10px;
+}
+
+body.mode-split button.ui-btn.square {
+    width: 34px;
+    height: 34px;
+}
+
+/* BUTTONS */
+button.ui-btn {
+    background: var(--bg-solid);
+    border: 1px solid var(--accent-cyan);
+    color: var(--text-main);
+    padding: 8px 15px;
+    font-family: var(--font-ui);
+    font-weight: 600;
+    letter-spacing: 1px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+button.ui-btn:hover {
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+    background: var(--bg-solid-hover);
+}
+
+button.ui-btn.red-hover:hover {
+    border-color: var(--accent-red);
+    color: var(--accent-red);
+}
+
+button.ui-btn.active {
+    background: rgba(255, 153, 0, 0.2);
+    color: var(--accent-active);
+    border-color: var(--accent-active);
+}
+
+button.ui-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* Square icon-style button */
+button.ui-btn.square {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent-cyan);
+}
+
+button.ui-btn.square svg {
+    width: 18px;
+    height: 18px;
+    color: currentColor;
+}
+
+button.ui-btn.square:hover {
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+}
+
+button.ui-btn.square.active {
+    background: rgba(255, 153, 0, 0.2);
+    color: var(--accent-active);
+    border-color: var(--accent-active);
+}
+
+button.ui-btn.square.active svg {
+    color: var(--accent-active);
+}
+
+/* CRV RECORDING */
+button.ui-btn.recording {
+    color: #ff3333;
+    border-color: #ff3333;
+    animation: rec-blink 1s ease-in-out infinite;
+}
+
+@keyframes rec-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* DATA TAPES */
+.tape-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 5%;
+    gap: 2vh;
+}
+
+.tape-title {
+    font-family: var(--font-ui);
+    font-weight: 700;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    font-size: 14px;
+    color: var(--text-main);
+    text-align: center;
+    text-shadow: 1px 1px 0 black;
+    margin-bottom: -0.5vh;
+}
+
+.tape-title span {
+    color: var(--accent-cyan);
+}
+
+/* Hamburger menu */
+.more-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    background: var(--glass-panel);
+    border: 1px solid var(--text-dim);
+    backdrop-filter: blur(6px);
+    padding: 8px;
+    display: none;
+    gap: 8px;
+    flex-direction: column;
+    align-items: stretch;
+    z-index: var(--z-nd-sidebar);
+}
+
+.more-menu.visible {
+    display: flex;
+}
+
+.more-menu-row {
+    display: inline-flex;
+    justify-content: center;
+    gap: 8px;
+}
+
+/* Split/full icon swap for the mode button */
+#btn-mode .icon-fullscreen { display: none; }
+body.mode-split #btn-mode .icon-split { display: none; }
+body.mode-split #btn-mode .icon-fullscreen { display: inline; }
+
+body.mode-split .more-menu {
+    top: calc(100% + 6px);
+}
+
+.data-cell {
+    width: 100%;
+    text-align: center;
+    padding: 1vh 0;
+    border-top: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.data-cell.no-border {
+    border: none;
+}
+
+.lbl {
+    font-size: clamp(8px, 0.8vw, 12px);
+    text-transform: uppercase;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    text-shadow: 1px 1px 0 black;
+}
+
+.val {
+    font-family: var(--font-data);
+    font-size: clamp(24px, 2.5vw, 48px);
+    color: var(--text-main);
+    text-shadow: 2px 2px 0 black;
+}
+
+.val.val-secondary {
+    font-size: 24px;
+    color: #ccc;
+}
+
+.unit {
+    font-size: clamp(9px, 0.8vw, 13px);
+    color: var(--text-main);
+    text-shadow: 1px 1px 0 black;
+}
+
+/* BOTTOM BAR */
+.bottom-bar {
+    grid-column: 3 / 4;
+    grid-row: 3 / 4;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: stretch;
+    gap: 6px;
+    padding: 10px;
+    background: var(--glass-panel);
+    border: 2px solid var(--text-dim);
+    backdrop-filter: blur(5px);
+    align-self: end;
+    justify-self: end;
+    height: auto;
+    box-sizing: border-box;
+    border-radius: 4px;
+    min-width: 180px;
+}
+
+/* Split view: move coordinates box onto the right map */
+body.mode-split #split-map-container .bottom-bar {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    z-index: var(--z-leaflet-over); /* above Leaflet panes */
+    pointer-events: none;
+}
+
+/* If 2D map is the LEFT pane, keep coordinates on the outer corner */
+body.mode-split[data-split-left="2d"] #split-map-container .bottom-bar {
+    left: 12px;
+    right: auto;
+}
+
+
+.bottom-bar .stat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-align: right;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 4px;
+}
+
+.bottom-bar .stat-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.stat-item {
+    text-align: center;
+}
+
+.stat-lbl {
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-bottom: 2px;
+    text-shadow: 1px 1px 0 black;
+}
+
+.stat-val {
+    font-family: var(--font-data);
+    font-size: 13px;
+    color: var(--text-main);
+    text-shadow: 1px 1px 0 black;
+}
+
+/* GRAPH & MAP CONTAINERS */
+#graph-area {
+    grid-column: 1 / 2;
+    grid-row: 3 / 4;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--glass-panel);
+    border: 2px solid var(--text-dim);
+    box-sizing: border-box;
+    padding: 8px;
+    overflow: hidden;
+}
+
+#gload-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: transparent;
+    pointer-events: none;
+    flex: 1;
+    min-height: 0;
+}
+
+.graph-title {
+    position: static;
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--accent-red);
+    letter-spacing: 1.5px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* Mini-map: floating overlay in fullscreen, bottom-left */
+#mini-map-container {
+    position: absolute;
+    left: 16px;
+    bottom: 16px;
+    width: 260px;
+    height: 180px;
+    background: var(--bg-overlay-half);
+    border: 1px solid var(--border-accent-mid);
+    border-radius: 4px;
+    pointer-events: auto;
+    overflow: hidden;
+    box-sizing: border-box;
+    z-index: var(--z-overlay);
+    transition: width 0.3s ease, height 0.3s ease;
+}
+
+#mini-map-container:hover {
+    width: 360px;
+    height: 250px;
+}
+
+#mini-map {
+    width: 100%;
+    height: 100%;
+    background: var(--bg-scene);
+}
+
+/* Hide mini-map in split mode (split has its own full map) */
+body.mode-split #mini-map-container {
+    display: none;
+}
+
+.plane-marker-icon {
+    transition: transform 0.1s linear;
+}
+
+
+.quick-action-btn.active {
+    background: rgba(0, 210, 255, 0.15);
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+}

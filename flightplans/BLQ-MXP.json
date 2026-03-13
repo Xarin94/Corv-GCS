@@ -1,0 +1,22 @@
+{
+    "id": "BLQ-MXP",
+    "name": "Bologna → Milan Malpensa",
+    "departure": {
+        "icao": "LIPE",
+        "name": "Bologna Guglielmo Marconi Airport"
+    },
+    "arrival": {
+        "icao": "LIMC",
+        "name": "Milan Malpensa Airport"
+    },
+    "waypoints": [
+        { "id": "LIPE", "lat": 44.5354, "lon": 11.2887, "type": "airport" },
+        { "id": "BOA", "lat": 44.5353, "lon": 11.2886, "type": "vor" },
+        { "id": "TIMPY", "lat": 44.7500, "lon": 10.6667, "type": "waypoint" },
+        { "id": "NIKMO", "lat": 44.9333, "lon": 10.2167, "type": "waypoint" },
+        { "id": "TOP", "lat": 45.1500, "lon": 9.7167, "type": "vor" },
+        { "id": "LAGEN", "lat": 45.3833, "lon": 9.1333, "type": "waypoint" },
+        { "id": "MLP", "lat": 45.6300, "lon": 8.7231, "type": "vor" },
+        { "id": "LIMC", "lat": 45.6306, "lon": 8.7231, "type": "airport" }
+    ]
+}

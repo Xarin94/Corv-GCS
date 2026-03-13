@@ -1,0 +1,94 @@
+/**
+ * animations.css - Keyframe Animations
+ * All @keyframes definitions and transitions
+ */
+
+@keyframes fly {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(-15px); }
+}
+
+@keyframes spinProp {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes gentle-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-15px); }
+}
+
+@keyframes prop-wobble {
+    0% { transform: scaleY(1); opacity: 0.4; }
+    50% { transform: scaleY(1.1); opacity: 0.3; }
+    100% { transform: scaleY(1); opacity: 0.4; }
+}
+
+@keyframes move-clouds {
+    from { transform: translateX(200px); }
+    to { transform: translateX(-400px); }
+}
+
+@keyframes blink {
+    50% { opacity: 0.5; }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translate(-50%, 20px);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+}
+
+/* Mode change banner */
+@keyframes mode-banner-in {
+    0% { opacity: 0; transform: translate(-50%, -20px); }
+    15% { opacity: 1; transform: translate(-50%, 0); }
+    85% { opacity: 1; transform: translate(-50%, 0); }
+    100% { opacity: 0; transform: translate(-50%, -10px); }
+}
+
+.mode-banner {
+    position: absolute;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--z-floating);
+    background: var(--bg-overlay);
+    border: 1px solid var(--border-accent-mid);
+    border-radius: 4px;
+    padding: 8px 28px;
+    font-family: var(--font-ui);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent-cyan);
+    pointer-events: none;
+    backdrop-filter: blur(8px);
+    animation: mode-banner-in 2.5s ease forwards;
+}
+
+.mode-banner.hidden {
+    display: none;
+}
+
+.mode-banner.mode-manual { color: #ffcc00; border-color: rgba(255, 204, 0, 0.4); }
+.mode-banner.mode-assisted { color: #00d2ff; border-color: rgba(0, 210, 255, 0.4); }
+.mode-banner.mode-auto { color: #44ff44; border-color: rgba(68, 255, 68, 0.4); }
+.mode-banner.mode-emergency { color: #ff9900; border-color: rgba(255, 153, 0, 0.4); }

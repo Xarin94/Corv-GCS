@@ -1,0 +1,62 @@
+{
+  "name": "corv-gcs",
+  "version": "1.2.1",
+  "description": "CORV SYSTEMS Ground Control Station",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --linux",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.corvsystems.gcs",
+    "productName": "CORV GCS",
+    "files": [
+      "**/*",
+      "!.git/**",
+      "!.claude/**",
+      "!dist/**",
+      "!build/**"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerSidebar": null
+    },
+    "linux": {
+      "icon": "build/icon256.png",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Xarin94/Corv-GCS.git"
+  },
+  "keywords": [],
+  "author": "CORV SYSTEMS <info@corvsystems.com>",
+  "license": "Apache-2.0",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Xarin94/Corv-GCS/issues"
+  },
+  "homepage": "https://github.com/Xarin94/Corv-GCS#readme",
+  "devDependencies": {
+    "electron": "^39.2.7",
+    "electron-builder": "^26.8.1"
+  },
+  "dependencies": {
+    "node-mavlink": "^2.3.0",
+    "serialport": "^13.0.0"
+  }
+}

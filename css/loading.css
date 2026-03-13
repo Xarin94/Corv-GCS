@@ -1,0 +1,120 @@
+/**
+ * loading.css - Loading Overlay
+ * Clean splash screen with CORV SYSTEM branding
+ */
+
+/* Loading Indicator (terrain reload) */
+#reload-indicator {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--bg-solid);
+    border: 1px solid var(--accent-cyan);
+    padding: 20px 40px;
+    font-family: var(--font-ui);
+    font-size: 14px;
+    color: var(--accent-cyan);
+    z-index: 1000;
+    display: none;
+    letter-spacing: 2px;
+}
+
+#reload-indicator.visible {
+    display: block;
+}
+
+/* LOADING OVERLAY */
+#loading-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: var(--bg-color);
+    z-index: var(--z-loading);
+    pointer-events: all;
+    opacity: 1;
+    transition: opacity 0.6s ease, visibility 0.6s ease;
+    visibility: visible;
+}
+
+#loading-overlay:not(.visible) {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* Content container */
+.loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin-top: -5vh;
+}
+
+/* Logo on loading screen */
+.loading-logo {
+    width: 420px;
+    height: 420px;
+    object-fit: contain;
+    border-radius: 50%;
+    margin-bottom: 24px;
+    filter:
+        drop-shadow(0 0 1px white)
+        drop-shadow(0 0 1px white)
+        drop-shadow(0 0 1px white);
+}
+
+/* Main title - CORV in white, SYSTEMS in cyan (matches .brand) */
+.loading-title {
+    font-family: var(--font-ui);
+    font-size: 48px;
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: 12px;
+    text-transform: uppercase;
+}
+
+.loading-title span {
+    color: var(--accent-cyan);
+}
+
+/* Subtitle */
+.loading-subtitle {
+    font-family: var(--font-ui);
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--text-dim);
+    letter-spacing: 6px;
+    margin-bottom: 32px;
+}
+
+/* Loading bar */
+.loading-bar-frame {
+    width: 300px;
+    height: 4px;
+    border: 1px solid rgba(0, 210, 255, 0.25);
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.03);
+    overflow: hidden;
+}
+
+.loading-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent-cyan);
+    border-radius: 2px;
+    transition: width 0.3s ease-out;
+}
+
+/* Loading message */
+.loading-msg {
+    font-family: var(--font-data);
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-dim);
+    letter-spacing: 3px;
+    margin-top: 8px;
+}

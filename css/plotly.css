@@ -1,0 +1,276 @@
+/**
+ * plotly.css - Plotly Chart Container Styles
+ * Split view chart controls and container
+ */
+
+/* Plotly Controls Container */
+#plotly-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 15px;
+    background: var(--bg-overlay-mid);
+    border-bottom: 1px solid var(--accent-cyan);
+    flex-shrink: 0;
+}
+
+#plotly-controls .plotly-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#plotly-controls .plotly-window {
+    flex: 0 0 auto;
+}
+
+#plotly-controls #plot-window {
+    min-width: 120px;
+}
+
+#plotly-controls .traces-label {
+    color: var(--accent-cyan);
+    font-weight: bold;
+    letter-spacing: 2px;
+    font-size: 11px;
+}
+
+#plotly-controls select {
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--text-main);
+    background: var(--bg-overlay-light);
+    border: 1px solid var(--text-dim);
+    border-radius: 4px;
+    padding: 4px 6px;
+    outline: none;
+    cursor: pointer;
+}
+
+#plotly-controls select:focus {
+    border-color: var(--accent-cyan);
+}
+
+#plotly-chart {
+    flex: 1;
+    min-height: 0;
+}
+
+/* ============================================
+   TRACE CONFIGURATION UI
+   ============================================ */
+
+.plotly-traces-config {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.trace-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    background: rgba(0, 50, 0, 0.3);
+    border-radius: 4px;
+    border: 1px solid transparent;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.trace-row:hover {
+    background: rgba(0, 80, 0, 0.4);
+    border-color: rgba(0, 210, 255, 0.3);
+}
+
+.trace-row.hidden {
+    display: none;
+}
+
+.trace-badge {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-data);
+    font-size: 11px;
+    font-weight: bold;
+    color: #000;
+    flex-shrink: 0;
+}
+
+.trace-preset {
+    width: 130px;
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--text-main);
+    background: var(--bg-overlay-light);
+    border: 1px solid var(--text-dim);
+    border-radius: 4px;
+    padding: 5px 6px;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.trace-preset:focus {
+    border-color: var(--accent-cyan);
+    outline: none;
+}
+
+.trace-formula {
+    flex: 1;
+    min-width: 180px;
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--text-main);
+    background: var(--bg-overlay-mid);
+    border: 1px solid var(--text-dim);
+    border-radius: 4px;
+    padding: 6px 10px;
+}
+
+.trace-formula:focus {
+    border-color: var(--accent-cyan);
+    outline: none;
+}
+
+.trace-formula.invalid {
+    border-color: var(--accent-red);
+    background: rgba(100, 0, 0, 0.3);
+}
+
+.trace-formula::placeholder {
+    color: rgba(255, 255, 255, 0.3);
+    font-style: italic;
+}
+
+.trace-color {
+    width: 32px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--text-dim);
+    border-radius: 4px;
+    cursor: pointer;
+    background: transparent;
+    flex-shrink: 0;
+}
+
+.trace-color::-webkit-color-swatch-wrapper {
+    padding: 2px;
+}
+
+.trace-color::-webkit-color-swatch {
+    border-radius: 2px;
+    border: none;
+}
+
+.trace-axis {
+    width: 90px;
+    min-width: 150px;
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-main);
+    background: var(--bg-overlay-light);
+    border: 1px solid var(--text-dim);
+    border-radius: 4px;
+    padding: 5px 6px;
+    flex-shrink: 0;
+}
+
+.trace-axis:focus {
+    border-color: var(--accent-cyan);
+    outline: none;
+}
+
+.trace-remove {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    font-size: 16px;
+    font-weight: bold;
+    color: var(--text-main);
+    background: rgba(100, 0, 0, 0.45);
+    border: 1px solid var(--accent-red);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.trace-remove:hover:not(:disabled) {
+    color: var(--accent-red);
+    border-color: var(--accent-red);
+    background: rgba(150, 0, 0, 0.5);
+}
+
+.trace-remove:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* Error display */
+.trace-error {
+    padding: 6px 12px;
+    background: rgba(150, 0, 0, 0.4);
+    border: 1px solid var(--accent-red);
+    border-radius: 4px;
+    color: #ff6666;
+    font-family: var(--font-data);
+    font-size: 11px;
+}
+
+.trace-error.hidden {
+    display: none;
+}
+
+/* Controls row */
+.plotly-controls-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#add-trace-btn {
+    padding: 6px 14px;
+    font-size: 10px;
+}
+
+#add-trace-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .trace-preset {
+        width: 115px;
+    }
+
+    .trace-formula {
+        min-width: 150px;
+    }
+}
+
+@media (max-width: 900px) {
+    .trace-row {
+        flex-wrap: wrap;
+    }
+
+    .trace-formula {
+        order: 10;
+        width: 100%;
+        margin-top: 6px;
+        flex: none;
+    }
+
+    .trace-preset {
+        flex: 1;
+        width: auto;
+    }
+}

@@ -1,0 +1,217 @@
+/**
+ * MapEngine.js - Leaflet Mini-Map Integration
+ * Handles the small overview map in the corner
+ */
+
+import { STATE } from '../core/state.js';
+import { RAD } from '../core/constants.js';
+
+let map = null;
+let marker = null;
+let satelliteLayer = null;
+let pathLine = null;
+let livePathPoints = [];
+let lastLiveLatLng = null;
+
+let logLatLngCache = null;
+let logLatLngCacheLen = 0;
+let lastPlaybackRenderedIndex = -1;
+
+const MAX_MAP_PATH_POINTS = 3000;
+
+// Mission overlay on mini-map
+let missionMarkers = [];
+let missionPolyline = null;
+let homeMarker = null;
+
+/**
+ * Initialize the mini-map
+ * @param {string} containerId - DOM element ID for map container
+ */
+export function initMap(containerId) {
+    map = L.map(containerId, {
+        zoomControl: false,
+        attributionControl: false,
+        keyboard: false
+    }).setView([STATE.lat, STATE.lon], 13);
+
+    // Prevent map container from stealing focus from input fields
+    map.getContainer().setAttribute('tabindex', '-1');
+
+    // Satellite layer
+    satelliteLayer = L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', 
+        {
+            maxZoom: 19, 
+            opacity: 0.6, 
+            attribution: 'Tiles &copy; Esri'
+        }
+    );
+    satelliteLayer.addTo(map);
+
+    // Plane marker
+    const planeIcon = L.divIcon({
+        html: `<svg viewBox="0 0 24 24" fill="#ffffff" style="filter:drop-shadow(0 0 4px #ffffff); width:100%; height:100%;">
+            <path d="M21,16V14L13,9V3.5A1.5,1.5 0 0,0 11.5,2A1.5,1.5 0 0,0 10,3.5V9L2,14V16L10,13.5V19L8,20.5V22L11.5,21L15,22V20.5L13,19V13.5L21,16Z"/>
+        </svg>`,
+        className: 'plane-marker-icon',
+        iconSize: [40, 40],
+        iconAnchor: [20, 20]
+    });
+    marker = L.marker([STATE.lat, STATE.lon], { icon: planeIcon }).addTo(map);
+
+    // Path line (red)
+    pathLine = L.polyline([], {
+        color: '#ff0000',
+        weight: 2,
+        opacity: 0.85
+    }).addTo(map);
+}
+
+function buildLogLatLngCache() {
+    if (!Array.isArray(STATE.logData) || STATE.logData.length === 0) {
+        logLatLngCache = null;
+        logLatLngCacheLen = 0;
+        return;
+    }
+    if (logLatLngCache && logLatLngCacheLen === STATE.logData.length) return;
+
+    logLatLngCache = STATE.logData.map((r) => {
+        const s = (r && (r.state || r)) || {};
+        const lat = (typeof s.lat === 'number') ? s.lat : STATE.lat;
+        const lon = (typeof s.lon === 'number') ? s.lon : STATE.lon;
+        return new L.LatLng(lat, lon);
+    });
+    logLatLngCacheLen = STATE.logData.length;
+    lastPlaybackRenderedIndex = -1;
+}
+
+function downsample(points, maxPoints) {
+    if (!points || points.length <= maxPoints) return points;
+    const step = Math.ceil(points.length / maxPoints);
+    const out = [];
+    for (let i = 0; i < points.length; i += step) out.push(points[i]);
+    const last = points[points.length - 1];
+    if (out.length === 0 || out[out.length - 1] !== last) out.push(last);
+    return out;
+}
+
+/**
+ * Update mini-map position and marker rotation
+ */
+export function updateMap() {
+    if (!map) return;
+
+    const newLatLng = new L.LatLng(STATE.lat, STATE.lon);
+    marker.setLatLng(newLatLng);
+    map.panTo(newLatLng);
+
+    const iconElement = marker.getElement();
+    if (iconElement) {
+        const deg = STATE.yaw * RAD;
+        iconElement.style.transformOrigin = "center center";
+        const svg = iconElement.querySelector('svg');
+        if (svg) svg.style.transform = `rotate(${deg}deg)`;
+    }
+
+    // Update path
+    if (pathLine) {
+        if (STATE.mode === 'PLAYBACK' && Array.isArray(STATE.logData) && STATE.logData.length > 0) {
+            buildLogLatLngCache();
+            const idx = Math.max(0, Math.min(STATE.logIndex, logLatLngCacheLen - 1));
+            if (idx !== lastPlaybackRenderedIndex && logLatLngCache) {
+                const prefix = logLatLngCache.slice(0, idx + 1);
+                pathLine.setLatLngs(downsample(prefix, MAX_MAP_PATH_POINTS));
+                lastPlaybackRenderedIndex = idx;
+            }
+        } else {
+            const cur = newLatLng;
+            if (!lastLiveLatLng) {
+                lastLiveLatLng = cur;
+                livePathPoints = [cur];
+            } else {
+                const moved = map.distance(lastLiveLatLng, cur);
+                if (moved >= 5) {
+                    livePathPoints.push(cur);
+                    lastLiveLatLng = cur;
+                }
+            }
+            if (livePathPoints.length > MAX_MAP_PATH_POINTS) {
+                livePathPoints = livePathPoints.slice(livePathPoints.length - MAX_MAP_PATH_POINTS);
+            }
+            pathLine.setLatLngs(livePathPoints);
+        }
+    }
+
+    map.invalidateSize();
+}
+
+/**
+ * Invalidate map size (for resize events)
+ */
+export function invalidateSize() {
+    if (map) map.invalidateSize();
+}
+
+/**
+ * Update mission waypoints on mini-map (home + WPs as small markers)
+ */
+export function updateMissionOverlay() {
+    if (!map) return;
+
+    // Clear previous
+    for (const m of missionMarkers) map.removeLayer(m);
+    missionMarkers = [];
+    if (missionPolyline) { map.removeLayer(missionPolyline); missionPolyline = null; }
+    if (homeMarker) { map.removeLayer(homeMarker); homeMarker = null; }
+
+    const items = STATE.missionItems;
+    if (!items || items.length === 0) return;
+
+    const latLngs = [];
+
+    for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (!it.lat && !it.lng) continue;
+        const ll = [it.lat, it.lng];
+        latLngs.push(ll);
+
+        if (i === 0 && it.frame === 0) {
+            // Home marker - small orange circle
+            homeMarker = L.circleMarker(ll, {
+                radius: 5, color: '#ff8800', fillColor: '#ff8800',
+                fillOpacity: 0.9, weight: 1
+            }).addTo(map);
+        } else {
+            // WP marker - small green dot
+            const m = L.circleMarker(ll, {
+                radius: 3, color: '#44ff44', fillColor: '#44ff44',
+                fillOpacity: 0.8, weight: 1
+            }).addTo(map);
+            missionMarkers.push(m);
+        }
+    }
+
+    // Thin green polyline connecting WPs
+    if (latLngs.length >= 2) {
+        missionPolyline = L.polyline(latLngs, {
+            color: '#44ff44', weight: 1, opacity: 0.5, dashArray: '4,4'
+        }).addTo(map);
+    }
+}
+
+/**
+ * Get map instance
+ * @returns {L.Map}
+ */
+export function getMap() {
+    return map;
+}
+
+/**
+ * Get marker instance
+ * @returns {L.Marker}
+ */
+export function getMarker() {
+    return marker;
+}

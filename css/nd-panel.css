@@ -1,0 +1,629 @@
+/**
+ * nd-panel.css - Airbus A350 Navigation Display Panel Styling
+ * Collapsible sidebar with all controls on the right side
+ */
+
+/* ============= ND CONTAINER BASE ============= */
+#nd-container {
+    position: relative;
+    background: var(--bg-nd);
+    overflow: hidden;
+}
+
+#nd-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+/* ============= TOGGLE BUTTON ============= */
+.nd-toggle-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 60px;
+    background: var(--glass-panel-btn);
+    border: 1px solid var(--border-accent-strong);
+    color: var(--accent-cyan);
+    font-size: 14px;
+    cursor: pointer;
+    z-index: var(--z-overlay);
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nd-toggle-btn:hover {
+    background: var(--glass-panel-btn-hover);
+    border-color: var(--accent-cyan);
+}
+
+/* Default (right side) toggle button position */
+.nd-toggle-btn {
+    right: 200px;
+    border-right: none;
+    border-radius: 6px 0 0 6px;
+}
+
+#nd-container.sidebar-collapsed .nd-toggle-btn {
+    right: 0;
+}
+
+/* Left side toggle button position */
+#nd-container.sidebar-left .nd-toggle-btn {
+    left: 200px;
+    right: auto;
+    border-left: none;
+    border-right: 1px solid var(--border-accent-strong);
+    border-radius: 0 6px 6px 0;
+}
+
+#nd-container.sidebar-left.sidebar-collapsed .nd-toggle-btn {
+    left: 0;
+}
+
+/* ============= SIDEBAR ============= */
+.nd-sidebar {
+    position: absolute;
+    top: 50px;
+    bottom: 10px;
+    width: 200px;
+    background: var(--glass-panel-dark);
+    z-index: var(--z-nd-sidebar);
+    transition: transform 0.3s ease, opacity 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Default (right side) sidebar position */
+.nd-sidebar {
+    right: 0;
+    left: auto;
+    border-left: 1px solid var(--border-accent-mid);
+    border-right: none;
+}
+
+#nd-container.sidebar-collapsed .nd-sidebar {
+    transform: translateX(100%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Left side sidebar position */
+#nd-container.sidebar-left .nd-sidebar {
+    left: 0;
+    right: auto;
+    border-right: 1px solid var(--border-accent-mid);
+    border-left: none;
+}
+
+#nd-container.sidebar-left.sidebar-collapsed .nd-sidebar {
+    transform: translateX(-100%);
+}
+
+.nd-sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 5px 0;
+}
+
+/* ============= SIDEBAR SECTIONS ============= */
+.nd-sidebar-section {
+    border-bottom: 1px solid var(--border-section);
+}
+
+.nd-sidebar-section:last-child {
+    border-bottom: none;
+}
+
+.nd-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    background: var(--glass-panel-section);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s ease;
+}
+
+.nd-section-header:hover {
+    background: var(--glass-panel-btn-hover);
+}
+
+.nd-section-header span:first-child {
+    font-family: var(--font-data);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    letter-spacing: 1px;
+}
+
+.collapse-icon {
+    font-size: 10px;
+    color: var(--accent-cyan);
+    transition: transform 0.2s ease;
+}
+
+.nd-sidebar-section.collapsed .collapse-icon {
+    transform: rotate(-90deg);
+}
+
+.nd-section-body {
+    padding: 8px 10px;
+    background: var(--glass-panel-section);
+    transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.2s ease;
+    max-height: 500px;
+    overflow: hidden;
+}
+
+.nd-sidebar-section.collapsed .nd-section-body {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+}
+
+/* ============= MODE BUTTONS ============= */
+.nd-mode-buttons,
+.nd-range-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.nd-mode-btn,
+.nd-range-btn {
+    flex: 1 1 auto;
+    min-width: 32px;
+    padding: 5px 6px;
+    font-family: var(--font-data);
+    font-size: 10px;
+    font-weight: 600;
+    background: var(--glass-panel-btn);
+    border: 1px solid var(--border-section-mid);
+    border-radius: 3px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-align: center;
+}
+
+.nd-mode-btn:hover,
+.nd-range-btn:hover {
+    background: var(--glass-panel-btn-hover);
+    border-color: rgba(0, 210, 255, 0.7);
+    color: var(--text-main);
+}
+
+.nd-mode-btn.active,
+.nd-range-btn.active {
+    background: rgba(0, 100, 150, 0.9);
+    border-color: var(--accent-cyan);
+    color: var(--text-main);
+    box-shadow: 0 0 6px rgba(0, 210, 255, 0.3);
+}
+
+/* ============= DISPLAY OPTIONS ============= */
+.nd-display-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+}
+
+.nd-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: color 0.15s ease;
+    padding: 2px 0;
+}
+
+.nd-checkbox:hover {
+    color: var(--text-main);
+}
+
+.nd-checkbox input[type="checkbox"] {
+    width: 12px;
+    height: 12px;
+    accent-color: var(--accent-cyan);
+    cursor: pointer;
+}
+
+.nd-checkbox span {
+    letter-spacing: 0.5px;
+}
+
+/* ============= HDG/EFIS CONTROLS ============= */
+.efis-value-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    margin-bottom: 6px;
+}
+
+.efis-btn {
+    padding: 4px 6px;
+    font-family: var(--font-data);
+    font-size: 9px;
+    font-weight: 600;
+    background: var(--glass-panel-btn);
+    border: 1px solid var(--border-section-mid);
+    border-radius: 3px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.efis-btn:hover {
+    background: var(--glass-panel-btn-hover);
+    border-color: rgba(0, 210, 255, 0.7);
+    color: var(--text-main);
+}
+
+.efis-input {
+    width: 45px;
+    padding: 4px;
+    font-family: var(--font-data);
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--glass-panel-input);
+    border: 1px solid rgba(0, 150, 200, 0.5);
+    border-radius: 3px;
+    color: var(--input-green);
+    text-align: center;
+    outline: none;
+}
+
+.efis-input:focus {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 4px rgba(0, 210, 255, 0.3);
+}
+
+.efis-toggle-row {
+    display: flex;
+    gap: 4px;
+}
+
+.efis-toggle-btn {
+    flex: 1;
+    padding: 5px 6px;
+    font-family: var(--font-data);
+    font-size: 9px;
+    font-weight: 600;
+    background: var(--glass-panel-btn);
+    border: 1px solid var(--border-section-mid);
+    border-radius: 3px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.efis-toggle-btn:hover {
+    background: var(--glass-panel-btn-hover);
+}
+
+.efis-toggle-btn.active {
+    background: rgba(0, 100, 150, 0.9);
+    border-color: var(--accent-cyan);
+    color: var(--text-main);
+}
+
+/* ============= WIND CONTROLS ============= */
+.wind-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.wind-row:last-child {
+    margin-bottom: 0;
+}
+
+.wind-label {
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-nav);
+    min-width: 30px;
+}
+
+.wind-input {
+    flex: 1;
+    max-width: 60px;
+    padding: 4px 6px;
+    font-family: var(--font-data);
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--glass-panel-input);
+    border: 1px solid var(--border-section-mid);
+    border-radius: 3px;
+    color: var(--input-cyan);
+    text-align: center;
+    outline: none;
+}
+
+.wind-input:focus {
+    border-color: var(--accent-cyan);
+}
+
+.wind-unit {
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-nav);
+}
+
+/* ============= NAV INPUTS (VOR/ILS) ============= */
+.nav-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.nav-row:last-child {
+    margin-bottom: 0;
+}
+
+.nav-label {
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-nav);
+    min-width: 35px;
+}
+
+.nav-input {
+    flex: 1;
+    padding: 4px 6px;
+    font-family: var(--font-data);
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--glass-panel-input);
+    border: 1px solid var(--border-section-mid);
+    border-radius: 3px;
+    color: var(--input-green);
+    text-align: center;
+    outline: none;
+}
+
+.nav-input:focus {
+    border-color: var(--accent-cyan);
+}
+
+.nav-input::placeholder {
+    color: #446688;
+}
+
+/* ============= FLIGHT PLAN ============= */
+.fplan-route-select {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-section);
+}
+
+.fplan-route-select label {
+    font-size: 9px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.fplan-route-select select {
+    flex: 1;
+    padding: 4px 6px;
+    font-family: var(--font-data);
+    font-size: 9px;
+    background: var(--glass-panel-btn);
+    border: 1px solid var(--border-section-mid);
+    border-radius: 3px;
+    color: var(--input-cyan);
+    cursor: pointer;
+}
+
+.fplan-route-select select:hover {
+    border-color: rgba(0, 210, 255, 0.7);
+}
+
+.fplan-route-select select:focus {
+    outline: none;
+    border-color: var(--input-cyan);
+    box-shadow: 0 0 5px rgba(0, 255, 255, 0.3);
+}
+
+.fplan-route-select select option {
+    background: var(--bg-nd);
+    color: var(--text-main);
+}
+
+.fplan-controls {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 6px;
+}
+
+.fplan-btn {
+    flex: 1;
+    padding: 4px 8px;
+    font-family: var(--font-data);
+    font-size: 9px;
+    font-weight: 600;
+    background: var(--glass-panel-btn);
+    border: 1px solid var(--border-section-mid);
+    border-radius: 3px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.fplan-btn:hover {
+    background: var(--glass-panel-btn-hover);
+    border-color: rgba(0, 210, 255, 0.7);
+    color: var(--text-main);
+}
+
+.fplan-btn.confirm {
+    background: rgba(0, 80, 0, 0.9);
+    border-color: rgba(0, 200, 0, 0.5);
+    color: var(--input-green);
+}
+
+.fplan-btn.confirm:hover {
+    background: rgba(0, 100, 0, 0.95);
+    border-color: var(--input-green);
+}
+
+.fplan-btn.cancel {
+    background: rgba(80, 0, 0, 0.9);
+    border-color: rgba(200, 0, 0, 0.5);
+    color: #ff6666;
+}
+
+.fplan-btn.cancel:hover {
+    background: rgba(100, 0, 0, 0.95);
+    border-color: var(--accent-red);
+}
+
+.fplan-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    max-height: 100px;
+    overflow-y: auto;
+}
+
+.fplan-wpt {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 6px;
+    background: rgba(60, 0, 80, 0.6);
+    border: 1px solid rgba(255, 0, 255, 0.4);
+    border-radius: 3px;
+    font-family: var(--font-data);
+    font-size: 10px;
+    font-weight: 600;
+    color: #ff00ff;
+}
+
+.fplan-wpt.active {
+    background: rgba(100, 0, 150, 0.8);
+    border-color: #ff00ff;
+    color: var(--text-main);
+}
+
+.fplan-wpt .wpt-remove {
+    width: 14px;
+    height: 14px;
+    background: rgba(150, 0, 0, 0.8);
+    border: none;
+    border-radius: 2px;
+    color: var(--text-main);
+    font-size: 10px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+}
+
+.fplan-wpt .wpt-remove:hover {
+    background: var(--accent-red);
+}
+
+.fplan-add-form {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(0, 150, 200, 0.3);
+}
+
+.fplan-input {
+    padding: 4px 6px;
+    font-family: var(--font-data);
+    font-size: 10px;
+    background: var(--glass-panel-input);
+    border: 1px solid var(--border-section-mid);
+    border-radius: 3px;
+    color: var(--input-green);
+    outline: none;
+}
+
+.fplan-input:focus {
+    border-color: var(--accent-cyan);
+}
+
+.fplan-input::placeholder {
+    color: #446688;
+}
+
+.fplan-form-buttons {
+    display: flex;
+    gap: 4px;
+}
+
+/* ============= SCROLLBAR STYLING ============= */
+.nd-sidebar-content::-webkit-scrollbar,
+.fplan-list::-webkit-scrollbar {
+    width: 4px;
+}
+
+.nd-sidebar-content::-webkit-scrollbar-track,
+.fplan-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.nd-sidebar-content::-webkit-scrollbar-thumb,
+.fplan-list::-webkit-scrollbar-thumb {
+    background: rgba(0, 210, 255, 0.2);
+    border-radius: 2px;
+}
+
+.nd-sidebar-content::-webkit-scrollbar-thumb:hover,
+.fplan-list::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 210, 255, 0.4);
+}
+
+/* ============= RESPONSIVE ============= */
+@media (max-height: 600px) {
+    .nd-section-header {
+        padding: 6px 8px;
+    }
+
+    .nd-section-body {
+        padding: 6px 8px;
+    }
+
+    .nd-sidebar {
+        width: 180px;
+    }
+
+    .nd-toggle-btn {
+        right: 180px;
+    }
+
+    #nd-container.sidebar-collapsed .nd-toggle-btn {
+        right: 0;
+    }
+
+    #nd-container.sidebar-left .nd-toggle-btn {
+        left: 180px;
+        right: auto;
+    }
+
+    #nd-container.sidebar-left.sidebar-collapsed .nd-toggle-btn {
+        left: 0;
+    }
+}

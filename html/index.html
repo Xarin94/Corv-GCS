@@ -1,0 +1,1950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORV GCS v1.2.1</title>
+
+    <!-- Critical inline styles to prevent flash of unstyled content -->
+    <style>
+        html, body { margin: 0; padding: 0; background: var(--bg-color, #0a0a0a); }
+    </style>
+
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Application Styles -->
+    <link rel="stylesheet" href="../css/style.css">
+
+    <!-- Application Script (ES6 Modules) -->
+    <script type="module" src="../js/main.js"></script>
+</head>
+<body class="mode-fullscreen">
+
+    <!-- ==================== TITLE BAR ==================== -->
+    <!-- Custom Title Bar (hover to show) -->
+    <div id="title-bar-zone">
+        <div id="title-bar">
+            <div class="title-bar-drag"></div>
+            <div class="title-bar-buttons">
+                <button class="title-btn" id="btn-minimize" onclick="window.windowControls.minimize()">
+                    <svg viewBox="0 0 12 12"><rect y="5" width="12" height="2"/></svg>
+                </button>
+                <button class="title-btn" id="btn-maximize" onclick="window.windowControls.maximize()">
+                    <svg viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+                </button>
+                <button class="title-btn close" id="btn-close" onclick="window.windowControls.close()">
+                    <svg viewBox="0 0 12 12"><path d="M1 1L11 11M11 1L1 11" stroke="currentColor" stroke-width="2"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== GLOBAL HEADER ==================== -->
+    <div id="global-header">
+        <div class="brand">CORV <span>SYSTEMS</span></div>
+        <div class="controls">
+            <span id="fps-counter" class="fps-counter">-- FPS</span>
+            <input type="file" id="log-input" class="hidden-input" accept=".json,.txt,.log">
+        </div>
+    </div>
+
+    <!-- ==================== TAB BAR ==================== -->
+    <div id="gcs-tab-bar">
+        <button class="gcs-tab active" data-tab="flight-data">FLIGHT DATA</button>
+        <button class="gcs-tab" data-tab="flight-plan">FLIGHT PLAN</button>
+        <button class="gcs-tab" data-tab="setup">SETUP</button>
+        <button class="gcs-tab" data-tab="sys-config">SYS CONFIG</button>
+        <div style="flex:1;"></div>
+        <button id="btn-fpv" class="ui-btn square" onclick="onFPVButtonClick()" title="FPV Camera (click to configure)" aria-label="FPV Camera">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="18" height="18">
+                <rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2"/>
+                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+                <circle cx="12" cy="12" r="1" fill="currentColor"/>
+            </svg>
+        </button>
+        <button id="btn-mode" class="ui-btn square mode-toggle" onclick="toggleViewMode()" title="Split view" aria-label="Split view">
+            <svg class="icon-split" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none">
+                <path d="M4 5h7v14H4V5zm9 0h7v14h-7V5z" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            <svg class="icon-fullscreen" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none">
+                <path d="M7 3H3v4M17 3h4v4M7 21H3v-4M17 21h4v-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+        </button>
+        <button id="btn-sat" class="ui-btn square" onclick="toggleSatellite()" title="Satellite overlay">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="18" height="18">
+                <path d="M3 6.5L9 4l6 2 6-2v13l-6 2-6-2-6 2v-13z" fill="currentColor"/>
+            </svg>
+        </button>
+        <button id="btn-sun" class="ui-btn square active" onclick="toggleSunlight()" title="Toggle realistic sunlight">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="18" height="18">
+                <circle cx="12" cy="12" r="5" fill="currentColor"/>
+                <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+        </button>
+        <button id="btn-cam" class="ui-btn square" onclick="toggleCameraMode()" title="Toggle 1st/3rd person camera">1P</button>
+        <button id="btn-traj" class="ui-btn square" onclick="toggleTrajectory()" title="Predicted trajectory corridor">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="18" height="18">
+                <path d="M12 3v6M8 5l4-2 4 2M7 21c1-6 4-9 5-12M17 21c-1-6-4-9-5-12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+        <button id="btn-theme" class="ui-btn square" onclick="toggleTheme()" title="Toggle light/dark theme">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="18" height="18">
+                <circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2"/>
+                <path d="M12 4a8 8 0 0 1 0 16V4z" fill="currentColor"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- ==================== TAB CONTENT: FLIGHT DATA (default) ==================== -->
+    <div id="tab-flight-data" class="tab-content active">
+
+    <!-- ==================== HUD WRAPPER ==================== -->
+    <!-- Contains 3D scene, HUD canvas, and UI overlay -->
+    <div id="hud-wrapper">
+
+        <!-- Split-pane hover hint + top bar (appears on hover in split view) -->
+        <div class="pane-hover-hint" aria-hidden="true"></div>
+        <div class="pane-topbar" aria-label="Pane controls">
+            <div class="pane-topbar-inner">
+                <select class="pane-view-select" title="Pane view">
+                    <option value="3d">3D map</option>
+                    <option value="2d">2D map</option>
+                    <option value="nd">ND</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- 3D Scene Container -->
+        <div id="scene-container"></div>
+
+        <!-- FPV Camera Canvas (hidden by default, replaces 3D scene when active) -->
+        <canvas id="fpv-canvas" style="display:none;"></canvas>
+
+        <!-- FPV Status Message -->
+        <div id="fpv-status-msg" class="fpv-status-msg" style="display:none;"></div>
+
+        <!-- HUD Canvas Overlay -->
+        <canvas id="hud-canvas"></canvas>
+
+        <!-- Map Reload Indicator -->
+        <div id="reload-indicator">RELOADING MAP...</div>
+
+        <!-- ==================== LOADING OVERLAY ==================== -->
+        <div id="loading-overlay" class="visible">
+            <div class="loading-content">
+                <img src="../assets/logo.png" alt="CORV" class="loading-logo">
+                <div class="loading-title">CORV <span>SYSTEMS</span></div>
+                <div class="loading-subtitle">GROUND CONTROL STATION</div>
+                <div class="loading-bar-frame">
+                    <div class="loading-bar-fill"></div>
+                </div>
+                <div class="loading-msg">LOADING...</div>
+            </div>
+        </div>
+
+        <!-- Mode change notification banner -->
+        <div id="mode-change-banner" class="mode-banner hidden">
+            <span id="mode-banner-text">STABILIZE</span>
+        </div>
+
+        <!-- ==================== UI LAYER ==================== -->
+        <div id="ui-layer">
+
+            <!-- Left Data Tape - Airspeed -->
+            <div class="tape-col">
+                <div class="data-cell">
+                    <div class="lbl">Airspeed</div>
+                    <div class="val" id="disp-as">0</div>
+                    <div class="unit">M/S</div>
+                </div>
+                <div class="data-cell no-border">
+                    <div class="lbl">Ground Spd</div>
+                    <div class="val val-secondary" id="disp-gs">0</div>
+                </div>
+                <div class="data-cell no-border">
+                    <div class="lbl">G-Load</div>
+                    <div class="val val-secondary" id="disp-g">1.0</div>
+                    <div class="unit">G</div>
+                </div>
+            </div>
+
+            <!-- Center spacer -->
+            <div></div>
+
+            <!-- Right Data Tape - Altitude -->
+            <div class="tape-col">
+                <div class="data-cell">
+                    <div class="lbl">Altitude</div>
+                    <div class="val" id="disp-alt">0</div>
+                    <div class="unit">MSL</div>
+                </div>
+                <div class="data-cell">
+                    <div class="lbl">Terr Alt</div>
+                    <div class="val val-secondary" id="disp-agl">---</div>
+                </div>
+                <div class="data-cell no-border">
+                    <div class="lbl">LiDAR</div>
+                    <div class="val" id="disp-lidar">---</div>
+                    <div class="unit">m AGL</div>
+                </div>
+            </div>
+
+
+            <!-- Bottom Status Bar -->
+            <div class="bottom-bar">
+                <div class="stat-item">
+                    <div class="stat-lbl">LATITUDE</div>
+                    <div class="stat-val" id="disp-lat">--.----</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-lbl">LONGITUDE</div>
+                    <div class="stat-val" id="disp-lon">--.----</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-lbl">V. SPEED</div>
+                    <div class="stat-val" id="disp-vs">0.0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-lbl">ALPHA/BETA</div>
+                    <div class="stat-val" id="disp-ab">0.0 / 0.0</div>
+                </div>
+            </div>
+
+
+        </div><!-- end #ui-layer -->
+
+        <!-- Mini-map overlay (always visible in fullscreen) -->
+        <div id="mini-map-container">
+            <div id="mini-map"></div>
+        </div>
+
+    </div><!-- end #hud-wrapper -->
+
+    <!-- ==================== SPLIT VIEW CONTAINERS ==================== -->
+    
+    <!-- Split Map Container (large map for split view) -->
+    <div id="split-map-container">
+        <div class="pane-hover-hint" aria-hidden="true"></div>
+        <div class="pane-topbar" aria-label="Pane controls">
+            <div class="pane-topbar-inner">
+                <select class="pane-view-select" title="Pane view">
+                    <option value="3d">3D map</option>
+                    <option value="2d">2D map</option>
+                    <option value="nd">ND</option>
+                </select>
+            </div>
+        </div>
+        <div id="split-map"></div>
+    </div>
+
+    <!-- ND (Navigation Display) container for split view -->
+    <div id="nd-container">
+        <div class="pane-topbar" aria-label="Pane controls">
+            <div class="pane-topbar-inner">
+                <select class="pane-view-select" title="Pane view">
+                    <option value="3d">3D map</option>
+                    <option value="2d">2D map</option>
+                    <option value="nd">ND</option>
+                </select>
+            </div>
+        </div>
+        <canvas id="nd-canvas"></canvas>
+        
+        <!-- Toggle button to show/hide sidebar -->
+        <button id="nd-toggle-panels" class="nd-toggle-btn" title="Toggle ND Controls">◀</button>
+        
+        <!-- ND Sidebar - Collapsible panel container -->
+        <div id="nd-sidebar" class="nd-sidebar">
+            <div class="nd-sidebar-content">
+                
+                <!-- MODE Section -->
+                <div class="nd-sidebar-section" data-section="mode">
+                    <div class="nd-section-header" data-collapse="mode">
+                        <span>MODE</span>
+                        <span class="collapse-icon">▼</span>
+                    </div>
+                    <div class="nd-section-body">
+                        <div class="nd-mode-buttons">
+                            <button class="nd-mode-btn active" data-mode="ARC">ARC</button>
+                            <button class="nd-mode-btn" data-mode="ROSE_NAV">ROSE</button>
+                            <button class="nd-mode-btn" data-mode="ROSE_VOR">VOR</button>
+                            <button class="nd-mode-btn" data-mode="ROSE_ILS">ILS</button>
+                            <button class="nd-mode-btn" data-mode="PLAN">PLAN</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- RANGE Section -->
+                <div class="nd-sidebar-section" data-section="range">
+                    <div class="nd-section-header" data-collapse="range">
+                        <span>RANGE</span>
+                        <span class="collapse-icon">▼</span>
+                    </div>
+                    <div class="nd-section-body">
+                        <div class="nd-range-buttons">
+                            <button class="nd-range-btn" data-range="10">10</button>
+                            <button class="nd-range-btn" data-range="20">20</button>
+                            <button class="nd-range-btn active" data-range="40">40</button>
+                            <button class="nd-range-btn" data-range="80">80</button>
+                            <button class="nd-range-btn" data-range="160">160</button>
+                            <button class="nd-range-btn" data-range="320">320</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- DISPLAY Section -->
+                <div class="nd-sidebar-section" data-section="display">
+                    <div class="nd-section-header" data-collapse="display">
+                        <span>DISPLAY</span>
+                        <span class="collapse-icon">▼</span>
+                    </div>
+                    <div class="nd-section-body">
+                        <div class="nd-display-options">
+                            <label class="nd-checkbox"><input type="checkbox" id="nd-show-wpt" checked><span>WPT</span></label>
+                            <label class="nd-checkbox"><input type="checkbox" id="nd-show-vordme" checked><span>VOR</span></label>
+                            <label class="nd-checkbox"><input type="checkbox" id="nd-show-ndb" checked><span>NDB</span></label>
+                            <label class="nd-checkbox"><input type="checkbox" id="nd-show-arpt" checked><span>ARPT</span></label>
+                            <label class="nd-checkbox"><input type="checkbox" id="nd-show-terr" checked><span>TERR</span></label>
+                            <label class="nd-checkbox"><input type="checkbox" id="nd-show-wxr"><span>WXR</span></label>
+                            <label class="nd-checkbox"><input type="checkbox" id="nd-show-tfc"><span>TCAS</span></label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- HDG Section -->
+                <div class="nd-sidebar-section" data-section="hdg">
+                    <div class="nd-section-header" data-collapse="hdg">
+                        <span>HDG</span>
+                        <span class="collapse-icon">▼</span>
+                    </div>
+                    <div class="nd-section-body">
+                        <div class="efis-value-row">
+                            <button class="efis-btn" id="hdg-dec-10">-10</button>
+                            <button class="efis-btn" id="hdg-dec-1">-1</button>
+                            <input type="number" class="efis-input" id="nd-hdg-input" min="0" max="359" placeholder="">
+                            <button class="efis-btn" id="hdg-inc-1">+1</button>
+                            <button class="efis-btn" id="hdg-inc-10">+10</button>
+                        </div>
+                        <div class="efis-toggle-row">
+                            <button class="efis-toggle-btn active" id="hdg-managed">MGD</button>
+                            <button class="efis-toggle-btn" id="hdg-selected">SEL</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- WIND Section -->
+                <div class="nd-sidebar-section" data-section="wind">
+                    <div class="nd-section-header" data-collapse="wind">
+                        <span>WIND</span>
+                        <span class="collapse-icon">▼</span>
+                    </div>
+                    <div class="nd-section-body">
+                        <div class="wind-row">
+                            <span class="wind-label">DIR:</span>
+                            <input type="number" class="wind-input" id="wind-dir" min="0" max="359" value="0">
+                            <span class="wind-unit">°</span>
+                        </div>
+                        <div class="wind-row">
+                            <span class="wind-label">SPD:</span>
+                            <input type="number" class="wind-input" id="wind-spd" min="0" max="200" value="0">
+                            <span class="wind-unit">KT</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- VOR 1 Section -->
+                <div class="nd-sidebar-section" data-section="vor1">
+                    <div class="nd-section-header" data-collapse="vor1">
+                        <span>VOR 1</span>
+                        <span class="collapse-icon">▼</span>
+                    </div>
+                    <div class="nd-section-body">
+                        <div class="nav-row">
+                            <span class="nav-label">ID:</span>
+                            <input type="text" class="nav-input" id="vor1-id" maxlength="4" placeholder="----">
+                        </div>
+                        <div class="nav-row">
+                            <span class="nav-label">FREQ:</span>
+                            <input type="text" class="nav-input" id="vor1-freq" maxlength="6" placeholder="---.-">
+                        </div>
+                        <div class="nav-row">
+                            <span class="nav-label">CRS:</span>
+                            <input type="number" class="nav-input" id="vor1-crs" min="0" max="359" placeholder="">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- VOR 2 Section -->
+                <div class="nd-sidebar-section" data-section="vor2">
+                    <div class="nd-section-header" data-collapse="vor2">
+                        <span>VOR 2</span>
+                        <span class="collapse-icon">▼</span>
+                    </div>
+                    <div class="nd-section-body">
+                        <div class="nav-row">
+                            <span class="nav-label">ID:</span>
+                            <input type="text" class="nav-input" id="vor2-id" maxlength="4" placeholder="----">
+                        </div>
+                        <div class="nav-row">
+                            <span class="nav-label">FREQ:</span>
+                            <input type="text" class="nav-input" id="vor2-freq" maxlength="6" placeholder="---.-">
+                        </div>
+                        <div class="nav-row">
+                            <span class="nav-label">CRS:</span>
+                            <input type="number" class="nav-input" id="vor2-crs" min="0" max="359" placeholder="">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- ILS Section -->
+                <div class="nd-sidebar-section" data-section="ils">
+                    <div class="nd-section-header" data-collapse="ils">
+                        <span>ILS</span>
+                        <span class="collapse-icon">▼</span>
+                    </div>
+                    <div class="nd-section-body">
+                        <div class="nav-row">
+                            <span class="nav-label">ID:</span>
+                            <input type="text" class="nav-input" id="ils-id" maxlength="4" placeholder="----">
+                        </div>
+                        <div class="nav-row">
+                            <span class="nav-label">FREQ:</span>
+                            <input type="text" class="nav-input" id="ils-freq" maxlength="6" placeholder="---.-">
+                        </div>
+                        <div class="nav-row">
+                            <span class="nav-label">CRS:</span>
+                            <input type="number" class="nav-input" id="ils-crs" min="0" max="359" placeholder="">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- FPLAN Section -->
+                <div class="nd-sidebar-section" data-section="fplan">
+                    <div class="nd-section-header" data-collapse="fplan">
+                        <span>FLIGHT PLAN</span>
+                        <span class="collapse-icon">▼</span>
+                    </div>
+                    <div class="nd-section-body">
+                        <div class="fplan-route-select">
+                            <label>Route:</label>
+                            <select id="fplan-route-select">
+                                <option value="">-- Select Route --</option>
+                                <option value="IBK-BLQ">IBK → BLQ (Innsbruck-Bologna)</option>
+                                <option value="BLQ-MXP">BLQ → MXP (Bologna-Malpensa)</option>
+                                <option value="DEMO">DEMO (Alps)</option>
+                            </select>
+                        </div>
+                        <div class="fplan-controls">
+                            <button class="fplan-btn" id="fplan-add">+ ADD</button>
+                            <button class="fplan-btn" id="fplan-clear">CLEAR</button>
+                        </div>
+                        <div class="fplan-list" id="fplan-list">
+                            <!-- Waypoints will be added here dynamically -->
+                        </div>
+                        <div class="fplan-add-form" id="fplan-add-form" style="display: none;">
+                            <input type="text" class="fplan-input" id="new-wpt-id" placeholder="ID" maxlength="5">
+                            <input type="number" class="fplan-input" id="new-wpt-lat" placeholder="LAT" step="0.0001">
+                            <input type="number" class="fplan-input" id="new-wpt-lon" placeholder="LON" step="0.0001">
+                            <div class="fplan-form-buttons">
+                                <button class="fplan-btn confirm" id="fplan-confirm">OK</button>
+                                <button class="fplan-btn cancel" id="fplan-cancel">X</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+    </div>
+
+    <!-- Plotly Container (live charts) -->
+    <div id="plotly-container">
+        <div id="plotly-controls">
+            <!-- Trace Configuration Rows -->
+            <div class="plotly-traces-config">
+                <!-- Trace 1 -->
+                <div class="trace-row" data-trace-index="0">
+                    <span class="trace-badge" style="background: #00FF00;">1</span>
+                    <select class="trace-preset" title="Preset">
+                        <option value="">Custom...</option>
+                        <option value="state.as" selected>IAS (m/s)</option>
+                        <option value="state.gs">GS (m/s)</option>
+                        <option value="state.vs">VS (m/s)</option>
+                        <option value="state.alt">Altitude (m)</option>
+                        <option value="state.roll * RAD">Roll (deg)</option>
+                        <option value="state.pitch * RAD">Pitch (deg)</option>
+                        <option value="state.yaw * RAD">Yaw (deg)</option>
+                        <option value="sqrt(imu.ax^2 + imu.ay^2 + imu.az^2)">G-Load</option>
+                        <option value="sqrt(state.vn^2 + state.ve^2 + state.vd^2)">Total Speed</option>
+                        <option value="abs(imu.az) / 9.81">Vertical G</option>
+                    </select>
+                    <input type="text" class="trace-formula" value="state.as" placeholder="es: sqrt(imu.ax^2 + imu.ay^2)" title="Formula expression">
+                    <input type="color" class="trace-color" value="#00FF00" title="Trace color">
+                    <select class="trace-axis" title="Y Axis">
+                        <option value="y" selected>Left (Y1)</option>
+                        <option value="y2">Right (Y2)</option>
+                        <option value="y3">Right-2 (Y3)</option>
+                    </select>
+                    <button class="trace-remove" title="Remove trace" disabled>&#215;</button>
+                </div>
+
+                <!-- Trace 2 -->
+                <div class="trace-row" data-trace-index="1">
+                    <span class="trace-badge" style="background: #FFFF00;">2</span>
+                    <select class="trace-preset" title="Preset">
+                        <option value="">Custom...</option>
+                        <option value="state.as">IAS (m/s)</option>
+                        <option value="state.gs">GS (m/s)</option>
+                        <option value="state.vs">VS (m/s)</option>
+                        <option value="state.alt" selected>Altitude (m)</option>
+                        <option value="state.roll * RAD">Roll (deg)</option>
+                        <option value="state.pitch * RAD">Pitch (deg)</option>
+                        <option value="state.yaw * RAD">Yaw (deg)</option>
+                        <option value="sqrt(imu.ax^2 + imu.ay^2 + imu.az^2)">G-Load</option>
+                        <option value="sqrt(state.vn^2 + state.ve^2 + state.vd^2)">Total Speed</option>
+                        <option value="abs(imu.az) / 9.81">Vertical G</option>
+                    </select>
+                    <input type="text" class="trace-formula" value="state.alt" placeholder="es: sqrt(imu.ax^2 + imu.ay^2)" title="Formula expression">
+                    <input type="color" class="trace-color" value="#FFFF00" title="Trace color">
+                    <select class="trace-axis" title="Y Axis">
+                        <option value="y">Left (Y1)</option>
+                        <option value="y2" selected>Right (Y2)</option>
+                        <option value="y3">Right-2 (Y3)</option>
+                    </select>
+                    <button class="trace-remove" title="Remove trace">&#215;</button>
+                </div>
+
+                <!-- Trace 3 (hidden by default) -->
+                <div class="trace-row hidden" data-trace-index="2">
+                    <span class="trace-badge" style="background: #FF3300;">3</span>
+                    <select class="trace-preset" title="Preset">
+                        <option value="">Custom...</option>
+                        <option value="state.as">IAS (m/s)</option>
+                        <option value="state.gs">GS (m/s)</option>
+                        <option value="state.vs">VS (m/s)</option>
+                        <option value="state.alt">Altitude (m)</option>
+                        <option value="state.roll * RAD">Roll (deg)</option>
+                        <option value="state.pitch * RAD">Pitch (deg)</option>
+                        <option value="state.yaw * RAD">Yaw (deg)</option>
+                        <option value="sqrt(imu.ax^2 + imu.ay^2 + imu.az^2)" selected>G-Load</option>
+                        <option value="sqrt(state.vn^2 + state.ve^2 + state.vd^2)">Total Speed</option>
+                        <option value="abs(imu.az) / 9.81">Vertical G</option>
+                    </select>
+                    <input type="text" class="trace-formula" value="sqrt(imu.ax^2 + imu.ay^2 + imu.az^2)" placeholder="es: sqrt(imu.ax^2 + imu.ay^2)" title="Formula expression">
+                    <input type="color" class="trace-color" value="#FF3300" title="Trace color">
+                    <select class="trace-axis" title="Y Axis">
+                        <option value="y" selected>Left (Y1)</option>
+                        <option value="y2">Right (Y2)</option>
+                        <option value="y3">Right-2 (Y3)</option>
+                    </select>
+                    <button class="trace-remove" title="Remove trace">&#215;</button>
+                </div>
+
+                <!-- Trace 4 (hidden by default) -->
+                <div class="trace-row hidden" data-trace-index="3">
+                    <span class="trace-badge" style="background: #FF00FF;">4</span>
+                    <select class="trace-preset" title="Preset">
+                        <option value="">Custom...</option>
+                        <option value="state.as">IAS (m/s)</option>
+                        <option value="state.gs">GS (m/s)</option>
+                        <option value="state.vs">VS (m/s)</option>
+                        <option value="state.alt">Altitude (m)</option>
+                        <option value="state.roll * RAD" selected>Roll (deg)</option>
+                        <option value="state.pitch * RAD">Pitch (deg)</option>
+                        <option value="state.yaw * RAD">Yaw (deg)</option>
+                        <option value="sqrt(imu.ax^2 + imu.ay^2 + imu.az^2)">G-Load</option>
+                        <option value="sqrt(state.vn^2 + state.ve^2 + state.vd^2)">Total Speed</option>
+                        <option value="abs(imu.az) / 9.81">Vertical G</option>
+                    </select>
+                    <input type="text" class="trace-formula" value="state.roll * RAD" placeholder="es: sqrt(imu.ax^2 + imu.ay^2)" title="Formula expression">
+                    <input type="color" class="trace-color" value="#FF00FF" title="Trace color">
+                    <select class="trace-axis" title="Y Axis">
+                        <option value="y">Left (Y1)</option>
+                        <option value="y2">Right (Y2)</option>
+                        <option value="y3" selected>Right-2 (Y3)</option>
+                    </select>
+                    <button class="trace-remove" title="Remove trace">&#215;</button>
+                </div>
+            </div>
+
+            <!-- Error display area -->
+            <div id="trace-error" class="trace-error hidden"></div>
+
+            <!-- Controls row -->
+            <div class="plotly-controls-row">
+                <button id="add-trace-btn" class="ui-btn" title="Add trace (max 4)">+ ADD TRACE</button>
+                <button id="btn-plot-collapse" class="ui-btn" type="button" title="Collapse graph" aria-label="Collapse graph">COLLAPSE</button>
+                <div class="plotly-group plotly-window">
+                    <span class="traces-label">WINDOW:</span>
+                    <select id="plot-window" title="Plot time window">
+                        <option value="all" selected>ALL</option>
+                        <option value="10">10 min</option>
+                        <option value="5">5 min</option>
+                        <option value="2">2 min</option>
+                        <option value="1">1 min</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div id="plotly-chart"></div>
+    </div>
+
+
+    </div><!-- end #tab-flight-data -->
+
+    <!-- ==================== TAB CONTENT: FLIGHT PLAN ==================== -->
+    <div id="tab-flight-plan" class="tab-content">
+        <div class="tab-panel-layout">
+            <div id="mission-map-full" class="mission-map-container"></div>
+            <div id="mission-waypoint-panel" class="mission-wp-panel">
+                <div class="panel-header">MISSION WAYPOINTS</div>
+                <div class="mission-wp-toolbar">
+                    <select id="mission-wp-cmd" class="cfg-select cfg-select-sm">
+                        <!-- Populated dynamically from MissionCommands.js -->
+                    </select>
+                    <div class="mission-wp-alt-row">
+                        <label>ALT</label>
+                        <input type="number" id="mission-default-alt" class="gcs-input input-narrow" value="50" step="1">
+                        <span class="mission-info-text">m</span>
+                    </div>
+                </div>
+                <div id="mission-wp-edit-hint" class="mission-wp-edit-hint" style="display:none;">
+                    <span>Editing WP <b id="mission-wp-edit-idx">-</b> — change CMD/ALT above</span>
+                    <button id="mission-wp-deselect" class="gcs-btn-sm" title="Deselect">ESC</button>
+                </div>
+                <div id="mission-wp-params" class="mission-wp-params" style="display:none;"></div>
+                <div id="mission-wp-list" class="mission-wp-list"></div>
+                <div class="mission-wp-info">
+                    <span id="mission-total-dist" class="mission-info-text">Dist: --</span>
+                    <span id="mission-wp-count" class="mission-info-text">WP: 0</span>
+                </div>
+                <div class="mission-wp-controls">
+                    <button class="gcs-btn" id="mission-upload">UPLOAD</button>
+                    <button class="gcs-btn" id="mission-download">DOWNLOAD</button>
+                </div>
+                <div class="mission-wp-controls">
+                    <button class="gcs-btn" id="mission-clear">CLEAR ALL</button>
+                    <button class="gcs-btn" id="mission-set-home">SET HOME</button>
+                </div>
+                <div class="mission-survey-section" id="mission-survey-section">
+                    <div class="panel-header">SURVEY / GRID</div>
+                    <div class="survey-row">
+                        <label>SPACING (m)</label>
+                        <input type="number" id="survey-spacing" class="gcs-input input-narrow" value="30" step="5" min="5">
+                    </div>
+                    <div class="survey-row">
+                        <label>ANGLE (°)</label>
+                        <input type="number" id="survey-angle" class="gcs-input input-narrow" value="0" step="5">
+                    </div>
+                    <div class="survey-row">
+                        <label>ALTITUDE (m)</label>
+                        <input type="number" id="survey-alt" class="gcs-input input-narrow" value="50" step="5">
+                    </div>
+                    <div class="survey-row">
+                        <label>OVERLAP (%)</label>
+                        <input type="number" id="survey-overlap" class="gcs-input input-narrow" value="60" step="5" min="0" max="90">
+                    </div>
+                    <div class="survey-btn-row">
+                        <button class="gcs-btn" id="survey-generate">GENERATE</button>
+                        <button class="gcs-btn survey-clear-btn" id="survey-clear">CLEAR POLYGON</button>
+                    </div>
+                    <div class="survey-info" id="survey-info"></div>
+                </div>
+            </div>
+        </div>
+        <div id="mission-3d-strip" class="mission-3d-strip">
+            <canvas id="mission-3d-canvas"></canvas>
+        </div>
+    </div>
+
+    <!-- ==================== TAB CONTENT: SETUP (unified) ==================== -->
+    <div id="tab-setup" class="tab-content">
+        <nav class="setup-vertical-nav">
+            <div class="setup-nav-group-label">VEHICLE</div>
+            <button class="setup-nav-btn active" data-section="connection">CONNECTION</button>
+            <button class="setup-nav-btn" data-section="joystick">JOYSTICK / RC</button>
+            <button class="setup-nav-btn" data-section="radio-cal">RADIO CAL</button>
+            <button class="setup-nav-btn" data-section="flight-modes">FLIGHT MODES</button>
+            <button class="setup-nav-btn" data-section="failsafe">FAILSAFE</button>
+            <div class="setup-nav-group-label">TUNING</div>
+            <button class="setup-nav-btn" data-section="pid-tuning">PID TUNING</button>
+            <button class="setup-nav-btn" data-section="parameters">PARAMETERS</button>
+            <button class="setup-nav-btn" data-section="ext-tuning">EXT TUNING</button>
+            <button class="setup-nav-btn" data-section="vibration">VIBRATIONS</button>
+            <button class="setup-nav-btn" data-section="servo-relay">SERVO / RELAY</button>
+            <div class="setup-nav-group-label">TOOLS</div>
+            <button class="setup-nav-btn" data-section="simulation">SIMULATION</button>
+            <button class="setup-nav-btn" data-section="rtk-gps">RTK / GPS</button>
+            <button class="setup-nav-btn" data-section="tel-forward">TEL FORWARD</button>
+        </nav>
+        <div class="setup-content-area">
+
+            <!-- Sub-tab: Connection -->
+            <div class="sub-tab-content active" id="subtab-connection">
+                <div class="setup-panel">
+                    <div class="panel-header">CONNECTION</div>
+                    <div class="cfg-row">
+                        <label>CONNECTION TYPE</label>
+                        <select id="setup-conn-type" class="cfg-select">
+                            <option value="mavlink-serial">MAVLink Serial</option>
+                            <option value="mavlink-udp">MAVLink UDP</option>
+                            <option value="corv-binary">CORV Binary (Legacy)</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>SERIAL PORT</label>
+                        <select id="setup-serial-port" class="cfg-select">
+                            <option value="">-- Scan ports --</option>
+                        </select>
+                        <button class="gcs-btn" id="setup-scan-ports">SCAN</button>
+                    </div>
+                    <div class="cfg-row">
+                        <label>BAUD RATE</label>
+                        <select id="setup-baud" class="cfg-select">
+                            <option value="9600">9600</option>
+                            <option value="19200">19200</option>
+                            <option value="38400">38400</option>
+                            <option value="57600" selected>57600</option>
+                            <option value="115200">115200</option>
+                            <option value="230400">230400</option>
+                            <option value="460800">460800</option>
+                            <option value="921600">921600</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>UDP HOST</label>
+                        <input type="text" id="setup-udp-host" class="gcs-input" value="127.0.0.1">
+                    </div>
+                    <div class="cfg-row">
+                        <label>UDP PORT</label>
+                        <input type="number" id="setup-udp-port" class="gcs-input" value="14550">
+                    </div>
+                    <div class="cfg-row">
+                        <button class="gcs-btn gcs-btn-connect" id="setup-connect">CONNECT</button>
+                        <button class="gcs-btn" id="setup-disconnect">DISCONNECT</button>
+                    </div>
+                </div>
+                <div class="setup-panel">
+                    <div class="panel-header">FIRMWARE INFO</div>
+                    <div class="cfg-row">
+                        <label>AUTOPILOT</label>
+                        <span class="cfg-val" id="setup-autopilot">--</span>
+                    </div>
+                    <div class="cfg-row">
+                        <label>VEHICLE TYPE</label>
+                        <span class="cfg-val" id="setup-vehicle">--</span>
+                    </div>
+                    <div class="cfg-row">
+                        <label>SYSTEM ID</label>
+                        <span class="cfg-val" id="setup-sysid">--</span>
+                    </div>
+                </div>
+                <div class="setup-panel">
+                    <div class="panel-header">CALIBRATION WIZARD</div>
+                    <div class="cal-wizard-row">
+                        <button class="gcs-btn cal-wizard-btn" id="setup-cal-accel" data-cal="accel">
+                            <span class="cal-icon">&#9651;</span>
+                            <span>ACCELEROMETER</span>
+                        </button>
+                        <div class="cal-wizard-status" id="cal-accel-status">Ready</div>
+                    </div>
+                    <div class="cal-wizard-row">
+                        <button class="gcs-btn cal-wizard-btn" id="setup-cal-compass" data-cal="compass">
+                            <span class="cal-icon">&#9678;</span>
+                            <span>COMPASS</span>
+                        </button>
+                        <div class="cal-wizard-status" id="cal-compass-status">Ready</div>
+                    </div>
+                    <div class="cal-wizard-row">
+                        <button class="gcs-btn cal-wizard-btn" id="setup-cal-gyro" data-cal="gyro">
+                            <span class="cal-icon">&#10227;</span>
+                            <span>GYROSCOPE</span>
+                        </button>
+                        <div class="cal-wizard-status" id="cal-gyro-status">Ready</div>
+                    </div>
+                    <div class="cal-wizard-progress" id="cal-progress" style="display:none;">
+                        <div class="cal-progress-bar"><div class="cal-progress-fill" id="cal-progress-fill"></div></div>
+                        <div class="cal-progress-msg" id="cal-progress-msg">Place vehicle level...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sub-tab: Joystick / RC -->
+            <div class="sub-tab-content" id="subtab-joystick">
+                <div class="setup-panel" id="joystick-panel">
+                    <div class="panel-header">JOYSTICK / GAMEPAD</div>
+                    <div class="cfg-row">
+                        <label class="gcs-checkbox">
+                            <input type="checkbox" id="joystick-enable">
+                            ENABLE RC OVERRIDE
+                        </label>
+                    </div>
+                    <div class="cfg-row">
+                        <label>GAMEPAD</label>
+                        <div class="joystick-gamepad-row">
+                            <select id="joystick-gamepad-select" class="cfg-select cfg-select-sm">
+                                <option value="">-- No gamepad detected --</option>
+                            </select>
+                            <button class="gcs-btn joystick-scan-btn" id="joystick-scan">SCAN</button>
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>SEND RATE</label>
+                        <select id="joystick-send-rate" class="cfg-select">
+                            <option value="50">50 Hz</option>
+                            <option value="25" selected>25 Hz</option>
+                            <option value="10">10 Hz</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>STATUS</label>
+                        <span class="cfg-val" id="joystick-status">Disabled</span>
+                    </div>
+                    <div class="joystick-section-label">AXIS MAPPING</div>
+                    <div id="joystick-axes-container">
+                        <div class="joystick-placeholder">Connect a gamepad and click SCAN</div>
+                    </div>
+                    <div class="joystick-section-label">CHANNEL OUTPUT (PWM)</div>
+                    <div id="joystick-channel-preview"></div>
+                </div>
+            </div>
+
+            <!-- Sub-tab: Radio Calibration -->
+            <div class="sub-tab-content" id="subtab-radio-cal">
+                <div class="setup-panel full-width">
+                    <div class="panel-header">RC INPUT CHANNELS</div>
+                    <div id="rc-cal-bars"></div>
+                    <div class="cfg-row" style="margin-top:12px; display:flex; gap:8px;">
+                        <button class="gcs-btn" id="rc-cal-start">START CALIBRATION</button>
+                        <button class="gcs-btn" id="rc-cal-save">SAVE CALIBRATION</button>
+                        <button class="gcs-btn" id="rc-cal-reset">RESET</button>
+                    </div>
+                    <div class="cfg-val" id="rc-cal-status" style="margin-top:6px; font-size:10px;">Move all sticks to extremes during calibration</div>
+                </div>
+            </div>
+
+            <!-- Sub-tab: Flight Modes -->
+            <div class="sub-tab-content" id="subtab-flight-modes">
+                <div class="setup-panel full-width">
+                    <div class="panel-header">FLIGHT MODES</div>
+                    <div class="cfg-row">
+                        <label>MODE CHANNEL</label>
+                        <select id="fltmode-channel" class="cfg-select">
+                            <option value="5">RC Channel 5</option>
+                            <option value="6">RC Channel 6</option>
+                            <option value="7">RC Channel 7</option>
+                            <option value="8">RC Channel 8</option>
+                        </select>
+                    </div>
+                    <div class="fltmode-grid" id="fltmode-grid">
+                        <div class="fltmode-row">
+                            <span class="fltmode-label">MODE 1</span>
+                            <select id="fltmode-1" class="fltmode-select">
+                                <option value="0">STABILIZE</option>
+                                <option value="2">ALT_HOLD</option>
+                                <option value="5">LOITER</option>
+                                <option value="3">AUTO</option>
+                                <option value="4">GUIDED</option>
+                                <option value="6">RTL</option>
+                                <option value="9">LAND</option>
+                                <option value="1">ACRO</option>
+                                <option value="16">POSHOLD</option>
+                                <option value="7">CIRCLE</option>
+                            </select>
+                            <span class="fltmode-pwm">PWM 1000-1230</span>
+                        </div>
+                        <div class="fltmode-row">
+                            <span class="fltmode-label">MODE 2</span>
+                            <select id="fltmode-2" class="fltmode-select">
+                                <option value="0">STABILIZE</option>
+                                <option value="2" selected>ALT_HOLD</option>
+                                <option value="5">LOITER</option>
+                                <option value="3">AUTO</option>
+                                <option value="4">GUIDED</option>
+                                <option value="6">RTL</option>
+                                <option value="9">LAND</option>
+                                <option value="1">ACRO</option>
+                                <option value="16">POSHOLD</option>
+                                <option value="7">CIRCLE</option>
+                            </select>
+                            <span class="fltmode-pwm">PWM 1231-1360</span>
+                        </div>
+                        <div class="fltmode-row">
+                            <span class="fltmode-label">MODE 3</span>
+                            <select id="fltmode-3" class="fltmode-select">
+                                <option value="0">STABILIZE</option>
+                                <option value="2">ALT_HOLD</option>
+                                <option value="5" selected>LOITER</option>
+                                <option value="3">AUTO</option>
+                                <option value="4">GUIDED</option>
+                                <option value="6">RTL</option>
+                                <option value="9">LAND</option>
+                                <option value="1">ACRO</option>
+                                <option value="16">POSHOLD</option>
+                                <option value="7">CIRCLE</option>
+                            </select>
+                            <span class="fltmode-pwm">PWM 1361-1490</span>
+                        </div>
+                        <div class="fltmode-row">
+                            <span class="fltmode-label">MODE 4</span>
+                            <select id="fltmode-4" class="fltmode-select">
+                                <option value="0">STABILIZE</option>
+                                <option value="2">ALT_HOLD</option>
+                                <option value="5">LOITER</option>
+                                <option value="3" selected>AUTO</option>
+                                <option value="4">GUIDED</option>
+                                <option value="6">RTL</option>
+                                <option value="9">LAND</option>
+                                <option value="1">ACRO</option>
+                                <option value="16">POSHOLD</option>
+                                <option value="7">CIRCLE</option>
+                            </select>
+                            <span class="fltmode-pwm">PWM 1491-1620</span>
+                        </div>
+                        <div class="fltmode-row">
+                            <span class="fltmode-label">MODE 5</span>
+                            <select id="fltmode-5" class="fltmode-select">
+                                <option value="0">STABILIZE</option>
+                                <option value="2">ALT_HOLD</option>
+                                <option value="5">LOITER</option>
+                                <option value="3">AUTO</option>
+                                <option value="4">GUIDED</option>
+                                <option value="6" selected>RTL</option>
+                                <option value="9">LAND</option>
+                                <option value="1">ACRO</option>
+                                <option value="16">POSHOLD</option>
+                                <option value="7">CIRCLE</option>
+                            </select>
+                            <span class="fltmode-pwm">PWM 1621-1749</span>
+                        </div>
+                        <div class="fltmode-row">
+                            <span class="fltmode-label">MODE 6</span>
+                            <select id="fltmode-6" class="fltmode-select">
+                                <option value="0">STABILIZE</option>
+                                <option value="2">ALT_HOLD</option>
+                                <option value="5">LOITER</option>
+                                <option value="3">AUTO</option>
+                                <option value="4">GUIDED</option>
+                                <option value="6">RTL</option>
+                                <option value="9" selected>LAND</option>
+                                <option value="1">ACRO</option>
+                                <option value="16">POSHOLD</option>
+                                <option value="7">CIRCLE</option>
+                            </select>
+                            <span class="fltmode-pwm">PWM 1750-2000</span>
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <button class="gcs-btn" id="fltmode-read">READ FROM VEHICLE</button>
+                        <button class="gcs-btn" id="fltmode-write">WRITE TO VEHICLE</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sub-tab: Failsafe -->
+            <div class="sub-tab-content" id="subtab-failsafe">
+                <div class="setup-panel full-width">
+                    <div class="panel-header">BATTERY FAILSAFE</div>
+                    <div class="failsafe-grid">
+                        <div class="failsafe-row">
+                            <span class="failsafe-label">LOW VOLTAGE</span>
+                            <input type="number" id="fs-batt-low-volt" class="failsafe-input" step="0.1" value="10.5" placeholder="V">
+                        </div>
+                        <div class="failsafe-row">
+                            <span class="failsafe-label">CRITICAL VOLTAGE</span>
+                            <input type="number" id="fs-batt-crt-volt" class="failsafe-input" step="0.1" value="10.0" placeholder="V">
+                        </div>
+                        <div class="failsafe-row">
+                            <span class="failsafe-label">LOW ACTION</span>
+                            <select id="fs-batt-low-act" class="failsafe-select">
+                                <option value="0">Disabled</option>
+                                <option value="1">Land</option>
+                                <option value="2" selected>RTL</option>
+                                <option value="3">SmartRTL or RTL</option>
+                                <option value="4">SmartRTL or Land</option>
+                                <option value="5">Terminate</option>
+                            </select>
+                        </div>
+                        <div class="failsafe-row">
+                            <span class="failsafe-label">CRITICAL ACTION</span>
+                            <select id="fs-batt-crt-act" class="failsafe-select">
+                                <option value="0">Disabled</option>
+                                <option value="1" selected>Land</option>
+                                <option value="2">RTL</option>
+                                <option value="3">SmartRTL or RTL</option>
+                                <option value="4">SmartRTL or Land</option>
+                                <option value="5">Terminate</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="setup-panel full-width">
+                    <div class="panel-header">RC / GCS FAILSAFE</div>
+                    <div class="failsafe-grid">
+                        <div class="failsafe-row">
+                            <span class="failsafe-label">RC FAILSAFE</span>
+                            <select id="fs-thr-enable" class="failsafe-select">
+                                <option value="0">Disabled</option>
+                                <option value="1" selected>Enabled - Always RTL</option>
+                                <option value="2">Enabled - Continue Auto</option>
+                                <option value="3">Enabled - Always Land</option>
+                            </select>
+                        </div>
+                        <div class="failsafe-row">
+                            <span class="failsafe-label">RC PWM THRESHOLD</span>
+                            <input type="number" id="fs-thr-value" class="failsafe-input" value="975" step="1" placeholder="PWM">
+                        </div>
+                        <div class="failsafe-row">
+                            <span class="failsafe-label">GCS FAILSAFE</span>
+                            <select id="fs-gcs-enable" class="failsafe-select">
+                                <option value="0">Disabled</option>
+                                <option value="1" selected>Enabled - Always RTL</option>
+                                <option value="2">Enabled - Continue Auto</option>
+                                <option value="3">Enabled - Always Land</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="cfg-row">
+                    <button class="gcs-btn" id="fs-read">READ FAILSAFE PARAMS</button>
+                    <button class="gcs-btn" id="fs-write">WRITE FAILSAFE PARAMS</button>
+                </div>
+            </div>
+
+
+            <!-- Sub-tab: PID Tuning -->
+            <div class="sub-tab-content" id="subtab-pid-tuning">
+                <div class="setup-panel wide">
+                    <div class="panel-header">PID TUNING</div>
+                    <div class="pid-grid">
+                        <div class="pid-group">
+                            <div class="pid-title">ROLL</div>
+                            <div class="pid-row"><label>P</label><input type="number" class="pid-input" data-param="ATC_RAT_RLL_P" step="0.001" value="0"></div>
+                            <div class="pid-row"><label>I</label><input type="number" class="pid-input" data-param="ATC_RAT_RLL_I" step="0.001" value="0"></div>
+                            <div class="pid-row"><label>D</label><input type="number" class="pid-input" data-param="ATC_RAT_RLL_D" step="0.0001" value="0"></div>
+                        </div>
+                        <div class="pid-group">
+                            <div class="pid-title">PITCH</div>
+                            <div class="pid-row"><label>P</label><input type="number" class="pid-input" data-param="ATC_RAT_PIT_P" step="0.001" value="0"></div>
+                            <div class="pid-row"><label>I</label><input type="number" class="pid-input" data-param="ATC_RAT_PIT_I" step="0.001" value="0"></div>
+                            <div class="pid-row"><label>D</label><input type="number" class="pid-input" data-param="ATC_RAT_PIT_D" step="0.0001" value="0"></div>
+                        </div>
+                        <div class="pid-group">
+                            <div class="pid-title">YAW</div>
+                            <div class="pid-row"><label>P</label><input type="number" class="pid-input" data-param="ATC_RAT_YAW_P" step="0.001" value="0"></div>
+                            <div class="pid-row"><label>I</label><input type="number" class="pid-input" data-param="ATC_RAT_YAW_I" step="0.001" value="0"></div>
+                            <div class="pid-row"><label>D</label><input type="number" class="pid-input" data-param="ATC_RAT_YAW_D" step="0.0001" value="0"></div>
+                        </div>
+                    </div>
+                    <button class="gcs-btn" id="pid-write-all">WRITE ALL PID</button>
+                </div>
+            </div>
+
+            <!-- Sub-tab: Parameters -->
+            <div class="sub-tab-content" id="subtab-parameters">
+                <div class="setup-panel full-width">
+                    <div class="panel-header">PARAMETERS</div>
+                    <div class="params-toolbar">
+                        <button class="gcs-btn" id="cfg-params-read">READ ALL</button>
+                        <button class="gcs-btn" id="cfg-params-write">WRITE CHANGED</button>
+                        <div class="params-progress" id="cfg-params-progress">
+                            <div class="gcs-progress-bar"><div class="gcs-progress-fill" id="cfg-params-fill"></div></div>
+                            <span class="gcs-progress-text" id="cfg-params-count">0/0</span>
+                        </div>
+                        <input type="text" class="params-search" id="cfg-params-search" placeholder="Search parameters...">
+                    </div>
+                    <div class="params-table-wrapper">
+                        <table class="params-table">
+                            <thead>
+                                <tr>
+                                    <th class="params-col-name">NAME</th>
+                                    <th class="params-col-value">VALUE</th>
+                                    <th class="params-col-desc">DESCRIPTION</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cfg-params-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sub-tab: Extended Tuning -->
+            <div class="sub-tab-content" id="subtab-ext-tuning">
+                <div class="setup-panel full-width">
+                    <div class="panel-header">EXTENDED TUNING</div>
+                    <div class="tuning-slider-row">
+                        <span class="tuning-slider-label">RATE ROLL/PITCH</span>
+                        <input type="range" class="tuning-slider" id="tune-rate-rp" min="0.01" max="0.5" step="0.005" value="0.135" data-params="ATC_RAT_RLL_P,ATC_RAT_PIT_P">
+                        <span class="tuning-slider-val" id="tune-rate-rp-val">0.135</span>
+                    </div>
+                    <div class="tuning-slider-row">
+                        <span class="tuning-slider-label">RATE YAW</span>
+                        <input type="range" class="tuning-slider" id="tune-rate-yaw" min="0.01" max="0.5" step="0.005" value="0.18" data-params="ATC_RAT_YAW_P">
+                        <span class="tuning-slider-val" id="tune-rate-yaw-val">0.180</span>
+                    </div>
+                    <div class="tuning-slider-row">
+                        <span class="tuning-slider-label">LOITER SPEED (cm/s)</span>
+                        <input type="range" class="tuning-slider" id="tune-loit-speed" min="100" max="2000" step="50" value="500" data-params="LOIT_SPEED">
+                        <span class="tuning-slider-val" id="tune-loit-speed-val">500</span>
+                    </div>
+                    <div class="tuning-slider-row">
+                        <span class="tuning-slider-label">WP SPEED (cm/s)</span>
+                        <input type="range" class="tuning-slider" id="tune-wp-speed" min="100" max="2000" step="50" value="500" data-params="WPNAV_SPEED">
+                        <span class="tuning-slider-val" id="tune-wp-speed-val">500</span>
+                    </div>
+                    <div class="tuning-slider-row">
+                        <span class="tuning-slider-label">RTL ALT (cm)</span>
+                        <input type="range" class="tuning-slider" id="tune-rtl-alt" min="0" max="8000" step="100" value="1500" data-params="RTL_ALT">
+                        <span class="tuning-slider-val" id="tune-rtl-alt-val">1500</span>
+                    </div>
+                    <div class="tuning-slider-row">
+                        <span class="tuning-slider-label">PILOT SPEED UP (cm/s)</span>
+                        <input type="range" class="tuning-slider" id="tune-pilot-up" min="50" max="500" step="10" value="250" data-params="PILOT_SPEED_UP">
+                        <span class="tuning-slider-val" id="tune-pilot-up-val">250</span>
+                    </div>
+                    <button class="gcs-btn" id="ext-tuning-read">READ FROM VEHICLE</button>
+                    <button class="gcs-btn" id="ext-tuning-write">WRITE TO VEHICLE</button>
+                </div>
+            </div>
+
+            <!-- Sub-tab: Vibrations -->
+            <div class="sub-tab-content" id="subtab-vibration">
+                <div class="setup-panel full-width">
+                    <div class="panel-header">VIBRATION LEVELS</div>
+                    <canvas id="vib-chart" class="vib-canvas" width="800" height="200"></canvas>
+                    <div class="vib-legend">
+                        <span class="vib-legend-item"><span class="vib-dot" style="background:#ff4444"></span> X: <span id="vib-x-val">0.0</span></span>
+                        <span class="vib-legend-item"><span class="vib-dot" style="background:#44ff44"></span> Y: <span id="vib-y-val">0.0</span></span>
+                        <span class="vib-legend-item"><span class="vib-dot" style="background:#4488ff"></span> Z: <span id="vib-z-val">0.0</span></span>
+                    </div>
+                    <div class="vib-clips">
+                        <span>Clipping: <span id="vib-clip0">0</span> / <span id="vib-clip1">0</span> / <span id="vib-clip2">0</span></span>
+                    </div>
+                    <div class="vib-threshold-info">Threshold: &lt;30 m/s² = good, 30-60 = marginal, &gt;60 = high</div>
+                </div>
+            </div>
+
+            <!-- Sub-tab: Servo / Relay -->
+            <div class="sub-tab-content" id="subtab-servo-relay">
+                <div class="setup-panel full-width">
+                    <div class="panel-header">SERVO OUTPUT</div>
+                    <div id="servo-bars" class="servo-grid"></div>
+                </div>
+                <div class="setup-panel full-width">
+                    <div class="panel-header">RELAY CONTROL</div>
+                    <div class="relay-grid">
+                        <div class="relay-row">
+                            <span class="relay-label">RELAY 1</span>
+                            <button class="gcs-btn relay-btn" data-relay="0" data-state="off">OFF</button>
+                        </div>
+                        <div class="relay-row">
+                            <span class="relay-label">RELAY 2</span>
+                            <button class="gcs-btn relay-btn" data-relay="1" data-state="off">OFF</button>
+                        </div>
+                        <div class="relay-row">
+                            <span class="relay-label">RELAY 3</span>
+                            <button class="gcs-btn relay-btn" data-relay="2" data-state="off">OFF</button>
+                        </div>
+                        <div class="relay-row">
+                            <span class="relay-label">RELAY 4</span>
+                            <button class="gcs-btn relay-btn" data-relay="3" data-state="off">OFF</button>
+                        </div>
+                    </div>
+                    <div class="servo-manual-section">
+                        <div class="panel-header" style="margin-top:12px">MANUAL SERVO TEST</div>
+                        <div class="cfg-row" style="display:flex; gap:8px; align-items:center;">
+                            <label style="min-width:60px">SERVO #</label>
+                            <select id="servo-test-ch" class="cfg-select" style="width:80px">
+                                <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option>
+                                <option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option>
+                                <option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option>
+                            </select>
+                            <input type="range" id="servo-test-pwm" min="1000" max="2000" value="1500" step="10" style="flex:1">
+                            <span class="cfg-val" id="servo-test-val">1500</span>
+                            <button class="gcs-btn" id="servo-test-send">SEND</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- Section: Simulation -->
+            <div class="sub-tab-content" id="subtab-simulation">
+                <div class="tab-panel-left">
+            <div class="setup-panel-column">
+                <div class="setup-panel">
+                    <div class="panel-header">SITL LAUNCHER (ArduPilot)</div>
+                    <div class="cfg-row">
+                        <label>VEHICLE TYPE</label>
+                        <select id="sitl-vehicle" class="cfg-select">
+                            <option value="copter">Copter (Quad)</option>
+                            <option value="heli">Helicopter</option>
+                            <option value="plane">Plane</option>
+                            <option value="quadplane">QuadPlane</option>
+                            <option value="rover">Rover</option>
+                            <option value="sub">Sub</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>VERSION</label>
+                        <select id="sitl-version" class="cfg-select">
+                            <option value="stable">Stable</option>
+                            <option value="beta">Beta</option>
+                            <option value="latest">Latest (Dev)</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>HOME POSITION</label>
+                        <div style="display:flex; gap:6px; flex:1;">
+                            <input type="text" id="sitl-home-lat" class="gcs-input" value="47.2603" placeholder="Lat" style="width:50%">
+                            <input type="text" id="sitl-home-lon" class="gcs-input" value="11.3439" placeholder="Lon" style="width:50%">
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>SPEED MULTIPLIER</label>
+                        <input type="number" id="sitl-speedup" class="gcs-input" value="1" min="1" max="10" step="1">
+                    </div>
+                    <div class="cfg-row" style="gap:6px;">
+                        <button class="gcs-btn" id="sitl-download-btn">DOWNLOAD</button>
+                        <button class="gcs-btn gcs-btn-connect" id="sitl-launch-btn">LAUNCH &amp; CONNECT</button>
+                        <button class="gcs-btn gcs-btn-disconnect" id="sitl-stop-btn">STOP</button>
+                    </div>
+                    <div class="cfg-row">
+                        <span class="cfg-val" id="sitl-status">Not running</span>
+                    </div>
+                </div>
+                <div class="setup-panel">
+                    <div class="panel-header">LOG REPLAY</div>
+                    <div class="cfg-row">
+                        <button class="gcs-btn" id="sim-load-log" onclick="document.getElementById('log-input').click()">LOAD LOG FILE</button>
+                    </div>
+                </div>
+            </div>
+            <div class="setup-panel">
+                <div class="panel-header">SITL MANUAL CONNECTION</div>
+                <div class="cfg-row">
+                    <label>HOST</label>
+                    <input type="text" id="sitl-host" class="gcs-input" value="127.0.0.1">
+                </div>
+                <div class="cfg-row">
+                    <label>PORT</label>
+                    <input type="number" id="sitl-port" class="gcs-input" value="14550">
+                </div>
+                <div class="cfg-row">
+                    <button class="gcs-btn gcs-btn-connect" id="sitl-connect">CONNECT UDP</button>
+                </div>
+            </div>
+            </div>
+            </div>
+
+            <!-- Section: RTK / GPS -->
+            <div class="sub-tab-content" id="subtab-rtk-gps">
+                <div class="tab-panel-center" style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
+
+            <div class="setup-panel" style="min-width:320px; flex:1;">
+                <div class="cfg-row">
+                    <label>SERIAL PORT</label>
+                    <select id="rtk-serial-port" class="cfg-select">
+                        <option value="">Select port...</option>
+                    </select>
+                    <button class="gcs-btn gcs-btn-sm" id="rtk-scan-ports" title="Scan">&#8634;</button>
+                </div>
+                <div class="cfg-row">
+                    <label>BAUD RATE</label>
+                    <select id="rtk-baud" class="cfg-select">
+                        <option value="9600">9600</option>
+                        <option value="38400">38400</option>
+                        <option value="57600">57600</option>
+                        <option value="115200" selected>115200</option>
+                        <option value="230400">230400</option>
+                        <option value="460800">460800</option>
+                    </select>
+                </div>
+                <div class="cfg-row" style="gap:6px;">
+                    <button class="gcs-btn gcs-btn-connect" id="rtk-connect-btn">CONNECT</button>
+                    <button class="gcs-btn gcs-btn-disconnect" id="rtk-disconnect-btn">DISCONNECT</button>
+                </div>
+                <div class="cfg-row">
+                    <span class="cfg-val" id="rtk-conn-status">Not connected</span>
+                </div>
+            </div>
+
+            <div class="setup-panel" style="min-width:320px; flex:1;">
+                <div class="cfg-row">
+                    <label>STATUS</label>
+                    <span class="cfg-val" id="rtk-stream-status">No data</span>
+                </div>
+                <div class="cfg-row">
+                    <label>MSG RATE</label>
+                    <span class="cfg-val" id="rtk-msg-rate">0 msg/s</span>
+                </div>
+                <div class="cfg-row">
+                    <label>TOTAL MSGS</label>
+                    <span class="cfg-val" id="rtk-msg-total">0</span>
+                </div>
+                <div class="cfg-row">
+                    <label>BYTES RX</label>
+                    <span class="cfg-val" id="rtk-bytes-rx">0</span>
+                </div>
+                <div class="panel-header" style="margin-top:8px;">RTCM MESSAGE TYPES</div>
+                <div id="rtk-msg-types" class="rtk-msg-types-list" style="max-height:180px; overflow-y:auto; font-size:11px; font-family:var(--font-data); color:var(--text-dim); padding:4px 0;">
+                    <span style="opacity:0.5;">No messages yet</span>
+                </div>
+            </div>
+
+            <!-- Drone RTK Status -->
+            <div class="setup-panel" style="min-width:320px; flex:1;">
+                <div class="panel-header">DRONE RTK STATUS</div>
+                <div class="cfg-row">
+                    <label>GPS FIX</label>
+                    <span class="cfg-val" id="rtk-drone-fix" style="font-weight:700;">---</span>
+                </div>
+                <div class="cfg-row">
+                    <label>SATELLITES</label>
+                    <span class="cfg-val" id="rtk-drone-sat">---</span>
+                </div>
+                <div class="cfg-row">
+                    <label>HDOP</label>
+                    <span class="cfg-val" id="rtk-drone-hdop">---</span>
+                </div>
+                <div class="cfg-row">
+                    <label>BASELINE</label>
+                    <span class="cfg-val" id="rtk-drone-baseline">---</span>
+                </div>
+                <div class="cfg-row">
+                    <label>ACCURACY</label>
+                    <span class="cfg-val" id="rtk-drone-accuracy">---</span>
+                </div>
+                <div class="cfg-row">
+                    <label>IAR HYPOTHESES</label>
+                    <span class="cfg-val" id="rtk-drone-iar">---</span>
+                </div>
+            </div>
+
+                </div>
+            </div>
+
+            <!-- Sub-tab: Telemetry Forward -->
+            <div class="sub-tab-content" id="subtab-tel-forward">
+                <div class="tab-panel-center" style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
+
+                    <!-- Connection Panel -->
+                    <div class="setup-panel" style="min-width:320px; flex:1;">
+                        <div class="panel-header">TELEMETRY OUTPUT</div>
+                        <div class="cfg-row">
+                            <label>SERIAL PORT</label>
+                            <select id="telfwd-serial-port" class="cfg-select">
+                                <option value="">Select port...</option>
+                            </select>
+                            <button class="gcs-btn gcs-btn-sm" id="telfwd-scan-ports" title="Scan ports">&#8634;</button>
+                        </div>
+                        <div class="cfg-row">
+                            <label>BAUD RATE</label>
+                            <select id="telfwd-baud" class="cfg-select">
+                                <option value="2400">2400</option>
+                                <option value="4800">4800</option>
+                                <option value="9600" selected>9600</option>
+                                <option value="19200">19200</option>
+                                <option value="38400">38400</option>
+                                <option value="57600">57600</option>
+                                <option value="115200">115200</option>
+                            </select>
+                        </div>
+                        <div class="cfg-row">
+                            <label>PROTOCOL</label>
+                            <select id="telfwd-protocol" class="cfg-select">
+                                <option value="ltm">LTM (Lightweight Telemetry)</option>
+                                <option value="mavlink">MAVLink Passthrough</option>
+                            </select>
+                        </div>
+                        <div class="cfg-row" style="gap:6px;">
+                            <button class="gcs-btn gcs-btn-connect" id="telfwd-connect-btn">START</button>
+                            <button class="gcs-btn gcs-btn-disconnect" id="telfwd-disconnect-btn" disabled>STOP</button>
+                        </div>
+                        <div class="cfg-row">
+                            <span class="cfg-val" id="telfwd-conn-status" style="color:var(--clr-txt-dim);">Not connected</span>
+                        </div>
+                    </div>
+
+                    <!-- Stats Panel -->
+                    <div class="setup-panel" style="min-width:320px; flex:1;">
+                        <div class="panel-header">FORWARD STATUS</div>
+                        <div class="cfg-row">
+                            <label>STATUS</label>
+                            <span class="cfg-val" id="telfwd-stream-status">Idle</span>
+                        </div>
+                        <div class="cfg-row">
+                            <label>MSG RATE</label>
+                            <span class="cfg-val" id="telfwd-msg-rate">0 msg/s</span>
+                        </div>
+                        <div class="cfg-row">
+                            <label>TOTAL MSGS</label>
+                            <span class="cfg-val" id="telfwd-msg-total">0</span>
+                        </div>
+                        <div class="cfg-row">
+                            <label>BYTES TX</label>
+                            <span class="cfg-val" id="telfwd-bytes-tx">0</span>
+                        </div>
+                        <div class="cfg-row">
+                            <label>PROTOCOL</label>
+                            <span class="cfg-val" id="telfwd-active-protocol">---</span>
+                        </div>
+                    </div>
+
+                    <!-- Current Data Panel -->
+                    <div class="setup-panel" style="min-width:320px; flex:1;">
+                        <div class="panel-header">CURRENT DATA</div>
+                        <div class="cfg-row">
+                            <label>LAT</label>
+                            <span class="cfg-val" id="telfwd-lat">---</span>
+                        </div>
+                        <div class="cfg-row">
+                            <label>LON</label>
+                            <span class="cfg-val" id="telfwd-lon">---</span>
+                        </div>
+                        <div class="cfg-row">
+                            <label>ALT</label>
+                            <span class="cfg-val" id="telfwd-alt">---</span>
+                        </div>
+                        <div class="cfg-row">
+                            <label>HEADING</label>
+                            <span class="cfg-val" id="telfwd-heading">---</span>
+                        </div>
+                        <div class="cfg-row">
+                            <label>GROUNDSPEED</label>
+                            <span class="cfg-val" id="telfwd-gs">---</span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ==================== TAB CONTENT: SYS CONFIG ==================== -->
+    <div id="tab-sys-config" class="tab-content">
+        <div class="tab-panel-center">
+            <div class="setup-panel">
+                <div class="panel-header">SYSTEM CONFIG</div>
+                <div class="cfg-row">
+                    <label>ALTITUDE OFFSET (M)</label>
+                    <input type="text" inputmode="numeric" id="inp-offset" value="0" onchange="updateOffset(this.value)">
+                </div>
+                <div class="cfg-row">
+                    <label>TERRAIN (HGT FOLDER)</label>
+                    <label for="hgt-input" class="file-upload-btn">SELECT HGT FOLDER</label>
+                    <input type="file" id="hgt-input" class="hidden-input" webkitdirectory directory multiple>
+                    <div id="status-msg" class="status-msg">NO DATA</div>
+                </div>
+                <div class="cfg-row">
+                    <label>3D MODEL</label>
+                    <select id="model-select" class="cfg-select">
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+                <div class="cfg-row">
+                    <label>MODEL SCALE: <span id="scale-display">1.0</span></label>
+                    <input type="range" id="scale-slider" class="cfg-slider" min="0.1" max="5" value="1" step="0.1">
+                </div>
+                <div class="cfg-row">
+                    <label>TIME OF DAY (DEBUG): <span id="time-display">12:00</span></label>
+                    <input type="range" id="time-slider" class="cfg-slider" min="0" max="1440" value="720" step="1">
+                </div>
+                <div class="cfg-row" id="map-brightness-row" style="display:none;">
+                    <label>MAP BRIGHTNESS (STATIC): <span id="map-brightness-display">0.85</span></label>
+                    <input type="range" id="map-brightness-slider" class="cfg-slider" min="0.3" max="1.6" value="0.85" step="0.01">
+                </div>
+                <div class="cfg-row">
+                    <label>ATTITUDE SMOOTHING: <span id="att-smooth-display">0.15</span></label>
+                    <input type="range" id="att-smooth-slider" class="cfg-slider" min="0" max="0.5" value="0.15" step="0.01">
+                </div>
+                <div class="cfg-row">
+                    <label>DEVTOOLS</label>
+                    <button id="btn-devtools" class="file-upload-btn" type="button" onclick="openDevTools()">OPEN DEVTOOLS</button>
+                </div>
+            </div>
+            <div class="setup-panel">
+                <div class="panel-header">MAVLINK STREAM RATES (Hz)</div>
+                <div class="cfg-row">
+                    <label>RAW SENSORS</label>
+                    <input type="number" id="sr-raw-sens" class="failsafe-input" min="0" max="50" step="1" value="2" data-param="SR0_RAW_SENS">
+                </div>
+                <div class="cfg-row">
+                    <label>EXT STATUS</label>
+                    <input type="number" id="sr-ext-stat" class="failsafe-input" min="0" max="50" step="1" value="2" data-param="SR0_EXT_STAT">
+                </div>
+                <div class="cfg-row">
+                    <label>RC CHANNELS</label>
+                    <input type="number" id="sr-rc-chan" class="failsafe-input" min="0" max="50" step="1" value="5" data-param="SR0_RC_CHAN">
+                </div>
+                <div class="cfg-row">
+                    <label>RAW CTRL</label>
+                    <input type="number" id="sr-raw-ctrl" class="failsafe-input" min="0" max="50" step="1" value="1" data-param="SR0_RAW_CTRL">
+                </div>
+                <div class="cfg-row">
+                    <label>POSITION</label>
+                    <input type="number" id="sr-position" class="failsafe-input" min="0" max="50" step="1" value="3" data-param="SR0_POSITION">
+                </div>
+                <div class="cfg-row">
+                    <label>EXTRA1 (ATTITUDE)</label>
+                    <input type="number" id="sr-extra1" class="failsafe-input" min="0" max="50" step="1" value="10" data-param="SR0_EXTRA1">
+                </div>
+                <div class="cfg-row">
+                    <label>EXTRA2 (VFR HUD)</label>
+                    <input type="number" id="sr-extra2" class="failsafe-input" min="0" max="50" step="1" value="10" data-param="SR0_EXTRA2">
+                </div>
+                <div class="cfg-row">
+                    <label>EXTRA3</label>
+                    <input type="number" id="sr-extra3" class="failsafe-input" min="0" max="50" step="1" value="1" data-param="SR0_EXTRA3">
+                </div>
+                <div class="cfg-row">
+                    <label>PARAMS</label>
+                    <input type="number" id="sr-params" class="failsafe-input" min="0" max="50" step="1" value="10" data-param="SR0_PARAMS">
+                </div>
+                <div class="cfg-row">
+                    <button class="gcs-btn" id="sr-read">READ STREAM RATES</button>
+                    <button class="gcs-btn" id="sr-write">WRITE STREAM RATES</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== FLOATING PANELS ==================== -->
+
+    <!-- Storyline Player (log playback) -->
+    <div id="storyline-panel">
+        <button class="play-btn" id="btn-play">▶</button>
+        <select id="replay-speed" title="Replay speed">
+            <option value="0.5">0.5x</option>
+            <option value="1" selected>1x</option>
+            <option value="2">2x</option>
+            <option value="4">4x</option>
+            <option value="8">8x</option>
+        </select>
+        <input type="range" id="scrubber" min="0" max="100" value="0" step="1">
+        <div class="time-label" id="time-lbl">0.0s</div>
+    </div>
+
+    <!-- Config Panel placeholder (moved to Simulation tab) -->
+    <div id="config-panel" class="floating-panel" style="display:none !important;"></div>
+
+    <!-- Telemetry Panel (raw data) -->
+    <div id="telemetry-panel" class="floating-panel">
+        <div class="panel-header">RAW DATA STREAM</div>
+        <div class="telem-section">
+            <div class="telem-row">
+                <span class="t-lbl">ROLL</span>
+                <span class="t-val" id="t-roll">0.00°</span>
+            </div>
+            <div class="telem-row">
+                <span class="t-lbl">PITCH</span>
+                <span class="t-val" id="t-pitch">0.00°</span>
+            </div>
+            <div class="telem-row">
+                <span class="t-lbl">YAW</span>
+                <span class="t-val" id="t-yaw">000°</span>
+            </div>
+        </div>
+        <div class="telem-section">
+            <div class="telem-row">
+                <span class="t-lbl">LAT</span>
+                <span class="t-val" id="t-lat">00.000000</span>
+            </div>
+            <div class="telem-row">
+                <span class="t-lbl">LON</span>
+                <span class="t-val" id="t-lon">00.000000</span>
+            </div>
+            <div class="telem-row">
+                <span class="t-lbl">ALT</span>
+                <span class="t-val" id="t-alt">0000.0 m</span>
+            </div>
+        </div>
+        <div class="telem-section">
+            <div class="telem-row">
+                <span class="t-lbl">IAS</span>
+                <span class="t-val" id="t-as">0.0 m/s</span>
+            </div>
+            <div class="telem-row">
+                <span class="t-lbl">GS</span>
+                <span class="t-val" id="t-gs">0.0 m/s</span>
+            </div>
+            <div class="telem-row">
+                <span class="t-lbl">VS</span>
+                <span class="t-val" id="t-vs">0.0 m/s</span>
+            </div>
+        </div>
+        <div class="telem-section no-border">
+            <div class="telem-row">
+                <span class="t-lbl">ACC X</span>
+                <span class="t-val" id="t-ax">0.00 g</span>
+            </div>
+            <div class="telem-row">
+                <span class="t-lbl">ACC Y</span>
+                <span class="t-val" id="t-ay">0.00 g</span>
+            </div>
+            <div class="telem-row">
+                <span class="t-lbl">ACC Z</span>
+                <span class="t-val" id="t-az">0.00 g</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== GCS COMMAND BAR ==================== -->
+    <div id="gcs-command-bar">
+
+        <!-- ── STATUS ZONE (left) ── -->
+        <div class="cmd-zone cmd-zone-status">
+            <!-- Connection Status -->
+            <div class="cmd-section cmd-connection">
+                <div class="cmd-heartbeat" id="cmd-heartbeat" title="Heartbeat"></div>
+                <span class="cmd-status" id="cmd-conn-status">DISCONNECTED</span>
+            </div>
+
+            <!-- Battery -->
+            <div class="cmd-section cmd-battery">
+                <svg class="cmd-icon" viewBox="0 0 24 24" fill="none"><rect x="2" y="6" width="18" height="12" rx="2" stroke="currentColor" stroke-width="2"/><path d="M22 10v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="4" y="8" width="0" height="8" rx="1" fill="currentColor" id="cmd-bat-icon-fill"/></svg>
+                <span class="cmd-val" id="cmd-bat-volt">0.0V</span>
+                <div class="cmd-bat-bar-outer">
+                    <div class="cmd-bat-bar-fill" id="cmd-bat-bar"></div>
+                </div>
+                <span class="cmd-val" id="cmd-bat-pct">--%</span>
+            </div>
+
+            <!-- GPS -->
+            <div class="cmd-section cmd-gps">
+                <svg class="cmd-icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.5" opacity="0.5"/></svg>
+                <span class="cmd-val" id="cmd-gps-fix">No Fix</span>
+                <span class="cmd-val cmd-val-dim" id="cmd-gps-sat">0 sat</span>
+                <span class="cmd-val cmd-val-dim" id="cmd-gps-hdop"></span>
+            </div>
+
+            <!-- Signal -->
+            <div class="cmd-section cmd-signal">
+                <svg class="cmd-icon" viewBox="0 0 24 24" fill="none"><path d="M2 20h2V10h-2zM7 20h2V7H7zM12 20h2V4h-2zM17 20h2V8h-2zM22 20h2V12h-2z" fill="currentColor" opacity="0.7"/></svg>
+                <span class="cmd-val" id="cmd-rssi">--</span>
+            </div>
+
+            <!-- Flight Time -->
+            <div class="cmd-section cmd-flight-time">
+                <svg class="cmd-icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                <span class="cmd-val" id="cmd-flight-time">00:00</span>
+            </div>
+        </div>
+
+        <!-- ── CONTROL ZONE (center) ── -->
+        <div class="cmd-zone cmd-zone-control">
+            <!-- Flight Mode -->
+            <div class="cmd-section cmd-mode">
+                <select id="cmd-flight-mode" class="cmd-select cmd-mode-select" title="Flight mode">
+                    <option value="--">--</option>
+                </select>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="cmd-section cmd-actions">
+                <div class="cmd-prearm-status" id="cmd-prearm" title="Pre-arm status"></div>
+                <button id="cmd-arm" class="cmd-btn cmd-btn-arm" title="ARM / DISARM">DISARMED</button>
+                <button id="cmd-takeoff" class="cmd-btn" title="Takeoff">TAKEOFF</button>
+                <button id="cmd-rtl" class="cmd-btn cmd-btn-warn" title="Return to Launch">RTL</button>
+                <button id="cmd-auto" class="cmd-btn cmd-btn-auto" title="Start AUTO mission">AUTO</button>
+                <button id="cmd-land" class="cmd-btn cmd-btn-emergency" title="Emergency Land">LAND</button>
+            </div>
+        </div>
+
+        <!-- ── INFO ZONE (right) ── -->
+        <div class="cmd-zone cmd-zone-info">
+            <!-- HUD Messages (STATUSTEXT) -->
+            <div class="cmd-section cmd-messages">
+                <svg class="cmd-icon" viewBox="0 0 24 24" fill="none"><path d="M4 4h16a2 2 0 012 2v10a2 2 0 01-2 2H8l-4 4V6a2 2 0 012-2z" stroke="currentColor" stroke-width="2"/></svg>
+                <span class="cmd-val cmd-msg-text" id="cmd-hud-msg" title="Last status message">--</span>
+            </div>
+
+            <!-- Mission Speed -->
+            <div class="cmd-section cmd-speed">
+                <span class="cmd-lbl">SPD</span>
+                <input type="range" id="cmd-speed-slider" class="cmd-slider" min="0" max="20" value="5" step="0.5" title="Mission speed (m/s)">
+                <span class="cmd-val" id="cmd-speed-val">5.0</span>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ==================== GCS SIDEBAR ==================== -->
+    <div id="gcs-sidebar" class="gcs-sidebar">
+        <div class="gcs-sidebar-content">
+
+            <!-- VEHICLE INFO Section -->
+            <div class="gcs-sidebar-section" data-section="vehicle-info">
+                <div class="gcs-section-header" data-collapse="vehicle-info">
+                    <span>VEHICLE</span>
+                    <span class="collapse-icon">&#9660;</span>
+                </div>
+                <div class="gcs-section-body">
+                    <div class="gcs-info-grid">
+                        <span class="gcs-info-lbl">TYPE</span>
+                        <span class="gcs-info-val" id="gcs-vehicle-type">--</span>
+                        <span class="gcs-info-lbl">SYS ID</span>
+                        <span class="gcs-info-val" id="gcs-sys-id">--</span>
+                        <span class="gcs-info-lbl">FW</span>
+                        <span class="gcs-info-val" id="gcs-fw-version">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ACTIONS Section -->
+            <div class="gcs-sidebar-section" data-section="actions">
+                <div class="gcs-section-header" data-collapse="actions">
+                    <span>ACTIONS</span>
+                    <span class="collapse-icon">&#9660;</span>
+                </div>
+                <div class="gcs-section-body">
+                    <button class="gcs-btn" id="gcs-set-home">SET HOME</button>
+                    <button class="gcs-btn" id="gcs-reboot">REBOOT FC</button>
+                </div>
+            </div>
+
+            <!-- MISSION Section -->
+            <div class="gcs-sidebar-section" data-section="mission">
+                <div class="gcs-section-header" data-collapse="mission">
+                    <span>MISSION</span>
+                    <span class="collapse-icon">&#9660;</span>
+                </div>
+                <div class="gcs-section-body">
+                    <button class="gcs-btn" id="gcs-mission-read">READ MISSION</button>
+                    <div class="gcs-mission-info">
+                        <span class="gcs-info-lbl">WPT:</span>
+                        <span class="gcs-info-val" id="gcs-mission-seq">0/0</span>
+                    </div>
+                    <div class="gcs-mission-list" id="gcs-mission-list"></div>
+                </div>
+            </div>
+
+            <!-- MESSAGE LOG Section -->
+            <div class="gcs-sidebar-section" data-section="msglog">
+                <div class="gcs-section-header" data-collapse="msglog">
+                    <span>MESSAGE LOG</span>
+                    <span class="collapse-icon">&#9660;</span>
+                </div>
+                <div class="gcs-section-body">
+                    <textarea id="cmd-msg-log" class="gcs-msg-log" readonly placeholder="No messages yet..."></textarea>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    <button id="gcs-toggle-sidebar" class="gcs-toggle-btn" title="Toggle GCS Controls">&#9664;</button>
+
+    <!-- ==================== PARAMETERS PAGE (Full-screen overlay) ==================== -->
+    <div id="params-page" class="params-page">
+        <div class="params-page-header">
+            <span class="params-page-title">PARAMETERS</span>
+            <button class="params-page-close" id="params-page-close" title="Close">&times;</button>
+        </div>
+        <div class="params-page-body">
+            <div class="params-toolbar">
+                <button class="gcs-btn" id="params-read-all">READ ALL</button>
+                <div class="params-progress" id="params-progress" style="display:none;">
+                    <div class="gcs-progress-bar"><div class="gcs-progress-fill" id="params-fill"></div></div>
+                    <span class="gcs-progress-text" id="params-count">0/0</span>
+                </div>
+                <input type="text" class="params-search" id="params-search" placeholder="Search parameter name...">
+                <button class="gcs-btn" id="params-save">SAVE .PARAM</button>
+                <button class="gcs-btn" id="params-load">LOAD .PARAM</button>
+            </div>
+            <div class="params-table-wrapper">
+                <table class="params-table">
+                    <thead>
+                        <tr>
+                            <th class="params-col-name">NAME</th>
+                            <th class="params-col-value">VALUE</th>
+                            <th class="params-col-desc">DESCRIPTION</th>
+                        </tr>
+                    </thead>
+                    <tbody id="params-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== FPV CONNECTION DIALOG ==================== -->
+    <div id="fpv-dialog" class="fpv-dialog-backdrop">
+        <div class="fpv-dialog">
+            <div class="panel-header">FPV CAMERA - SIYI HM30</div>
+            <div class="fpv-dialog-body">
+                <div class="cfg-row">
+                    <label>IP ADDRESS</label>
+                    <input type="text" id="fpv-ip" value="192.168.144.25" class="failsafe-input" style="width:160px;">
+                </div>
+                <div class="cfg-row">
+                    <label>RTSP PORT</label>
+                    <input type="number" id="fpv-port" value="8554" class="failsafe-input" style="width:80px;">
+                </div>
+                <div class="cfg-row">
+                    <label>STREAM PATH</label>
+                    <input type="text" id="fpv-path" value="/main.264" class="failsafe-input" style="width:160px;">
+                </div>
+                <div class="cfg-row">
+                    <label>TARGET FPS</label>
+                    <input type="number" id="fpv-fps" value="30" min="1" max="60" class="failsafe-input" style="width:80px;">
+                </div>
+                <div class="fpv-dialog-hint">
+                    Ensure your network adapter is configured with a static IP in the 192.168.144.x subnet (e.g. 192.168.144.100).
+                    ffmpeg must be installed and available in PATH.
+                </div>
+                <div class="fpv-dialog-actions">
+                    <button id="fpv-cancel-btn" class="gcs-btn">CANCEL</button>
+                    <button id="fpv-connect-btn" class="gcs-btn cmd-btn-auto">CONNECT</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fix keyboard input behavior in Electron frameless window -->
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // Replace native alert() with in-page toast to prevent focus loss
+        // in Electron frameless windows (native dialogs steal focus permanently)
+        (function() {
+            const container = document.createElement('div');
+            container.id = 'toast-container';
+            Object.assign(container.style, {
+                position: 'fixed', top: '48px', left: '50%', transform: 'translateX(-50%)',
+                zIndex: '100000', display: 'flex', flexDirection: 'column',
+                alignItems: 'center', gap: '8px', pointerEvents: 'none'
+            });
+            document.body.appendChild(container);
+
+            window.alert = function(msg) {
+                const toast = document.createElement('div');
+                Object.assign(toast.style, {
+                    background: '#1a1a2e', color: '#e0e0e0', border: '1px solid #444',
+                    borderRadius: '6px', padding: '10px 20px', fontSize: '13px',
+                    maxWidth: '500px', wordBreak: 'break-word', pointerEvents: 'auto',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.5)', opacity: '0',
+                    transition: 'opacity 0.2s', cursor: 'pointer', textAlign: 'center'
+                });
+                toast.textContent = String(msg);
+                toast.addEventListener('click', () => {
+                    toast.style.opacity = '0';
+                    setTimeout(() => toast.remove(), 200);
+                });
+                container.appendChild(toast);
+                requestAnimationFrame(() => { toast.style.opacity = '1'; });
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    setTimeout(() => toast.remove(), 200);
+                }, 4000);
+            };
+        })();
+
+        // Replace native confirm() with in-page modal to prevent focus loss
+        // in Electron frameless windows (native dialogs steal focus permanently)
+        (function() {
+            const _origConfirm = window.confirm;
+            window.confirm = function(msg) {
+                return new Promise(resolve => {
+                    // Overlay
+                    const overlay = document.createElement('div');
+                    Object.assign(overlay.style, {
+                        position: 'fixed', inset: '0', background: 'rgba(0,0,0,0.55)',
+                        zIndex: '200000', display: 'flex', alignItems: 'center',
+                        justifyContent: 'center'
+                    });
+                    // Dialog box
+                    const box = document.createElement('div');
+                    Object.assign(box.style, {
+                        background: '#1a1a2e', color: '#e0e0e0', border: '1px solid #555',
+                        borderRadius: '8px', padding: '20px 28px', fontSize: '13px',
+                        maxWidth: '420px', minWidth: '260px', textAlign: 'center',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.7)', fontFamily: 'var(--font-data, monospace)'
+                    });
+                    const msgEl = document.createElement('div');
+                    msgEl.textContent = String(msg);
+                    msgEl.style.marginBottom = '18px';
+                    msgEl.style.lineHeight = '1.5';
+                    box.appendChild(msgEl);
+                    // Buttons
+                    const btnRow = document.createElement('div');
+                    Object.assign(btnRow.style, { display: 'flex', gap: '12px', justifyContent: 'center' });
+                    const makeBtn = (label, accent) => {
+                        const btn = document.createElement('button');
+                        btn.textContent = label;
+                        Object.assign(btn.style, {
+                            padding: '6px 22px', border: accent ? 'none' : '1px solid #555',
+                            borderRadius: '4px', cursor: 'pointer', fontSize: '12px',
+                            background: accent ? 'var(--accent-cyan, #00d2ff)' : '#2a2a3e',
+                            color: accent ? '#000' : '#ccc', fontWeight: accent ? '700' : '400'
+                        });
+                        return btn;
+                    };
+                    const btnCancel = makeBtn('Cancel', false);
+                    const btnOk = makeBtn('OK', true);
+                    btnRow.appendChild(btnCancel);
+                    btnRow.appendChild(btnOk);
+                    box.appendChild(btnRow);
+                    overlay.appendChild(box);
+                    document.body.appendChild(overlay);
+
+                    const close = (result) => {
+                        document.removeEventListener('keydown', onKey, true);
+                        overlay.remove();
+                        resolve(result);
+                    };
+                    // Keyboard: Enter = OK, Escape = Cancel
+                    const onKey = (e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); close(true); }
+                        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(false); }
+                    };
+                    document.addEventListener('keydown', onKey, true);
+                    btnOk.addEventListener('click', () => close(true));
+                    btnCancel.addEventListener('click', () => close(false));
+                    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
+
+                    btnOk.focus();
+                });
+            };
+        })();
+
+        // Allow keyboard editing on all number inputs by selecting text on focus
+        document.addEventListener('focus', (e) => {
+            if (e.target.matches('input[type="number"], input[inputmode="numeric"]')) {
+                requestAnimationFrame(() => e.target.select());
+            }
+        }, true);
+        // Prevent scroll-wheel changing number input values
+        document.addEventListener('wheel', (e) => {
+            if (e.target.matches('input[type="number"]') && document.activeElement === e.target) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        // Prevent non-input elements from stealing focus when an input is active.
+        // In Electron frameless windows, clicking on canvas/map/div elements causes
+        // the input to lose focus (cursor disappears, number keys stop working).
+        document.addEventListener('mousedown', (e) => {
+            const active = document.activeElement;
+            if (active && active.matches('input, textarea, select') && !e.target.matches('input, textarea, select, button, a, [tabindex]')) {
+                // User clicked on a non-interactive element while an input has focus.
+                // Let pointer events through (for 3D orbit, map pan) but keep focus on input.
+                requestAnimationFrame(() => active.focus());
+            }
+        }, true);
+
+        // Prevent canvas and map containers from being focusable
+        document.querySelectorAll('canvas').forEach(c => {
+            if (c.tabIndex >= 0) c.tabIndex = -1;
+            c.style.outline = 'none';
+        });
+    });
+    </script>
+</body>
+</html>

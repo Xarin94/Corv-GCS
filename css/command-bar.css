@@ -1,0 +1,350 @@
+/**
+ * command-bar.css - GCS Bottom Command Bar
+ */
+
+#gcs-command-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 48px;
+    background: var(--glass-panel-toolbar);
+    border-top: 1px solid var(--border-accent);
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    gap: 0;
+    z-index: var(--z-chrome);
+    font-family: var(--font-ui);
+    box-sizing: border-box;
+    backdrop-filter: blur(10px);
+}
+
+/* ── Zones: 3 macro-groups ── */
+.cmd-zone {
+    display: flex;
+    align-items: center;
+    height: 100%;
+}
+
+.cmd-zone-status {
+    gap: 0;
+}
+
+.cmd-zone-control {
+    gap: 0;
+    padding: 0 4px;
+    border-left: 1px solid var(--border-accent-mid);
+    border-right: 1px solid var(--border-accent-mid);
+}
+
+.cmd-zone-info {
+    flex: 1;
+    gap: 0;
+    min-width: 0;
+}
+
+/* Sections */
+.cmd-section {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 8px;
+    height: 36px;
+    border-right: 1px solid var(--border-subtle);
+    flex-shrink: 0;
+}
+
+.cmd-section:last-child {
+    border-right: none;
+}
+
+/* SVG icons in command bar */
+.cmd-icon {
+    width: 16px;
+    height: 16px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+}
+
+/* Labels & Values */
+.cmd-lbl {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.cmd-val {
+    font-family: var(--font-data);
+    font-size: 12px;
+    color: var(--text-main);
+    letter-spacing: 0.5px;
+}
+
+.cmd-val-dim {
+    color: var(--text-dim);
+}
+
+.cmd-status {
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: #ff4444;
+    letter-spacing: 1px;
+}
+
+.cmd-status.connected {
+    color: var(--accent-green);
+}
+
+.cmd-status.active {
+    color: var(--accent-cyan);
+}
+
+/* Heartbeat indicator */
+.cmd-heartbeat {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ff4444;
+    transition: background 0.3s;
+}
+
+.cmd-heartbeat.alive {
+    background: var(--accent-green);
+    animation: heartbeat-pulse 1s ease-in-out infinite;
+}
+
+@keyframes heartbeat-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* Select dropdowns */
+.cmd-select {
+    background: var(--bg-cmd-select);
+    border: 1px solid var(--border-input);
+    color: var(--text-main);
+    font-family: var(--font-ui);
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    outline: none;
+    letter-spacing: 0.5px;
+}
+
+.cmd-select:hover {
+    border-color: var(--accent-cyan);
+}
+
+.cmd-select:focus {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 4px rgba(0, 210, 255, 0.3);
+}
+
+/* Flight mode select - prominent */
+.cmd-mode-select {
+    min-width: 120px;
+    font-weight: 700;
+    font-size: 12px;
+    padding: 5px 10px;
+    color: var(--accent-cyan);
+    border-color: var(--border-accent-mid);
+    letter-spacing: 1px;
+}
+
+/* Flight mode color classes */
+.cmd-mode-select.mode-manual {
+    color: #ffcc00;
+    border-color: rgba(255, 204, 0, 0.4);
+}
+
+.cmd-mode-select.mode-assisted {
+    color: #00d2ff;
+    border-color: rgba(0, 210, 255, 0.4);
+}
+
+.cmd-mode-select.mode-auto {
+    color: #44ff44;
+    border-color: rgba(68, 255, 68, 0.4);
+}
+
+.cmd-mode-select.mode-emergency {
+    color: #ff9900;
+    border-color: rgba(255, 153, 0, 0.4);
+}
+
+/* Buttons */
+.cmd-btn {
+    background: var(--bg-cmd-btn);
+    border: 1px solid var(--border-input);
+    color: var(--text-main);
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.cmd-btn:hover {
+    background: var(--bg-cmd-btn-hover);
+    border-color: var(--accent-cyan);
+}
+
+.cmd-btn:active {
+    transform: scale(0.97);
+}
+
+/* ARM button states */
+.cmd-btn-arm {
+    border-color: #ff4444;
+    color: #ff4444;
+    min-width: 85px;
+}
+
+.cmd-btn-arm.armed {
+    background: rgba(255, 50, 50, 0.2);
+    border-color: #ff4444;
+    color: #ff4444;
+    animation: armed-glow 2s ease-in-out infinite;
+}
+
+@keyframes armed-glow {
+    0%, 100% { box-shadow: 0 0 4px rgba(255, 50, 50, 0.3); }
+    50% { box-shadow: 0 0 12px rgba(255, 50, 50, 0.6); }
+}
+
+.cmd-btn-warn {
+    border-color: var(--accent-active);
+    color: var(--accent-active);
+}
+
+.cmd-btn-warn:hover {
+    background: rgba(255, 153, 0, 0.15);
+    border-color: var(--accent-active);
+}
+
+.cmd-btn-emergency {
+    border-color: var(--accent-red);
+    color: var(--accent-red);
+}
+
+.cmd-btn-emergency:hover {
+    background: rgba(255, 0, 0, 0.15);
+    border-color: var(--accent-red);
+}
+
+.cmd-btn-auto {
+    border-color: #44ff44;
+    color: #44ff44;
+}
+
+.cmd-btn-auto:hover {
+    background: rgba(68, 255, 68, 0.15);
+    border-color: #44ff44;
+}
+
+/* Battery bar - wider */
+.cmd-bat-bar-outer {
+    width: 60px;
+    height: 12px;
+    background: var(--border-subtle);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.cmd-bat-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent-green);
+    transition: width 0.5s, background 0.5s;
+}
+
+.cmd-bat-bar-fill.low {
+    background: var(--accent-active);
+}
+
+.cmd-bat-bar-fill.critical {
+    background: var(--accent-red);
+}
+
+/* Speed slider */
+.cmd-slider {
+    width: 80px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+
+.cmd-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    cursor: pointer;
+}
+
+/* Pre-arm status indicator */
+.cmd-prearm-status {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    margin-right: 4px;
+    flex-shrink: 0;
+}
+
+.cmd-prearm-status.ok {
+    background: var(--accent-green);
+}
+
+.cmd-prearm-status.fail {
+    background: var(--accent-red);
+    animation: heartbeat-pulse 1.5s ease-in-out infinite;
+}
+
+/* HUD message display */
+.cmd-messages {
+    flex: 1;
+    min-width: 80px;
+    overflow: hidden;
+}
+
+.cmd-msg-text {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 300px;
+    display: inline-block;
+    vertical-align: middle;
+    font-size: 10px;
+    transition: color 0.3s;
+}
+
+.cmd-msg-text.severity-warn {
+    color: var(--accent-orange);
+}
+
+.cmd-msg-text.severity-error {
+    color: var(--accent-red);
+}
+
+/* Flight time section */
+.cmd-flight-time .cmd-val {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+}
