@@ -79,7 +79,6 @@ export function initGCSSidebar() {
             input.dataset.baseline = String(val);
             count++;
         }
-        if (count === 0) console.log('[RTL opts] No parameters changed');
     });
 
     // MISSION section

@@ -190,10 +190,6 @@ body.mode-split #ui-layer {
 }
 
 /* Per-frame pane controls: always visible in split view */
-.pane-hover-hint {
-    display: none !important;
-}
-
 body.mode-split #hud-wrapper .pane-topbar,
 body.mode-split #split-map-container .pane-topbar,
 body.mode-split #nd-container .pane-topbar {

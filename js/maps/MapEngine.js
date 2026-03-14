@@ -200,18 +200,3 @@ export function updateMissionOverlay() {
     }
 }
 
-/**
- * Get map instance
- * @returns {L.Map}
- */
-export function getMap() {
-    return map;
-}
-
-/**
- * Get marker instance
- * @returns {L.Marker}
- */
-export function getMarker() {
-    return marker;
-}

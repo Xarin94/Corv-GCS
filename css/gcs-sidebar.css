@@ -184,8 +184,6 @@
     background: var(--bg-gcs-list);
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 3px;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(0, 210, 255, 0.15) transparent;
 }
 
 .gcs-param-item {
@@ -277,8 +275,6 @@
     background: var(--bg-gcs-list);
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 3px;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(0, 210, 255, 0.15) transparent;
 }
 
 .gcs-mission-item {
@@ -599,8 +595,6 @@
     overflow-y: auto;
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 4px;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(0, 210, 255, 0.15) transparent;
 }
 
 .params-table {

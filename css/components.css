@@ -402,10 +402,3 @@ body.mode-split #mini-map-container {
 .plane-marker-icon {
     transition: transform 0.1s linear;
 }
-
-
-.quick-action-btn.active {
-    background: rgba(0, 210, 255, 0.15);
-    border-color: var(--accent-cyan);
-    color: var(--accent-cyan);
-}

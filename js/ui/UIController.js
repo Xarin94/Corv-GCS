@@ -71,16 +71,6 @@ function ensureDomCache() {
 }
 
 /**
- * Push G value to history
- */
-export function pushGHistory() {
-    // Normal load factor: body-frame Z axis only (not vector magnitude, which is biased by vibration)
-    const g = STATE.az / 9.81;
-    STATE.gHistory.push(g);
-    if (STATE.gHistory.length > 300) STATE.gHistory.shift();
-}
-
-/**
  * Update all UI displays
  */
 export function updateUI() {

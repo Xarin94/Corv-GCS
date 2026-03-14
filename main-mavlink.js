@@ -335,12 +335,6 @@ function handlePacket(packet) {
             data = instanceToPlainObject(instance, MessageClass);
         }
 
-        // Debug: log first RC_CHANNELS/RC_CHANNELS_RAW to verify parsing
-        if ((msgId === 65 || msgId === 35) && !handlePacket._rcLogged) {
-            handlePacket._rcLogged = true;
-            console.log(`[mavlink] First RC msg (id=${msgId}):`, JSON.stringify(data));
-        }
-
         mainWindow.webContents.send('mavlink-message', {
             msgId,
             data,
@@ -546,9 +540,6 @@ async function sendMAVLinkMessage(msg) {
             mavMsg.chan16Raw = ch[15] || 0;
             mavMsg.chan17Raw = ch[16] || 0;
             mavMsg.chan18Raw = ch[17] || 0;
-            // Debug: log RC override every 10s
-
-
             break;
         }
         case 'SET_POSITION_TARGET_GLOBAL_INT': {
