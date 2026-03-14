@@ -122,8 +122,7 @@ export function initCommandBar() {
         takeoffBtn: document.getElementById('cmd-takeoff'),
         rtlBtn: document.getElementById('cmd-rtl'),
         landBtn: document.getElementById('cmd-land'),
-        speedSlider: document.getElementById('cmd-speed-slider'),
-        speedVal: document.getElementById('cmd-speed-val'),
+        speedInput: document.getElementById('cmd-speed-input'),
         rssi: document.getElementById('cmd-rssi'),
         autoBtn: document.getElementById('cmd-auto'),
         flightTime: document.getElementById('cmd-flight-time')
@@ -190,12 +189,8 @@ export function initCommandBar() {
         }
     });
 
-    // Speed slider
-    els.speedSlider.addEventListener('input', (e) => {
-        els.speedVal.textContent = parseFloat(e.target.value).toFixed(1);
-    });
-
-    els.speedSlider.addEventListener('change', async (e) => {
+    // Speed input
+    els.speedInput.addEventListener('change', async (e) => {
         if (STATE.connectionType === 'none' || STATE.connectionType === 'corv-binary') return;
         try {
             await setMissionSpeed(parseFloat(e.target.value));

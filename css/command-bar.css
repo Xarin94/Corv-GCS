@@ -275,26 +275,29 @@
     background: var(--accent-red);
 }
 
-/* Speed slider */
-.cmd-slider {
-    width: 80px;
-    height: 4px;
-    -webkit-appearance: none;
-    appearance: none;
-    background: rgba(255, 255, 255, 0.15);
-    border-radius: 2px;
-    outline: none;
-    cursor: pointer;
+/* Speed input inline (next to LAND) */
+.cmd-speed-inline {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
 }
 
-.cmd-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: var(--accent-cyan);
-    cursor: pointer;
+.cmd-input-speed {
+    width: 52px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+    color: var(--text-main);
+    font-family: var(--font-data);
+    font-size: 11px;
+    text-align: center;
+    padding: 2px 4px;
+    outline: none;
+}
+
+.cmd-input-speed:focus {
+    border-color: var(--accent-cyan);
 }
 
 /* Pre-arm status indicator */
