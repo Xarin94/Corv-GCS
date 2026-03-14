@@ -1768,38 +1768,26 @@
                 </div>
                 <div class="gcs-section-body">
                     <div class="rtl-param-row">
-                        <label class="rtl-param-label">RTL_ALT (cm)</label>
-                        <input type="number" class="gcs-input rtl-param-input" id="rtl-alt" data-param="RTL_ALT" step="100" placeholder="1500">
+                        <label class="rtl-param-label">RTL ALT (m)</label>
+                        <input type="number" class="gcs-input rtl-param-input" id="rtl-alt" data-param="RTL_ALT" data-scale="100" step="1" placeholder="15">
                     </div>
                     <div class="rtl-param-row">
-                        <label class="rtl-param-label">RTL_ALT_FINAL (cm)</label>
-                        <input type="number" class="gcs-input rtl-param-input" id="rtl-alt-final" data-param="RTL_ALT_FINAL" step="100" placeholder="0">
+                        <label class="rtl-param-label">RTL ALT FINAL (m)</label>
+                        <input type="number" class="gcs-input rtl-param-input" id="rtl-alt-final" data-param="RTL_ALT_FINAL" data-scale="100" step="1" placeholder="0">
                     </div>
                     <div class="rtl-param-row">
-                        <label class="rtl-param-label">RTL_SPEED (cm/s)</label>
-                        <input type="number" class="gcs-input rtl-param-input" id="rtl-speed" data-param="RTL_SPEED" step="50" placeholder="0">
-                    </div>
-                    <div class="rtl-param-row">
-                        <label class="rtl-param-label">RTL_CLIMB_MIN (cm)</label>
-                        <input type="number" class="gcs-input rtl-param-input" id="rtl-climb-min" data-param="RTL_CLIMB_MIN" step="100" placeholder="0">
-                    </div>
-                    <div class="rtl-param-row">
-                        <label class="rtl-param-label">RTL_LOIT_TIME (ms)</label>
-                        <input type="number" class="gcs-input rtl-param-input" id="rtl-loit-time" data-param="RTL_LOIT_TIME" step="500" placeholder="5000">
-                    </div>
-                    <div class="rtl-param-row">
-                        <label class="rtl-param-label">RTL_CONE_SLOPE (0=disabled)</label>
-                        <input type="number" class="gcs-input rtl-param-input" id="rtl-cone-slope" data-param="RTL_CONE_SLOPE" step="0.5" placeholder="3">
+                        <label class="rtl-param-label">RTL SPEED (m/s)</label>
+                        <input type="number" class="gcs-input rtl-param-input" id="rtl-speed" data-param="RTL_SPEED" data-scale="100" step="0.5" placeholder="0">
                     </div>
                     <div class="rtl-param-row" style="margin-top:6px; border-top:1px solid var(--border-subtle); padding-top:6px;">
                         <label class="rtl-param-label" style="color:var(--accent-cyan);">SMART RTL</label>
                     </div>
                     <div class="rtl-param-row">
-                        <label class="rtl-param-label">SRTL_POINTS (max breadcrumbs)</label>
+                        <label class="rtl-param-label">SRTL POINTS</label>
                         <input type="number" class="gcs-input rtl-param-input" id="srtl-points" data-param="SRTL_POINTS" step="50" placeholder="300">
                     </div>
                     <div class="rtl-param-row">
-                        <label class="rtl-param-label">SRTL_ACCURACY (m)</label>
+                        <label class="rtl-param-label">SRTL ACCURACY (m)</label>
                         <input type="number" class="gcs-input rtl-param-input" id="srtl-accuracy" data-param="SRTL_ACCURACY" step="0.5" placeholder="2">
                     </div>
                     <button class="gcs-btn" style="margin-top:8px;" id="rtl-opts-read">READ FROM VEHICLE</button>

@@ -54,20 +54,32 @@ export function initGCSSidebar() {
     });
 
     // RTL OPTIONS section
+    // Read: store raw values from vehicle as baseline, display in user units
     bindAction('rtl-opts-read', () => {
         document.querySelectorAll('.rtl-param-input[data-param]').forEach(input => {
             const param = STATE.parameters.get(input.dataset.param);
-            if (param) input.value = param.value;
+            if (!param) return;
+            const scale = parseFloat(input.dataset.scale) || 1;
+            const displayVal = param.value / scale;
+            input.value = scale === 1 ? displayVal : parseFloat(displayVal.toFixed(4));
+            input.dataset.baseline = input.value; // track baseline for dirty check
         });
     });
 
+    // Write: only send parameters the user actually changed
     bindAction('rtl-opts-write', async () => {
         const inputs = document.querySelectorAll('.rtl-param-input[data-param]');
+        let count = 0;
         for (const input of inputs) {
             const val = parseFloat(input.value);
             if (isNaN(val)) continue;
-            await setParameter(input.dataset.param, val);
+            if (input.dataset.baseline !== undefined && String(val) === input.dataset.baseline) continue;
+            const scale = parseFloat(input.dataset.scale) || 1;
+            await setParameter(input.dataset.param, val * scale);
+            input.dataset.baseline = String(val);
+            count++;
         }
+        if (count === 0) console.log('[RTL opts] No parameters changed');
     });
 
     // MISSION section
