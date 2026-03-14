@@ -433,6 +433,31 @@
     color: var(--text-main);
 }
 
+/* RTL options param rows */
+.rtl-param-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.rtl-param-label {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-dim);
+    flex: 1;
+    white-space: nowrap;
+}
+
+.rtl-param-input {
+    width: 70px !important;
+    flex: 0 0 70px;
+    text-align: right;
+    font-size: 11px !important;
+    padding: 3px 6px !important;
+}
+
 /* Message log textarea */
 .gcs-msg-log {
     width: 100%;

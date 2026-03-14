@@ -6,7 +6,7 @@
 
 import { STATE } from '../core/state.js';
 import {
-    setHomeCurrent, rebootAutopilot
+    setHomeCurrent, rebootAutopilot, setParameter
 } from '../mavlink/CommandSender.js';
 import { getVehicleTypeName } from '../mavlink/MAVLinkStateMapper.js';
 
@@ -51,6 +51,23 @@ export function initGCSSidebar() {
 
     bindAction('gcs-reboot', async () => {
         if (await confirm('Reboot autopilot? Vehicle must be disarmed.')) await rebootAutopilot();
+    });
+
+    // RTL OPTIONS section
+    bindAction('rtl-opts-read', () => {
+        document.querySelectorAll('.rtl-param-input[data-param]').forEach(input => {
+            const param = STATE.parameters.get(input.dataset.param);
+            if (param) input.value = param.value;
+        });
+    });
+
+    bindAction('rtl-opts-write', async () => {
+        const inputs = document.querySelectorAll('.rtl-param-input[data-param]');
+        for (const input of inputs) {
+            const val = parseFloat(input.value);
+            if (isNaN(val)) continue;
+            await setParameter(input.dataset.param, val);
+        }
     });
 
     // MISSION section
