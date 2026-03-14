@@ -1589,8 +1589,10 @@ window.onFPVButtonClick = onFPVButtonClick;
 
 // GCS output mute toggle — suppresses all outgoing MAVLink (heartbeat, RTK, RC override, commands)
 let _gcsMuted = false;
-window.toggleGcsMute = async function() {
-    _gcsMuted = !_gcsMuted;
+window.toggleGcsMute = async function(forceState) {
+    const next = typeof forceState === 'boolean' ? forceState : !_gcsMuted;
+    if (next === _gcsMuted) return;
+    _gcsMuted = next;
     try {
         await window.mavlink.setGcsMuted(_gcsMuted);
     } catch (e) {
@@ -1598,6 +1600,10 @@ window.toggleGcsMute = async function() {
         _gcsMuted = !_gcsMuted; // revert
         return;
     }
+    // Sync checkbox
+    const chk = document.getElementById('chk-mute-gcs');
+    if (chk) chk.checked = _gcsMuted;
+    // Sync dropdown button
     const btn = document.getElementById('btn-mute-gcs');
     if (btn) {
         btn.classList.toggle('active', _gcsMuted);

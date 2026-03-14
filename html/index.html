@@ -1763,6 +1763,10 @@
                     <span class="collapse-icon">&#9660;</span>
                 </div>
                 <div class="gcs-section-body">
+                    <label class="gcs-checkbox" style="margin-bottom:6px;">
+                        <input type="checkbox" id="chk-mute-gcs" onchange="toggleGcsMute(this.checked)">
+                        <span>MUTE GCS OUTPUT</span>
+                    </label>
                     <textarea id="cmd-msg-log" class="gcs-msg-log" readonly placeholder="No messages yet..."></textarea>
                 </div>
             </div>
