@@ -1,19 +1,27 @@
 {
     "id": "DEMO",
-    "name": "Demo Route (Alps)",
+    "name": "Survey Pattern (Innsbruck)",
     "departure": {
         "icao": "---",
-        "name": "Demo Start"
+        "name": "Launch"
     },
     "arrival": {
         "icao": "---",
-        "name": "Demo End"
+        "name": "Recovery"
     },
     "waypoints": [
-        { "id": "START", "lat": 46.0, "lon": 11.0, "type": "waypoint" },
-        { "id": "WPT01", "lat": 46.2, "lon": 11.3, "type": "waypoint" },
-        { "id": "WPT02", "lat": 46.4, "lon": 11.1, "type": "waypoint" },
-        { "id": "WPT03", "lat": 46.6, "lon": 11.4, "type": "waypoint" },
-        { "id": "END", "lat": 46.8, "lon": 11.2, "type": "waypoint" }
+        { "id": "LAUNCH", "lat": 47.258, "lon": 11.340, "alt": 120, "type": "waypoint" },
+        { "id": "S01", "lat": 47.265, "lon": 11.340, "alt": 120, "type": "survey" },
+        { "id": "S02", "lat": 47.265, "lon": 11.3406, "alt": 120, "type": "survey" },
+        { "id": "S03", "lat": 47.258, "lon": 11.3406, "alt": 120, "type": "survey" },
+        { "id": "S04", "lat": 47.258, "lon": 11.3412, "alt": 120, "type": "survey" },
+        { "id": "S05", "lat": 47.265, "lon": 11.3412, "alt": 120, "type": "survey" },
+        { "id": "S06", "lat": 47.265, "lon": 11.3418, "alt": 120, "type": "survey" },
+        { "id": "S07", "lat": 47.258, "lon": 11.3418, "alt": 120, "type": "survey" },
+        { "id": "S08", "lat": 47.258, "lon": 11.3424, "alt": 120, "type": "survey" },
+        { "id": "S09", "lat": 47.265, "lon": 11.3424, "alt": 120, "type": "survey" },
+        { "id": "S10", "lat": 47.265, "lon": 11.3430, "alt": 120, "type": "survey" },
+        { "id": "S11", "lat": 47.258, "lon": 11.3430, "alt": 120, "type": "survey" },
+        { "id": "RTL", "lat": 47.258, "lon": 11.340, "alt": 120, "type": "waypoint" }
     ]
 }

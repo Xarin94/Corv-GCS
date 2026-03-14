@@ -136,6 +136,11 @@ contextBridge.exposeInMainWorld('fpv', {
   onStatus: (callback) => ipcRenderer.on('fpv-status', (event, status) => callback(status))
 });
 
+// ADS-B fetch API bridge (via main process to bypass CORS)
+contextBridge.exposeInMainWorld('adsb', {
+  fetch: (lamin, lomin, lamax, lomax) => ipcRenderer.invoke('adsb-fetch', lamin, lomin, lamax, lomax)
+});
+
 // CRV telemetry recording API bridge
 contextBridge.exposeInMainWorld('crvLogger', {
   startRecording: () => ipcRenderer.invoke('crv-start-recording'),

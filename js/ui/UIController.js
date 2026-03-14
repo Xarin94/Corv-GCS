@@ -5,6 +5,7 @@
 
 import { STATE } from '../core/state.js';
 import { RAD } from '../core/constants.js';
+import { getNearestTraffic } from '../adsb/ADSBManager.js';
 
 // Cached DOM references for high-frequency updates (avoids ~29 queries/frame)
 let domCache = null;
@@ -31,6 +32,7 @@ function ensureDomCache() {
         dispAb: document.getElementById('disp-ab'),
         dispAgl: document.getElementById('disp-agl'),
         dispLidar: document.getElementById('disp-lidar'),
+        dispRalt: document.getElementById('disp-ralt'),
 
         // Telemetry panel elements
         telemetryPanel: document.getElementById('telemetry-panel'),
@@ -54,7 +56,15 @@ function ensureDomCache() {
         // Config/UI elements
         configPanel: document.getElementById('config-panel'),
         btnCfg: document.getElementById('btn-cfg'),
-        btnTelem: document.getElementById('btn-telem')
+        btnTelem: document.getElementById('btn-telem'),
+
+        // Traffic table elements
+        trafficBar: document.getElementById('traffic-bar'),
+        tfcRows: [0, 1, 2, 3].map(i => ({
+            cs: document.getElementById(`tfc-cs-${i}`),
+            alt: document.getElementById(`tfc-alt-${i}`),
+            dist: document.getElementById(`tfc-dist-${i}`)
+        }))
     };
 
     return domCache;
@@ -81,6 +91,7 @@ export function updateUI() {
     if (dom.dispAs) dom.dispAs.textContent = STATE.as.toFixed(1);
     if (dom.dispGs) dom.dispGs.textContent = STATE.gs.toFixed(1);
     if (dom.dispAlt) dom.dispAlt.textContent = Math.round(alt);
+    if (dom.dispRalt) dom.dispRalt.textContent = STATE.rangefinderDist != null ? STATE.rangefinderDist.toFixed(1) : '---';
     if (dom.dispVs) dom.dispVs.textContent = STATE.vs.toFixed(1);
     if (dom.dispLat) dom.dispLat.textContent = STATE.lat.toFixed(5);
     if (dom.dispLon) dom.dispLon.textContent = STATE.lon.toFixed(5);
@@ -120,6 +131,25 @@ export function updateUI() {
         } else {
             dom.dispLidar.textContent = '---';
             dom.dispLidar.style.color = '';
+        }
+    }
+
+    // ADS-B traffic table (4 nearest) - always visible
+    if (dom.trafficBar) {
+        const nearest = getNearestTraffic(4);
+        for (let i = 0; i < 4; i++) {
+            const row = dom.tfcRows[i];
+            if (!row.cs) continue;
+            if (i < nearest.length) {
+                const t = nearest[i];
+                row.cs.textContent = t.callsign || t.icao24;
+                row.alt.textContent = Math.round(t.alt);
+                row.dist.textContent = (t.dist / 1000).toFixed(1);
+            } else {
+                row.cs.textContent = '---';
+                row.alt.textContent = '---';
+                row.dist.textContent = '---';
+            }
         }
     }
 

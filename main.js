@@ -253,6 +253,36 @@ ipcMain.handle('crv-stop-recording', async () => {
   return { filePath: p };
 });
 
+// ── ADS-B fetch via OpenSky Network (bypass CORS from main process) ────
+ipcMain.handle('adsb-fetch', async (event, lamin, lomin, lamax, lomax) => {
+  const https = require('https');
+  const url = `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`;
+  try {
+    const data = await new Promise((resolve, reject) => {
+      const req = https.get(url, { timeout: 15000 }, (res) => {
+        let body = '';
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            reject(new Error(`OpenSky HTTP ${res.statusCode}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(body));
+          } catch (e) {
+            reject(new Error('Invalid JSON from OpenSky'));
+          }
+        });
+      });
+      req.on('error', (e) => reject(e));
+      req.on('timeout', () => { req.destroy(); reject(new Error('OpenSky timeout')); });
+    });
+    return data;
+  } catch (err) {
+    return { states: null, error: err.message };
+  }
+});
+
 ipcMain.on('devtools-open', (event) => {
   try {
     const wc = event && event.sender;

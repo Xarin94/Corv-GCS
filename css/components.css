@@ -238,21 +238,30 @@ body.mode-split .more-menu {
     text-shadow: 1px 1px 0 black;
 }
 
-/* BOTTOM BAR */
-.bottom-bar {
+/* BOTTOM BAR GROUP (wraps position bar + traffic bar side by side) */
+.bottom-bar-group {
     grid-column: 3 / 4;
     grid-row: 3 / 4;
+    align-self: end;
+    justify-self: end;
+    display: flex;
+    flex-direction: row;
+    gap: 8px;
+    align-items: flex-end;
+    pointer-events: auto;
+}
+
+/* BOTTOM BAR */
+.bottom-bar {
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-end;
     align-items: stretch;
-    gap: 6px;
-    padding: 10px;
+    gap: 4px;
+    padding: 8px;
     background: var(--glass-panel);
     border: 2px solid var(--text-dim);
     backdrop-filter: blur(5px);
-    align-self: end;
-    justify-self: end;
     height: auto;
     box-sizing: border-box;
     border-radius: 4px;
@@ -260,6 +269,7 @@ body.mode-split .more-menu {
 }
 
 /* Split view: move coordinates box onto the right map */
+body.mode-split #split-map-container .bottom-bar-group,
 body.mode-split #split-map-container .bottom-bar {
     position: absolute;
     right: 12px;
@@ -269,6 +279,7 @@ body.mode-split #split-map-container .bottom-bar {
 }
 
 /* If 2D map is the LEFT pane, keep coordinates on the outer corner */
+body.mode-split[data-split-left="2d"] #split-map-container .bottom-bar-group,
 body.mode-split[data-split-left="2d"] #split-map-container .bottom-bar {
     left: 12px;
     right: auto;
@@ -305,6 +316,20 @@ body.mode-split[data-split-left="2d"] #split-map-container .bottom-bar {
     font-size: 13px;
     color: var(--text-main);
     text-shadow: 1px 1px 0 black;
+}
+
+/* ADS-B TRAFFIC BAR */
+.traffic-bar {
+    min-width: 240px;
+}
+
+.traffic-bar .traffic-header {
+    border-bottom: 1px solid var(--accent-cyan);
+    padding-bottom: 4px;
+}
+
+.traffic-bar .stat-val {
+    font-size: 11px;
 }
 
 /* GRAPH & MAP CONTAINERS */

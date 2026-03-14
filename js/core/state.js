@@ -110,7 +110,11 @@ export const STATE = {
     // Joystick state
     joystickEnabled: false,
     joystickConnected: false,
-    rcOverrideActive: false
+    rcOverrideActive: false,
+
+    // ADS-B traffic (from OpenSky API or MAVLink ADSB_VEHICLE)
+    // Array of { icao24, callsign, lat, lon, alt, velocity, heading, vertRate, onGround, dist }
+    traffic: []
 };
 
 /**
@@ -126,6 +130,18 @@ export let demoTargetChangeTime = 0;
 export function setDemoTargetChangeTime(time) {
     demoTargetChangeTime = time;
 }
+
+/**
+ * Survey pattern state machine for drone demo
+ */
+export const demoSurveyState = {
+    legIndex: 0,
+    distOnLeg: 0,
+    turning: false,
+    turnProgress: 0,
+    direction: 1,       // +1 = turn right, -1 = turn left
+    legHeading: 0       // current leg heading in radians (north)
+};
 
 /**
  * View mode state

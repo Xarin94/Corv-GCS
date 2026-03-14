@@ -22,9 +22,16 @@ export const MAX_CONCURRENT_LOADS = 6;
 export const BUFFER_SIZE = 1200;
 export const SAMPLE_INTERVAL = 100; // ms
 
-// Demo mode
-export const DEMO_TARGET_INTERVAL = 8000;
-export const DEMO_SMOOTHING = 0.008;
+// Demo mode - fixed-wing survey drone
+export const DEMO_TARGET_INTERVAL = 12000;
+export const DEMO_SMOOTHING = 0.005;
+export const DEMO_BASE_SPEED = 25;       // m/s typical mapping drone
+export const DEMO_SPEED_VARIANCE = 3;    // m/s
+export const DEMO_ALT_AGL = 120;         // meters above ground level
+export const DEMO_PITCH_RANGE = 0.07;    // ~4 degrees
+export const DEMO_ROLL_RANGE = 0.26;     // ~15 degrees
+export const DEMO_LEG_LENGTH = 800;      // meters before turning
+export const DEMO_LEG_SPACING = 60;      // meters between survey legs
 
 // Loading overlay
 export const INITIAL_MIN_VISIBLE_MS = 600;

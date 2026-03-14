@@ -198,23 +198,51 @@
             </div>
 
 
-            <!-- Bottom Status Bar -->
-            <div class="bottom-bar">
-                <div class="stat-item">
-                    <div class="stat-lbl">LATITUDE</div>
-                    <div class="stat-val" id="disp-lat">--.----</div>
+            <!-- Bottom Status Bars (position + traffic side by side) -->
+            <div class="bottom-bar-group">
+                <!-- Position / Nav data -->
+                <div class="bottom-bar">
+                    <div class="stat-item">
+                        <div class="stat-lbl">LATITUDE</div>
+                        <div class="stat-val" id="disp-lat">--.----</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-lbl">LONGITUDE</div>
+                        <div class="stat-val" id="disp-lon">--.----</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-lbl">RADAR ALT</div>
+                        <div class="stat-val" id="disp-ralt">---</div>
+                    </div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-lbl">LONGITUDE</div>
-                    <div class="stat-val" id="disp-lon">--.----</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-lbl">V. SPEED</div>
-                    <div class="stat-val" id="disp-vs">0.0</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-lbl">ALPHA/BETA</div>
-                    <div class="stat-val" id="disp-ab">0.0 / 0.0</div>
+
+                <!-- ADS-B Traffic Table -->
+                <div class="bottom-bar traffic-bar" id="traffic-bar">
+                    <div class="stat-item traffic-header">
+                        <div class="stat-lbl" style="flex:2">CALLSIGN</div>
+                        <div class="stat-lbl" style="flex:1;text-align:right">ALT (m)</div>
+                        <div class="stat-lbl" style="flex:1;text-align:right">DIST (km)</div>
+                    </div>
+                    <div class="stat-item" id="tfc-row-0">
+                        <div class="stat-val" style="flex:2" id="tfc-cs-0">---</div>
+                        <div class="stat-val" style="flex:1;text-align:right" id="tfc-alt-0">---</div>
+                        <div class="stat-val" style="flex:1;text-align:right" id="tfc-dist-0">---</div>
+                    </div>
+                    <div class="stat-item" id="tfc-row-1">
+                        <div class="stat-val" style="flex:2" id="tfc-cs-1">---</div>
+                        <div class="stat-val" style="flex:1;text-align:right" id="tfc-alt-1">---</div>
+                        <div class="stat-val" style="flex:1;text-align:right" id="tfc-dist-1">---</div>
+                    </div>
+                    <div class="stat-item" id="tfc-row-2">
+                        <div class="stat-val" style="flex:2" id="tfc-cs-2">---</div>
+                        <div class="stat-val" style="flex:1;text-align:right" id="tfc-alt-2">---</div>
+                        <div class="stat-val" style="flex:1;text-align:right" id="tfc-dist-2">---</div>
+                    </div>
+                    <div class="stat-item" id="tfc-row-3">
+                        <div class="stat-val" style="flex:2" id="tfc-cs-3">---</div>
+                        <div class="stat-val" style="flex:1;text-align:right" id="tfc-alt-3">---</div>
+                        <div class="stat-val" style="flex:1;text-align:right" id="tfc-dist-3">---</div>
+                    </div>
                 </div>
             </div>
 

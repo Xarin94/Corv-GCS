@@ -4,13 +4,16 @@
  */
 
 // Core imports
-import { 
+import {
     ORIGIN, CAMERA_FOV, VISIBILITY_RADIUS, RELOAD_DISTANCE, RAD,
-    DEMO_TARGET_INTERVAL, DEMO_SMOOTHING, TRACE_CONFIG
+    DEMO_TARGET_INTERVAL, DEMO_SMOOTHING, DEMO_BASE_SPEED, DEMO_SPEED_VARIANCE,
+    DEMO_ALT_AGL, DEMO_PITCH_RANGE, DEMO_ROLL_RANGE, DEMO_LEG_LENGTH, DEMO_LEG_SPACING,
+    TRACE_CONFIG
 } from './core/constants.js';
-import { STATE, demoAttitude, pushGHistory, dataBuffer, activeTraces } from './core/state.js';
+import { STATE, demoAttitude, demoSurveyState, pushGHistory, dataBuffer, activeTraces } from './core/state.js';
 import { ndConfig } from './ui/NDView.js';
 import { latLonToMeters, calculateDistance, lerpColor, getHeightColor } from './core/utils.js';
+import { fetchADSBData, downloadTrafficCSV } from './adsb/ADSBManager.js';
 
 // Engine imports
 import { 
@@ -851,8 +854,8 @@ let demoTargetChangeTime = 0;
 
 
 // Demo speed smoothing (m/s)
-let demoSpeed = 55;
-let demoSpeedTarget = 55;
+let demoSpeed = DEMO_BASE_SPEED;
+let demoSpeedTarget = DEMO_BASE_SPEED;
 let demoSpeedVel = 0;
 
 // Storyline panel placement (move into split-map panel during playback)
@@ -975,40 +978,78 @@ function animate() {
         tickPlayback(now);
     }
 
-    // Demo mode
+    // Demo mode - fixed-wing survey drone
     if (STATE.mode === 'LIVE' && !STATE.connected) {
-        const baseSpeed = 300;
         const metersPerLat = 111320;
         const headingSelected = ndConfig && ndConfig.selectedHdg !== null;
         const selectedHdgRad = headingSelected ? ((ndConfig.selectedHdg % 360) / RAD) : null;
-        
-        if (!headingSelected && now - demoTargetChangeTime > DEMO_TARGET_INTERVAL) {
-            demoTargetChangeTime = now;
-            demoAttitude.pitch.target = (Math.random() - 0.5) * 0.15;
-            demoAttitude.roll.target = (Math.random() - 0.5) * 0.35;
+        const sv = demoSurveyState;
 
-            // Vary speed a bit (smoothly)
-            demoSpeedTarget = baseSpeed + (Math.random() - 0.5) * 25;
-        }
-
-        // When HDG SEL is active, steer toward selected heading and level the wings
+        // HDG SEL override: steer toward selected heading
         if (headingSelected && selectedHdgRad !== null) {
             demoAttitude.yaw.target = selectedHdgRad;
             demoAttitude.roll.target = 0;
+            demoAttitude.pitch.target = 0;
+            sv.turning = false;
+        } else {
+            // Survey pattern state machine
+            const dist = Math.max(10, demoSpeed) * deltaTime;
+
+            if (sv.turning) {
+                // Smooth 180-degree turn between survey legs
+                sv.turnProgress += deltaTime / 10; // ~10s per turn
+                if (sv.turnProgress >= 1.0) {
+                    // Turn complete
+                    sv.turning = false;
+                    sv.turnProgress = 0;
+                    sv.distOnLeg = 0;
+                    sv.legIndex++;
+                    sv.direction *= -1; // alternate turn direction
+                    sv.legHeading = (sv.legHeading + Math.PI) % (Math.PI * 2);
+                    demoAttitude.yaw.target = sv.legHeading;
+                    demoAttitude.roll.target = 0;
+                    demoAttitude.pitch.target = (Math.random() - 0.5) * DEMO_PITCH_RANGE * 0.5;
+                } else {
+                    // During turn: interpolate heading, apply bank
+                    const turnAngle = Math.PI * sv.turnProgress; // 0 -> PI
+                    demoAttitude.yaw.target = sv.legHeading + turnAngle * sv.direction;
+                    demoAttitude.roll.target = sv.direction * DEMO_ROLL_RANGE * 0.5 *
+                        Math.sin(sv.turnProgress * Math.PI); // smooth bank envelope
+                    demoAttitude.pitch.target = DEMO_PITCH_RANGE * 0.3; // slight nose-up in turn
+                }
+            } else {
+                // Straight survey leg
+                sv.distOnLeg += dist;
+                demoAttitude.roll.target = (Math.random() - 0.5) * 0.02; // near-level wings
+                demoAttitude.pitch.target = (Math.random() - 0.5) * DEMO_PITCH_RANGE * 0.3;
+                demoAttitude.yaw.target = sv.legHeading;
+
+                if (sv.distOnLeg >= DEMO_LEG_LENGTH) {
+                    // Start turn
+                    sv.turning = true;
+                    sv.turnProgress = 0;
+                }
+            }
+
+            // Vary speed slightly during legs
+            if (now - demoTargetChangeTime > DEMO_TARGET_INTERVAL) {
+                demoTargetChangeTime = now;
+                demoSpeedTarget = DEMO_BASE_SPEED + (Math.random() - 0.5) * DEMO_SPEED_VARIANCE * 2;
+            }
         }
-        
+
         const smoothFactor = DEMO_SMOOTHING;
         const dampFactor = 0.92;
-        
-        demoAttitude.pitch.velocity = demoAttitude.pitch.velocity * dampFactor + 
+
+        demoAttitude.pitch.velocity = demoAttitude.pitch.velocity * dampFactor +
             (demoAttitude.pitch.target - demoAttitude.pitch.current) * smoothFactor;
         demoAttitude.pitch.current += demoAttitude.pitch.velocity;
-        
-        demoAttitude.roll.velocity = demoAttitude.roll.velocity * dampFactor + 
+
+        demoAttitude.roll.velocity = demoAttitude.roll.velocity * dampFactor +
             (demoAttitude.roll.target - demoAttitude.roll.current) * smoothFactor;
         demoAttitude.roll.current += demoAttitude.roll.velocity;
-        
-        demoAttitude.yaw.velocity = demoAttitude.yaw.velocity * dampFactor + 
+
+        demoAttitude.yaw.velocity = demoAttitude.yaw.velocity * dampFactor +
             (demoAttitude.yaw.target - demoAttitude.yaw.current) * smoothFactor;
         demoAttitude.yaw.current += demoAttitude.yaw.velocity;
 
@@ -1016,42 +1057,50 @@ function animate() {
         demoSpeedVel = demoSpeedVel * dampFactor + (demoSpeedTarget - demoSpeed) * smoothFactor;
         demoSpeed += demoSpeedVel;
         const speed = Math.max(10, demoSpeed);
-        
+
         STATE.pitch = demoAttitude.pitch.current;
         STATE.roll = demoAttitude.roll.current;
 
-        // Keep yaw bounded to avoid huge values over time
         const twoPi = Math.PI * 2;
         STATE.yaw = ((demoAttitude.yaw.current % twoPi) + twoPi) % twoPi;
 
-        // Move according to yaw + pitch:
-        // - yaw controls horizontal direction
-        // - pitch adds climb/descent (vertical component)
-        // Convention: yaw=0 -> north, yaw=+pi/2 -> east.
-        const dist = speed * deltaTime;
+        // Move according to yaw + pitch
+        const moveDist = speed * deltaTime;
         const cosPitch = Math.cos(STATE.pitch);
         const sinPitch = Math.sin(STATE.pitch);
-        const northMeters = Math.cos(STATE.yaw) * (dist * cosPitch);
-        const eastMeters = Math.sin(STATE.yaw) * (dist * cosPitch);
-        const upMeters = dist * sinPitch;
+        const northMeters = Math.cos(STATE.yaw) * (moveDist * cosPitch);
+        const eastMeters = Math.sin(STATE.yaw) * (moveDist * cosPitch);
 
         const metersPerLon = Math.max(1, metersPerLat * Math.cos(STATE.lat * Math.PI / 180));
         STATE.lat += northMeters / metersPerLat;
         STATE.lon += eastMeters / metersPerLon;
 
-        // Altitude + vertical speed follow pitch
-        if (!Number.isFinite(STATE.rawAlt) || STATE.rawAlt <= 0) STATE.rawAlt = 2500;
-        STATE.rawAlt = Math.max(250, Math.min(8000, STATE.rawAlt + upMeters));
+        // Terrain-following altitude: maintain AGL over terrain
+        const terrainElev = STATE.terrainHeight !== null ? STATE.terrainHeight : 600;
+        const targetAlt = terrainElev + DEMO_ALT_AGL;
+        if (!Number.isFinite(STATE.rawAlt) || STATE.rawAlt <= 0) STATE.rawAlt = targetAlt;
+        // Smooth altitude tracking toward target AGL
+        STATE.rawAlt += (targetAlt - STATE.rawAlt) * 0.02;
+        const upMeters = (targetAlt - STATE.rawAlt) * deltaTime;
         STATE.vs = deltaTime > 0 ? (upMeters / deltaTime) : 0;
 
-        // Airspeed/groundspeed
+        // Airspeed / groundspeed
         STATE.as = speed;
         STATE.gs = Math.abs(speed * cosPitch);
 
-        // Fake 1g with small turn-load variation
+        // Simulate LiDAR rangefinder (downward-facing)
+        if (STATE.terrainHeight !== null) {
+            const agl = STATE.rawAlt - STATE.terrainHeight;
+            const noise = (Math.random() - 0.5) * 0.04 + agl * 0.001 * (Math.random() - 0.5);
+            STATE.rangefinderDist = Math.max(0.01, agl + noise);
+        } else {
+            STATE.rangefinderDist = null;
+        }
+
+        // G-load: ~1g with small turn-load variation
         STATE.ax = 0;
         STATE.ay = 0;
-        STATE.az = 9.81 * (1 + Math.min(0.4, Math.abs(STATE.roll)));
+        STATE.az = 9.81 * (1 + Math.min(0.15, Math.abs(STATE.roll) * 0.5));
         pushGHistory();
     }
 
@@ -1512,6 +1561,9 @@ function init() {
     showLoadingOverlay('Loading maps...');
     loadTopographyAtStart();
     
+    // Start ADS-B auto-polling (OpenSky + MAVLink ADSB_VEHICLE)
+    startADSBPolling();
+
     // Start animation loop
     animate();
 }
@@ -1534,6 +1586,37 @@ window.toggleViewMode = () => {
     return mode;
 };
 window.onFPVButtonClick = onFPVButtonClick;
+
+// ADS-B auto-polling (OpenSky every 30s, MAVLink comes via message handler)
+const ADSB_POLL_INTERVAL = 30000;
+let adsbPollTimer = null;
+
+async function adsbPoll() {
+    try {
+        const result = await fetchADSBData();
+        if (result.error) return;
+    } catch (e) {
+        // Silently retry next interval
+    }
+}
+
+function startADSBPolling() {
+    if (adsbPollTimer) return;
+    setTimeout(() => {
+        adsbPoll();
+        adsbPollTimer = setInterval(adsbPoll, ADSB_POLL_INTERVAL);
+    }, 3000);
+}
+
+// Download traffic CSV from menu
+window.downloadTraffic = function() {
+    if (STATE.traffic.length === 0) {
+        pushHudMessage('No traffic data to download', 'warning');
+        return;
+    }
+    downloadTrafficCSV();
+    pushHudMessage(`Traffic CSV downloaded (${STATE.traffic.length} entries)`);
+};
 
 // CRV recording
 const _crvLogger = new CRVLogger();

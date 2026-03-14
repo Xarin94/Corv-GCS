@@ -132,6 +132,7 @@ export function mapMessageToState(msgId, data) {
         case 132: mapDistanceSensor(data); break;
         case 241: mapVibration(data); break;
         case 242: mapHomePosition(data); break;
+        case 246: mapAdsbVehicle(data); break;
         case 253: mapStatusText(data); break;
     }
 }
@@ -352,4 +353,33 @@ function mapHomePosition(data) {
 function mapStatusText(data) {
     STATE.statusText = data.text || '';
     STATE.statusSeverity = data.severity || 0;
+}
+
+// ADSB_VEHICLE (246): real-time ADS-B traffic from onboard receiver
+const ADSB_MAX_AGE = 60000; // remove stale entries after 60s
+function mapAdsbVehicle(data) {
+    const icao24 = (data.ICAO_address || data.icaoAddress || 0).toString(16).padStart(6, '0');
+    const callsign = (data.callsign || '').trim();
+    const lat = (data.lat !== undefined ? data.lat : 0) / 1e7;
+    const lon = (data.lon !== undefined ? data.lon : 0) / 1e7;
+    const alt = (data.altitude !== undefined ? data.altitude : 0) / 1000; // mm -> m
+    const velocity = (data.hor_velocity !== undefined ? data.hor_velocity : 0) / 100; // cm/s -> m/s
+    const heading = (data.heading !== undefined ? data.heading : 0) / 100; // cdeg -> deg
+    const vertRate = (data.ver_velocity !== undefined ? data.ver_velocity : 0) / 100; // cm/s -> m/s
+
+    if (Math.abs(lat) < 0.01 && Math.abs(lon) < 0.01) return;
+
+    const now = Date.now();
+    const entry = { icao24, callsign, lat, lon, alt, velocity, heading, vertRate, onGround: false, _ts: now };
+
+    // Update or insert
+    const idx = STATE.traffic.findIndex(t => t.icao24 === icao24);
+    if (idx >= 0) {
+        STATE.traffic[idx] = entry;
+    } else {
+        STATE.traffic.push(entry);
+    }
+
+    // Purge stale entries
+    STATE.traffic = STATE.traffic.filter(t => now - t._ts < ADSB_MAX_AGE);
 }
