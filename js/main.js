@@ -1587,6 +1587,25 @@ window.toggleViewMode = () => {
 };
 window.onFPVButtonClick = onFPVButtonClick;
 
+// GCS output mute toggle — suppresses all outgoing MAVLink (heartbeat, RTK, RC override, commands)
+let _gcsMuted = false;
+window.toggleGcsMute = async function() {
+    _gcsMuted = !_gcsMuted;
+    try {
+        await window.mavlink.setGcsMuted(_gcsMuted);
+    } catch (e) {
+        console.error('[GCS Mute] Failed:', e.message);
+        _gcsMuted = !_gcsMuted; // revert
+        return;
+    }
+    const btn = document.getElementById('btn-mute-gcs');
+    if (btn) {
+        btn.classList.toggle('active', _gcsMuted);
+        btn.textContent = _gcsMuted ? 'UNMUTE GCS' : 'MUTE GCS';
+    }
+    pushHudMessage(_gcsMuted ? 'GCS output MUTED — no messages will be sent' : 'GCS output UNMUTED', _gcsMuted ? 'warning' : 'info');
+};
+
 // ADS-B auto-polling (OpenSky every 30s, MAVLink comes via message handler)
 const ADSB_POLL_INTERVAL = 30000;
 let adsbPollTimer = null;

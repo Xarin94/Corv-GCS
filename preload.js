@@ -121,6 +121,7 @@ contextBridge.exposeInMainWorld('mavlink', {
   disconnect: () => ipcRenderer.invoke('mavlink-disconnect'),
   sendCommand: (cmd) => ipcRenderer.invoke('mavlink-send-command', cmd),
   sendMessage: (msg) => ipcRenderer.invoke('mavlink-send-message', msg),
+  setGcsMuted: (muted) => ipcRenderer.invoke('mavlink-set-gcs-muted', muted),
   onMessage: (callback) => ipcRenderer.on('mavlink-message', (event, msg) => callback(msg)),
   onConnectionState: (callback) => ipcRenderer.on('mavlink-connection-state', (event, state) => callback(state)),
   listPorts: () => ipcRenderer.invoke('serial-list-ports')

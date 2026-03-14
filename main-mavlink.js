@@ -302,6 +302,13 @@ function initMAVLinkHandlers(win) {
             throw e;
         }
     });
+
+    // Toggle GCS output mute (suppress all outgoing messages)
+    ipcMain.handle('mavlink-set-gcs-muted', async (event, muted) => {
+        gcsOutputMuted = !!muted;
+        console.log('[mavlink] GCS output', gcsOutputMuted ? 'MUTED' : 'UNMUTED');
+        return { muted: gcsOutputMuted };
+    });
 }
 
 /**
@@ -574,6 +581,7 @@ async function sendMAVLinkMessage(msg) {
  * Send a MAVLink message to the active connection
  */
 async function sendToConnection(msg) {
+    if (gcsOutputMuted) return;
     if (!activeConnection) throw new Error('No active connection');
 
     if (activeConnection.type === 'serial') {
@@ -691,6 +699,7 @@ function cleanup() {
  * Send raw bytes to the active MAVLink connection (used by RTK for RTCM injection)
  */
 function sendRawBuffer(buffer) {
+    if (gcsOutputMuted) return;
     if (!activeConnection) return;
     if (activeConnection.type === 'serial') {
         if (activeConnection.port && activeConnection.port.isOpen) {
@@ -722,4 +731,8 @@ function getNextSequenceNumber() {
 let rawPacketCallback = null;
 function registerRawPacketCallback(cb) { rawPacketCallback = typeof cb === 'function' ? cb : null; }
 
-module.exports = { initMAVLinkHandlers, cleanup, sendRawBuffer, getNextSequenceNumber, registerRawPacketCallback };
+// GCS output mute flag — when true, suppress ALL outgoing messages (heartbeat, RTK, RC override, commands)
+let gcsOutputMuted = false;
+function isGcsOutputMuted() { return gcsOutputMuted; }
+
+module.exports = { initMAVLinkHandlers, cleanup, sendRawBuffer, getNextSequenceNumber, registerRawPacketCallback, isGcsOutputMuted };
