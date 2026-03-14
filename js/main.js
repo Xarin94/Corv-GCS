@@ -1598,18 +1598,17 @@ window.toggleGcsMute = async function(forceState) {
     } catch (e) {
         console.error('[GCS Mute] Failed:', e.message);
         _gcsMuted = !_gcsMuted; // revert
+        const chk = document.getElementById('chk-mute-gcs');
+        if (chk) chk.checked = _gcsMuted;
         return;
     }
-    // Sync checkbox
-    const chk = document.getElementById('chk-mute-gcs');
-    if (chk) chk.checked = _gcsMuted;
-    // Sync dropdown button
-    const btn = document.getElementById('btn-mute-gcs');
-    if (btn) {
-        btn.classList.toggle('active', _gcsMuted);
-        btn.textContent = _gcsMuted ? 'UNMUTE GCS' : 'MUTE GCS';
-    }
     pushHudMessage(_gcsMuted ? 'GCS output MUTED — no messages will be sent' : 'GCS output UNMUTED', _gcsMuted ? 'warning' : 'info');
+};
+
+// Clear flight trail
+window.clearTrail = function() {
+    resetTrail();
+    pushHudMessage('Trail cleared');
 };
 
 // ADS-B auto-polling (OpenSky every 30s, MAVLink comes via message handler)

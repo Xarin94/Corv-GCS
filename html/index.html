@@ -1756,6 +1756,21 @@
                 </div>
             </div>
 
+            <!-- GCS OPTIONS Section -->
+            <div class="gcs-sidebar-section" data-section="gcsopts">
+                <div class="gcs-section-header" data-collapse="gcsopts">
+                    <span>GCS OPTIONS</span>
+                    <span class="collapse-icon">&#9660;</span>
+                </div>
+                <div class="gcs-section-body">
+                    <label class="gcs-checkbox">
+                        <input type="checkbox" id="chk-mute-gcs" onchange="toggleGcsMute(this.checked)">
+                        <span>MUTE GCS OUTPUT</span>
+                    </label>
+                    <button class="gcs-btn" style="margin-top:6px;" onclick="clearTrail()">CLEAR TRAIL</button>
+                </div>
+            </div>
+
             <!-- MESSAGE LOG Section -->
             <div class="gcs-sidebar-section" data-section="msglog">
                 <div class="gcs-section-header" data-collapse="msglog">
@@ -1763,10 +1778,6 @@
                     <span class="collapse-icon">&#9660;</span>
                 </div>
                 <div class="gcs-section-body">
-                    <label class="gcs-checkbox" style="margin-bottom:6px;">
-                        <input type="checkbox" id="chk-mute-gcs" onchange="toggleGcsMute(this.checked)">
-                        <span>MUTE GCS OUTPUT</span>
-                    </label>
                     <textarea id="cmd-msg-log" class="gcs-msg-log" readonly placeholder="No messages yet..."></textarea>
                 </div>
             </div>
