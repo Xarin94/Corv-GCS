@@ -832,13 +832,63 @@ function createStrip(pts, w, hOff, mat, runwayObjects) {
     }
 }
 
+// ============== MINIMAP / 3D SWAP ==============
+function isMinimapSwapped() {
+    return document.body.classList.contains('minimap-swapped');
+}
+
+function toggleMinimapSwap() {
+    document.body.classList.toggle('minimap-swapped');
+    // Let DOM settle, then resize both renderers
+    setTimeout(() => {
+        handleResize();
+        invalidateMapSize();
+    }, 50);
+}
+
+function initMinimapSwap() {
+    const miniMapContainer = document.getElementById('mini-map-container');
+    const sceneContainer = document.getElementById('scene-container');
+    if (miniMapContainer) {
+        miniMapContainer.addEventListener('click', () => {
+            if (!isMinimapSwapped()) toggleMinimapSwap();
+        });
+    }
+    if (sceneContainer) {
+        sceneContainer.addEventListener('click', () => {
+            if (isMinimapSwapped()) toggleMinimapSwap();
+        });
+        // Keep 3D renderer in sync when CSS transitions change scene-container size (hover)
+        const ro = new ResizeObserver(() => {
+            if (isMinimapSwapped() && sceneContainer.clientWidth > 0) {
+                resize(sceneContainer.clientWidth, sceneContainer.clientHeight);
+            }
+        });
+        ro.observe(sceneContainer);
+    }
+    // Keep Leaflet map in sync when mini-map-container resizes (hover or swap)
+    if (miniMapContainer) {
+        const ro2 = new ResizeObserver(() => invalidateMapSize());
+        ro2.observe(miniMapContainer);
+    }
+}
+
 // ============== RESIZE HANDLER ==============
 function handleResize() {
     const viewMode = getViewMode();
     setHUDViewMode(viewMode);
 
     const { width, height } = resizeHUD();
-    resize(width, height);
+
+    if (isMinimapSwapped()) {
+        // 3D is in the small corner panel — use scene-container's actual size
+        const sc = document.getElementById('scene-container');
+        if (sc) {
+            resize(sc.clientWidth, sc.clientHeight);
+        }
+    } else {
+        resize(width, height);
+    }
 
     invalidateMapSize();
     resizeSplitView();
@@ -1532,6 +1582,7 @@ function init() {
     initHudCells();
     initTabs();
     initMap('mini-map');
+    initMinimapSwap();
     initParamsPage();
     initFPV();
     window.toggleParamsPage = toggleParamsPage;
