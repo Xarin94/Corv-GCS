@@ -62,13 +62,21 @@
 
 /* For non-flight-data tabs, they are block-level */
 #tab-flight-plan,
-#tab-setup,
-#tab-sys-config {
+#tab-setup {
     position: fixed;
     top: 92px; /* 60px header + 32px tab bar */
     left: 0;
     right: 240px; /* Space for GCS sidebar */
     bottom: 48px; /* Space for command bar */
+    overflow-y: auto;
+    background: var(--bg-color);
+}
+#tab-sys-config {
+    position: fixed;
+    top: 92px;
+    left: 0;
+    right: 0; /* Full width — no sidebar reserve */
+    bottom: 48px;
     overflow-y: auto;
     background: var(--bg-color);
 }
@@ -201,7 +209,7 @@ body.has-tabs.mode-split {
     padding: 30px 20px;
     justify-content: center;
     align-items: flex-start;
-    max-width: 900px;
+    max-width: 1060px; /* 3 × 320px panels + 2 × 20px gaps + 2 × 20px padding */
     width: 100%;
     box-sizing: border-box;
 }
