@@ -501,15 +501,22 @@ export function updateTrafficMarkers3D(nearest) {
         const pos = latLonToMeters(ac.lat, ac.lon);
         const alt = (ac.alt || 0) + (STATE.offsetAlt || 0);
 
-        // Inverted wireframe pyramid (cone pointing down)
-        const coneGeo = new THREE.ConeGeometry(30, 50, 4);
-        const coneMat = new THREE.MeshBasicMaterial({ color: 0xff2222, wireframe: true });
+        const group = new THREE.Group();
+        group.position.set(pos.x, alt, pos.z);
+
+        // Wireframe pyramid — large enough to be visible from drone altitude
+        const coneGeo = new THREE.ConeGeometry(120, 200, 4);
+        const coneMat = new THREE.MeshBasicMaterial({
+            color: 0xff2222, wireframe: true,
+            depthTest: false, transparent: true, opacity: 0.9
+        });
         const cone = new THREE.Mesh(coneGeo, coneMat);
         cone.rotation.x = Math.PI; // point down
-        cone.position.set(pos.x, alt, pos.z);
+        group.add(cone);
 
-        scene.add(cone);
-        trafficMarkers3D.push(cone);
+        group.renderOrder = 999;
+        scene.add(group);
+        trafficMarkers3D.push(group);
     }
 }
 
