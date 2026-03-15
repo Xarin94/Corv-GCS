@@ -385,8 +385,8 @@ body.mode-split[data-split-left="2d"] #split-map-container .bottom-bar {
 }
 
 #mini-map-container:hover {
-    width: 460px;
-    height: 320px;
+    width: var(--minimap-hover-w, 460px);
+    height: var(--minimap-hover-h, 320px);
 }
 
 #mini-map {
@@ -434,8 +434,8 @@ body.minimap-swapped #scene-container {
     transition: width 0.3s ease, height 0.3s ease;
 }
 body.minimap-swapped #scene-container:hover {
-    width: 460px;
-    height: 320px;
+    width: var(--minimap-hover-w, 460px);
+    height: var(--minimap-hover-h, 320px);
 }
 
 .plane-marker-icon {

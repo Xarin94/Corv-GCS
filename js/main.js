@@ -832,6 +832,16 @@ function createStrip(pts, w, hOff, mat, runwayObjects) {
     }
 }
 
+// ============== MINIMAP HOVER SIZE (1/5 screen area) ==============
+const MINIMAP_ASPECT = 260 / 180; // ~1.44
+function updateMinimapHoverSize() {
+    const area = window.innerWidth * window.innerHeight;
+    const h = Math.round(Math.sqrt(area / (5 * MINIMAP_ASPECT)));
+    const w = Math.round(h * MINIMAP_ASPECT);
+    document.documentElement.style.setProperty('--minimap-hover-w', `${w}px`);
+    document.documentElement.style.setProperty('--minimap-hover-h', `${h}px`);
+}
+
 // ============== MINIMAP / 3D SWAP ==============
 function isMinimapSwapped() {
     return document.body.classList.contains('minimap-swapped');
@@ -877,6 +887,7 @@ function initMinimapSwap() {
 function handleResize() {
     const viewMode = getViewMode();
     setHUDViewMode(viewMode);
+    updateMinimapHoverSize();
 
     const { width, height } = resizeHUD();
 
@@ -1583,6 +1594,7 @@ function init() {
     initTabs();
     initMap('mini-map');
     initMinimapSwap();
+    updateMinimapHoverSize();
     initParamsPage();
     initFPV();
     window.toggleParamsPage = toggleParamsPage;
