@@ -5,14 +5,21 @@
  */
 
 import { STATE } from '../core/state.js';
+import { RAD } from '../core/constants.js';
+import { calculateDistance } from '../core/utils.js';
 import {
     setHomeCurrent, rebootAutopilot, setParameter
 } from '../mavlink/CommandSender.js';
 import { getVehicleTypeName } from '../mavlink/MAVLinkStateMapper.js';
+import { setTargetMarker, clearTargetMarker } from '../maps/MapEngine.js';
+import { setTargetMarker3D, clearTargetMarker3D } from '../engine/Scene3D.js';
 
 let sidebarEl = null;
 let toggleBtn = null;
 let isCollapsed = true;
+let targetCoords = null;
+
+export function getTargetCoords() { return targetCoords; }
 
 /**
  * Initialize GCS sidebar
@@ -81,6 +88,24 @@ export function initGCSSidebar() {
         }
     });
 
+    // TARGET section
+    bindAction('target-set', () => {
+        const lat = parseFloat(document.getElementById('target-lat')?.value);
+        const lon = parseFloat(document.getElementById('target-lon')?.value);
+        if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) return;
+        targetCoords = { lat, lon };
+        setTargetMarker(lat, lon);
+        setTargetMarker3D(lat, lon);
+    });
+
+    bindAction('target-clear', () => {
+        targetCoords = null;
+        clearTargetMarker();
+        clearTargetMarker3D();
+        const cmdTarget = document.getElementById('cmd-target');
+        if (cmdTarget) cmdTarget.style.display = 'none';
+    });
+
     // MISSION section
     bindAction('gcs-mission-read', () => {
         if (!window.mavlink) return;
@@ -126,6 +151,22 @@ export function updateGCSSidebar() {
         rebootBtn.disabled = STATE.armed;
         rebootBtn.style.opacity = STATE.armed ? '0.3' : '';
         rebootBtn.style.pointerEvents = STATE.armed ? 'none' : '';
+    }
+
+    // Target indicator update (in command bar)
+    const cmdTarget = document.getElementById('cmd-target');
+    if (targetCoords && cmdTarget) {
+        const dist = calculateDistance(STATE.lat, STATE.lon, targetCoords.lat, targetCoords.lon);
+        const dLat = targetCoords.lat - STATE.lat;
+        const dLon = targetCoords.lon - STATE.lon;
+        const bearing = Math.atan2(dLon * Math.cos(STATE.lat * Math.PI / 180), dLat) * RAD;
+        const yawDeg = STATE.yaw * RAD;
+        const relative = bearing - yawDeg;
+        const arrow = document.getElementById('target-arrow');
+        if (arrow) arrow.style.transform = `rotate(${relative}deg)`;
+        const distEl = document.getElementById('target-dist');
+        if (distEl) distEl.textContent = dist >= 1000 ? (dist / 1000).toFixed(1) + ' km' : Math.round(dist) + ' m';
+        cmdTarget.style.display = 'flex';
     }
 
     // Vehicle info section

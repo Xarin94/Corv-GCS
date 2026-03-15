@@ -1717,6 +1717,14 @@
                 <svg class="cmd-icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                 <span class="cmd-val" id="cmd-flight-time">00:00</span>
             </div>
+
+            <!-- Target Indicator -->
+            <div class="cmd-section cmd-target" id="cmd-target" style="display:none;">
+                <svg class="cmd-target-arrow" id="target-arrow" viewBox="0 0 24 24" width="20" height="20">
+                    <path d="M12 2 L18 18 L12 14 L6 18 Z" fill="#ff4444"/>
+                </svg>
+                <span class="cmd-val cmd-target-dist" id="target-dist">--</span>
+            </div>
         </div>
 
         <!-- ── CONTROL ZONE (center) ── -->
@@ -1843,6 +1851,26 @@
                     </div>
                     <button class="gcs-btn" style="margin-top:8px;" id="rtl-opts-read">READ FROM VEHICLE</button>
                     <button class="gcs-btn" style="margin-top:4px;" id="rtl-opts-write">WRITE TO VEHICLE</button>
+                </div>
+            </div>
+
+            <!-- TARGET Section -->
+            <div class="gcs-sidebar-section" data-section="target">
+                <div class="gcs-section-header" data-collapse="target">
+                    <span>TARGET</span>
+                    <span class="collapse-icon">&#9660;</span>
+                </div>
+                <div class="gcs-section-body">
+                    <div class="rtl-param-row">
+                        <label class="rtl-param-label">LAT</label>
+                        <input type="number" class="gcs-input" id="target-lat" step="0.000001" placeholder="47.2603">
+                    </div>
+                    <div class="rtl-param-row">
+                        <label class="rtl-param-label">LON</label>
+                        <input type="number" class="gcs-input" id="target-lon" step="0.000001" placeholder="11.3439">
+                    </div>
+                    <button class="gcs-btn" id="target-set" style="margin-top:6px;">SET TARGET</button>
+                    <button class="gcs-btn" id="target-clear" style="margin-top:4px;">CLEAR</button>
                 </div>
             </div>
 
@@ -2064,5 +2092,6 @@
         });
     });
     </script>
+
 </body>
 </html>

@@ -477,6 +477,19 @@
 
 /* Scrollbar styles now unified in base.css */
 
+/* ==================== TARGET INDICATOR (in command bar) ==================== */
+.cmd-target {
+    border-left: 1px solid rgba(255, 0, 0, 0.3);
+    padding-left: 8px;
+}
+.cmd-target-arrow {
+    flex-shrink: 0;
+}
+.cmd-target-dist {
+    color: #ff4444;
+    font-weight: bold;
+}
+
 /* ==================== PARAMETERS PAGE (Full-screen overlay) ==================== */
 .params-page {
     display: none;

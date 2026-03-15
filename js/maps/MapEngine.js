@@ -23,6 +23,8 @@ const MAX_MAP_PATH_POINTS = 3000;
 let missionMarkers = [];
 let missionPolyline = null;
 let homeMarker = null;
+let targetMarkerInner = null;
+let targetMarkerOuter = null;
 
 /**
  * Initialize the mini-map
@@ -198,5 +200,32 @@ export function updateMissionOverlay() {
             color: '#44ff44', weight: 1, opacity: 0.5, dashArray: '4,4'
         }).addTo(map);
     }
+}
+
+/**
+ * Set or update target marker on mini-map
+ */
+export function setTargetMarker(lat, lon) {
+    if (!map) return;
+    clearTargetMarker();
+    const ll = [lat, lon];
+    // Outer glow ring
+    targetMarkerOuter = L.circleMarker(ll, {
+        radius: 14, color: '#ff0000', fillColor: '#ff0000',
+        fillOpacity: 0.15, weight: 2, opacity: 0.5
+    }).addTo(map);
+    // Inner solid dot
+    targetMarkerInner = L.circleMarker(ll, {
+        radius: 6, color: '#ff0000', fillColor: '#ff0000',
+        fillOpacity: 0.9, weight: 2
+    }).addTo(map);
+}
+
+/**
+ * Remove target marker from mini-map
+ */
+export function clearTargetMarker() {
+    if (targetMarkerOuter) { map.removeLayer(targetMarkerOuter); targetMarkerOuter = null; }
+    if (targetMarkerInner) { map.removeLayer(targetMarkerInner); targetMarkerInner = null; }
 }
 

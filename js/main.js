@@ -13,7 +13,7 @@ import {
 import { STATE, demoAttitude, demoSurveyState, pushGHistory, dataBuffer, activeTraces } from './core/state.js';
 import { ndConfig } from './ui/NDView.js';
 import { latLonToMeters, calculateDistance, lerpColor, getHeightColor } from './core/utils.js';
-import { fetchADSBData, downloadTrafficCSV } from './adsb/ADSBManager.js';
+import { fetchADSBData, downloadTrafficCSV, getNearestTraffic } from './adsb/ADSBManager.js';
 
 // Engine imports
 import { 
@@ -24,7 +24,9 @@ import {
     getCurrentSunDirection, isSunlightEnabled, setSunlightEnabled,
     getTimeOverride, setTimeOverride, getShadowChunkSize,
     getLastShadowChunk, setLastShadowChunk,
-    updateHomeMarker3D
+    updateHomeMarker3D,
+    updateTrafficMarkers3D,
+    updateTargetMarker3D
 } from './engine/Scene3D.js';
 
 // Trajectory corridor imports
@@ -75,7 +77,7 @@ import { setParameter, requestParameter } from './mavlink/CommandSender.js';
 
 // GCS imports
 import { initCommandBar, updateCommandBar } from './ui/CommandBarController.js';
-import { initGCSSidebar, updateGCSSidebar } from './ui/GCSSidebarController.js';
+import { initGCSSidebar, updateGCSSidebar, getTargetCoords } from './ui/GCSSidebarController.js';
 import { initTabs, getCurrentTab } from './ui/TabController.js';
 import { initParamsPage, toggleParamsPage } from './ui/ParametersPageController.js';
 
@@ -1140,6 +1142,12 @@ function animate() {
     // Update GCS command bar, sidebar, and mini-map
     updateCommandBar();
     updateGCSSidebar();
+    const tc = getTargetCoords();
+    if (tc) {
+        const tElev = getTerrainElevationCached(tc.lat, tc.lon);
+        updateTargetMarker3D(tElev);
+    }
+    updateTrafficMarkers3D(getNearestTraffic(4));
     if (getViewMode() !== 'SPLIT') updateMap();
 
     checkInitialLoadComplete(

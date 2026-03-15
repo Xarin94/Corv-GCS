@@ -366,6 +366,12 @@ let homeMarker3D = null;
 let homeMarkerLastLat = null;
 let homeMarkerLastLon = null;
 
+// Target marker 3D
+let targetMarker3D = null;
+
+// ADS-B traffic 3D markers
+let trafficMarkers3D = [];
+
 /**
  * Update or create a 3D home position marker
  */
@@ -414,6 +420,97 @@ export function updateHomeMarker3D() {
     group.position.set(pos.x, alt, pos.z);
     scene.add(group);
     homeMarker3D = group;
+}
+
+/**
+ * Set or update 3D target marker at given coordinates
+ * Marker is positioned at terrain level (Y updated via updateTargetMarker3D)
+ */
+export function setTargetMarker3D(lat, lon) {
+    if (!scene) return;
+    clearTargetMarker3D();
+
+    const pos = latLonToMeters(lat, lon);
+    const group = new THREE.Group();
+
+    // Vertical pole (red)
+    const poleGeo = new THREE.CylinderGeometry(1.2, 1.2, 100, 8);
+    const poleMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const pole = new THREE.Mesh(poleGeo, poleMat);
+    pole.position.y = 50;
+    group.add(pole);
+
+    // Top sphere
+    const sphereGeo = new THREE.SphereGeometry(10, 16, 16);
+    const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+    sphere.position.y = 105;
+    group.add(sphere);
+
+    // Ring around sphere
+    const ringGeo = new THREE.TorusGeometry(15, 2, 8, 32);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xff4444 });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.y = 105;
+    ring.rotation.x = Math.PI / 2;
+    group.add(ring);
+
+    group.position.set(pos.x, 0, pos.z);
+    scene.add(group);
+    targetMarker3D = group;
+}
+
+/**
+ * Update 3D target marker Y position to match terrain elevation
+ * @param {number|null} terrainElevation - ground elevation in meters
+ */
+export function updateTargetMarker3D(terrainElevation) {
+    if (!targetMarker3D) return;
+    const y = (terrainElevation || 0) + (STATE.offsetAlt || 0);
+    targetMarker3D.position.y = y;
+}
+
+/**
+ * Remove 3D target marker
+ */
+export function clearTargetMarker3D() {
+    if (!targetMarker3D || !scene) return;
+    scene.remove(targetMarker3D);
+    targetMarker3D.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+    targetMarker3D = null;
+}
+
+/**
+ * Update 3D traffic markers (wireframe pyramids) for nearest ADS-B traffic
+ * @param {Array} nearest - Array from getNearestTraffic() with lat, lon, alt, dist
+ */
+export function updateTrafficMarkers3D(nearest) {
+    if (!scene) return;
+
+    // Remove old markers
+    for (const m of trafficMarkers3D) {
+        scene.remove(m);
+        m.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+    }
+    trafficMarkers3D = [];
+
+    if (!nearest || nearest.length === 0) return;
+
+    for (const ac of nearest) {
+        if (ac.lat == null || ac.lon == null) continue;
+        const pos = latLonToMeters(ac.lat, ac.lon);
+        const alt = (ac.alt || 0) + (STATE.offsetAlt || 0);
+
+        // Inverted wireframe pyramid (cone pointing down)
+        const coneGeo = new THREE.ConeGeometry(30, 50, 4);
+        const coneMat = new THREE.MeshBasicMaterial({ color: 0xff2222, wireframe: true });
+        const cone = new THREE.Mesh(coneGeo, coneMat);
+        cone.rotation.x = Math.PI; // point down
+        cone.position.set(pos.x, alt, pos.z);
+
+        scene.add(cone);
+        trafficMarkers3D.push(cone);
+    }
 }
 
 // Getters
