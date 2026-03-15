@@ -52,7 +52,8 @@ input, textarea, select {
 .gcs-rally-list,
 .params-table-wrapper,
 .mission-wp-list,
-.config-param-tree {
+.config-param-tree,
+.gcs-msg-log {
     scrollbar-width: thin;
     scrollbar-color: rgba(0, 210, 255, 0.15) transparent;
 }
@@ -66,7 +67,8 @@ input, textarea, select {
 .gcs-rally-list::-webkit-scrollbar,
 .params-table-wrapper::-webkit-scrollbar,
 .mission-wp-list::-webkit-scrollbar,
-.config-param-tree::-webkit-scrollbar {
+.config-param-tree::-webkit-scrollbar,
+.gcs-msg-log::-webkit-scrollbar {
     width: 4px;
 }
 
@@ -79,7 +81,8 @@ input, textarea, select {
 .gcs-rally-list::-webkit-scrollbar-track,
 .params-table-wrapper::-webkit-scrollbar-track,
 .mission-wp-list::-webkit-scrollbar-track,
-.config-param-tree::-webkit-scrollbar-track {
+.config-param-tree::-webkit-scrollbar-track,
+.gcs-msg-log::-webkit-scrollbar-track {
     background: transparent;
 }
 
@@ -92,7 +95,8 @@ input, textarea, select {
 .gcs-rally-list::-webkit-scrollbar-thumb,
 .params-table-wrapper::-webkit-scrollbar-thumb,
 .mission-wp-list::-webkit-scrollbar-thumb,
-.config-param-tree::-webkit-scrollbar-thumb {
+.config-param-tree::-webkit-scrollbar-thumb,
+.gcs-msg-log::-webkit-scrollbar-thumb {
     background: rgba(0, 210, 255, 0.2);
     border-radius: 2px;
 }
@@ -106,6 +110,7 @@ input, textarea, select {
 .gcs-rally-list::-webkit-scrollbar-thumb:hover,
 .params-table-wrapper::-webkit-scrollbar-thumb:hover,
 .mission-wp-list::-webkit-scrollbar-thumb:hover,
-.config-param-tree::-webkit-scrollbar-thumb:hover {
+.config-param-tree::-webkit-scrollbar-thumb:hover,
+.gcs-msg-log::-webkit-scrollbar-thumb:hover {
     background: rgba(0, 210, 255, 0.4);
 }

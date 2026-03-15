@@ -469,8 +469,6 @@
     resize: vertical;
     outline: none;
     box-sizing: border-box;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(0, 210, 255, 0.15) transparent;
 }
 
 .gcs-msg-log::placeholder {

@@ -574,27 +574,6 @@
     gap: 4px;
 }
 
-/* ============= SCROLLBAR STYLING ============= */
-.nd-sidebar-content::-webkit-scrollbar,
-.fplan-list::-webkit-scrollbar {
-    width: 4px;
-}
-
-.nd-sidebar-content::-webkit-scrollbar-track,
-.fplan-list::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.nd-sidebar-content::-webkit-scrollbar-thumb,
-.fplan-list::-webkit-scrollbar-thumb {
-    background: rgba(0, 210, 255, 0.2);
-    border-radius: 2px;
-}
-
-.nd-sidebar-content::-webkit-scrollbar-thumb:hover,
-.fplan-list::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 210, 255, 0.4);
-}
 
 /* ============= RESPONSIVE ============= */
 @media (max-height: 600px) {
