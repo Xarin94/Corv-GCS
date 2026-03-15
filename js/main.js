@@ -58,7 +58,7 @@ import { connectSerial } from './serial/SerialHandler.js';
 import { initPlaybackControls, tickPlayback, updateFromLog } from './playback/LogPlayer.js';
 
 // UI imports
-import { updateUI, toggleConfig, toggleTelemetry, updateOffset, updateAGLDisplay, setStatusMessage, updateFPSDisplay, initMoreMenu, initConfigAutoClose } from './ui/UIController.js';
+import { updateUI, toggleConfig, toggleTelemetry, updateOffset, updateAGLDisplay, setStatusMessage, updateFPSDisplay, initMoreMenu, initConfigAutoClose, initHudCells } from './ui/UIController.js';
 
 // Split view imports
 import {
@@ -652,7 +652,7 @@ function update3DWorld() {
         }
     }
     
-    updateAGLDisplay(terrHeight, totalAlt);
+    updateAGLDisplay(terrHeight);
 
     // Ensure vehicle exists and follows the same state as the (old) 1st-person camera.
     initVehicle();
@@ -1499,6 +1499,7 @@ function init() {
     initMAVLink();
     initCommandBar();
     initGCSSidebar();
+    initHudCells();
     initTabs();
     initMap('mini-map');
     initParamsPage();

@@ -14,24 +14,72 @@ let domCache = null;
 let filteredG = 1.0;
 const G_FILTER_ALPHA = 0.8;
 
+// ── HUD Cell Customization ──────────────────────────────────────────────
+
+const HUD_FIELD_DEFS = {
+    as:          { label: 'Airspeed',    getter: () => STATE.as,                           fmt: v => v.toFixed(1),                              unit: 'M/S' },
+    gs:          { label: 'Ground Spd',  getter: () => STATE.gs,                           fmt: v => v.toFixed(1),                              unit: 'M/S' },
+    vs:          { label: 'Vert Speed',  getter: () => STATE.vs,                           fmt: v => v.toFixed(1),                              unit: 'M/S' },
+    gload:       { label: 'G-Load',      getter: () => STATE.az / 9.81,                    fmt: v => v.toFixed(1),                              unit: 'G',     special: 'gload' },
+    alt:         { label: 'Altitude',    getter: () => STATE.rawAlt + STATE.offsetAlt,      fmt: v => Math.round(v).toString(),                   unit: 'MSL' },
+    agl:         { label: 'Terr Alt',    getter: () => null,                                fmt: v => Math.round(v).toString(),                   unit: 'AGL',   special: 'agl' },
+    lidar:       { label: 'LiDAR',       getter: () => STATE.rangefinderDist,               fmt: v => v.toFixed(2),                              unit: 'm AGL', special: 'lidar' },
+    roll:        { label: 'Roll',        getter: () => STATE.roll * RAD,                    fmt: v => v.toFixed(1),                              unit: 'DEG' },
+    pitch:       { label: 'Pitch',       getter: () => STATE.pitch * RAD,                   fmt: v => v.toFixed(1),                              unit: 'DEG' },
+    yaw:         { label: 'Heading',     getter: () => ((STATE.yaw * RAD) + 360) % 360,     fmt: v => v.toFixed(0).padStart(3, '0'),             unit: 'DEG' },
+    battV:       { label: 'Battery V',   getter: () => STATE.batteryVoltage,                fmt: v => v.toFixed(1),                              unit: 'V' },
+    battA:       { label: 'Battery A',   getter: () => STATE.batteryCurrent,                fmt: v => v.toFixed(1),                              unit: 'A' },
+    battPct:     { label: 'Battery %',   getter: () => STATE.batteryRemaining,              fmt: v => Math.round(v).toString(),                   unit: '%' },
+    gpsSat:      { label: 'GPS Sats',    getter: () => STATE.gpsNumSat,                     fmt: v => v.toString(),                              unit: '' },
+    gpsHdop:     { label: 'GPS HDOP',    getter: () => STATE.gpsHdop,                       fmt: v => v.toFixed(1),                              unit: '' },
+    linkQ:       { label: 'Link Qual',   getter: () => STATE.linkQuality,                   fmt: v => Math.round(v).toString(),                   unit: '%' },
+    vibX:        { label: 'Vib X',       getter: () => STATE.vibX,                          fmt: v => v.toFixed(1),                              unit: '' },
+    vibY:        { label: 'Vib Y',       getter: () => STATE.vibY,                          fmt: v => v.toFixed(1),                              unit: '' },
+    vibZ:        { label: 'Vib Z',       getter: () => STATE.vibZ,                          fmt: v => v.toFixed(1),                              unit: '' },
+    aoa:         { label: 'AoA',         getter: () => STATE.aoa * RAD,                     fmt: v => v.toFixed(1),                              unit: 'DEG' },
+    ssa:         { label: 'SSA',         getter: () => STATE.ssa * RAD,                     fmt: v => v.toFixed(1),                              unit: 'DEG' },
+    rtkBaseline: { label: 'RTK Base',    getter: () => STATE.rtkBaseline,                   fmt: v => v.toFixed(0),                              unit: 'mm' },
+    rtkAccuracy: { label: 'RTK Acc',     getter: () => STATE.rtkAccuracy,                   fmt: v => v.toFixed(0),                              unit: 'mm' },
+};
+
+const DEFAULT_HUD_CELLS = [
+    { field: 'as',    multiplier: 1, unitLabel: '' },
+    { field: 'gs',    multiplier: 1, unitLabel: '' },
+    { field: 'gload', multiplier: 1, unitLabel: '' },
+    { field: 'alt',   multiplier: 1, unitLabel: '' },
+    { field: 'agl',   multiplier: 1, unitLabel: '' },
+    { field: 'lidar', multiplier: 1, unitLabel: '' },
+];
+
+const HUD_CELLS_STORAGE_KEY = 'datad-hud-cells';
+let hudCellConfig = null;
+
 /**
  * Initialize DOM cache for performance
  */
 function ensureDomCache() {
     if (domCache) return domCache;
 
+    const hudCellIds = ['disp-as', 'disp-gs', 'disp-g', 'disp-alt', 'disp-agl', 'disp-lidar'];
+    const hudCells = hudCellIds.map(id => {
+        const val = document.getElementById(id);
+        const parent = val ? val.parentElement : null;
+        return {
+            val,
+            lbl: parent ? parent.querySelector('.lbl') : null,
+            unit: parent ? parent.querySelector('.unit') : null,
+        };
+    });
+
     domCache = {
-        // Main display elements
-        dispAs: document.getElementById('disp-as'),
-        dispGs: document.getElementById('disp-gs'),
-        dispG: document.getElementById('disp-g'),
-        dispAlt: document.getElementById('disp-alt'),
+        // Customizable HUD cells (left 0-2, right 3-5)
+        hudCells,
+
+        // Non-customizable display elements
         dispVs: document.getElementById('disp-vs'),
         dispLat: document.getElementById('disp-lat'),
         dispLon: document.getElementById('disp-lon'),
         dispAb: document.getElementById('disp-ab'),
-        dispAgl: document.getElementById('disp-agl'),
-        dispLidar: document.getElementById('disp-lidar'),
         dispRalt: document.getElementById('disp-ralt'),
 
         // Telemetry panel elements
@@ -75,52 +123,60 @@ function ensureDomCache() {
  */
 export function updateUI() {
     const dom = ensureDomCache();
-    const alt = STATE.rawAlt + STATE.offsetAlt;
+    if (!hudCellConfig) loadHudCellConfig();
 
-    // Main display updates using cached references
-    if (dom.dispAs) dom.dispAs.textContent = STATE.as.toFixed(1);
-    if (dom.dispGs) dom.dispGs.textContent = STATE.gs.toFixed(1);
-    if (dom.dispAlt) dom.dispAlt.textContent = Math.round(alt);
+    // Non-customizable display updates
     if (dom.dispRalt) dom.dispRalt.textContent = STATE.rangefinderDist != null ? STATE.rangefinderDist.toFixed(1) : '---';
     if (dom.dispVs) dom.dispVs.textContent = STATE.vs.toFixed(1);
     if (dom.dispLat) dom.dispLat.textContent = STATE.lat.toFixed(5);
     if (dom.dispLon) dom.dispLon.textContent = STATE.lon.toFixed(5);
     if (dom.dispAb) dom.dispAb.textContent = `${(STATE.aoa * RAD).toFixed(1)}° / ${(STATE.ssa * RAD).toFixed(1)}°`;
 
-    // G-Load display with low-pass filter and color coding
-    if (dom.dispG) {
-        // Normal load factor: body-frame Z axis (vibration-immune, standard aviation G-meter)
-        const rawG = STATE.az / 9.81;
-        filteredG = G_FILTER_ALPHA * filteredG + (1 - G_FILTER_ALPHA) * rawG;
-        dom.dispG.textContent = filteredG.toFixed(1);
+    // Customizable HUD cells (config-driven loop)
+    for (let i = 0; i < 6; i++) {
+        const cell = dom.hudCells[i];
+        if (!cell.val) continue;
+        const cfg = hudCellConfig[i];
+        const def = HUD_FIELD_DEFS[cfg.field];
+        if (!def) continue;
+        const mult = cfg.multiplier || 1;
 
-        // Color coding: green (-1 to +4), yellow (-2 to +6), red (outside)
-        let gColor;
-        if (filteredG >= -1 && filteredG <= 4) {
-            gColor = '#00ff7f'; // green
-        } else if (filteredG >= -2 && filteredG <= 6) {
-            gColor = '#ffcc00'; // yellow
-        } else {
-            gColor = '#ff3333'; // red
-        }
-        dom.dispG.style.color = gColor;
-    }
-
-    // LiDAR rangefinder display with color coding
-    if (dom.dispLidar) {
-        const dist = STATE.rangefinderDist;
-        if (dist !== null && dist > 0) {
-            dom.dispLidar.textContent = dist.toFixed(2);
-            if (dist < 1) {
-                dom.dispLidar.style.color = '#ff3333'; // red < 1m
-            } else if (dist <= 10) {
-                dom.dispLidar.style.color = '#ff8800'; // orange 1-10m
+        if (def.special === 'gload') {
+            const rawG = HUD_FIELD_DEFS.gload.getter();
+            filteredG = G_FILTER_ALPHA * filteredG + (1 - G_FILTER_ALPHA) * rawG;
+            cell.val.textContent = (filteredG * mult).toFixed(1);
+            let gColor;
+            if (filteredG >= -1 && filteredG <= 4) gColor = '#00ff7f';
+            else if (filteredG >= -2 && filteredG <= 6) gColor = '#ffcc00';
+            else gColor = '#ff3333';
+            cell.val.style.color = gColor;
+        } else if (def.special === 'agl') {
+            const alt = STATE.rawAlt + STATE.offsetAlt;
+            if (STATE.terrainHeight !== null) {
+                cell.val.textContent = Math.round((alt - STATE.terrainHeight) * mult);
             } else {
-                dom.dispLidar.style.color = ''; // white (default)
+                cell.val.textContent = '---';
+            }
+            cell.val.style.color = '';
+        } else if (def.special === 'lidar') {
+            const dist = STATE.rangefinderDist;
+            if (dist !== null && dist > 0) {
+                cell.val.textContent = (dist * mult).toFixed(2);
+                if (dist < 1) cell.val.style.color = '#ff3333';
+                else if (dist <= 10) cell.val.style.color = '#ff8800';
+                else cell.val.style.color = '';
+            } else {
+                cell.val.textContent = '---';
+                cell.val.style.color = '';
             }
         } else {
-            dom.dispLidar.textContent = '---';
-            dom.dispLidar.style.color = '';
+            const raw = def.getter();
+            if (raw === null || raw === undefined) {
+                cell.val.textContent = '---';
+            } else {
+                cell.val.textContent = def.fmt(raw * mult);
+            }
+            cell.val.style.color = '';
         }
     }
 
@@ -222,21 +278,101 @@ export function updateOffset(val) {
 }
 
 /**
- * Update AGL display
- * @param {number|null} height - Terrain height
- * @param {number} totalAlt - Total altitude
+ * Update terrain height in STATE (display handled by updateUI loop)
  */
-export function updateAGLDisplay(height, totalAlt) {
-    const dom = ensureDomCache();
-    if (!dom.dispAgl) return;
-
+export function updateAGLDisplay(height) {
     if (height !== null) {
         STATE.terrainHeight = height;
-        const agl = totalAlt - height;
-        dom.dispAgl.textContent = Math.round(agl);
-    } else {
-        dom.dispAgl.textContent = '---';
     }
+}
+
+// ── HUD Cell Config: persistence & UI ───────────────────────────────────
+
+function loadHudCellConfig() {
+    try {
+        const raw = localStorage.getItem(HUD_CELLS_STORAGE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed) && parsed.length === 6) {
+                // Validate every entry has a known field
+                const valid = parsed.every(c => c && HUD_FIELD_DEFS[c.field]);
+                if (valid) { hudCellConfig = parsed; return; }
+            }
+        }
+    } catch (_) { /* ignore */ }
+    hudCellConfig = structuredClone(DEFAULT_HUD_CELLS);
+}
+
+function saveHudCellConfig() {
+    try { localStorage.setItem(HUD_CELLS_STORAGE_KEY, JSON.stringify(hudCellConfig)); } catch (_) { /* ignore */ }
+}
+
+function applyHudCellLabels() {
+    const dom = ensureDomCache();
+    for (let i = 0; i < 6; i++) {
+        const cell = dom.hudCells[i];
+        const cfg = hudCellConfig[i];
+        const def = HUD_FIELD_DEFS[cfg.field];
+        if (!def) continue;
+        if (cell.lbl) cell.lbl.textContent = def.label;
+        if (cell.unit) cell.unit.textContent = cfg.unitLabel || def.unit;
+    }
+}
+
+function populateConfigUI() {
+    const CELL_LABELS = ['LEFT 1', 'LEFT 2', 'LEFT 3', 'RIGHT 1', 'RIGHT 2', 'RIGHT 3'];
+    for (let i = 0; i < 6; i++) {
+        const sel = document.getElementById(`hud-cell-${i}-field`);
+        if (!sel) continue;
+        // Populate options
+        sel.innerHTML = '';
+        for (const [key, def] of Object.entries(HUD_FIELD_DEFS)) {
+            const opt = document.createElement('option');
+            opt.value = key;
+            opt.textContent = def.label;
+            sel.appendChild(opt);
+        }
+        sel.value = hudCellConfig[i].field;
+
+        // Set multiplier and unit inputs
+        const multInput = document.getElementById(`hud-cell-${i}-mult`);
+        const unitInput = document.getElementById(`hud-cell-${i}-unit`);
+        if (multInput) multInput.value = hudCellConfig[i].multiplier !== 1 ? hudCellConfig[i].multiplier : '';
+        if (unitInput) unitInput.value = hudCellConfig[i].unitLabel || '';
+    }
+}
+
+export function initHudCells() {
+    loadHudCellConfig();
+    applyHudCellLabels();
+    populateConfigUI();
+}
+
+function setHudCellField(index, field) {
+    if (!hudCellConfig || !HUD_FIELD_DEFS[field]) return;
+    hudCellConfig[index].field = field;
+    saveHudCellConfig();
+    applyHudCellLabels();
+}
+
+function setHudCellMultiplier(index, mult) {
+    if (!hudCellConfig) return;
+    hudCellConfig[index].multiplier = isFinite(mult) ? mult : 1;
+    saveHudCellConfig();
+}
+
+function setHudCellUnitLabel(index, label) {
+    if (!hudCellConfig) return;
+    hudCellConfig[index].unitLabel = label;
+    saveHudCellConfig();
+    applyHudCellLabels();
+}
+
+function resetHudCellConfig() {
+    hudCellConfig = structuredClone(DEFAULT_HUD_CELLS);
+    saveHudCellConfig();
+    applyHudCellLabels();
+    populateConfigUI();
 }
 
 /**
@@ -337,3 +473,7 @@ window.toggleConfig = toggleConfig;
 window.toggleTelemetry = toggleTelemetry;
 window.updateOffset = updateOffset;
 window.openDevTools = openDevTools;
+window.setHudCellField = setHudCellField;
+window.setHudCellMultiplier = setHudCellMultiplier;
+window.setHudCellUnitLabel = setHudCellUnitLabel;
+window.resetHudCellConfig = resetHudCellConfig;

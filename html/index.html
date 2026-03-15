@@ -1498,6 +1498,60 @@
                 </div>
             </div>
             <div class="setup-panel">
+                <div class="panel-header">HUD DATA FIELDS</div>
+                <div class="cfg-row">
+                    <label>LEFT 1</label>
+                    <select id="hud-cell-0-field" class="cfg-select" onchange="setHudCellField(0, this.value)"></select>
+                    <div class="cfg-row-inline">
+                        <input type="text" inputmode="numeric" id="hud-cell-0-mult" class="failsafe-input" placeholder="×1" onchange="setHudCellMultiplier(0, parseFloat(this.value)||1)">
+                        <input type="text" id="hud-cell-0-unit" class="failsafe-input" placeholder="auto" onchange="setHudCellUnitLabel(0, this.value)">
+                    </div>
+                </div>
+                <div class="cfg-row">
+                    <label>LEFT 2</label>
+                    <select id="hud-cell-1-field" class="cfg-select" onchange="setHudCellField(1, this.value)"></select>
+                    <div class="cfg-row-inline">
+                        <input type="text" inputmode="numeric" id="hud-cell-1-mult" class="failsafe-input" placeholder="×1" onchange="setHudCellMultiplier(1, parseFloat(this.value)||1)">
+                        <input type="text" id="hud-cell-1-unit" class="failsafe-input" placeholder="auto" onchange="setHudCellUnitLabel(1, this.value)">
+                    </div>
+                </div>
+                <div class="cfg-row">
+                    <label>LEFT 3</label>
+                    <select id="hud-cell-2-field" class="cfg-select" onchange="setHudCellField(2, this.value)"></select>
+                    <div class="cfg-row-inline">
+                        <input type="text" inputmode="numeric" id="hud-cell-2-mult" class="failsafe-input" placeholder="×1" onchange="setHudCellMultiplier(2, parseFloat(this.value)||1)">
+                        <input type="text" id="hud-cell-2-unit" class="failsafe-input" placeholder="auto" onchange="setHudCellUnitLabel(2, this.value)">
+                    </div>
+                </div>
+                <div class="cfg-row">
+                    <label>RIGHT 1</label>
+                    <select id="hud-cell-3-field" class="cfg-select" onchange="setHudCellField(3, this.value)"></select>
+                    <div class="cfg-row-inline">
+                        <input type="text" inputmode="numeric" id="hud-cell-3-mult" class="failsafe-input" placeholder="×1" onchange="setHudCellMultiplier(3, parseFloat(this.value)||1)">
+                        <input type="text" id="hud-cell-3-unit" class="failsafe-input" placeholder="auto" onchange="setHudCellUnitLabel(3, this.value)">
+                    </div>
+                </div>
+                <div class="cfg-row">
+                    <label>RIGHT 2</label>
+                    <select id="hud-cell-4-field" class="cfg-select" onchange="setHudCellField(4, this.value)"></select>
+                    <div class="cfg-row-inline">
+                        <input type="text" inputmode="numeric" id="hud-cell-4-mult" class="failsafe-input" placeholder="×1" onchange="setHudCellMultiplier(4, parseFloat(this.value)||1)">
+                        <input type="text" id="hud-cell-4-unit" class="failsafe-input" placeholder="auto" onchange="setHudCellUnitLabel(4, this.value)">
+                    </div>
+                </div>
+                <div class="cfg-row">
+                    <label>RIGHT 3</label>
+                    <select id="hud-cell-5-field" class="cfg-select" onchange="setHudCellField(5, this.value)"></select>
+                    <div class="cfg-row-inline">
+                        <input type="text" inputmode="numeric" id="hud-cell-5-mult" class="failsafe-input" placeholder="×1" onchange="setHudCellMultiplier(5, parseFloat(this.value)||1)">
+                        <input type="text" id="hud-cell-5-unit" class="failsafe-input" placeholder="auto" onchange="setHudCellUnitLabel(5, this.value)">
+                    </div>
+                </div>
+                <div class="cfg-row">
+                    <button class="file-upload-btn" type="button" onclick="resetHudCellConfig()">RESET DEFAULTS</button>
+                </div>
+            </div>
+            <div class="setup-panel">
                 <div class="panel-header">MAVLINK STREAM RATES (Hz)</div>
                 <div class="cfg-row">
                     <label>RAW SENSORS</label>

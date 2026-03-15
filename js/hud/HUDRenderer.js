@@ -379,22 +379,7 @@ function drawHorizonLadder(x, y) {
 
     ctx.stroke();
 
-    // Sub-degree dashed lines (-1, -2, -3 degrees)
-    ctx.setLineDash([6, 4]);
-    const subLength = 26;
-
-    ctx.beginPath();
-    for (let i = 0; i < 3; i++) {
-        ctx.translate(0, settings._pixelPerDeg);
-        ctx.moveTo(space / 2, 0);
-        ctx.lineTo(space / 2 + subLength, 0);
-        ctx.moveTo(-space / 2, 0);
-        ctx.lineTo(-(space / 2 + subLength), 0);
-    }
-    ctx.stroke();
-
-    ctx.setLineDash([]);
-    ctx.translate(-x, -y - 3 * settings._pixelPerDeg);
+    ctx.translate(-x, -y);
 }
 
 /**

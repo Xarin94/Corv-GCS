@@ -239,6 +239,15 @@ body.has-tabs.mode-split {
     margin-bottom: 10px;
 }
 
+.cfg-row-inline {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+.cfg-row-inline .failsafe-input {
+    flex: 1;
+}
+
 .setup-panel .cfg-row label {
     display: block;
     font-family: var(--font-ui);
