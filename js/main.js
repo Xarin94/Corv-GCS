@@ -1448,6 +1448,28 @@ async function loadTopographyAtStart() {
     }
 }
 
+// ============== CONNECTIVITY CHECK ==============
+async function checkConnectivity() {
+    const TEST_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/0/0/0';
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const res = await fetch(TEST_URL, { mode: 'cors', signal: controller.signal });
+        clearTimeout(timeout);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        // Connection OK - satellite stays enabled
+        showLoadingOverlay('Loading maps...');
+    } catch (e) {
+        // No connection - disable satellite, go wireframe-only
+        console.warn('Connectivity check failed, switching to wireframe mode:', e.message);
+        window.satelliteEnabled = false;
+        try { setSatelliteEnabled(false); } catch (_) {}
+        setStatusMessage('NO CONNECTION — WIREFRAME MODE', '#ff8800');
+        pushHudMessage('[WARNING] No internet connection — satellite maps unavailable, using wireframe 3D', 'warning');
+        showLoadingOverlay('Loading terrain (offline)...');
+    }
+}
+
 // ============== INITIALIZATION ==============
 function init() {
     // Initialize 3D scene
@@ -1559,16 +1581,27 @@ function init() {
     
     // Setup satellite toggle state
     window.satelliteEnabled = true;
-    try { 
-        setSatelliteEnabled(window.satelliteEnabled); 
+    try {
+        setSatelliteEnabled(window.satelliteEnabled);
     } catch (e) {}
-    
+
+    // Listen for runtime connection loss (many consecutive tile errors)
+    window.addEventListener('connectionLost', () => {
+        setSatelliteEnabled(false);
+        setStatusMessage('CONNECTION LOST — WIREFRAME MODE', '#ff8800');
+        pushHudMessage('[WARNING] Connection lost — satellite maps disabled, using wireframe 3D', 'warning');
+    });
+
     // Initialize trajectory corridor (hidden by default)
     initCorridor(getScene());
 
     // Show loading and start auto-load
-    showLoadingOverlay('Loading maps...');
-    loadTopographyAtStart();
+    showLoadingOverlay('Checking connection...');
+
+    // Check connectivity before loading maps
+    checkConnectivity().then(() => {
+        loadTopographyAtStart();
+    });
     
     // Start ADS-B auto-polling (OpenSky + MAVLink ADSB_VEHICLE)
     startADSBPolling();

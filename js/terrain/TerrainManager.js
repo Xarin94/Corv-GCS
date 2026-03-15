@@ -88,6 +88,11 @@ const activeChunkJobs = new Map(); // mesh.uuid -> job
 let totalTilesToLoad = 0;  // Tile totali da caricare
 let tilesLoaded = 0;       // Tile caricate con successo
 
+// Consecutive tile error tracking for connection-loss detection
+let consecutiveTileErrors = 0;
+const CONSECUTIVE_ERROR_THRESHOLD = 15;
+let connectionLostNotified = false;
+
 // Chunk creation queue
 const CHUNKS_PER_FRAME = 5; // Aumentato per velocizzare
 const chunkCreationQueue = [];
@@ -334,6 +339,7 @@ function initTileWorker() {
             if (data.type === 'tileLoaded') {
                 if (data.bitmap) {
                     imageLRU.set(data.key, data.bitmap);
+                    consecutiveTileErrors = 0; // Reset on success
                 }
                 resolveTileCallbacks(data.key, data.bitmap || null);
                 currentTileLoads = Math.max(0, currentTileLoads - 1);
@@ -342,6 +348,13 @@ function initTileWorker() {
             }
 
             if (data.type === 'tileError') {
+                consecutiveTileErrors++;
+                if (consecutiveTileErrors >= CONSECUTIVE_ERROR_THRESHOLD && !connectionLostNotified) {
+                    connectionLostNotified = true;
+                    console.warn(`${CONSECUTIVE_ERROR_THRESHOLD} consecutive tile errors — connection lost, disabling satellite`);
+                    window.satelliteEnabled = false;
+                    window.dispatchEvent(new CustomEvent('connectionLost'));
+                }
                 resolveTileCallbacks(data.key, null);
                 currentTileLoads = Math.max(0, currentTileLoads - 1);
                 processTileLoadQueue();
@@ -1137,16 +1150,22 @@ function processTileLoadQueue() {
             
             img.onload = () => {
                 imageLRU.set(item.key, img);
+                consecutiveTileErrors = 0;
                 resolveTileCallbacks(item.key, img);
                 currentTileLoads--;
-                // Continue processing queue
                 processTileLoadQueue();
             };
-            
+
             img.onerror = () => {
+                consecutiveTileErrors++;
+                if (consecutiveTileErrors >= CONSECUTIVE_ERROR_THRESHOLD && !connectionLostNotified) {
+                    connectionLostNotified = true;
+                    console.warn(`${CONSECUTIVE_ERROR_THRESHOLD} consecutive tile errors — connection lost, disabling satellite`);
+                    window.satelliteEnabled = false;
+                    window.dispatchEvent(new CustomEvent('connectionLost'));
+                }
                 resolveTileCallbacks(item.key, null);
                 currentTileLoads--;
-                // Continue processing queue
                 processTileLoadQueue();
             };
             
