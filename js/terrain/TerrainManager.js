@@ -5,9 +5,12 @@
 
 import { VISIBILITY_RADIUS, RELOAD_DISTANCE } from '../core/constants.js';
 
-// Tile zoom level - alta definizione uniforme per tutta l'area visibile
-const TILE_ZOOM = 15;  // ~5m/pixel - alta definizione
-const SATELLITE_RADIUS = 10000; // 10km - raggio della mappa satellitare HD (in metri)
+// Tile zoom levels
+const TILE_ZOOM = 15;       // ~5m/pixel - standard definition for all chunks
+const HD_TILE_ZOOM = 17;    // ~1.2m/pixel - high definition for nearby chunks
+const HD_RADIUS = 2000;     // 2km - radius for high-res satellite textures
+const MAX_CANVAS_DIM = 4096; // Max texture dimension (GPU limit)
+const SATELLITE_RADIUS = 10000; // 10km - raggio della mappa satellitare (in metri)
 import { STATE } from '../core/state.js';
 import { latLonToMeters, calculateDistance, getHeightColor, latLonToTile, tileToBounds } from '../core/utils.js';
 import { LRUCache } from '../core/LRUCache.js';
@@ -108,6 +111,8 @@ let lastChunkActivityTime = performance.now();
 
 // Flag per sapere quando il terreno base è pronto
 let terrainBaseReady = false;
+// Flag: initial base textures (zoom 15) loaded, HD upgrades now allowed
+let initialTexturesLoaded = false;
 
 // Hillshading state
 let hillshadeNeedsFullUpdate = true;
@@ -839,10 +844,15 @@ function createSingleChunkFromBuffers(item, positions, uvs, colors) {
 }
 
 /**
- * Get zoom level for chunk - sempre alta definizione
+ * Get zoom level for chunk based on distance from aircraft
+ * Returns TILE_ZOOM until initial base textures are loaded, then HD for nearby chunks
  */
 function getZoomForChunk(latTop, latBottom, lonLeft, lonRight) {
-    return TILE_ZOOM;
+    if (!initialTexturesLoaded) return TILE_ZOOM;
+    const centerLat = (latTop + latBottom) / 2;
+    const centerLon = (lonLeft + lonRight) / 2;
+    const dist = calculateDistance(STATE.lat, STATE.lon, centerLat, centerLon);
+    return dist <= HD_RADIUS ? HD_TILE_ZOOM : TILE_ZOOM;
 }
 
 /**
@@ -854,8 +864,19 @@ function createChunkTexture(mesh, latTop, latBottom, lonLeft, lonRight) {
         return;
     }
 
-    // Use appropriate zoom level based on distance
-    const zoomLevel = getZoomForChunk(latTop, latBottom, lonLeft, lonRight);
+    // Use appropriate zoom level based on distance, with canvas size cap
+    let zoomLevel = getZoomForChunk(latTop, latBottom, lonLeft, lonRight);
+
+    // Reduce zoom if canvas would exceed GPU texture limits
+    const TILE_SIZE = 256;
+    while (zoomLevel > TILE_ZOOM) {
+        const tl = latLonToTile(latTop, lonLeft, zoomLevel);
+        const br = latLonToTile(latBottom, lonRight, zoomLevel);
+        const w = (br.x - tl.x + 1) * TILE_SIZE;
+        const h = (br.y - tl.y + 1) * TILE_SIZE;
+        if (w <= MAX_CANVAS_DIM && h <= MAX_CANVAS_DIM) break;
+        zoomLevel--;
+    }
 
     const tileTopLeft = latLonToTile(latTop, lonLeft, zoomLevel);
     const tileBottomRight = latLonToTile(latBottom, lonRight, zoomLevel);
@@ -863,7 +884,6 @@ function createChunkTexture(mesh, latTop, latBottom, lonLeft, lonRight) {
     const tilesX = tileBottomRight.x - tileTopLeft.x + 1;
     const tilesY = tileBottomRight.y - tileTopLeft.y + 1;
 
-    const TILE_SIZE = 256;
     const canvasWidth = tilesX * TILE_SIZE;
     const canvasHeight = tilesY * TILE_SIZE;
     const canvas = document.createElement('canvas');
@@ -980,8 +1000,9 @@ function enqueueCompositeTexture(mesh, canvas, latTop, latBottom, lonLeft, lonRi
     }
 }
 
-function enqueueChunkTexture(mesh, ud, dist) {
-    if (!mesh || !ud || ud.textureLoaded || ud.textureQueued) return;
+function enqueueChunkTexture(mesh, ud, dist, forceReload = false) {
+    if (!mesh || !ud || ud.textureQueued) return;
+    if (!forceReload && ud.textureLoaded) return;
     if (dist > SATELLITE_RADIUS) return;
     ud.textureQueued = true;
     chunkTextureQueue.push({ mesh, ud, dist });
@@ -1007,7 +1028,7 @@ function processChunkTextureQueue() {
             continue;
         }
         ud.textureQueued = false;
-        if (!window.satelliteEnabled || ud.textureLoaded) {
+        if (!window.satelliteEnabled) {
             processed++;
             continue;
         }
@@ -1021,6 +1042,10 @@ function processChunkTextureQueue() {
         const dz = centerWorld.z - playerPos.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
         if (dist <= SATELLITE_RADIUS) {
+            // Unload existing texture if this is a LOD swap
+            if (ud.textureLoaded) {
+                unloadChunkTexture(mesh);
+            }
             createChunkTexture(mesh, ud.chunkLatTop, ud.chunkLatBottom, ud.chunkLonLeft, ud.chunkLonRight);
         }
         processed++;
@@ -1290,6 +1315,7 @@ function unloadChunkTexture(mesh) {
     if (mesh.userData) {
         mesh.userData.textureLoaded = false;
         mesh.userData.textureQueued = false;
+        mesh.userData.textureZoom = 0;
     }
 }
 
@@ -1736,14 +1762,21 @@ export function refreshNearbyChunkTextures() {
     lastTextureRefreshPos = { x: playerPos.x, z: playerPos.z };
     lastTextureRefreshTime = now;
 
-    // Find chunks within satellite radius that need textures
+    // Find chunks that need textures or LOD swap
     let chunksToLoad = [];
+    let chunksToUpgrade = [];
+    let chunksToDowngrade = [];
     let cullCandidates = [];
+    const hdUpgradeRadius = HD_RADIUS * 0.9;     // hysteresis: upgrade inside this
+    const hdDowngradeRadius = HD_RADIUS * 1.1;   // hysteresis: downgrade outside this
+
     for (const [key, mesh] of Object.entries(activeChunks)) {
         if (!mesh || !mesh.userData) continue;
 
         const ud = mesh.userData;
         if (ud.chunkLatTop == null) continue;
+        // Skip chunks already being processed
+        if (ud.textureQueued || activeChunkJobs.has(mesh.uuid)) continue;
 
         const centerLat = (ud.chunkLatTop + ud.chunkLatBottom) / 2;
         const centerLon = (ud.chunkLonLeft + ud.chunkLonRight) / 2;
@@ -1761,17 +1794,39 @@ export function refreshNearbyChunkTextures() {
             continue;
         }
 
-        // Load if no texture yet
         if (!ud.textureLoaded) {
+            // No texture yet — load at appropriate zoom
             chunksToLoad.push({ mesh, ud, dist });
+        } else if (initialTexturesLoaded) {
+            // LOD swap only after initial base textures are loaded
+            if (dist <= hdUpgradeRadius && ud.textureZoom !== HD_TILE_ZOOM) {
+                // Close chunk with low-res texture — upgrade to HD
+                chunksToUpgrade.push({ mesh, ud, dist });
+            } else if (dist > hdDowngradeRadius && ud.textureZoom === HD_TILE_ZOOM) {
+                // Far chunk with HD texture — downgrade to save memory
+                chunksToDowngrade.push({ mesh, ud, dist });
+            }
         }
     }
 
-    // Sort by distance and enqueue closest first
+    // Mark initial load complete when all base textures are loaded
+    if (!initialTexturesLoaded && chunksToLoad.length === 0 && activeChunkJobs.size === 0) {
+        initialTexturesLoaded = true;
+    }
+
+    // Sort by distance: load closest first, downgrade farthest first
     chunksToLoad.sort((a, b) => a.dist - b.dist);
+    chunksToUpgrade.sort((a, b) => a.dist - b.dist);
+    chunksToDowngrade.sort((a, b) => b.dist - a.dist);
 
     for (const { mesh, ud, dist } of chunksToLoad) {
         enqueueChunkTexture(mesh, ud, dist);
+    }
+    for (const { mesh, ud, dist } of chunksToUpgrade) {
+        enqueueChunkTexture(mesh, ud, dist, true);
+    }
+    for (const { mesh, ud, dist } of chunksToDowngrade) {
+        enqueueChunkTexture(mesh, ud, dist, true);
     }
 
     // Off-thread selection of textures to unload outside satellite radius
