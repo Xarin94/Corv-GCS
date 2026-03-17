@@ -26,6 +26,9 @@ let homeMarker = null;
 let targetMarkerInner = null;
 let targetMarkerOuter = null;
 
+// ADS-B traffic markers on mini-map
+let trafficMarkers = [];
+
 /**
  * Initialize the mini-map
  * @param {string} containerId - DOM element ID for map container
@@ -146,6 +149,41 @@ export function updateMap() {
     }
 
     map.invalidateSize();
+
+    // Update ADS-B traffic dots
+    updateTrafficOverlay();
+}
+
+/**
+ * Update ADS-B traffic markers on mini-map
+ */
+function updateTrafficOverlay() {
+    if (!map) return;
+
+    // Remove old markers
+    for (const m of trafficMarkers) map.removeLayer(m);
+    trafficMarkers = [];
+
+    if (!STATE.traffic || STATE.traffic.length === 0) return;
+
+    for (const tfc of STATE.traffic) {
+        if (tfc.lat == null || tfc.lon == null) continue;
+        const m = L.circleMarker([tfc.lat, tfc.lon], {
+            radius: 5,
+            color: '#ff0000',
+            fillColor: '#ff0000',
+            fillOpacity: 0.9,
+            weight: 1
+        }).addTo(map);
+        if (tfc.callsign) {
+            m.bindTooltip(tfc.callsign, {
+                permanent: false,
+                direction: 'top',
+                className: 'traffic-tooltip'
+            });
+        }
+        trafficMarkers.push(m);
+    }
 }
 
 /**

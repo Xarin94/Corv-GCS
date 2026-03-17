@@ -839,18 +839,14 @@ function drawTraffic(cx, cy, r, hdg, mode) {
     const nmPerPixel = ndConfig.range / r;
     const acLat = STATE.lat;
     const acLon = STATE.lon;
-    const acAlt = (STATE.alt || 0); // meters
     const cosLat = Math.cos(acLat * Math.PI / 180);
 
     for (const tfc of STATE.traffic) {
         if (tfc.lat == null || tfc.lon == null) continue;
 
-        // Convert to relative NM
         const dLat = (tfc.lat - acLat) * 60;
         const dLon = (tfc.lon - acLon) * 60 * cosLat;
         const distNm = Math.sqrt(dLat * dLat + dLon * dLon);
-
-        // Skip if outside display range
         if (distNm > ndConfig.range) continue;
 
         let bearing = Math.atan2(dLon, dLat) * 180 / Math.PI;
@@ -861,58 +857,18 @@ function drawTraffic(cx, cy, r, hdg, mode) {
         const tx = cx + Math.sin(bearingRad) * pixelDist;
         const ty = cy - Math.cos(bearingRad) * pixelDist;
 
-        // Relative altitude in feet (hundreds)
-        const relAltFt = ((tfc.alt || 0) - acAlt) * 3.28084;
-        const relAltHundreds = Math.round(relAltFt / 100);
-
-        // Color based on proximity: <3NM amber, <1NM red, else white
-        let color;
-        if (distNm < 1) color = COLORS.red;
-        else if (distNm < 3) color = COLORS.amber;
-        else color = COLORS.white;
-
-        // TCAS diamond symbol
-        const s = 7;
-        ctx.strokeStyle = color;
-        ctx.fillStyle = color;
-        ctx.lineWidth = 2;
+        // Red dot
+        ctx.fillStyle = COLORS.red;
         ctx.beginPath();
-        ctx.moveTo(tx, ty - s);
-        ctx.lineTo(tx + s, ty);
-        ctx.lineTo(tx, ty + s);
-        ctx.lineTo(tx - s, ty);
-        ctx.closePath();
-        if (distNm < 3) ctx.fill(); else ctx.stroke();
+        ctx.arc(tx, ty, 5, 0, Math.PI * 2);
+        ctx.fill();
 
-        // Vertical rate arrow (climb/descend)
-        if (tfc.vertRate != null && Math.abs(tfc.vertRate) > 1) {
-            const arrowX = tx + s + 3;
-            const arrowDir = tfc.vertRate > 0 ? -1 : 1; // up = -1, down = +1
-            ctx.beginPath();
-            ctx.moveTo(arrowX, ty);
-            ctx.lineTo(arrowX, ty + arrowDir * 10);
-            ctx.stroke();
-            // arrowhead
-            ctx.beginPath();
-            ctx.moveTo(arrowX, ty + arrowDir * 10);
-            ctx.lineTo(arrowX - 3, ty + arrowDir * 6);
-            ctx.lineTo(arrowX + 3, ty + arrowDir * 6);
-            ctx.closePath();
-            ctx.fill();
-        }
-
-        // Relative altitude label (+/- hundreds of feet)
-        const altLabel = (relAltHundreds >= 0 ? '+' : '') + relAltHundreds;
-        ctx.font = '10px "Roboto Mono"';
-        ctx.textAlign = 'left';
-        ctx.fillText(altLabel, tx + s + 8, ty + 4);
-
-        // Callsign label (above)
+        // Callsign label
         if (tfc.callsign) {
+            ctx.fillStyle = COLORS.white;
             ctx.font = '9px "Roboto Mono"';
             ctx.textAlign = 'center';
-            ctx.fillStyle = COLORS.cyan;
-            ctx.fillText(tfc.callsign, tx, ty - s - 4);
+            ctx.fillText(tfc.callsign, tx, ty - 9);
         }
     }
 }
