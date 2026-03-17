@@ -40,8 +40,11 @@ export function initMAVLink() {
 function handleMessage(msg) {
     const { msgId, data, sysId, compId } = msg;
 
-    // Update heartbeat tracking
+    // For heartbeats, only accept the autopilot component (compId 1).
+    // Other components (ADSB board = compId 0, companion computers, etc.)
+    // send heartbeats with different mode values, causing flight mode flicker.
     if (msgId === 0) {
+        if (compId !== 1) return;
         STATE.heartbeatCount++;
         STATE.lastHeartbeatTime = Date.now();
         STATE.systemId = sysId;

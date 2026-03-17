@@ -21,7 +21,7 @@ export const ndConfig = {
     range: 40,             // NM: 10, 20, 40, 80, 160, 320
     showTerrain: true,
     showWxr: false,        // Weather radar
-    showTfc: false,        // Traffic (TCAS)
+    showTfc: true,         // Traffic (TCAS/ADS-B)
     showWpt: true,         // Waypoints
     showVorDme: true,      // VOR/DME stations
     showNdb: true,         // NDB stations
@@ -260,6 +260,9 @@ function drawArcMode(cx, cy, r, w, h, hdg, trk) {
     // Draw flight plan route
     drawFlightPlanRoute(cx, cy, r, hdg, 'ARC');
 
+    // Draw ADS-B traffic
+    drawTraffic(cx, cy, r, hdg, 'ARC');
+
     // Draw wind arrow
     drawWindArrow(w - 80, 120, ndConfig.windDir, ndConfig.windSpd, hdg);
 }
@@ -285,6 +288,9 @@ function drawRoseNavMode(cx, cy, r, w, h, hdg, trk) {
 
     // Flight plan route
     drawFlightPlanRoute(cx, cy, r, hdg, 'ROSE');
+
+    // ADS-B traffic
+    drawTraffic(cx, cy, r, hdg, 'ROSE');
 
     // Wind arrow
     drawWindArrow(w - 80, 80, ndConfig.windDir, ndConfig.windSpd, hdg);
@@ -356,6 +362,9 @@ function drawPlanMode(cx, cy, r, w, h, hdg, trk) {
 
     // Predicted trajectory line
     drawPredictedPath(cx, cy, r, 0, 'PLAN');
+
+    // ADS-B traffic
+    drawTraffic(cx, cy, r, 0, 'PLAN');
 }
 
 // ============= DRAWING HELPERS =============
@@ -820,6 +829,92 @@ function drawPredictedPath(cx, cy, r, hdg, mode) {
 
     ctx.globalAlpha = 1;
     ctx.restore();
+}
+
+// ============= TRAFFIC (TCAS/ADS-B) =============
+function drawTraffic(cx, cy, r, hdg, mode) {
+    if (!ndConfig.showTfc) return;
+    if (!STATE.traffic || STATE.traffic.length === 0) return;
+
+    const nmPerPixel = ndConfig.range / r;
+    const acLat = STATE.lat;
+    const acLon = STATE.lon;
+    const acAlt = (STATE.alt || 0); // meters
+    const cosLat = Math.cos(acLat * Math.PI / 180);
+
+    for (const tfc of STATE.traffic) {
+        if (tfc.lat == null || tfc.lon == null) continue;
+
+        // Convert to relative NM
+        const dLat = (tfc.lat - acLat) * 60;
+        const dLon = (tfc.lon - acLon) * 60 * cosLat;
+        const distNm = Math.sqrt(dLat * dLat + dLon * dLon);
+
+        // Skip if outside display range
+        if (distNm > ndConfig.range) continue;
+
+        let bearing = Math.atan2(dLon, dLat) * 180 / Math.PI;
+        if (mode !== 'PLAN') bearing -= hdg;
+        const bearingRad = bearing * Math.PI / 180;
+        const pixelDist = distNm / nmPerPixel;
+
+        const tx = cx + Math.sin(bearingRad) * pixelDist;
+        const ty = cy - Math.cos(bearingRad) * pixelDist;
+
+        // Relative altitude in feet (hundreds)
+        const relAltFt = ((tfc.alt || 0) - acAlt) * 3.28084;
+        const relAltHundreds = Math.round(relAltFt / 100);
+
+        // Color based on proximity: <3NM amber, <1NM red, else white
+        let color;
+        if (distNm < 1) color = COLORS.red;
+        else if (distNm < 3) color = COLORS.amber;
+        else color = COLORS.white;
+
+        // TCAS diamond symbol
+        const s = 7;
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(tx, ty - s);
+        ctx.lineTo(tx + s, ty);
+        ctx.lineTo(tx, ty + s);
+        ctx.lineTo(tx - s, ty);
+        ctx.closePath();
+        if (distNm < 3) ctx.fill(); else ctx.stroke();
+
+        // Vertical rate arrow (climb/descend)
+        if (tfc.vertRate != null && Math.abs(tfc.vertRate) > 1) {
+            const arrowX = tx + s + 3;
+            const arrowDir = tfc.vertRate > 0 ? -1 : 1; // up = -1, down = +1
+            ctx.beginPath();
+            ctx.moveTo(arrowX, ty);
+            ctx.lineTo(arrowX, ty + arrowDir * 10);
+            ctx.stroke();
+            // arrowhead
+            ctx.beginPath();
+            ctx.moveTo(arrowX, ty + arrowDir * 10);
+            ctx.lineTo(arrowX - 3, ty + arrowDir * 6);
+            ctx.lineTo(arrowX + 3, ty + arrowDir * 6);
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        // Relative altitude label (+/- hundreds of feet)
+        const altLabel = (relAltHundreds >= 0 ? '+' : '') + relAltHundreds;
+        ctx.font = '10px "Roboto Mono"';
+        ctx.textAlign = 'left';
+        ctx.fillText(altLabel, tx + s + 8, ty + 4);
+
+        // Callsign label (above)
+        if (tfc.callsign) {
+            ctx.font = '9px "Roboto Mono"';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = COLORS.cyan;
+            ctx.fillText(tfc.callsign, tx, ty - s - 4);
+        }
+    }
 }
 
 function drawVorDeviation(cx, cy, r, vorData) {
