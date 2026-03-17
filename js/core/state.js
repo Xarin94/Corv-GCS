@@ -228,8 +228,8 @@ for (let i = 0; i < 300; i++) _gHistoryBuffer.push(1.0);
  * Push G history for G-load graph
  */
 export function pushGHistory() {
-    // Normal load factor: body-frame Z axis only (vibration-immune)
-    const g = STATE.az / 9.81;
+    // Normal load factor: negate body-frame Z (NED: -1G at rest → +1G load)
+    const g = -STATE.az / 9.81;
     _gHistoryBuffer.push(g);
     // Update STATE.gHistory reference for compatibility
     STATE.gHistory = _gHistoryBuffer.toArray();

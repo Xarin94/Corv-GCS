@@ -119,7 +119,9 @@ export function mapMessageToState(msgId, data) {
         case 0: mapHeartbeat(data); break;
         case 1: mapSysStatus(data); break;
         case 24: mapGpsRawInt(data); break;
-        case 26: mapScaledImu(data); break;
+        case 26: mapScaledImu(data, true); break;
+        case 116: mapScaledImu(data, false); break;  // SCALED_IMU2
+        case 129: mapScaledImu(data, false); break;  // SCALED_IMU3
         case 30: mapAttitude(data); break;
         case 33: mapGlobalPositionInt(data); break;
         case 42: mapMissionCurrent(data); break;
@@ -160,8 +162,19 @@ function mapGpsRawInt(data) {
     STATE.gpsHdop = data.eph / 100; // cm -> m (HDOP * 100)
 }
 
-function mapScaledImu(data) {
-    // ScaledImu: mG -> m/s^2 (divide by 1000 * 9.81, but already in mG so /1000*9.81)
+// Track whether primary IMU (msg 26) is active; if so, ignore IMU2/3
+let imuPrimaryActive = false;
+let imuPrimaryLastTime = 0;
+
+function mapScaledImu(data, isPrimary) {
+    const now = Date.now();
+    if (isPrimary) {
+        imuPrimaryActive = true;
+        imuPrimaryLastTime = now;
+    } else if (imuPrimaryActive && (now - imuPrimaryLastTime < 3000)) {
+        return; // primary is active, skip IMU2/3
+    }
+    // SCALED_IMU fields: xacc/yacc/zacc in mG → m/s²
     STATE.ax = data.xacc / 1000 * 9.81;
     STATE.ay = data.yacc / 1000 * 9.81;
     STATE.az = data.zacc / 1000 * 9.81;

@@ -20,7 +20,7 @@ const HUD_FIELD_DEFS = {
     as:          { label: 'Airspeed',    getter: () => STATE.as,                           fmt: v => v.toFixed(1),                              unit: 'M/S' },
     gs:          { label: 'Ground Spd',  getter: () => STATE.gs,                           fmt: v => v.toFixed(1),                              unit: 'M/S' },
     vs:          { label: 'Vert Speed',  getter: () => STATE.vs,                           fmt: v => v.toFixed(1),                              unit: 'M/S' },
-    gload:       { label: 'G-Load',      getter: () => STATE.az / 9.81,                    fmt: v => v.toFixed(1),                              unit: 'G',     special: 'gload' },
+    gload:       { label: 'G-Load',      getter: () => -STATE.az / 9.81,                   fmt: v => v.toFixed(1),                              unit: 'G',     special: 'gload' },
     alt:         { label: 'Altitude',    getter: () => STATE.rawAlt + STATE.offsetAlt,      fmt: v => Math.round(v).toString(),                   unit: 'MSL' },
     agl:         { label: 'Terr Alt',    getter: () => null,                                fmt: v => Math.round(v).toString(),                   unit: 'AGL',   special: 'agl' },
     lidar:       { label: 'LiDAR',       getter: () => STATE.rangefinderDist,               fmt: v => v.toFixed(2),                              unit: 'm AGL', special: 'lidar' },

@@ -1160,10 +1160,10 @@ function animate() {
             STATE.rangefinderDist = null;
         }
 
-        // G-load: ~1g with small turn-load variation
+        // G-load: NED body frame → az negative at rest (-1G), more negative in turns
         STATE.ax = 0;
         STATE.ay = 0;
-        STATE.az = 9.81 * (1 + Math.min(0.15, Math.abs(STATE.roll) * 0.5));
+        STATE.az = -9.81 * (1 + Math.min(0.15, Math.abs(STATE.roll) * 0.5));
         pushGHistory();
     }
 

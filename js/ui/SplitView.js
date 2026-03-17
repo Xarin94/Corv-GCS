@@ -478,7 +478,7 @@ function computeDerivedFromLogEntry(entry) {
     const ax = (typeof i.ax === 'number') ? i.ax : 0;
     const ay = (typeof i.ay === 'number') ? i.ay : 0;
     const az = (typeof i.az === 'number') ? i.az : 0;
-    const gLoad = az / 9.81;  // Normal load factor (body Z axis)
+    const gLoad = -az / 9.81;  // Normal load factor (negate NED body Z)
 
     return {
         as,
