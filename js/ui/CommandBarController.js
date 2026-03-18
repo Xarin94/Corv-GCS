@@ -189,15 +189,37 @@ export function initCommandBar() {
         }
     });
 
-    // Speed input
-    els.speedInput.addEventListener('change', async (e) => {
-        if (STATE.connectionType === 'none' || STATE.connectionType === 'corv-binary') return;
-        try {
-            await setMissionSpeed(parseFloat(e.target.value));
-        } catch (err) {
-            console.error('Speed change failed:', err);
+    // Speed input — send on Enter key
+    const sendSpeed = async () => {
+        const speed = parseFloat(els.speedInput.value);
+        if (isNaN(speed) || speed <= 0) {
+            console.warn('[speed] Invalid speed value:', els.speedInput.value);
+            return;
         }
+        if (STATE.connectionType === 'none' || STATE.connectionType === 'corv-binary') {
+            console.warn('[speed] Not connected, connectionType:', STATE.connectionType);
+            return;
+        }
+        try {
+            console.log(`[speed] Sending DO_CHANGE_SPEED: ${speed} m/s`);
+            await setMissionSpeed(speed);
+            // Show brief "SET" feedback
+            const lbl = els.speedInput.nextElementSibling;
+            if (lbl) {
+                const orig = lbl.textContent;
+                lbl.textContent = 'SET';
+                lbl.style.color = '#00ff88';
+                setTimeout(() => { lbl.textContent = orig; lbl.style.color = ''; }, 1500);
+            }
+        } catch (err) {
+            console.error('[speed] Speed change failed:', err);
+        }
+    };
+    els.speedInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); sendSpeed(); }
     });
+    const speedSetBtn = document.getElementById('cmd-speed-set');
+    if (speedSetBtn) speedSetBtn.addEventListener('click', () => sendSpeed());
 
     // Listen for connection state changes
     window.addEventListener('mavlinkConnectionState', (e) => {

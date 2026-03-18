@@ -970,9 +970,9 @@ body.has-tabs.mode-split {
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 2px;
-    color: var(--text-dim);
+    color: #ffbf00;
     padding: 12px 16px 4px;
-    opacity: 0.6;
+    opacity: 1;
 }
 
 .setup-nav-btn {

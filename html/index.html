@@ -662,20 +662,24 @@
                 <div class="mission-survey-section" id="mission-survey-section">
                     <div class="panel-header">SURVEY / GRID</div>
                     <div class="survey-row">
+                        <label>ALTITUDE (m)</label>
+                        <input type="number" id="survey-alt" class="gcs-input input-narrow" value="50" step="5" data-survey-param>
+                    </div>
+                    <div class="survey-row">
+                        <label>FOV (°)</label>
+                        <input type="number" id="survey-fov" class="gcs-input input-narrow" value="73" step="1" min="10" max="180" data-survey-param>
+                    </div>
+                    <div class="survey-row">
+                        <label>OVERLAP (%)</label>
+                        <input type="number" id="survey-overlap" class="gcs-input input-narrow" value="60" step="5" min="0" max="95" data-survey-param>
+                    </div>
+                    <div class="survey-row">
                         <label>SPACING (m)</label>
-                        <input type="number" id="survey-spacing" class="gcs-input input-narrow" value="30" step="5" min="5">
+                        <input type="number" id="survey-spacing" class="gcs-input input-narrow" value="" step="1" min="1" placeholder="auto" data-survey-param>
                     </div>
                     <div class="survey-row">
                         <label>ANGLE (°)</label>
                         <input type="number" id="survey-angle" class="gcs-input input-narrow" value="0" step="5">
-                    </div>
-                    <div class="survey-row">
-                        <label>ALTITUDE (m)</label>
-                        <input type="number" id="survey-alt" class="gcs-input input-narrow" value="50" step="5">
-                    </div>
-                    <div class="survey-row">
-                        <label>OVERLAP (%)</label>
-                        <input type="number" id="survey-overlap" class="gcs-input input-narrow" value="60" step="5" min="0" max="90">
                     </div>
                     <div class="survey-btn-row">
                         <button class="gcs-btn" id="survey-generate">GENERATE</button>
@@ -1749,6 +1753,7 @@
                 <span class="cmd-lbl">SPD</span>
                 <input type="number" id="cmd-speed-input" class="cmd-input-speed" min="0" max="30" value="10" step="0.5" title="Mission speed (m/s)">
                 <span class="cmd-lbl">m/s</span>
+                <button id="cmd-speed-set" class="cmd-btn" style="padding:2px 8px; font-size:10px; min-width:0;" title="Send speed command">SET</button>
             </div>
         </div>
 

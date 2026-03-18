@@ -453,7 +453,7 @@ export function getTerrainElevationFromHGT(lat, lon) {
     const lonBase = Math.floor(lon);
     const key = `${latBase}_${lonBase}`;
     const cached = hgtElevationData[key];
-    
+
     if (!cached) return null;
     
     const { data, size } = cached;
@@ -481,6 +481,42 @@ export function getTerrainElevationFromHGT(lat, lon) {
 }
 
 /**
+ * Async version: ensures HGT data is parsed before querying elevation.
+ * Use this when you need a guaranteed result (e.g. SITL launch).
+ */
+export async function getTerrainElevationAsync(lat, lon) {
+    const latBase = Math.floor(lat);
+    const lonBase = Math.floor(lon);
+    const key = `${latBase}_${lonBase}`;
+
+    // If not in cache, try to parse from loaded HGT files
+    if (!hgtElevationData[key]) {
+        const latPre = lat >= 0 ? 'N' : 'S';
+        const lonPre = lon >= 0 ? 'E' : 'W';
+        const latNum = String(Math.abs(latBase)).padStart(2, '0');
+        const lonNum = String(Math.abs(lonBase)).padStart(3, '0');
+        const filename = `${latPre}${latNum}${lonPre}${lonNum}.HGT`;
+        const file = hgtFiles[filename];
+        if (file) {
+            const buf = await file.arrayBuffer();
+            const len = buf.byteLength;
+            const size = (len === 1201 * 1201 * 2) ? 1201 : (len === 3601 * 3601 * 2 ? 3601 : 0);
+            if (size && !hgtElevationData[key]) {
+                const dataView = new DataView(buf);
+                const elevationArray = new Int16Array(size * size);
+                for (let i = 0; i < size * size; i++) {
+                    elevationArray[i] = dataView.getInt16(i * 2, false);
+                }
+                hgtElevationData[key] = { data: elevationArray, size };
+                console.log(`[terrain] Parsed elevation data for ${filename} on demand (${size}x${size})`);
+            }
+        }
+    }
+
+    return getTerrainElevationFromHGT(lat, lon);
+}
+
+/**
  * Get terrain elevation with caching
  * @param {number} lat - Latitude
  * @param {number} lon - Longitude
@@ -505,6 +541,31 @@ export function getTerrainElevationCached(lat, lon) {
  */
 export function addHGTFile(filename, file) {
     hgtFiles[filename.toUpperCase()] = file;
+
+    // Pre-parse elevation data so getTerrainElevationFromHGT works immediately
+    const match = String(filename).toUpperCase().match(/^([NS])(\d{1,2})([EW])(\d{1,3})/);
+    if (match) {
+        const latSign = match[1] === 'S' ? -1 : 1;
+        const lonSign = match[3] === 'W' ? -1 : 1;
+        const latBase = latSign * Number(match[2]);
+        const lonBase = lonSign * Number(match[4]);
+        const key = `${latBase}_${lonBase}`;
+        if (!hgtElevationData[key]) {
+            file.arrayBuffer().then(buf => {
+                const len = buf.byteLength;
+                const size = (len === 1201 * 1201 * 2) ? 1201 : (len === 3601 * 3601 * 2 ? 3601 : 0);
+                if (size && !hgtElevationData[key]) {
+                    const dataView = new DataView(buf);
+                    const elevationArray = new Int16Array(size * size);
+                    for (let i = 0; i < size * size; i++) {
+                        elevationArray[i] = dataView.getInt16(i * 2, false);
+                    }
+                    hgtElevationData[key] = { data: elevationArray, size };
+                    console.log(`[terrain] Pre-parsed elevation data for ${filename} (${size}x${size})`);
+                }
+            }).catch(() => {});
+        }
+    }
 }
 
 /**

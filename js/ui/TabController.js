@@ -9,7 +9,7 @@ import { setParameter, requestAllParameters, requestParameter, requestDataStream
 import { onMessage } from '../mavlink/MAVLinkManager.js';
 import { formatParamValue } from './ParametersPageController.js';
 import { initJoystick } from '../joystick/JoystickUI.js';
-import { getTerrainElevationFromHGT } from '../terrain/TerrainManager.js';
+import { getTerrainElevationFromHGT, getTerrainElevationAsync } from '../terrain/TerrainManager.js';
 import { getCmdShortName, getCmdColor, getCmdParams, getCmdDefaults, isNavCmd, getGroupedCommands } from '../mission/MissionCommands.js';
 
 let currentTab = 'flight-data';
@@ -363,6 +363,8 @@ function checkTerrainIntersection(prevItem, currItem) {
     return false;
 }
 
+let _missionMapCenteredOnHome = false;
+
 function updateHomeMarker() {
     if (!missionMap) return;
     if (STATE.homeLat === null || STATE.homeLon === null) return;
@@ -376,6 +378,12 @@ function updateHomeMarker() {
         });
         homeMarker = L.marker([STATE.homeLat, STATE.homeLon], { icon, interactive: true, zIndexOffset: 900 }).addTo(missionMap);
         homeMarker.bindPopup(`<b>HOME</b><br>Alt: ${STATE.homeAlt ? STATE.homeAlt.toFixed(0) + 'm' : '?'}`);
+
+        // Center mission map on home position the first time it's received
+        if (!_missionMapCenteredOnHome) {
+            missionMap.setView([STATE.homeLat, STATE.homeLon], 15);
+            _missionMapCenteredOnHome = true;
+        }
     } else {
         homeMarker.setLatLng([STATE.homeLat, STATE.homeLon]);
         homeMarker.setPopupContent(`<b>HOME</b><br>Alt: ${STATE.homeAlt ? STATE.homeAlt.toFixed(0) + 'm' : '?'}`);
@@ -1385,6 +1393,7 @@ function initSetupTab() {
     if (disconnectBtn) {
         disconnectBtn.addEventListener('click', async () => {
             await disconnect();
+            _missionMapCenteredOnHome = false;
         });
     }
 
@@ -1872,9 +1881,9 @@ function initSimulationTab() {
             const homeLon = parseFloat(document.getElementById('sitl-home-lon')?.value) || 11.3439;
             const speedup = parseInt(document.getElementById('sitl-speedup')?.value) || 1;
 
-            // Get terrain elevation at home position from HGT data
-            const terrainElev = getTerrainElevationFromHGT(homeLat, homeLon);
-            const homeAlt = terrainElev || 0;
+            // Get terrain elevation at home position from HGT data (async to ensure file is parsed)
+            const terrainElev = await getTerrainElevationAsync(homeLat, homeLon);
+            const homeAlt = (terrainElev !== null && terrainElev > 0) ? terrainElev : 0;
             console.log(`[sitl] Home: ${homeLat}, ${homeLon}, terrain=${terrainElev}, homeAlt=${homeAlt}`);
 
             launchBtn.disabled = true;
@@ -2791,12 +2800,95 @@ function generateSurveyFromPolygon(spacing, angle, alt) {
     return seq;
 }
 
+/**
+ * Compute the footprint width from altitude and FOV:
+ *   footprint = 2 * alt * tan(fov/2)
+ * Relationship: spacing = footprint * (1 - overlap/100)
+ *
+ * The parameter left empty (or last cleared) is auto-calculated from the others.
+ * Priority: altitude, fov, overlap are "primary"; spacing is derived by default.
+ * If the user clears any one field, that becomes the auto-calculated one.
+ */
+function surveyAutoCalc(changedId) {
+    const altEl = document.getElementById('survey-alt');
+    const fovEl = document.getElementById('survey-fov');
+    const overlapEl = document.getElementById('survey-overlap');
+    const spacingEl = document.getElementById('survey-spacing');
+
+    const alt = parseFloat(altEl?.value);
+    const fov = parseFloat(fovEl?.value);
+    const overlap = parseFloat(overlapEl?.value);
+    const spacing = parseFloat(spacingEl?.value);
+
+    const hasAlt = !isNaN(alt) && altEl?.value !== '';
+    const hasFov = !isNaN(fov) && fovEl?.value !== '';
+    const hasOverlap = !isNaN(overlap) && overlapEl?.value !== '';
+    const hasSpacing = !isNaN(spacing) && spacingEl?.value !== '';
+
+    const filled = [hasAlt, hasFov, hasOverlap, hasSpacing].filter(Boolean).length;
+    if (filled < 3) return; // need at least 3 to solve the 4th
+
+    if (hasAlt && hasFov && hasOverlap && !hasSpacing) {
+        // Solve spacing
+        const footprint = 2 * alt * Math.tan((fov * Math.PI / 180) / 2);
+        const s = footprint * (1 - overlap / 100);
+        spacingEl.value = Math.round(s * 10) / 10;
+        spacingEl.placeholder = '';
+    } else if (hasAlt && hasFov && hasSpacing && !hasOverlap) {
+        // Solve overlap
+        const footprint = 2 * alt * Math.tan((fov * Math.PI / 180) / 2);
+        if (footprint > 0) {
+            const o = (1 - spacing / footprint) * 100;
+            overlapEl.value = Math.round(o);
+        }
+    } else if (hasAlt && hasOverlap && hasSpacing && !hasFov) {
+        // Solve FOV: footprint = spacing / (1 - overlap/100), fov = 2*atan(footprint/(2*alt))
+        const footprint = spacing / (1 - overlap / 100);
+        if (alt > 0) {
+            const f = 2 * Math.atan(footprint / (2 * alt)) * 180 / Math.PI;
+            fovEl.value = Math.round(f);
+        }
+    } else if (hasFov && hasOverlap && hasSpacing && !hasAlt) {
+        // Solve altitude: footprint = spacing / (1 - overlap/100), alt = footprint / (2*tan(fov/2))
+        const footprint = spacing / (1 - overlap / 100);
+        const a = footprint / (2 * Math.tan((fov * Math.PI / 180) / 2));
+        altEl.value = Math.round(a);
+    } else if (filled === 4 && changedId) {
+        // All 4 filled and user changed one — recalculate spacing (the derived param)
+        // unless user just changed spacing, in which case recalculate overlap
+        if (changedId === 'survey-spacing') {
+            const footprint = 2 * alt * Math.tan((fov * Math.PI / 180) / 2);
+            if (footprint > 0) {
+                const o = (1 - spacing / footprint) * 100;
+                overlapEl.value = Math.round(o);
+            }
+        } else {
+            const footprint = 2 * alt * Math.tan((fov * Math.PI / 180) / 2);
+            const s = footprint * (1 - overlap / 100);
+            spacingEl.value = Math.round(s * 10) / 10;
+        }
+    }
+}
+
 export function initSurveyGrid() {
+    // Wire up auto-calculation on all survey param inputs
+    const paramIds = ['survey-alt', 'survey-fov', 'survey-overlap', 'survey-spacing'];
+    for (const id of paramIds) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', () => surveyAutoCalc(id));
+        }
+    }
+    // Initial auto-calc (spacing from defaults)
+    surveyAutoCalc(null);
+
     bindBtn('survey-generate', () => {
         if (surveyPolygonPoints.length < 3) {
             alert('Draw a survey area first using the survey tool on the map toolbar');
             return;
         }
+        // Ensure auto-calc ran
+        surveyAutoCalc(null);
         const spacing = parseFloat(document.getElementById('survey-spacing')?.value) || 30;
         const angle = parseFloat(document.getElementById('survey-angle')?.value) || 0;
         const alt = parseFloat(document.getElementById('survey-alt')?.value) || 50;
