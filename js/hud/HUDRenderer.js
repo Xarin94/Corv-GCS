@@ -4,7 +4,7 @@
  * Graphics style ported from origin/main HUD class
  */
 
-import { STATE } from '../core/state.js';
+import { STATE, gHistoryBuffer } from '../core/state.js';
 
 // HUD state
 let canvas = null;
@@ -69,8 +69,32 @@ const settings = {
 
 // Virtual size (updated on resize)
 let size = { width: 800, height: 600 };
+let hudWrapperEl = null; // cached DOM reference
+
+// Cached CSS variables (refreshed on resize, not per-frame)
+const cachedCss = {
+    accentRed: '#ff0000',
+    textMain: '#ffffff',
+    textDim: '#6e7f8d',
+    fontData: 'monospace'
+};
+
+function refreshCachedCss() {
+    try {
+        const style = getComputedStyle(document.documentElement);
+        cachedCss.accentRed = style.getPropertyValue('--accent-red').trim() || '#ff0000';
+        cachedCss.textMain = style.getPropertyValue('--text-main').trim() || '#ffffff';
+        cachedCss.textDim = style.getPropertyValue('--text-dim').trim() || '#6e7f8d';
+        cachedCss.fontData = style.getPropertyValue('--font-data').trim() || 'monospace';
+    } catch (_) {}
+}
 
 function getCssVar(name, fallback) {
+    // Fast path for cached variables
+    if (name === '--accent-red') return cachedCss.accentRed;
+    if (name === '--text-main') return cachedCss.textMain;
+    if (name === '--text-dim') return cachedCss.textDim;
+    if (name === '--font-data') return cachedCss.fontData;
     try {
         const v = getComputedStyle(document.documentElement).getPropertyValue(name);
         const s = (v || '').trim();
@@ -196,15 +220,14 @@ export function drawGLoadWidget() {
     gCtx.stroke();
     gCtx.restore();
 
-    const hist = STATE.gHistory || [];
-    const n = hist.length || 0;
+    const n = gHistoryBuffer.length || 0;
     if (n > 1) {
         const step = gw / (n - 1);
         // Reuse pooled objects instead of allocating new ones
         const pts = gLoadPointPool;
         for (let i = 0; i < n; i++) {
             const gx = x + i * step;
-            let gy = y0 - (hist[i] * px);
+            let gy = y0 - (gHistoryBuffer.get(i) * px);
             gy = Math.max(y, Math.min(y + gh, gy));
             pts[i].x = gx;
             pts[i].y = gy;
@@ -276,9 +299,10 @@ export function setViewMode(mode) {
  */
 export function resizeHUD() {
     hudDPR = window.devicePixelRatio || 1;
+    refreshCachedCss();
 
     let w, h;
-    const wrapper = document.getElementById('hud-wrapper');
+    const wrapper = hudWrapperEl || (hudWrapperEl = document.getElementById('hud-wrapper'));
     if (wrapper) {
         w = wrapper.clientWidth;
         h = wrapper.clientHeight;
@@ -834,7 +858,7 @@ export function drawHUD() {
     const scale = dpr * style.scale * settings.scale;
 
     let w, h;
-    const wrapper = document.getElementById('hud-wrapper');
+    const wrapper = hudWrapperEl || (hudWrapperEl = document.getElementById('hud-wrapper'));
     if (wrapper) {
         w = wrapper.clientWidth;
         h = wrapper.clientHeight;

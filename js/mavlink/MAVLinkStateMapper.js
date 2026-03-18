@@ -5,6 +5,8 @@
 
 import { STATE } from '../core/state.js';
 
+let vibHistoryIdx = 0; // circular index for vibHistory
+
 // ArduPilot Copter flight mode mapping (custom_mode -> name)
 const ARDUPILOT_COPTER_MODES = {
     0: 'STABILIZE', 1: 'ACRO', 2: 'ALT_HOLD', 3: 'AUTO',
@@ -214,7 +216,12 @@ function mapGlobalPositionInt(data) {
  * Rotate NED velocity to body frame and compute AoA (alpha) and SSA (beta)
  * Body frame: X = forward, Y = right, Z = down
  */
+let _lastAeroRoll = NaN, _lastAeroPitch = NaN, _lastAeroYaw = NaN;
 function computeAeroAngles() {
+    // Skip recomputation if attitude hasn't changed (saves 8 trig ops)
+    if (STATE.roll === _lastAeroRoll && STATE.pitch === _lastAeroPitch && STATE.yaw === _lastAeroYaw) return;
+    _lastAeroRoll = STATE.roll; _lastAeroPitch = STATE.pitch; _lastAeroYaw = STATE.yaw;
+
     const cr = Math.cos(STATE.roll),  sr = Math.sin(STATE.roll);
     const cp = Math.cos(STATE.pitch), sp = Math.sin(STATE.pitch);
     const cy = Math.cos(STATE.yaw),   sy = Math.sin(STATE.yaw);
@@ -290,9 +297,13 @@ function mapVibration(data) {
     STATE.vibClip0 = data.clipping0 || 0;
     STATE.vibClip1 = data.clipping1 || 0;
     STATE.vibClip2 = data.clipping2 || 0;
-    // Keep last 120 samples (~2 min at 1Hz)
-    STATE.vibHistory.push({ x: STATE.vibX, y: STATE.vibY, z: STATE.vibZ, t: Date.now() });
-    if (STATE.vibHistory.length > 120) STATE.vibHistory.shift();
+    // Keep last 120 samples (~2 min at 1Hz) — overwrite oldest instead of shift()
+    if (STATE.vibHistory.length >= 120) {
+        STATE.vibHistory[vibHistoryIdx % 120] = { x: STATE.vibX, y: STATE.vibY, z: STATE.vibZ, t: Date.now() };
+        vibHistoryIdx++;
+    } else {
+        STATE.vibHistory.push({ x: STATE.vibX, y: STATE.vibY, z: STATE.vibZ, t: Date.now() });
+    }
 }
 
 function mapServoOutputRaw(data) {
@@ -370,6 +381,9 @@ function mapStatusText(data) {
 
 // ADSB_VEHICLE (246): real-time ADS-B traffic from onboard receiver
 const ADSB_MAX_AGE = 60000; // remove stale entries after 60s
+const trafficIndex = new Map(); // icao24 → array index (O(1) lookup)
+let lastTrafficPurge = 0;
+
 function mapAdsbVehicle(data) {
     const icao24 = (data.ICAO_address || data.icaoAddress || 0).toString(16).padStart(6, '0');
     const callsign = (data.callsign || '').trim();
@@ -385,14 +399,23 @@ function mapAdsbVehicle(data) {
     const now = Date.now();
     const entry = { icao24, callsign, lat, lon, alt, velocity, heading, vertRate, onGround: false, _ts: now };
 
-    // Update or insert
-    const idx = STATE.traffic.findIndex(t => t.icao24 === icao24);
-    if (idx >= 0) {
+    // O(1) update or insert using Map index
+    const idx = trafficIndex.get(icao24);
+    if (idx !== undefined && idx < STATE.traffic.length && STATE.traffic[idx]?.icao24 === icao24) {
         STATE.traffic[idx] = entry;
     } else {
+        trafficIndex.set(icao24, STATE.traffic.length);
         STATE.traffic.push(entry);
     }
 
-    // Purge stale entries
-    STATE.traffic = STATE.traffic.filter(t => now - t._ts < ADSB_MAX_AGE);
+    // Purge stale entries at most once per second (not on every message)
+    if (now - lastTrafficPurge > 1000) {
+        lastTrafficPurge = now;
+        STATE.traffic = STATE.traffic.filter(t => now - t._ts < ADSB_MAX_AGE);
+        // Rebuild index after filter
+        trafficIndex.clear();
+        for (let i = 0; i < STATE.traffic.length; i++) {
+            trafficIndex.set(STATE.traffic[i].icao24, i);
+        }
+    }
 }

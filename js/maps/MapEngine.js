@@ -5,6 +5,7 @@
 
 import { STATE } from '../core/state.js';
 import { RAD } from '../core/constants.js';
+import { downsample } from '../core/utils.js';
 
 let map = null;
 let marker = null;
@@ -27,7 +28,7 @@ let targetMarkerInner = null;
 let targetMarkerOuter = null;
 
 // ADS-B traffic markers on mini-map
-let trafficMarkers = [];
+const trafficMarkersMap = new Map(); // icao24 → L.CircleMarker
 
 /**
  * Initialize the mini-map
@@ -91,15 +92,7 @@ function buildLogLatLngCache() {
     lastPlaybackRenderedIndex = -1;
 }
 
-function downsample(points, maxPoints) {
-    if (!points || points.length <= maxPoints) return points;
-    const step = Math.ceil(points.length / maxPoints);
-    const out = [];
-    for (let i = 0; i < points.length; i += step) out.push(points[i]);
-    const last = points[points.length - 1];
-    if (out.length === 0 || out[out.length - 1] !== last) out.push(last);
-    return out;
-}
+// downsample() imported from utils.js
 
 /**
  * Update mini-map position and marker rotation
@@ -160,29 +153,48 @@ export function updateMap() {
 function updateTrafficOverlay() {
     if (!map) return;
 
-    // Remove old markers
-    for (const m of trafficMarkers) map.removeLayer(m);
-    trafficMarkers = [];
+    if (!STATE.traffic || STATE.traffic.length === 0) {
+        // Remove all markers
+        for (const m of trafficMarkersMap.values()) map.removeLayer(m);
+        trafficMarkersMap.clear();
+        return;
+    }
 
-    if (!STATE.traffic || STATE.traffic.length === 0) return;
-
+    const activeIcaos = new Set();
     for (const tfc of STATE.traffic) {
-        if (tfc.lat == null || tfc.lon == null) continue;
-        const m = L.circleMarker([tfc.lat, tfc.lon], {
-            radius: 5,
-            color: '#ff0000',
-            fillColor: '#ff0000',
-            fillOpacity: 0.9,
-            weight: 1
-        }).addTo(map);
-        if (tfc.callsign) {
-            m.bindTooltip(tfc.callsign, {
-                permanent: false,
-                direction: 'top',
-                className: 'traffic-tooltip'
-            });
+        if (tfc.lat == null || tfc.lon == null || !tfc.icao24) continue;
+        activeIcaos.add(tfc.icao24);
+
+        const existing = trafficMarkersMap.get(tfc.icao24);
+        if (existing) {
+            // Update position of existing marker
+            existing.setLatLng([tfc.lat, tfc.lon]);
+        } else {
+            // Create new marker
+            const m = L.circleMarker([tfc.lat, tfc.lon], {
+                radius: 5,
+                color: '#ff0000',
+                fillColor: '#ff0000',
+                fillOpacity: 0.9,
+                weight: 1
+            }).addTo(map);
+            if (tfc.callsign) {
+                m.bindTooltip(tfc.callsign, {
+                    permanent: false,
+                    direction: 'top',
+                    className: 'traffic-tooltip'
+                });
+            }
+            trafficMarkersMap.set(tfc.icao24, m);
         }
-        trafficMarkers.push(m);
+    }
+
+    // Remove stale markers
+    for (const [icao, m] of trafficMarkersMap) {
+        if (!activeIcaos.has(icao)) {
+            map.removeLayer(m);
+            trafficMarkersMap.delete(icao);
+        }
     }
 }
 

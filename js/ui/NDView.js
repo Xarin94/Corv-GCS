@@ -14,6 +14,8 @@ let checkNDVisible = () => true;
 let canvas = null;
 let ctx = null;
 let dpr = 1;
+let cachedBgNd = null;
+let ndRafId = null;
 
 // ND Configuration State
 export const ndConfig = {
@@ -140,11 +142,28 @@ export function initND(canvasEl) {
 }
 
 function animateND() {
-    // Only render if ND is visible to save GPU/CPU resources
     if (checkNDVisible()) {
         drawND();
+        ndRafId = requestAnimationFrame(animateND);
+    } else {
+        // Stop loop when hidden — restarted by startNDLoop()
+        ndRafId = null;
     }
-    requestAnimationFrame(animateND);
+}
+
+/** Start ND render loop (call when ND becomes visible) */
+export function startNDLoop() {
+    if (!ndRafId && canvas) {
+        ndRafId = requestAnimationFrame(animateND);
+    }
+}
+
+/** Stop ND render loop (call when ND becomes hidden) */
+export function stopNDLoop() {
+    if (ndRafId) {
+        cancelAnimationFrame(ndRafId);
+        ndRafId = null;
+    }
 }
 
 /**
@@ -169,6 +188,9 @@ export function resizeND() {
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.imageSmoothingEnabled = true;
+
+    // Refresh cached CSS variable
+    cachedBgNd = getComputedStyle(document.documentElement).getPropertyValue('--bg-nd').trim() || COLORS.background;
 }
 
 export function drawND() {
@@ -178,8 +200,8 @@ export function drawND() {
     const h = canvas.height;
     if (w <= 1 || h <= 1) return;
 
-    // Clear with background (theme-aware)
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-nd').trim() || COLORS.background;
+    // Clear with background (cached CSS variable)
+    ctx.fillStyle = cachedBgNd || COLORS.background;
     ctx.fillRect(0, 0, w, h);
     
     // Get current aircraft state

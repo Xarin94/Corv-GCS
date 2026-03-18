@@ -47,6 +47,7 @@ const hgtFiles = {};
 const hgtElevationData = {};
 const activeChunks = {};
 const runwayObjects = [];
+let cleanupIntervalId = null;
 
 // Caching
 let lastTerrainQuery = { lat: null, lon: null, height: null };
@@ -274,8 +275,9 @@ export function initTerrain(scene, renderer, sunDirection) {
     initHillshadeWorker();
     initTextureCullWorker();
     
-    // Start cleanup interval
-    setInterval(cleanupDistantChunks, 5000);
+    // Start cleanup interval (store handle for potential cleanup)
+    if (cleanupIntervalId) clearInterval(cleanupIntervalId);
+    cleanupIntervalId = setInterval(cleanupDistantChunks, 5000);
 }
 
 function initTerrainWorker() {
@@ -1334,15 +1336,11 @@ function applyCompositeTexture(mesh, canvas, latTop, latBottom, lonLeft, lonRigh
             try { prevMaterial.map.dispose(); texturesDisposed++; } catch (e) {}
             prevMaterial.map = null;
         }
-        prevMaterial.dispose();
-        mesh.material = new THREE.MeshLambertMaterial({
-            map: texture,
-            side: THREE.DoubleSide,
-            vertexColors: true
-        });
+        // Reuse material, just update the texture map (avoid allocation + GPU rebind)
+        prevMaterial.map = texture;
+        prevMaterial.needsUpdate = true;
         mesh.castShadow = false;
         mesh.receiveShadow = true;
-        mesh.material.needsUpdate = true;
         mesh.userData.textureLoaded = true;
 
         // Apply hillshading

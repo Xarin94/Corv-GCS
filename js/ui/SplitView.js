@@ -6,7 +6,7 @@
 import { STATE, dataBuffer, BUFFER_SIZE, SAMPLE_INTERVAL } from '../core/state.js';
 import { TRACE_CONFIG, RAD } from '../core/constants.js';
 import { getPlaybackSpeed } from '../playback/LogPlayer.js';
-import { calculateDistance } from '../core/utils.js';
+import { calculateDistance, downsample } from '../core/utils.js';
 import {
     initTraceManager,
     getActiveTraceConfigs,
@@ -18,7 +18,7 @@ import {
     isTraceManagerInitialized
 } from './TraceManager.js';
 
-import { initND, resizeND, drawND, setNDVisibilityCheck } from './NDView.js';
+import { initND, resizeND, drawND, setNDVisibilityCheck, startNDLoop } from './NDView.js';
 import { initNDControls } from './NDController.js';
 import { getHgtFileBounds } from '../terrain/TerrainManager.js';
 
@@ -528,15 +528,7 @@ function buildLogLatLngCache() {
     lastPlaybackRenderedIndex = -1;
 }
 
-function downsample(points, maxPoints) {
-    if (!points || points.length <= maxPoints) return points;
-    const step = Math.ceil(points.length / maxPoints);
-    const out = [];
-    for (let i = 0; i < points.length; i += step) out.push(points[i]);
-    const last = points[points.length - 1];
-    if (out.length === 0 || out[out.length - 1] !== last) out.push(last);
-    return out;
-}
+// downsample() imported from utils.js
 
 // Note: activeTraces is now managed by TraceManager
 
@@ -1068,6 +1060,7 @@ export function updateND() {
     if (!isNDVisible()) return;
     try {
         initNDIfNeeded();
+        startNDLoop(); // ensure RAF loop is running when ND is visible
         drawND();
     } catch (e) {}
 }

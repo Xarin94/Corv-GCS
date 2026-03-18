@@ -390,8 +390,12 @@ function updateHomeMarker() {
     }
 }
 
-// Periodically update vehicle and home markers on mission map
-setInterval(() => { updateVehicleMarker(); updateHomeMarker(); }, 500);
+// Periodically update vehicle and home markers on mission map (only when visible)
+setInterval(() => {
+    if (currentTab !== 'flight-plan') return;
+    updateVehicleMarker();
+    updateHomeMarker();
+}, 500);
 
 // CMD_NAMES and CMD_COLORS are now derived from MissionCommands.js catalog
 

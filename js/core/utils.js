@@ -159,3 +159,19 @@ export function tileToBounds(x, y, z) {
         lonRight
     };
 }
+
+/**
+ * Downsample an array to at most maxPoints entries (evenly spaced)
+ * @param {Array} points
+ * @param {number} maxPoints
+ * @returns {Array}
+ */
+export function downsample(points, maxPoints) {
+    if (!points || points.length <= maxPoints) return points;
+    const step = Math.ceil(points.length / maxPoints);
+    const out = [];
+    for (let i = 0; i < points.length; i += step) out.push(points[i]);
+    const last = points[points.length - 1];
+    if (out.length === 0 || out[out.length - 1] !== last) out.push(last);
+    return out;
+}

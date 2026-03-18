@@ -231,9 +231,10 @@ export function pushGHistory() {
     // Normal load factor: negate body-frame Z (NED: -1G at rest → +1G load)
     const g = -STATE.az / 9.81;
     _gHistoryBuffer.push(g);
-    // Update STATE.gHistory reference for compatibility
-    STATE.gHistory = _gHistoryBuffer.toArray();
 }
+
+/** Expose ring buffer for direct read access (avoids toArray() allocation) */
+export const gHistoryBuffer = _gHistoryBuffer;
 
 /**
  * Reset data buffer

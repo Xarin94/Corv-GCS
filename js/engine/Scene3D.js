@@ -28,6 +28,10 @@ let lastShadowChunkZ = null;
 // Sun direction for hillshading
 let currentSunDirection = null;
 let sunlightEnabled = true;
+
+// Pooled materials and geometries (avoid per-call allocation)
+const pooledGeo = {};
+const pooledMat = {};
 let timeOverride = null;
 
 /**
@@ -71,6 +75,24 @@ export function init3D(container) {
 
     // Initialize sun direction vector
     currentSunDirection = new THREE.Vector3(0, 1, 0);
+
+    // Initialize pooled geometries and materials
+    pooledGeo.wpSphere = new THREE.SphereGeometry(1.2, 8, 6);
+    pooledGeo.homePole = new THREE.CylinderGeometry(1, 1, 80, 8);
+    pooledGeo.homeSphere = new THREE.SphereGeometry(8, 16, 16);
+    pooledGeo.homeRing = new THREE.TorusGeometry(12, 1.5, 8, 32);
+    pooledGeo.targetPole = new THREE.CylinderGeometry(1.2, 1.2, 100, 8);
+    pooledGeo.targetSphere = new THREE.SphereGeometry(10, 16, 16);
+    pooledGeo.targetRing = new THREE.TorusGeometry(15, 2, 8, 32);
+    pooledGeo.trafficCone = new THREE.ConeGeometry(120, 200, 4);
+
+    pooledMat.wpGreen = new THREE.MeshBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.9 });
+    pooledMat.altLine = new THREE.LineBasicMaterial({ color: 0x44ff44, opacity: 0.3, transparent: true });
+    pooledMat.homeOrange = new THREE.MeshBasicMaterial({ color: 0xff8800 });
+    pooledMat.homeWhite = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    pooledMat.targetRed = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    pooledMat.targetRing = new THREE.MeshBasicMaterial({ color: 0xff4444 });
+    pooledMat.trafficRed = new THREE.MeshBasicMaterial({ color: 0xff2222, wireframe: true, depthTest: false, transparent: true, opacity: 0.9 });
 
     return { scene, camera, renderer };
 }
@@ -265,16 +287,12 @@ export function updateMissionTrajectory(points) {
     // Hide the connecting line
     missionLine.geometry.setDrawRange(0, 0);
 
-    // Create waypoint spheres and altitude lines
-    const wpMat = new THREE.MeshBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.9 });
-    const wpGeo = new THREE.SphereGeometry(1.2, 8, 6);
-    const altLineMat = new THREE.LineBasicMaterial({ color: 0x44ff44, opacity: 0.3, transparent: true });
-
+    // Create waypoint spheres and altitude lines (using pooled materials/geometry)
     for (let i = 0; i < points.length; i++) {
         const p = points[i];
 
         // Waypoint sphere
-        const sphere = new THREE.Mesh(wpGeo, wpMat);
+        const sphere = new THREE.Mesh(pooledGeo.wpSphere, pooledMat.wpGreen);
         sphere.position.set(p.x, p.y, p.z);
         sphere.frustumCulled = false;
         scene.add(sphere);
@@ -286,7 +304,7 @@ export function updateMissionTrajectory(points) {
             p.x, 0, p.z,
             p.x, p.y, p.z
         ]), 3));
-        const altLine = new THREE.Line(altGeo, altLineMat);
+        const altLine = new THREE.Line(altGeo, pooledMat.altLine);
         altLine.frustumCulled = false;
         scene.add(altLine);
         missionAltLines.push(altLine);
@@ -299,13 +317,14 @@ export function updateMissionTrajectory(points) {
 function clearMissionMarkers() {
     for (const m of missionWpMarkers) {
         scene.remove(m);
-        if (m.geometry) m.geometry.dispose();
+        // geometry/material are pooled — don't dispose
     }
     missionWpMarkers.length = 0;
 
     for (const l of missionAltLines) {
         scene.remove(l);
-        if (l.geometry) l.geometry.dispose();
+        if (l.geometry) l.geometry.dispose(); // altitude line geo is per-instance
+        // material is pooled — don't dispose
     }
     missionAltLines.length = 0;
 }
@@ -384,10 +403,9 @@ export function updateHomeMarker3D() {
     homeMarkerLastLat = STATE.homeLat;
     homeMarkerLastLon = STATE.homeLon;
 
-    // Remove old marker
+    // Remove old marker (geometry/materials are pooled — just remove from scene)
     if (homeMarker3D) {
         scene.remove(homeMarker3D);
-        homeMarker3D.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
     }
 
     const pos = latLonToMeters(STATE.homeLat, STATE.homeLon);
@@ -395,24 +413,18 @@ export function updateHomeMarker3D() {
 
     const group = new THREE.Group();
 
-    // Vertical pole
-    const poleGeo = new THREE.CylinderGeometry(1, 1, 80, 8);
-    const poleMat = new THREE.MeshBasicMaterial({ color: 0xff8800 });
-    const pole = new THREE.Mesh(poleGeo, poleMat);
+    // Vertical pole (pooled geometry/material)
+    const pole = new THREE.Mesh(pooledGeo.homePole, pooledMat.homeOrange);
     pole.position.y = 40;
     group.add(pole);
 
     // "H" marker sphere on top
-    const sphereGeo = new THREE.SphereGeometry(8, 16, 16);
-    const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff8800 });
-    const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+    const sphere = new THREE.Mesh(pooledGeo.homeSphere, pooledMat.homeOrange);
     sphere.position.y = 85;
     group.add(sphere);
 
     // Ring around sphere
-    const ringGeo = new THREE.TorusGeometry(12, 1.5, 8, 32);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
+    const ring = new THREE.Mesh(pooledGeo.homeRing, pooledMat.homeWhite);
     ring.position.y = 85;
     ring.rotation.x = Math.PI / 2;
     group.add(ring);
@@ -433,24 +445,18 @@ export function setTargetMarker3D(lat, lon) {
     const pos = latLonToMeters(lat, lon);
     const group = new THREE.Group();
 
-    // Vertical pole (red)
-    const poleGeo = new THREE.CylinderGeometry(1.2, 1.2, 100, 8);
-    const poleMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    const pole = new THREE.Mesh(poleGeo, poleMat);
+    // Vertical pole (pooled geometry/material)
+    const pole = new THREE.Mesh(pooledGeo.targetPole, pooledMat.targetRed);
     pole.position.y = 50;
     group.add(pole);
 
     // Top sphere
-    const sphereGeo = new THREE.SphereGeometry(10, 16, 16);
-    const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+    const sphere = new THREE.Mesh(pooledGeo.targetSphere, pooledMat.targetRed);
     sphere.position.y = 105;
     group.add(sphere);
 
     // Ring around sphere
-    const ringGeo = new THREE.TorusGeometry(15, 2, 8, 32);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xff4444 });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
+    const ring = new THREE.Mesh(pooledGeo.targetRing, pooledMat.targetRing);
     ring.position.y = 105;
     ring.rotation.x = Math.PI / 2;
     group.add(ring);
@@ -476,7 +482,7 @@ export function updateTargetMarker3D(terrainElevation) {
 export function clearTargetMarker3D() {
     if (!targetMarker3D || !scene) return;
     scene.remove(targetMarker3D);
-    targetMarker3D.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+    // geometry/materials are pooled — just remove from scene
     targetMarker3D = null;
 }
 
@@ -487,10 +493,9 @@ export function clearTargetMarker3D() {
 export function updateTrafficMarkers3D(nearest) {
     if (!scene) return;
 
-    // Remove old markers
+    // Remove old markers (geometry/materials are pooled — just remove from scene)
     for (const m of trafficMarkers3D) {
         scene.remove(m);
-        m.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
     }
     trafficMarkers3D = [];
 
@@ -504,13 +509,8 @@ export function updateTrafficMarkers3D(nearest) {
         const group = new THREE.Group();
         group.position.set(pos.x, alt, pos.z);
 
-        // Wireframe pyramid — large enough to be visible from drone altitude
-        const coneGeo = new THREE.ConeGeometry(120, 200, 4);
-        const coneMat = new THREE.MeshBasicMaterial({
-            color: 0xff2222, wireframe: true,
-            depthTest: false, transparent: true, opacity: 0.9
-        });
-        const cone = new THREE.Mesh(coneGeo, coneMat);
+        // Wireframe pyramid (pooled geometry/material)
+        const cone = new THREE.Mesh(pooledGeo.trafficCone, pooledMat.trafficRed);
         cone.rotation.x = Math.PI; // point down
         group.add(cone);
 

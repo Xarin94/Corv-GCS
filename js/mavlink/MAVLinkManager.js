@@ -67,8 +67,6 @@ function handleMessage(msg) {
         }
     }
 
-    // Dispatch global update event (mirrors serialUpdate pattern)
-    window.dispatchEvent(new CustomEvent('serialUpdate'));
 }
 
 /**

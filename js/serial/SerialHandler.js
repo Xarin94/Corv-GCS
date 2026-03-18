@@ -141,6 +141,4 @@ function parseNavigationPacket(dv) {
 
     // Acceleration data comes from MAVLink (SCALED_IMU), not from binary protocol
 
-    // Dispatch update event
-    window.dispatchEvent(new CustomEvent('serialUpdate'));
 }
