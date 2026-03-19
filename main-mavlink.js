@@ -293,7 +293,9 @@ function initMAVLinkHandlers(win) {
 
             port.on('data', (data) => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send('corv-serial-data', data);
+                    // Convert Buffer to Uint8Array for clean IPC serialization through contextBridge
+                    const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+                    mainWindow.webContents.send('corv-serial-data', bytes);
                 }
             });
 

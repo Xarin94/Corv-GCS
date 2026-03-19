@@ -36,7 +36,17 @@ export async function connectSerial(portPath, baudRate = 460800) {
     // Listen for incoming serial data from main process
     window.corvSerial.onData((data) => {
         if (STATE.mode !== 'LIVE') return;
-        const chunk = new Uint8Array(data);
+        // IPC data may arrive as Uint8Array, ArrayBuffer, or plain object — normalize
+        let chunk;
+        if (data instanceof Uint8Array) {
+            chunk = data;
+        } else if (data instanceof ArrayBuffer) {
+            chunk = new Uint8Array(data);
+        } else if (data && data.length !== undefined) {
+            chunk = new Uint8Array(Object.values(data));
+        } else {
+            return;
+        }
         if (bufferLen + chunk.length > buffer.length) bufferLen = 0;
         buffer.set(chunk, bufferLen);
         bufferLen += chunk.length;
