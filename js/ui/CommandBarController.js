@@ -4,7 +4,7 @@
  */
 
 import { STATE } from '../core/state.js';
-import { getGPSFixName, getAvailableFlightModes } from '../mavlink/MAVLinkStateMapper.js';
+import { getGPSFixName, getAvailableFlightModes, getVehicleTypeName } from '../mavlink/MAVLinkStateMapper.js';
 import {
     armVehicle, disarmVehicle, setFlightMode,
     takeoff, returnToLaunch, setMissionSpeed,
@@ -95,7 +95,7 @@ const MODE_CATEGORIES = {
     // Manual modes (yellow)
     STABILIZE: 'manual', ACRO: 'manual', MANUAL: 'manual', TRAINING: 'manual',
     // Assisted modes (cyan)
-    ALT_HOLD: 'assisted', POSHOLD: 'assisted', LOITER: 'assisted',
+    ALT_HOLD: 'assisted', POSHOLD: 'assisted', LOITER: 'assisted', FBWA: 'assisted', FBWB: 'assisted',
     CIRCLE: 'assisted', GUIDED: 'assisted', SPORT: 'assisted',
     FLOWHOLD: 'assisted', FOLLOW: 'assisted', ZIGZAG: 'assisted',
     // Auto modes (green)
@@ -125,6 +125,8 @@ export function initCommandBar() {
         speedInput: document.getElementById('cmd-speed-input'),
         rssi: document.getElementById('cmd-rssi'),
         autoBtn: document.getElementById('cmd-auto'),
+        fbwaBtn: document.getElementById('cmd-fbwa'),
+        posholdBtn: document.getElementById('cmd-poshold'),
         flightTime: document.getElementById('cmd-flight-time')
     };
 
@@ -176,6 +178,22 @@ export function initCommandBar() {
         els.autoBtn.addEventListener('click', async () => {
             if (STATE.connectionType === 'none' || STATE.connectionType === 'corv-binary') return;
             try { await setFlightMode('AUTO'); } catch (err) { alert('AUTO mode failed: ' + err.message); }
+        });
+    }
+
+    // FBWA (plane only)
+    if (els.fbwaBtn) {
+        els.fbwaBtn.addEventListener('click', async () => {
+            if (STATE.connectionType === 'none' || STATE.connectionType === 'corv-binary') return;
+            try { await setFlightMode('FBWA'); } catch (err) { alert('FBWA mode failed: ' + err.message); }
+        });
+    }
+
+    // POSHOLD (copter only)
+    if (els.posholdBtn) {
+        els.posholdBtn.addEventListener('click', async () => {
+            if (STATE.connectionType === 'none' || STATE.connectionType === 'corv-binary') return;
+            try { await setFlightMode('POSHOLD'); } catch (err) { alert('POSHOLD mode failed: ' + err.message); }
         });
     }
 
@@ -340,6 +358,10 @@ export function updateCommandBar() {
     if (STATE.vehicleType !== lastVehicleType && STATE.vehicleType > 0) {
         lastVehicleType = STATE.vehicleType;
         populateFlightModes();
+        // Show FBWA for planes, POSHOLD for copters
+        const vTypeName = getVehicleTypeName(STATE.vehicleType);
+        if (els.fbwaBtn) els.fbwaBtn.style.display = vTypeName === 'Plane' ? '' : 'none';
+        if (els.posholdBtn) els.posholdBtn.style.display = vTypeName === 'Copter' ? '' : 'none';
     }
 
     // Flight mode + color coding
