@@ -2,6 +2,43 @@
  * command-bar.css - GCS Bottom Command Bar
  */
 
+/* ── Command ACK Toast ── */
+.cmd-ack-toast {
+    position: fixed;
+    bottom: 56px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 24px;
+    border-radius: 4px;
+    font-family: var(--font-ui);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    z-index: var(--z-overlay);
+    opacity: 1;
+    transition: opacity 0.5s ease;
+    pointer-events: none;
+    white-space: nowrap;
+}
+.cmd-ack-toast.hidden { display: none; }
+.cmd-ack-toast.fade-out { opacity: 0; }
+.cmd-ack-toast.ack-accepted {
+    background: rgba(0, 255, 136, 0.15);
+    border: 1px solid #00ff88;
+    color: #00ff88;
+}
+.cmd-ack-toast.ack-denied {
+    background: rgba(255, 68, 68, 0.15);
+    border: 1px solid #ff4444;
+    color: #ff4444;
+}
+.cmd-ack-toast.ack-other {
+    background: rgba(255, 153, 0, 0.15);
+    border: 1px solid #ff9900;
+    color: #ff9900;
+}
+
 #gcs-command-bar {
     position: fixed;
     bottom: 0;

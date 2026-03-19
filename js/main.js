@@ -1615,10 +1615,28 @@ function init() {
         pushHudMessage(text, level);
     });
 
-    // Show COMMAND_ACK results on HUD
+    // Command ACK toast overlay
+    let ackHideTimer = 0;
+    let ackFadeTimer = 0;
+    function showAckToast(cmdName, resultName) {
+        const toast = document.getElementById('cmd-ack-toast');
+        if (!toast) return;
+        toast.textContent = `${cmdName}: ${resultName}`;
+        toast.className = 'cmd-ack-toast';
+        const accepted = resultName === 'ACCEPTED' || resultName === 'IN_PROGRESS';
+        const denied = resultName === 'DENIED' || resultName === 'FAILED' || resultName === 'TEMPORARILY_REJECTED';
+        toast.classList.add(accepted ? 'ack-accepted' : denied ? 'ack-denied' : 'ack-other');
+        clearTimeout(ackHideTimer);
+        clearTimeout(ackFadeTimer);
+        ackFadeTimer = setTimeout(() => toast.classList.add('fade-out'), 2500);
+        ackHideTimer = setTimeout(() => toast.classList.add('hidden'), 3000);
+    }
+
+    // Show COMMAND_ACK results on HUD + toast
     window.addEventListener('commandAck', (e) => {
         const { cmdName, resultName, level } = e.detail;
         pushHudMessage(`${cmdName}: ${resultName}`, level);
+        showAckToast(cmdName, resultName);
     });
 
     // In split view the window size doesn't change, but the hud wrapper does.

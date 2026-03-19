@@ -29,6 +29,17 @@ export function initTabs() {
         });
     });
 
+    // Keyboard shortcuts: Ctrl+1..4 for tab switching
+    const TAB_SHORTCUTS = { '1': 'flight-data', '2': 'flight-plan', '3': 'setup', '4': 'sys-config' };
+    document.addEventListener('keydown', (e) => {
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (e.ctrlKey && !e.shiftKey && !e.altKey && TAB_SHORTCUTS[e.key]) {
+            e.preventDefault();
+            switchTab(TAB_SHORTCUTS[e.key]);
+        }
+    });
+
     // Sub-tab switching (generic for all tab containers)
     initSubTabs();
 
@@ -109,7 +120,7 @@ function initSetupVerticalNav() {
 /**
  * Switch to a tab
  */
-function switchTab(tabName) {
+export function switchTab(tabName) {
     if (currentTab === tabName) return;
 
     // Deactivate all tabs and content
