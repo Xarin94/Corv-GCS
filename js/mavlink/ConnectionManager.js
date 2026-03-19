@@ -25,9 +25,8 @@ export async function connect(type, options = {}) {
 
     switch (type) {
         case 'corv-binary':
-            // Use existing WebSerial handler
-            await connectSerial();
-            currentConnection = { type };
+            await connectSerial(options.port || '', options.baudRate || 460800);
+            currentConnection = { type, ...options };
             break;
 
         case 'mavlink-serial':
@@ -74,7 +73,7 @@ export async function disconnect() {
     if (!currentConnection) return;
 
     if (currentConnection.type === 'corv-binary') {
-        // WebSerial disconnect not easily supported, just update state
+        await window.corvSerial.disconnect();
         STATE.connected = false;
         STATE.connectionType = 'none';
     } else {

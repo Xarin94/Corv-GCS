@@ -1386,7 +1386,10 @@ function initSetupTab() {
                     const port = parseInt(document.getElementById('setup-udp-port')?.value) || 14550;
                     await connect('mavlink-udp', { host, port });
                 } else if (type === 'corv-binary') {
-                    await connect('corv-binary');
+                    const port = document.getElementById('setup-serial-port')?.value;
+                    const baud = parseInt(document.getElementById('setup-baud')?.value) || 460800;
+                    if (!port) { alert('Select a serial port first'); return; }
+                    await connect('corv-binary', { port, baudRate: baud });
                 }
             } catch (e) {
                 alert('Connection failed: ' + e.message);

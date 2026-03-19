@@ -273,6 +273,50 @@ function initMAVLinkHandlers(win) {
         }
     });
 
+    // Connect CORV binary via serial (raw data forwarded to renderer)
+    ipcMain.handle('corv-connect-serial', async (event, portPath, baudRate) => {
+        await disconnectCurrent();
+        ensureSerialLoaded();
+        try {
+            const port = new SerialPort({
+                path: portPath,
+                baudRate: baudRate || 460800,
+                autoOpen: false
+            });
+
+            await new Promise((resolve, reject) => {
+                port.open((err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+
+            port.on('data', (data) => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send('corv-serial-data', data);
+                }
+            });
+
+            port.on('error', (err) => {
+                console.error('[corv] Serial error:', err.message);
+                sendConnectionState('DISCONNECTED');
+            });
+
+            port.on('close', () => {
+                console.log('[corv] Serial port closed');
+                sendConnectionState('DISCONNECTED');
+            });
+
+            activeConnection = { type: 'serial', port };
+            sendConnectionState('CONNECTED');
+            console.log(`[corv] Connected to ${portPath} at ${baudRate} baud`);
+            return { success: true };
+        } catch (e) {
+            console.error('[corv] Serial connect failed:', e.message);
+            throw e;
+        }
+    });
+
     // Disconnect
     ipcMain.handle('mavlink-disconnect', async () => {
         await disconnectCurrent();
