@@ -273,7 +273,7 @@ function initMAVLinkHandlers(win) {
         }
     });
 
-    // Connect CORV binary via serial (raw data forwarded to renderer)
+    // Connect CORV binary via serial — parse packets and emit as mavlink-message
     ipcMain.handle('corv-connect-serial', async (event, portPath, baudRate) => {
         await disconnectCurrent();
         ensureSerialLoaded();
@@ -291,11 +291,53 @@ function initMAVLinkHandlers(win) {
                 });
             });
 
-            port.on('data', (data) => {
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    // Convert Buffer to Uint8Array for clean IPC serialization through contextBridge
-                    const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-                    mainWindow.webContents.send('corv-serial-data', bytes);
+            // CORV binary packet parser state
+            const corvBuf = Buffer.alloc(4096);
+            let corvLen = 0;
+
+            port.on('data', (chunk) => {
+                if (!mainWindow || mainWindow.isDestroyed()) return;
+
+                // Append chunk to parser buffer
+                if (corvLen + chunk.length > corvBuf.length) corvLen = 0;
+                chunk.copy(corvBuf, corvLen);
+                corvLen += chunk.length;
+
+                // Process complete packets
+                let again = true;
+                while (again && corvLen >= 5) {
+                    again = false;
+
+                    // Find sync 0xA5 0x5A
+                    let si = -1;
+                    for (let i = 0; i < corvLen - 1; i++) {
+                        if (corvBuf[i] === 0xA5 && corvBuf[i + 1] === 0x5A) { si = i; break; }
+                    }
+                    if (si > 0) { corvBuf.copyWithin(0, si, corvLen); corvLen -= si; si = 0; }
+                    if (si === -1) { if (corvLen > 0) { corvBuf[0] = corvBuf[corvLen - 1]; corvLen = 1; } continue; }
+                    if (corvLen < 5) continue;
+
+                    const pType = corvBuf[2];
+                    const pLen = corvBuf[3];
+                    const total = 5 + pLen + 2;
+                    if (corvLen < total) continue;
+
+                    // CRC-16-CCITT check (over bytes 2..2+3+pLen-1)
+                    const crcCalc = corvCRC16(corvBuf, 2, 3 + pLen);
+                    const crcRecv = corvBuf[total - 2] | (corvBuf[total - 1] << 8);
+
+                    if (crcCalc === crcRecv) {
+                        const payload = Buffer.from(corvBuf.subarray(5, 5 + pLen));
+                        if (pType === 0x01) corvEmitNavigation(payload);
+                        else if (pType === 0x02) corvEmitDebug(payload);
+                        corvBuf.copyWithin(0, total, corvLen);
+                        corvLen -= total;
+                        again = true;
+                    } else {
+                        corvBuf.copyWithin(0, 1, corvLen);
+                        corvLen -= 1;
+                        again = true;
+                    }
                 }
             });
 
@@ -771,5 +813,121 @@ function registerRawPacketCallback(cb) { rawPacketCallback = typeof cb === 'func
 // GCS output mute flag — when true, suppress ALL outgoing messages (heartbeat, RTK, RC override, commands)
 let gcsOutputMuted = false;
 function isGcsOutputMuted() { return gcsOutputMuted; }
+
+// ── CORV Binary Protocol helpers ──────────────────────────────────────────────
+
+/**
+ * CRC-16-CCITT (poly 0x1021, init 0xFFFF)
+ */
+function corvCRC16(buf, offset, length) {
+    let crc = 0xFFFF;
+    for (let i = offset; i < offset + length; i++) {
+        crc ^= buf[i] << 8;
+        for (let b = 0; b < 8; b++) {
+            crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xFFFF : (crc << 1) & 0xFFFF;
+        }
+    }
+    return crc;
+}
+
+/**
+ * Send a synthetic mavlink-message to the renderer
+ */
+function corvSendMsg(msgId, data) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('mavlink-message', { msgId, data, sysId: 1, compId: 1 });
+    }
+}
+
+/**
+ * Parse CORV Navigation packet (0x01, 104-byte payload) and emit as MAVLink messages
+ */
+function corvEmitNavigation(p) {
+    // Attitude (offsets 4-9: int16 scaled /1000 → radians)
+    const roll  = p.readInt16LE(4) / 1000.0;
+    const pitch = p.readInt16LE(6) / 1000.0;
+    const yaw   = p.readInt16LE(8) / 1000.0;
+
+    // ATTITUDE (30) — radians
+    corvSendMsg(30, { roll, pitch, yaw });
+
+    // Position (offsets 10-29)
+    const lat = p.readDoubleLE(10);
+    const lon = p.readDoubleLE(18);
+    const alt_m = p.readFloatLE(26);
+
+    // Velocity NED (offsets 30-41) — m/s
+    const vn = p.readFloatLE(30);
+    const ve = p.readFloatLE(34);
+    const vd = p.readFloatLE(38);
+
+    // GLOBAL_POSITION_INT (33) — expects int7 lat/lon, mm alt, cm/s velocity
+    corvSendMsg(33, {
+        lat: Math.round(lat * 1e7),
+        lon: Math.round(lon * 1e7),
+        alt: Math.round(alt_m * 1000),
+        vx: Math.round(vn * 100),
+        vy: Math.round(ve * 100),
+        vz: Math.round(vd * 100)
+    });
+
+    // Air data (offsets 54-69)
+    const airspeed    = p.readFloatLE(54);
+    const groundspeed = p.readFloatLE(58);
+
+    // VFR_HUD (74)
+    corvSendMsg(74, {
+        airspeed,
+        groundspeed,
+        climb: -vd
+    });
+
+    // IMU (offsets 70-87: accel int16 /100 → m/s², gyro float rad/s)
+    const ax = p.readInt16LE(70) / 100.0;
+    const ay = p.readInt16LE(72) / 100.0;
+    const az = p.readInt16LE(74) / 100.0;
+
+    // SCALED_IMU (26) — expects mG (milliG)
+    corvSendMsg(26, {
+        xacc: Math.round(ax / 9.81 * 1000),
+        yacc: Math.round(ay / 9.81 * 1000),
+        zacc: Math.round(az / 9.81 * 1000)
+    });
+
+    // GPS quality (offsets 96-101)
+    const fixType   = p.readUInt8(96);
+    const numSat    = p.readUInt8(97);
+    const hdop      = p.readFloatLE(98);
+
+    // GPS_RAW_INT (24) — eph in cm
+    corvSendMsg(24, {
+        fixType,
+        satellitesVisible: numSat,
+        eph: Math.round(hdop * 100)
+    });
+
+    // Status flags (offset 102-103)
+    const flags = p.readUInt16LE(102);
+
+    // Synthetic HEARTBEAT (0) — keep UI alive, armed based on INITIALIZED flag
+    corvSendMsg(0, {
+        baseMode: (flags & 0x0002) ? 209 : 81,  // INITIALIZED → armed-like
+        customMode: 0,
+        autopilot: 0,
+        type: 1  // fixed wing
+    });
+}
+
+/**
+ * Parse CORV Debug packet (0x02, 64-byte payload) and emit as MAVLink messages
+ */
+function corvEmitDebug(p) {
+    // GPS accuracy (offsets 44-51)
+    // No direct MAVLink equivalent used by the GCS, but we could emit STATUSTEXT
+    // Performance metrics could go to console for now
+    const loopTime   = p.readUInt16LE(36);
+    const filterTime = p.readUInt16LE(38);
+    console.log(`[corv] Debug: loop=${loopTime}us filter=${filterTime}us`);
+}
 
 module.exports = { initMAVLinkHandlers, cleanup, sendRawBuffer, getNextSequenceNumber, registerRawPacketCallback, isGcsOutputMuted };

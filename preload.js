@@ -113,13 +113,10 @@ contextBridge.exposeInMainWorld('sitl', {
   onStatusUpdate: (callback) => ipcRenderer.on('sitl-status-update', (event, data) => callback(data))
 });
 
-// CORV Binary serial API bridge
+// CORV Binary serial API bridge (parsing happens in main process)
 contextBridge.exposeInMainWorld('corvSerial', {
   connect: (portPath, baudRate) => ipcRenderer.invoke('corv-connect-serial', portPath, baudRate),
-  disconnect: () => ipcRenderer.invoke('mavlink-disconnect'),
-  onData: (callback) => ipcRenderer.on('corv-serial-data', (event, data) => callback(data)),
-  onConnectionState: (callback) => ipcRenderer.on('mavlink-connection-state', (event, state) => callback(state)),
-  listPorts: () => ipcRenderer.invoke('serial-list-ports')
+  disconnect: () => ipcRenderer.invoke('mavlink-disconnect')
 });
 
 // MAVLink API bridge
