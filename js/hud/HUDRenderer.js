@@ -18,6 +18,7 @@ const MAX_HUD_MESSAGES = 5;
 const HUD_MSG_DURATION = 5000; // ms
 let prevArmedState = false;
 let armedFlashTimer = 0;
+let disarmedLabelEl = null;
 
 // Optional dedicated G-load widget canvas (DOM widget)
 let gCanvas = null;
@@ -793,22 +794,10 @@ function drawHudMessages() {
         prevArmedState = STATE.armed;
     }
 
-    // Draw DISARMED flashing text (like Mission Planner)
-    if (!STATE.armed) {
-        armedFlashTimer += 0.05;
-        const alpha = 0.4 + 0.6 * Math.abs(Math.sin(armedFlashTimer * 2));
-        ctx.save();
-        const fontSize = Math.max(20, Math.min(36, size.width * 0.035));
-        setFont(fontSize, 'px');
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = `rgba(255, 80, 80, ${alpha})`;
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.lineWidth = 3;
-        const y = size.height * 0.88;
-        ctx.strokeText('DISARMED', size.width / 2, y);
-        ctx.fillText('DISARMED', size.width / 2, y);
-        ctx.restore();
+    // Update disarmed label visibility (HTML element, not canvas)
+    if (!disarmedLabelEl) disarmedLabelEl = document.getElementById('disarmed-label');
+    if (disarmedLabelEl) {
+        disarmedLabelEl.classList.toggle('hidden', STATE.armed);
     }
 
     // Draw message list (bottom-left, like Mission Planner)
@@ -885,10 +874,21 @@ export function drawHUD() {
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
     ctx.clearRect(0, 0, size.width, size.height);
 
-    // Set default style
+    // Set default style — HUD color shifts red/orange when disarmed
     ctx.lineWidth = style.lineWidth;
-    ctx.strokeStyle = style.color;
-    ctx.fillStyle = style.color;
+    if (STATE.armed) {
+        ctx.strokeStyle = style.color;
+        ctx.fillStyle = style.color;
+    } else {
+        armedFlashTimer += 0.03;
+        const t = (Math.sin(armedFlashTimer * 2.5) + 1) / 2; // 0..1
+        const r = 255;
+        const g = Math.round(40 + t * 100); // 40..140 (red → orange)
+        const b = Math.round(t * 20);       // 0..20
+        const disarmedColor = `rgba(${r}, ${g}, ${b}, 1)`;
+        ctx.strokeStyle = disarmedColor;
+        ctx.fillStyle = disarmedColor;
+    }
 
     // === DYNAMIC UI (center, rotated with aircraft) ===
     ctx.translate(size.width / 2, size.height / 2);

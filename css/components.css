@@ -140,6 +140,33 @@ button.ui-btn.recording {
     50% { opacity: 0.4; }
 }
 
+/* DISARMED LABEL */
+.disarmed-label {
+    font-family: var(--font-data);
+    font-size: clamp(14px, 1.5vw, 22px);
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-align: center;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.5);
+    animation: disarmed-pulse 1.8s ease-in-out infinite;
+    text-shadow: 0 0 8px rgba(255, 80, 0, 0.6);
+}
+
+.disarmed-label.hidden {
+    display: none;
+}
+
+@keyframes disarmed-pulse {
+    0%   { color: #ff2020; opacity: 1; }
+    25%  { color: #ff6600; opacity: 0.85; }
+    50%  { color: #ff3300; opacity: 0.5; }
+    75%  { color: #ff8800; opacity: 0.85; }
+    100% { color: #ff2020; opacity: 1; }
+}
+
 /* DATA TAPES */
 .tape-col {
     display: flex;
