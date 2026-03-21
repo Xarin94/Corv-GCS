@@ -57,19 +57,49 @@ export function cachedTileLayer(urlTemplate, options = {}) {
         /**
          * Load tile from network using native <img> src (avoids CORS fetch issues).
          * After successful load, opportunistically cache via canvas.toBlob().
+         * If offline, generates a placeholder tile instead of failing silently.
          */
         _loadFromNetwork: function (tile, coords, z, done) {
+            if (!navigator.onLine) {
+                this._placeholderTile(tile, done);
+                return;
+            }
+
             const tileUrl = this.getTileUrl(coords);
+            let retried = false;
 
             tile.onload = () => {
                 done(null, tile);
-                // Opportunistic cache: draw to canvas → toBlob → IndexedDB
                 this._cacheFromImg(tile, provider, z, coords.x, coords.y);
             };
-            tile.onerror = (err) => {
-                done(err || new Error('tile load error'), tile);
+            tile.onerror = () => {
+                if (!retried) {
+                    retried = true;
+                    setTimeout(() => { tile.src = tileUrl; }, 2000);
+                    return;
+                }
+                this._placeholderTile(tile, done);
             };
             tile.src = tileUrl;
+        },
+
+        /**
+         * Generate a dark placeholder tile with "OFFLINE" text for uncached areas.
+         */
+        _placeholderTile: function (tile, done) {
+            const c = document.createElement('canvas');
+            c.width = 256; c.height = 256;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, 256, 256);
+            ctx.strokeStyle = 'rgba(0,210,255,0.08)';
+            ctx.strokeRect(0, 0, 256, 256);
+            ctx.fillStyle = 'rgba(0,210,255,0.15)';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('OFFLINE', 128, 132);
+            tile.src = c.toDataURL();
+            tile.onload = () => done(null, tile);
         },
 
         /**
