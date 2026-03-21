@@ -46,15 +46,24 @@ contextBridge.exposeInMainWorld('devtools', {
 
 // Preload bridge: call the main process to read .hgt files (avoid using fs in the preload script)
 contextBridge.exposeInMainWorld('topography', {
+  // Returns array of filenames (strings), NOT file contents
   load: async (folderName = 'topography') => {
     try {
-      // Ask main process to load files; returns array of { name, arrayBuffer }
-      const files = await ipcRenderer.invoke('topography-load', folderName);
-      console.debug('topography.load: main returned', files && files.length ? files.length : 0, 'files');
-      return files || [];
+      const names = await ipcRenderer.invoke('topography-load', folderName);
+      console.debug('topography.load: found', names ? names.length : 0, 'files');
+      return names || [];
     } catch (e) {
       console.debug('topography.load: ipc invoke failed', e);
       return [];
+    }
+  },
+  // Load a single HGT file by name — returns ArrayBuffer or null
+  loadOne: async (filename) => {
+    try {
+      return await ipcRenderer.invoke('topography-load-one', filename);
+    } catch (e) {
+      console.debug('topography.loadOne: ipc invoke failed', e);
+      return null;
     }
   },
   save: async (filename, arrayBuffer) => {

@@ -47,10 +47,10 @@ ipcMain.handle('models-load', async (event, filename) => {
   }
 });
 
-// IPC handler to load .hgt files from the app folder (safely in main process)
+// IPC handler to LIST available .hgt files (names only, no data — avoids OOM)
 ipcMain.handle('topography-load', async (event, folderName = 'topography') => {
   const candidates = [folderName, 'topo'];
-  const base = __dirname; // folder where main.js sits
+  const base = __dirname;
 
   for (const cand of candidates) {
     const dir = path.join(base, cand);
@@ -62,26 +62,31 @@ ipcMain.handle('topography-load', async (event, folderName = 'topography') => {
     }
 
     const entries = await fs.promises.readdir(dir);
-    const out = [];
-    for (const ent of entries) {
-      if (ent.toLowerCase().endsWith('.hgt')) {
-        const full = path.join(dir, ent);
-        try {
-          const buf = await fs.promises.readFile(full);
-          const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-          out.push({ name: ent.toUpperCase(), arrayBuffer: ab });
-        } catch (err) {
-          // ignore unreadable
-        }
-      }
-    }
-
-    console.log(`topography-load: found ${out.length} files in ${dir}`);
-    return out;
+    const names = entries.filter(e => e.toLowerCase().endsWith('.hgt')).map(e => e.toUpperCase());
+    console.log(`topography-load: found ${names.length} .hgt files in ${dir}`);
+    return names;
   }
 
   console.log('topography-load: no folder found');
   return [];
+});
+
+// IPC handler to load a SINGLE .hgt file by name (on-demand, lazy)
+ipcMain.handle('topography-load-one', async (event, filename) => {
+  if (!filename || /[\/\\]/.test(filename)) return null;
+  const candidates = ['topo', 'topography'];
+  for (const cand of candidates) {
+    const full = path.join(__dirname, cand, filename);
+    try {
+      const buf = await fs.promises.readFile(full);
+      const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+      console.log(`topography-load-one: ${filename} (${ab.byteLength} bytes)`);
+      return ab;
+    } catch (err) {
+      // try next candidate
+    }
+  }
+  return null;
 });
 
 // IPC handler to save a single .hgt file to the topo folder

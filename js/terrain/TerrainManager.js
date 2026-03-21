@@ -50,6 +50,40 @@ const activeChunks = {};
 const runwayObjects = [];
 let cleanupIntervalId = null;
 
+// Set of HGT filenames available on disk (populated at startup, lazy-loaded on demand)
+const availableHgtFiles = new Set();
+const hgtLoadingInProgress = new Set(); // prevent duplicate loads
+
+/** Register which HGT files are available on disk without loading them */
+export function setAvailableHgtFiles(names) {
+    names.forEach(n => availableHgtFiles.add(n.toUpperCase()));
+    console.log(`[terrain] ${availableHgtFiles.size} HGT files available on disk (lazy)`);
+}
+
+/** Lazy-load a single HGT file from disk via IPC if not already loaded */
+async function ensureHgtLoaded(filename) {
+    if (hgtFiles[filename]) return true;
+    if (!availableHgtFiles.has(filename)) return false;
+    if (hgtLoadingInProgress.has(filename)) return false; // already loading
+    if (!window.topography || !window.topography.loadOne) return false;
+
+    hgtLoadingInProgress.add(filename);
+    try {
+        let ab = await window.topography.loadOne(filename);
+        if (!ab) return false;
+        if (ab.buffer) ab = ab.buffer; // unwrap if needed
+        const file = new File([ab], filename, { type: 'application/octet-stream' });
+        addHGTFile(filename, file);
+        console.log(`[terrain] Lazy-loaded ${filename}`);
+        return true;
+    } catch (e) {
+        console.warn(`[terrain] Failed to lazy-load ${filename}`, e);
+        return false;
+    } finally {
+        hgtLoadingInProgress.delete(filename);
+    }
+}
+
 // Caching
 let lastTerrainQuery = { lat: null, lon: null, height: null };
 
@@ -506,7 +540,13 @@ export async function getTerrainElevationAsync(lat, lon) {
         const latNum = String(Math.abs(latBase)).padStart(2, '0');
         const lonNum = String(Math.abs(lonBase)).padStart(3, '0');
         const filename = `${latPre}${latNum}${lonPre}${lonNum}.HGT`;
-        const file = hgtFiles[filename];
+        // Try from already-loaded files first
+        let file = hgtFiles[filename];
+        // If not loaded yet, try lazy-load from disk
+        if (!file && availableHgtFiles.has(filename)) {
+            await ensureHgtLoaded(filename);
+            file = hgtFiles[filename];
+        }
         if (file) {
             const buf = await file.arrayBuffer();
             const len = buf.byteLength;
@@ -618,14 +658,21 @@ export function getHgtFileBounds() {
 export async function updateTerrainChunks() {
     const currentLat = STATE.lat;
     const currentLon = STATE.lon;
-    
-    for (let la = Math.floor(currentLat - 1); la <= Math.floor(currentLat + 1); la++) {
-        for (let lo = Math.floor(currentLon - 1); lo <= Math.floor(currentLon + 1); lo++) {
+
+    for (let la = Math.floor(currentLat - 2); la <= Math.floor(currentLat + 2); la++) {
+        for (let lo = Math.floor(currentLon - 2); lo <= Math.floor(currentLon + 2); lo++) {
             const latStr = (la >= 0 ? 'N' : 'S') + Math.abs(la).toString().padStart(2, '0');
             const lonStr = (lo >= 0 ? 'E' : 'W') + Math.abs(lo).toString().padStart(3, '0');
             const filename = `${latStr}${lonStr}.HGT`;
             if (hgtFiles[filename]) {
                 processHGTFile(hgtFiles[filename], la, lo);
+            } else if (availableHgtFiles.has(filename)) {
+                // Lazy-load from disk, then process
+                ensureHgtLoaded(filename).then(ok => {
+                    if (ok && hgtFiles[filename]) {
+                        processHGTFile(hgtFiles[filename], la, lo);
+                    }
+                });
             }
         }
     }

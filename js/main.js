@@ -37,7 +37,7 @@ import { initCorridor, updateCorridor, setCorridorVisible, getPredictionTime } f
 import {
     initTerrain, getTerrainElevationCached, updateTerrainChunks,
     updateTerrainHillshading, setHillshadeNeedsUpdate,
-    addHGTFile, getHGTFileCount, getActiveChunks,
+    addHGTFile, getHGTFileCount, getActiveChunks, setAvailableHgtFiles,
     getChunkCreationQueue, getTileLoadQueue, getCurrentTileLoads,
     getTotalTilesToLoad, getTilesLoaded,
     getTerrainElevationFromHGT, getRunwayObjects,
@@ -1468,40 +1468,23 @@ async function loadTopographyAtStart() {
         }
 
         console.debug('Invoking topography.load...');
-        const files = await window.topography.load('topography');
+        // Now returns just filenames (strings), not file contents
+        const names = await window.topography.load('topography');
 
-        if (!files || files.length === 0) {
+        if (!names || names.length === 0) {
             setAutoLoadAttempted();
             setStatusMessage('AUTO HGT LOAD: no files found', '#ffcc00');
             scheduleHideLoadingOverlaySoon();
             return;
         }
 
-        let c = 0;
-        for (const f of files) {
-            try {
-                let data = f.arrayBuffer || f.arraybuffer || f.buffer || null;
-                if (data && data.buffer) data = data.buffer;
-                if (!data) continue;
+        // Register available files for lazy on-demand loading
+        setAvailableHgtFiles(names);
+        setStatusMessage(`${names.length} HGT AVAILABLE (lazy)`, 'var(--accent-cyan)');
 
-                const file = new File([data], f.name, { type: 'application/octet-stream' });
-                addHGTFile(f.name, file);
-                c++;
-            } catch (err) {
-                console.warn('Error creating File from topography payload', f && f.name, err);
-            }
-        }
-
-        if (c > 0) {
-            setStatusMessage(`${c} HGT LOADED (auto)`, 'var(--accent-cyan)');
-            // Start terrain loading - setAutoLoadAttempted will be called 
-            // by checkInitialLoadComplete once chunks start appearing
-            updateTerrainChunks();
-        } else {
-            setAutoLoadAttempted();
-            setStatusMessage('AUTO HGT LOAD: no valid files', '#ffcc00');
-            scheduleHideLoadingOverlaySoon();
-        }
+        // Trigger terrain update — will lazy-load nearby tiles
+        updateTerrainChunks();
+        setAutoLoadAttempted();
     } catch (e) {
         console.warn('Topography load failed', e);
         setAutoLoadAttempted();
