@@ -1710,6 +1710,7 @@ window.toggleGcsMute = async function(forceState) {
         if (chk) chk.checked = _gcsMuted;
         return;
     }
+    localStorage.setItem('gcs-muted', _gcsMuted ? '1' : '0');
     pushHudMessage(_gcsMuted ? 'GCS output MUTED — no messages will be sent' : 'GCS output UNMUTED', _gcsMuted ? 'warning' : 'info');
 };
 
@@ -1755,7 +1756,7 @@ window.toggleADSB = function(enabled) {
     pushHudMessage(enabled ? 'ADS-B traffic enabled' : 'ADS-B traffic disabled', 'info');
 };
 
-// Sync ADS-B checkbox in sidebar with sys config
+// Sync ADS-B checkbox in sidebar with sys config + persist
 window.toggleADSB = (function(orig) {
     return function(enabled) {
         orig(enabled);
@@ -1763,6 +1764,7 @@ window.toggleADSB = (function(orig) {
         const syscfgChk = document.getElementById('syscfg-adsb-enable');
         if (sidebarChk) sidebarChk.checked = enabled;
         if (syscfgChk) syscfgChk.checked = enabled;
+        localStorage.setItem('adsb-enabled', enabled ? '1' : '0');
     };
 })(window.toggleADSB);
 
@@ -1773,22 +1775,41 @@ window.updateBatteryVoltageRange = function() {
     const vmax = parseFloat(document.getElementById('syscfg-bat-vmax')?.value) || 12.6;
     window._batVMin = vmin;
     window._batVMax = vmax;
-    // Auto-detect cells: assume 3.0V empty / 4.2V full per cell
     const cells = Math.round(vmax / 4.2);
     const cellsEl = document.getElementById('syscfg-bat-cells');
     if (cellsEl) cellsEl.textContent = cells + 'S';
-    // Save to localStorage
     localStorage.setItem('bat-vmin', vmin);
     localStorage.setItem('bat-vmax', vmax);
 };
 
-// Restore battery settings on load
-(function restoreBatSettings() {
+// Restore all GCS settings on load
+(function restoreGcsSettings() {
+    // Battery voltage range
     const vmin = parseFloat(localStorage.getItem('bat-vmin'));
     const vmax = parseFloat(localStorage.getItem('bat-vmax'));
     if (!isNaN(vmin)) { window._batVMin = vmin; const el = document.getElementById('syscfg-bat-vmin'); if (el) el.value = vmin; }
     if (!isNaN(vmax)) { window._batVMax = vmax; const el = document.getElementById('syscfg-bat-vmax'); if (el) el.value = vmax; }
     window.updateBatteryVoltageRange();
+
+    // ADS-B toggle
+    const adsbSaved = localStorage.getItem('adsb-enabled');
+    if (adsbSaved === '0') {
+        _adsbEnabled = false;
+        const bar = document.getElementById('traffic-bar');
+        if (bar) bar.style.display = 'none';
+        const sidebarChk = document.getElementById('chk-adsb-enable');
+        const syscfgChk = document.getElementById('syscfg-adsb-enable');
+        if (sidebarChk) sidebarChk.checked = false;
+        if (syscfgChk) syscfgChk.checked = false;
+        if (adsbPollTimer) { clearInterval(adsbPollTimer); adsbPollTimer = null; }
+    }
+
+    // GCS Mute
+    const muteSaved = localStorage.getItem('gcs-muted');
+    if (muteSaved === '1') {
+        const muteChk = document.getElementById('chk-mute-gcs');
+        if (muteChk) { muteChk.checked = true; window.toggleGcsMute(true); }
+    }
 })();
 
 // Download traffic CSV from menu
