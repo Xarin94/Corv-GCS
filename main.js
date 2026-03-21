@@ -224,54 +224,7 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
-// ── CRV telemetry recording ────────────────────────────────────────────
-let activeCRVStream = null;
-let activeCRVPath = null;
-
-function getCRVLogsDir() {
-  const dir = path.join(app.getPath('userData'), 'logs');
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  return dir;
-}
-
-ipcMain.handle('crv-get-logs-dir', () => {
-  return getCRVLogsDir();
-});
-
-ipcMain.handle('crv-start-recording', async () => {
-  const logsDir = getCRVLogsDir();
-  const now = new Date();
-  const stamp = now.getFullYear().toString()
-    + String(now.getMonth() + 1).padStart(2, '0')
-    + String(now.getDate()).padStart(2, '0')
-    + '_' + String(now.getHours()).padStart(2, '0')
-    + String(now.getMinutes()).padStart(2, '0')
-    + String(now.getSeconds()).padStart(2, '0');
-  const filePath = path.join(logsDir, `flight_${stamp}.crv`);
-  activeCRVStream = fs.createWriteStream(filePath);
-  activeCRVPath = filePath;
-  console.log(`[CRV] recording to ${filePath}`);
-  return { success: true, filePath };
-});
-
-ipcMain.handle('crv-write-chunk', async (event, arrayBuffer) => {
-  if (!activeCRVStream) return false;
-  activeCRVStream.write(Buffer.from(arrayBuffer));
-  return true;
-});
-
-ipcMain.handle('crv-stop-recording', async () => {
-  if (activeCRVStream) {
-    activeCRVStream.end();
-    activeCRVStream = null;
-  }
-  const p = activeCRVPath;
-  activeCRVPath = null;
-  console.log(`[CRV] recording stopped${p ? ': ' + p : ''}`);
-  return { filePath: p };
-});
+// TLOG recording is handled entirely in main-mavlink.js
 
 // ── ADS-B fetch via OpenSky Network (bypass CORS from main process) ────
 ipcMain.handle('adsb-fetch', async (event, lamin, lomin, lamax, lomax) => {

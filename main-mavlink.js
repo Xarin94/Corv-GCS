@@ -3,9 +3,11 @@
  * Manages serial/UDP connections, MAVLink parsing, heartbeat, and IPC forwarding
  */
 
-const { ipcMain } = require('electron');
+const { ipcMain, app } = require('electron');
 const dgram = require('dgram');
-const { PassThrough } = require('stream');
+const fs = require('fs');
+const path = require('path');
+const { PassThrough, Transform } = require('stream');
 
 // Lazy-load native modules to avoid ABI mismatch at startup
 let SerialPort = null;
@@ -64,12 +66,83 @@ let sequenceNumber = 0;
 // MAVLink protocol instance for sending (initialized lazily)
 let protocol = null;
 
+// ── TLOG recording state ──────────────────────────────────────────────────────
+let tlogStream = null;
+let tlogPath = null;
+let tlogAutoStarted = false;  // track auto-start so we auto-stop on disconnect
+
+function getTlogLogsDir() {
+    const dir = path.join(app.getPath('userData'), 'logs');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    return dir;
+}
+
+function startTlogRecording() {
+    if (tlogStream) return { success: true, filePath: tlogPath };
+    const logsDir = getTlogLogsDir();
+    const now = new Date();
+    const stamp = now.getFullYear()
+        + '-' + String(now.getMonth() + 1).padStart(2, '0')
+        + '-' + String(now.getDate()).padStart(2, '0')
+        + ' ' + String(now.getHours()).padStart(2, '0')
+        + '-' + String(now.getMinutes()).padStart(2, '0')
+        + '-' + String(now.getSeconds()).padStart(2, '0');
+    const filePath = path.join(logsDir, `${stamp}.tlog`);
+    tlogStream = fs.createWriteStream(filePath);
+    tlogPath = filePath;
+    console.log(`[tlog] recording to ${filePath}`);
+    return { success: true, filePath };
+}
+
+function stopTlogRecording() {
+    if (!tlogStream) return { filePath: null };
+    tlogStream.end();
+    tlogStream = null;
+    const p = tlogPath;
+    tlogPath = null;
+    tlogAutoStarted = false;
+    console.log(`[tlog] recording stopped${p ? ': ' + p : ''}`);
+    return { filePath: p };
+}
+
+/**
+ * Write a raw MAVLink packet to the TLOG file with an 8-byte timestamp header.
+ * TLOG format: [uint64 LE microseconds since Unix epoch] [raw MAVLink packet bytes]
+ */
+function writeTlogPacket(rawPacketBuffer) {
+    if (!tlogStream) return;
+    const nowUs = BigInt(Date.now()) * 1000n;
+    const tsBuf = Buffer.alloc(8);
+    tsBuf.writeBigUInt64LE(nowUs, 0);
+    tlogStream.write(tsBuf);
+    tlogStream.write(rawPacketBuffer);
+}
+
+/**
+ * Create a Transform stream that taps raw MAVLink packets for TLOG recording.
+ * Passes data through unchanged (sits between splitter and parser).
+ */
+function createTlogTap() {
+    return new Transform({
+        objectMode: true,
+        transform(chunk, encoding, callback) {
+            writeTlogPacket(chunk);
+            callback(null, chunk);
+        }
+    });
+}
+
 /**
  * Initialize MAVLink IPC handlers
  * @param {BrowserWindow} win - The main browser window
  */
 function initMAVLinkHandlers(win) {
     mainWindow = win;
+
+    // TLOG recording IPC handlers
+    ipcMain.handle('tlog-start-recording', async () => startTlogRecording());
+    ipcMain.handle('tlog-stop-recording', async () => stopTlogRecording());
+    ipcMain.handle('tlog-get-logs-dir', () => getTlogLogsDir());
 
     // List available serial ports
     ipcMain.handle('serial-list-ports', async () => {
@@ -108,11 +181,12 @@ function initMAVLinkHandlers(win) {
                 });
             });
 
-            // Set up MAVLink parsing pipeline
+            // Set up MAVLink parsing pipeline with TLOG tap
             const splitter = new MavLinkPacketSplitter();
+            const tlogTap = createTlogTap();
             const parser = new MavLinkPacketParser();
 
-            port.pipe(splitter).pipe(parser);
+            port.pipe(splitter).pipe(tlogTap).pipe(parser);
 
             parser.on('data', (packet) => {
                 handlePacket(packet);
@@ -147,9 +221,10 @@ function initMAVLinkHandlers(win) {
             const socket = dgram.createSocket('udp4');
             const passthrough = new PassThrough();
             const splitter = new MavLinkPacketSplitter();
+            const tlogTap = createTlogTap();
             const parser = new MavLinkPacketParser();
 
-            passthrough.pipe(splitter).pipe(parser);
+            passthrough.pipe(splitter).pipe(tlogTap).pipe(parser);
 
             let remoteAddress = host || '127.0.0.1';
             let remotePort = port || 14550;
@@ -213,9 +288,10 @@ function initMAVLinkHandlers(win) {
             let socket = new net.Socket();
             const passthrough = new PassThrough();
             const splitter = new MavLinkPacketSplitter();
+            const tlogTap = createTlogTap();
             const parser = new MavLinkPacketParser();
 
-            passthrough.pipe(splitter).pipe(parser);
+            passthrough.pipe(splitter).pipe(tlogTap).pipe(parser);
 
             // Retry TCP connection up to 6 times (SITL may need time to bind)
             for (let attempt = 1; attempt <= 6; attempt++) {
@@ -680,6 +756,9 @@ async function sendToConnection(msg) {
     if (!activeConnection) throw new Error('No active connection');
 
     if (activeConnection.type === 'serial') {
+        // Serialize for TLOG recording, then send
+        const outBuf = protocol.serialize(msg, sequenceNumber);
+        writeTlogPacket(outBuf);
         await send(activeConnection.port, msg, protocol);
     } else if (activeConnection.type === 'udp') {
         const { socket, getRemote, hasRemote } = activeConnection;
@@ -690,11 +769,13 @@ async function sendToConnection(msg) {
         const remote = getRemote();
         const buffer = protocol.serialize(msg, sequenceNumber++);
         sequenceNumber = sequenceNumber & 0xFF;
+        writeTlogPacket(buffer);
         socket.send(buffer, remote.port, remote.address);
     } else if (activeConnection.type === 'tcp') {
         const { socket } = activeConnection;
         const buffer = protocol.serialize(msg, sequenceNumber++);
         sequenceNumber = sequenceNumber & 0xFF;
+        writeTlogPacket(buffer);
         socket.write(buffer);
     }
 }
@@ -764,6 +845,14 @@ async function disconnectCurrent() {
  * Send connection state to renderer
  */
 function sendConnectionState(state) {
+    // Auto-start/stop TLOG recording on connection state changes
+    if (state === 'CONNECTED' && !tlogStream) {
+        startTlogRecording();
+        tlogAutoStarted = true;
+    } else if (state === 'DISCONNECTED' && tlogAutoStarted) {
+        stopTlogRecording();
+    }
+
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('mavlink-connection-state', state);
     }
@@ -773,6 +862,7 @@ function sendConnectionState(state) {
  * Cleanup on app quit
  */
 function cleanup() {
+    stopTlogRecording();
     stopHeartbeat();
     if (activeConnection) {
         try {

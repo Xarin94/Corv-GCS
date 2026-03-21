@@ -56,8 +56,8 @@ import { initMap, updateMap, invalidateSize as invalidateMapSize, updateMissionO
 // Serial imports
 import { connectSerial } from './serial/SerialHandler.js';
 
-// Playback imports
-import { initPlaybackControls, tickPlayback, updateFromLog } from './playback/LogPlayer.js';
+// TLOG Logger import (replaces CRVLogger)
+import { TlogLogger } from './logging/TlogLogger.js';
 
 // UI imports
 import { updateUI, toggleConfig, toggleTelemetry, updateOffset, updateAGLDisplay, setStatusMessage, updateFPSDisplay, initMoreMenu, initConfigAutoClose, initHudCells } from './ui/UIController.js';
@@ -94,8 +94,6 @@ import {
     checkInitialLoadComplete, setAutoLoadAttempted
 } from './ui/LoadingOverlay.js';
 
-// CRV Logger import
-import { CRVLogger } from './logging/CRVLogger.js';
 
 // ============== CAMERA / MODEL (1P / 3P) ==============
 let cameraMode = 'FIRST'; // 'FIRST' | 'THIRD'
@@ -703,11 +701,9 @@ function update3DWorld() {
         }
     }
 
-    if (STATE.mode !== 'PLAYBACK') {
-        updateTrail(planePos.x, totalAlt, planePos.z);
-    }
+    updateTrail(planePos.x, totalAlt, planePos.z);
 
-    if ((STATE.mode === 'PLAYBACK' || STATE.connected) && STATE.lastReloadPos.lat) {
+    if (STATE.connected && STATE.lastReloadPos.lat) {
         const distFromLastReload = calculateDistance(
             STATE.lastReloadPos.lat,
             STATE.lastReloadPos.lon,
@@ -715,14 +711,7 @@ function update3DWorld() {
             STATE.lon
         );
 
-        const reloadDistance = (STATE.mode === 'PLAYBACK')
-            ? (RELOAD_DISTANCE * PLAYBACK_RELOAD_DISTANCE_MULTIPLIER)
-            : RELOAD_DISTANCE;
-
-        const nowMs = performance.now();
-        const cooldownOk = (STATE.mode !== 'PLAYBACK') || ((nowMs - lastMapReloadAt) >= PLAYBACK_RELOAD_COOLDOWN_MS);
-
-        if (distFromLastReload > reloadDistance && cooldownOk) {
+        if (distFromLastReload > RELOAD_DISTANCE) {
             reloadMapAndRunways();
         }
     }
@@ -923,99 +912,8 @@ let demoSpeed = DEMO_BASE_SPEED;
 let demoSpeedTarget = DEMO_BASE_SPEED;
 let demoSpeedVel = 0;
 
-// Storyline panel placement (move into split-map panel during playback)
-let storylineOriginalParent = null;
-let storylineOriginalNextSibling = null;
-
-function updateStorylinePanelPlacement() {
-    const panel = document.getElementById('storyline-panel');
-    if (!panel) return;
-
-    if (!storylineOriginalParent) {
-        storylineOriginalParent = panel.parentElement;
-        storylineOriginalNextSibling = panel.nextSibling;
-    }
-
-    const wantSplitMap = (getViewMode() === 'SPLIT') && (STATE.mode === 'PLAYBACK');
-    const targetParent = wantSplitMap
-        ? document.getElementById('split-map-container')
-        : storylineOriginalParent;
-
-    if (!targetParent) return;
-
-    if (panel.parentElement !== targetParent) {
-        if (!wantSplitMap && storylineOriginalParent) {
-            // Restore original ordering in the DOM when going back.
-            if (storylineOriginalNextSibling && storylineOriginalNextSibling.parentElement === storylineOriginalParent) {
-                storylineOriginalParent.insertBefore(panel, storylineOriginalNextSibling);
-            } else {
-                storylineOriginalParent.appendChild(panel);
-            }
-        } else {
-            targetParent.appendChild(panel);
-        }
-    }
-}
-
-// Playback trail cache (world positions per log entry)
-let playbackWorldCache = null;
-let playbackWorldCacheLen = 0;
-let lastPlaybackTrailIndex = -1;
-const MAX_PLAYBACK_TRAIL_POINTS = 20000;
-
-function buildPlaybackWorldCache() {
-    if (!Array.isArray(STATE.logData) || STATE.logData.length === 0) {
-        playbackWorldCache = null;
-        playbackWorldCacheLen = 0;
-        lastPlaybackTrailIndex = -1;
-        return;
-    }
-    if (playbackWorldCache && playbackWorldCacheLen === STATE.logData.length) return;
-
-    playbackWorldCache = STATE.logData.map((r) => {
-        const s = (r && (r.state || r)) || {};
-        const lat = (typeof s.lat === 'number') ? s.lat : STATE.lat;
-        const lon = (typeof s.lon === 'number') ? s.lon : STATE.lon;
-        const alt = (typeof s.alt === 'number') ? s.alt : 0;
-        const pos = latLonToMeters(lat, lon);
-        const y = alt + STATE.offsetAlt;
-        return { x: pos.x, y, z: pos.z };
-    });
-    playbackWorldCacheLen = STATE.logData.length;
-    lastPlaybackTrailIndex = -1;
-}
-
-function downsampleWorld(points, maxPoints) {
-    if (!points || points.length <= maxPoints) return points;
-    const step = Math.ceil(points.length / maxPoints);
-    const out = [];
-    for (let i = 0; i < points.length; i += step) out.push(points[i]);
-    const last = points[points.length - 1];
-    if (out.length === 0 || out[out.length - 1] !== last) out.push(last);
-    return out;
-}
-
-function updatePlaybackTrailIfNeeded() {
-    if (STATE.mode !== 'PLAYBACK') {
-        // Reset caches when exiting playback
-        lastPlaybackTrailIndex = -1;
-        return;
-    }
-    if (!Array.isArray(STATE.logData) || STATE.logData.length === 0) return;
-
-    buildPlaybackWorldCache();
-    const idx = Math.max(0, Math.min(STATE.logIndex, playbackWorldCacheLen - 1));
-    if (idx === lastPlaybackTrailIndex || !playbackWorldCache) return;
-
-    const prefix = playbackWorldCache.slice(0, idx + 1);
-    setTrailPoints(downsampleWorld(prefix, MAX_PLAYBACK_TRAIL_POINTS));
-    lastPlaybackTrailIndex = idx;
-}
-
-// Map reload throttling (helps in PLAYBACK where position can advance faster)
+// Map reload throttling
 let lastMapReloadAt = 0;
-const PLAYBACK_RELOAD_DISTANCE_MULTIPLIER = 3;
-const PLAYBACK_RELOAD_COOLDOWN_MS = 1500;
 
 function updateFPS() {
     fpsFrameCount++;
@@ -1037,11 +935,6 @@ function animate() {
     
     updateFPS();
     updateSunPosition();
-
-    // Playback handling
-    if (STATE.mode === 'PLAYBACK' && STATE.isPlaying && STATE.logData.length > 0) {
-        tickPlayback(now);
-    }
 
     // Demo mode - fixed-wing survey drone
     if (STATE.mode === 'LIVE' && !STATE.connected) {
@@ -1186,7 +1079,6 @@ function animate() {
         if (cameraMode !== 'THIRD' && (is3DVisible() || isFPVActive())) {
             drawHUD();
         }
-        updatePlaybackTrailIfNeeded();
         update3DWorld();
         updateHomeMarker3D();
 
@@ -1533,31 +1425,6 @@ function init() {
     // Initialize HUD
     initHUD(document.getElementById('hud-canvas'));
     
-    // Initialize playback controls
-    initPlaybackControls();
-
-    // Keep HUD numeric readouts in sync during playback scrubbing/stepping.
-    window.addEventListener('logUpdate', () => {
-        updateUI();
-    });
-
-    // Ensure path/trail snaps correctly on log load/seek.
-    window.addEventListener('logLoaded', () => {
-        playbackWorldCache = null;
-        playbackWorldCacheLen = 0;
-        lastPlaybackTrailIndex = -1;
-        resetTrail();
-        updatePlaybackTrailIfNeeded();
-        updateStorylinePanelPlacement();
-        // Force high-res texture reload for new position
-        resetTextureRefreshPosition();
-    });
-    window.addEventListener('logSeek', () => {
-        lastPlaybackTrailIndex = -1;
-        updatePlaybackTrailIfNeeded();
-        updateStorylinePanelPlacement();
-    });
-    
     // Setup event listeners
     window.onresize = handleResize;
     setupHGTInput();
@@ -1644,9 +1511,6 @@ function init() {
 
     updateMapBrightnessVisibility();
 
-    // Initial placement for playback controls
-    updateStorylinePanelPlacement();
-    
     // Setup satellite toggle state
     window.satelliteEnabled = true;
     try {
@@ -1692,7 +1556,6 @@ window.toggleTrajectory = toggleTrajectory;
 window.toggleViewMode = () => {
     const mode = toggleViewMode();
     handleResize();
-    updateStorylinePanelPlacement();
     return mode;
 };
 window.onFPVButtonClick = onFPVButtonClick;
@@ -1824,9 +1687,9 @@ window.downloadTraffic = function() {
     pushHudMessage(`Traffic CSV downloaded (${STATE.traffic.length} entries)`);
 };
 
-// CRV recording
-const _crvLogger = new CRVLogger();
-window.toggleRecording = () => _crvLogger.toggleRecording();
+// TLOG recording
+const _tlogLogger = new TlogLogger();
+window.toggleRecording = () => _tlogLogger.toggleRecording();
 
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {

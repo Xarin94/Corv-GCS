@@ -52,7 +52,6 @@
         <div class="brand">CORV <span>SYSTEMS</span></div>
         <div class="controls">
             <span id="fps-counter" class="fps-counter">-- FPS</span>
-            <input type="file" id="log-input" class="hidden-input" accept=".json,.txt,.log">
         </div>
     </div>
 
@@ -109,16 +108,6 @@
     <!-- ==================== HUD WRAPPER ==================== -->
     <!-- Contains 3D scene, HUD canvas, and UI overlay -->
     <div id="hud-wrapper">
-
-        <div class="pane-topbar" aria-label="Pane controls">
-            <div class="pane-topbar-inner">
-                <select class="pane-view-select" title="Pane view">
-                    <option value="3d">3D map</option>
-                    <option value="2d">2D map</option>
-                    <option value="nd">ND</option>
-                </select>
-            </div>
-        </div>
 
         <!-- 3D Scene Container -->
         <div id="scene-container"></div>
@@ -259,29 +248,11 @@
     
     <!-- Split Map Container (large map for split view) -->
     <div id="split-map-container">
-        <div class="pane-topbar" aria-label="Pane controls">
-            <div class="pane-topbar-inner">
-                <select class="pane-view-select" title="Pane view">
-                    <option value="3d">3D map</option>
-                    <option value="2d">2D map</option>
-                    <option value="nd">ND</option>
-                </select>
-            </div>
-        </div>
         <div id="split-map"></div>
     </div>
 
     <!-- ND (Navigation Display) container for split view -->
     <div id="nd-container">
-        <div class="pane-topbar" aria-label="Pane controls">
-            <div class="pane-topbar-inner">
-                <select class="pane-view-select" title="Pane view">
-                    <option value="3d">3D map</option>
-                    <option value="2d">2D map</option>
-                    <option value="nd">ND</option>
-                </select>
-            </div>
-        </div>
         <canvas id="nd-canvas"></canvas>
         
         <!-- Toggle button to show/hide sidebar -->
@@ -607,7 +578,6 @@
             <!-- Controls row -->
             <div class="plotly-controls-row">
                 <button id="add-trace-btn" class="ui-btn" title="Add trace (max 4)">+ ADD TRACE</button>
-                <button id="btn-plot-collapse" class="ui-btn" type="button" title="Collapse graph" aria-label="Collapse graph">COLLAPSE</button>
                 <div class="plotly-group plotly-window">
                     <span class="traces-label">WINDOW:</span>
                     <select id="plot-window" title="Plot time window">
@@ -1250,12 +1220,6 @@
                     </div>
                 </div>
                 <div class="setup-panel">
-                    <div class="panel-header">LOG REPLAY</div>
-                    <div class="cfg-row">
-                        <button class="gcs-btn" id="sim-load-log" onclick="document.getElementById('log-input').click()">LOAD LOG FILE</button>
-                    </div>
-                </div>
-                <div class="setup-panel">
                     <div class="panel-header">SITL MANUAL CONNECTION</div>
                     <div class="cfg-row">
                         <label>HOST</label>
@@ -1661,20 +1625,6 @@
     </div>
 
     <!-- ==================== FLOATING PANELS ==================== -->
-
-    <!-- Storyline Player (log playback) -->
-    <div id="storyline-panel">
-        <button class="play-btn" id="btn-play">▶</button>
-        <select id="replay-speed" title="Replay speed">
-            <option value="0.5">0.5x</option>
-            <option value="1" selected>1x</option>
-            <option value="2">2x</option>
-            <option value="4">4x</option>
-            <option value="8">8x</option>
-        </select>
-        <input type="range" id="scrubber" min="0" max="100" value="0" step="1">
-        <div class="time-label" id="time-lbl">0.0s</div>
-    </div>
 
     <!-- Config Panel placeholder (moved to Simulation tab) -->
     <div id="config-panel" class="floating-panel" style="display:none !important;"></div>

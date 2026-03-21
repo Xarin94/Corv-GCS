@@ -45,6 +45,9 @@ const TRACE_PRESETS = [
     { value: 'sqrt(state.vn^2 + state.ve^2 + state.vd^2)', label: 'Total Speed' }
 ];
 
+// Persistence
+const TRACE_STORAGE_KEY = 'datad-trace-configs';
+
 // Current active trace configurations
 let traceConfigs = [];
 let compiledEvaluators = [];
@@ -85,14 +88,64 @@ export const formulaDataBuffer = {
 };
 
 /**
+ * Save trace configurations to localStorage
+ */
+function saveTraceConfigs() {
+    try {
+        const data = traceConfigs.map(c => ({
+            expression: c.expression,
+            label: c.label,
+            color: c.color,
+            yaxis: c.yaxis,
+            enabled: c.enabled
+        }));
+        localStorage.setItem(TRACE_STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+        // Ignore storage errors
+    }
+}
+
+/**
+ * Load trace configurations from localStorage
+ * @returns {Array|null} Loaded configs or null if not found/invalid
+ */
+function loadTraceConfigs() {
+    try {
+        const raw = localStorage.getItem(TRACE_STORAGE_KEY);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        if (!Array.isArray(data) || data.length === 0 || data.length > MAX_TRACES) return null;
+
+        // Validate each entry
+        for (const c of data) {
+            if (typeof c.expression !== 'string' || typeof c.color !== 'string') return null;
+        }
+
+        // Ensure at least one trace is enabled
+        if (!data.some(c => c.enabled)) data[0].enabled = true;
+
+        return data;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
  * Initialize trace manager and UI
  */
 export function initTraceManager() {
     if (traceManagerInitialized) return;
 
-    // Initialize with default traces
-    traceConfigs = DEFAULT_TRACES.map((t, i) => ({
-        ...t,
+    // Try to load saved configs, fallback to defaults
+    const saved = loadTraceConfigs();
+    const initial = saved || DEFAULT_TRACES.map(t => ({ ...t }));
+
+    traceConfigs = initial.map((t, i) => ({
+        expression: t.expression || '',
+        label: t.label || '',
+        color: t.color || DEFAULT_COLORS[i] || '#FFFFFF',
+        yaxis: t.yaxis || 'y',
+        enabled: t.enabled !== false,
         index: i
     }));
 
@@ -347,6 +400,8 @@ function updateTraceConfig(index, updates) {
         }
     }
 
+    saveTraceConfigs();
+
     // Trigger re-render
     window.dispatchEvent(new CustomEvent('traceConfigChanged'));
 }
@@ -392,6 +447,7 @@ function addTrace() {
     updateAddButtonState();
     updateRemoveButtonStates();
 
+    saveTraceConfigs();
     rebuildFormulaDataBuffer();
     window.dispatchEvent(new CustomEvent('traceConfigChanged'));
 }
@@ -418,6 +474,7 @@ function removeTrace(index) {
     updateAddButtonState();
     updateRemoveButtonStates();
 
+    saveTraceConfigs();
     window.dispatchEvent(new CustomEvent('traceConfigChanged'));
 }
 
@@ -501,49 +558,12 @@ export function evaluateTraces(entry) {
 }
 
 /**
- * Rebuild formula data buffer from log data
- * Called when expressions change or log is loaded
+ * Rebuild formula data buffer
+ * Called when expressions change
  */
 export function rebuildFormulaDataBuffer() {
-    // Clear all ring buffers
     timestampBuffer.clear();
     traceBuffers.forEach(rb => rb.clear());
-
-    if (STATE.mode !== 'PLAYBACK' || !Array.isArray(STATE.logData) || STATE.logData.length === 0) {
-        return;
-    }
-
-    const len = STATE.logData.length;
-    const idx = Math.max(0, Math.min(STATE.logIndex || 0, len - 1));
-    const prefixLen = idx + 1;
-    const step = Math.max(1, Math.ceil(prefixLen / BUFFER_SIZE));
-
-    for (let i = 0; i < prefixLen; i += step) {
-        const entry = STATE.logData[i];
-        if (!entry || typeof entry.t !== 'number') continue;
-
-        timestampBuffer.push(entry.t);
-        const values = evaluateTraces(entry);
-        values.forEach((v, traceIdx) => {
-            traceBuffers[traceIdx].push(v);
-        });
-    }
-
-    // Ensure current point is included
-    if (idx >= 0 && idx < len) {
-        const entry = STATE.logData[idx];
-        const t = entry && entry.t;
-        if (typeof t === 'number' && Number.isFinite(t)) {
-            const lastT = timestampBuffer.getLast();
-            if (lastT !== t) {
-                timestampBuffer.push(t);
-                const values = evaluateTraces(entry);
-                values.forEach((v, traceIdx) => {
-                    traceBuffers[traceIdx].push(v);
-                });
-            }
-        }
-    }
 }
 
 /**

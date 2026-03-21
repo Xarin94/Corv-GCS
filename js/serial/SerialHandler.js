@@ -20,8 +20,6 @@ export async function connectSerial(portPath, baudRate = 460800) {
     STATE.connectionType = 'corv-binary';
 
     // Update UI
-    document.getElementById('storyline-panel').classList.remove('visible');
     document.getElementById('btn-link').classList.add('active');
     document.getElementById('btn-link').innerText = "LINK ACTIVE";
-    document.getElementById('btn-load').classList.remove('active');
 }

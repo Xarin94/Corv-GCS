@@ -1,68 +1,7 @@
 /**
  * panels.css - Floating Panel Styles
- * Config panel, telemetry panel, storyline player
+ * Config panel, telemetry panel
  */
-
-/* STORYLINE PLAYER (Hidden by default) */
-#storyline-panel {
-    position: absolute;
-    bottom: 8%;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 40%;
-    height: 40px;
-    background: var(--bg-solid);
-    border: 1px solid var(--accent-cyan);
-    display: none;
-    align-items: center;
-    padding: 0 1%;
-    gap: 1%;
-    pointer-events: auto;
-    z-index: var(--z-overlay);
-    border-radius: 4px;
-}
-
-/* When moved into the split map container, keep it above Leaflet panes */
-body.mode-split #split-map-container #storyline-panel {
-    z-index: var(--z-leaflet-over);
-    width: calc(100% - 16px);
-    max-width: 560px;
-    left: 50%;
-    bottom: 10px;
-    transform: translateX(-50%);
-}
-
-#storyline-panel.visible {
-    display: flex;
-    animation: slideUp 0.3s ease;
-}
-
-.play-btn {
-    background: transparent;
-    border: 1px solid var(--accent-cyan);
-    color: var(--accent-cyan);
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-}
-
-#storyline-panel #replay-speed {
-    height: 30px;
-    background: transparent;
-    border: 1px solid var(--accent-cyan);
-    color: var(--accent-cyan);
-    font-family: var(--font-data);
-    font-size: 11px;
-    padding: 0 6px;
-    outline: none;
-}
-
-#storyline-panel #replay-speed option {
-    color: #000;
-}
 
 input[type=range] {
     flex: 1;

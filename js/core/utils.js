@@ -101,30 +101,6 @@ export function getHeightColor(height) {
 }
 
 /**
- * Calculate CRC16 checksum for serial packets
- * @param {Uint8Array} buffer - Data buffer
- * @param {number} start - Start index
- * @param {number} length - Length of data
- * @returns {number} CRC16 value
- */
-export function calculateCRC16(buffer, start, length) {
-    let crc = 0xFFFF;
-    const end = start + length;
-    for (let i = start; i < end; i++) {
-        crc ^= (buffer[i] << 8);
-        for (let j = 0; j < 8; j++) {
-            if ((crc & 0x8000) !== 0) {
-                crc = ((crc << 1) ^ 0x1021);
-            } else {
-                crc = (crc << 1);
-            }
-        }
-        crc = crc & 0xFFFF;
-    }
-    return crc;
-}
-
-/**
  * Convert lat/lon to tile coordinates
  * @param {number} lat - Latitude
  * @param {number} lon - Longitude

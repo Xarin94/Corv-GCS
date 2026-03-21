@@ -165,12 +165,11 @@ contextBridge.exposeInMainWorld('adsb', {
   fetch: (lamin, lomin, lamax, lomax) => ipcRenderer.invoke('adsb-fetch', lamin, lomin, lamax, lomax)
 });
 
-// CRV telemetry recording API bridge
-contextBridge.exposeInMainWorld('crvLogger', {
-  startRecording: () => ipcRenderer.invoke('crv-start-recording'),
-  writeChunk: (arrayBuffer) => ipcRenderer.invoke('crv-write-chunk', arrayBuffer),
-  stopRecording: () => ipcRenderer.invoke('crv-stop-recording'),
-  getLogsDir: () => ipcRenderer.invoke('crv-get-logs-dir')
+// TLOG recording API bridge
+contextBridge.exposeInMainWorld('tlogLogger', {
+  startRecording: () => ipcRenderer.invoke('tlog-start-recording'),
+  stopRecording: () => ipcRenderer.invoke('tlog-stop-recording'),
+  getLogsDir: () => ipcRenderer.invoke('tlog-get-logs-dir')
 });
 
 // Forward uncaught errors / unhandled promise rejections to the main process

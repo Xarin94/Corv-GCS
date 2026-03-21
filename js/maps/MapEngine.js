@@ -5,7 +5,6 @@
 
 import { STATE } from '../core/state.js';
 import { RAD } from '../core/constants.js';
-import { downsample } from '../core/utils.js';
 import { cachedTileLayer } from './CachedTileLayer.js';
 
 let map = null;
@@ -14,10 +13,6 @@ let satelliteLayer = null;
 let pathLine = null;
 let livePathPoints = [];
 let lastLiveLatLng = null;
-
-let logLatLngCache = null;
-let logLatLngCacheLen = 0;
-let lastPlaybackRenderedIndex = -1;
 
 const MAX_MAP_PATH_POINTS = 3000;
 
@@ -77,26 +72,6 @@ export function initMap(containerId) {
     }).addTo(map);
 }
 
-function buildLogLatLngCache() {
-    if (!Array.isArray(STATE.logData) || STATE.logData.length === 0) {
-        logLatLngCache = null;
-        logLatLngCacheLen = 0;
-        return;
-    }
-    if (logLatLngCache && logLatLngCacheLen === STATE.logData.length) return;
-
-    logLatLngCache = STATE.logData.map((r) => {
-        const s = (r && (r.state || r)) || {};
-        const lat = (typeof s.lat === 'number') ? s.lat : STATE.lat;
-        const lon = (typeof s.lon === 'number') ? s.lon : STATE.lon;
-        return new L.LatLng(lat, lon);
-    });
-    logLatLngCacheLen = STATE.logData.length;
-    lastPlaybackRenderedIndex = -1;
-}
-
-// downsample() imported from utils.js
-
 /**
  * Update mini-map position and marker rotation
  */
@@ -117,31 +92,21 @@ export function updateMap() {
 
     // Update path
     if (pathLine) {
-        if (STATE.mode === 'PLAYBACK' && Array.isArray(STATE.logData) && STATE.logData.length > 0) {
-            buildLogLatLngCache();
-            const idx = Math.max(0, Math.min(STATE.logIndex, logLatLngCacheLen - 1));
-            if (idx !== lastPlaybackRenderedIndex && logLatLngCache) {
-                const prefix = logLatLngCache.slice(0, idx + 1);
-                pathLine.setLatLngs(downsample(prefix, MAX_MAP_PATH_POINTS));
-                lastPlaybackRenderedIndex = idx;
-            }
+        const cur = newLatLng;
+        if (!lastLiveLatLng) {
+            lastLiveLatLng = cur;
+            livePathPoints = [cur];
         } else {
-            const cur = newLatLng;
-            if (!lastLiveLatLng) {
+            const moved = map.distance(lastLiveLatLng, cur);
+            if (moved >= 5) {
+                livePathPoints.push(cur);
                 lastLiveLatLng = cur;
-                livePathPoints = [cur];
-            } else {
-                const moved = map.distance(lastLiveLatLng, cur);
-                if (moved >= 5) {
-                    livePathPoints.push(cur);
-                    lastLiveLatLng = cur;
-                }
             }
-            if (livePathPoints.length > MAX_MAP_PATH_POINTS) {
-                livePathPoints = livePathPoints.slice(livePathPoints.length - MAX_MAP_PATH_POINTS);
-            }
-            pathLine.setLatLngs(livePathPoints);
         }
+        if (livePathPoints.length > MAX_MAP_PATH_POINTS) {
+            livePathPoints = livePathPoints.slice(livePathPoints.length - MAX_MAP_PATH_POINTS);
+        }
+        pathLine.setLatLngs(livePathPoints);
     }
 
     map.invalidateSize();

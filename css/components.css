@@ -305,14 +305,6 @@ body.mode-split #split-map-container .bottom-bar {
     pointer-events: none;
 }
 
-/* If 2D map is the LEFT pane, keep coordinates on the outer corner */
-body.mode-split[data-split-left="2d"] #split-map-container .bottom-bar-group,
-body.mode-split[data-split-left="2d"] #split-map-container .bottom-bar {
-    left: 12px;
-    right: auto;
-}
-
-
 .bottom-bar .stat-item {
     display: flex;
     justify-content: space-between;

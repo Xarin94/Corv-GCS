@@ -14,7 +14,7 @@ export const SAMPLE_INTERVAL = CONST_SAMPLE_INTERVAL;
  * Global application state
  */
 export const STATE = {
-    mode: 'LIVE', // 'LIVE' or 'PLAYBACK'
+    mode: 'LIVE',
     roll: 0,
     pitch: 0,
     yaw: 0,
@@ -36,9 +36,6 @@ export const STATE = {
     vn: 0, ve: 0, vd: 0,
     terrainHeight: null,
     gHistory: new Array(300).fill(1.0),
-    logData: [],
-    logIndex: 0,
-    isPlaying: false,
     lastUpdatePos: { x: 0, z: 0 },
     lastReloadPos: { lat: null, lon: null },
     runwaysLoaded: false,
