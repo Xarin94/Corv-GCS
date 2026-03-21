@@ -1740,6 +1740,21 @@ function startADSBPolling() {
     }, 3000);
 }
 
+// ADS-B enable/disable toggle
+let _adsbEnabled = true;
+window.toggleADSB = function(enabled) {
+    _adsbEnabled = enabled;
+    const bar = document.getElementById('traffic-bar');
+    if (bar) bar.style.display = enabled ? '' : 'none';
+    if (enabled) {
+        startADSBPolling();
+    } else {
+        if (adsbPollTimer) { clearInterval(adsbPollTimer); adsbPollTimer = null; }
+        STATE.traffic = [];
+    }
+    pushHudMessage(enabled ? 'ADS-B traffic enabled' : 'ADS-B traffic disabled', 'info');
+};
+
 // Download traffic CSV from menu
 window.downloadTraffic = function() {
     if (STATE.traffic.length === 0) {

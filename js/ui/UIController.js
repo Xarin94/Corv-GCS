@@ -180,8 +180,8 @@ export function updateUI() {
         }
     }
 
-    // ADS-B traffic table (4 nearest) - always visible
-    if (dom.trafficBar) {
+    // ADS-B traffic table (4 nearest) - only when visible
+    if (dom.trafficBar && dom.trafficBar.style.display !== 'none') {
         const nearest = getNearestTraffic(4);
         for (let i = 0; i < 4; i++) {
             const row = dom.tfcRows[i];

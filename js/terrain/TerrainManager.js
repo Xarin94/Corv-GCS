@@ -84,6 +84,73 @@ async function ensureHgtLoaded(filename) {
     }
 }
 
+// Track tiles that failed auto-download to avoid retrying
+const _autoDownloadFailed = new Set();
+const _autoDownloadInProgress = new Set();
+
+/**
+ * Auto-download a single SRTM tile from AWS Mapzen (free, no auth).
+ * Downloads gzipped HGT, decompresses, saves to disk via IPC, and registers it.
+ */
+async function autoDownloadSRTM(filename, latBase, lonBase) {
+    if (_autoDownloadInProgress.has(filename)) return null;
+    if (!navigator.onLine) return null;
+
+    _autoDownloadInProgress.add(filename);
+    try {
+        const latPre = latBase >= 0 ? 'N' : 'S';
+        const lonPre = lonBase >= 0 ? 'E' : 'W';
+        const latNum = String(Math.abs(latBase)).padStart(2, '0');
+        const lonNum = String(Math.abs(lonBase)).padStart(3, '0');
+        const tileName = `${latPre}${latNum}${lonPre}${lonNum}`;
+        const url = `https://elevation-tiles-prod.s3.amazonaws.com/skadi/${tileName.substring(0, 3)}/${tileName}.hgt.gz`;
+
+        console.log(`[terrain] Auto-downloading ${filename} from AWS...`);
+        const resp = await fetch(url);
+        if (!resp.ok) {
+            console.warn(`[terrain] Auto-download failed for ${filename}: ${resp.status}`);
+            _autoDownloadFailed.add(filename);
+            return null;
+        }
+
+        const gzBuf = await resp.arrayBuffer();
+        // Decompress gzip in renderer via DecompressionStream
+        const ds = new DecompressionStream('gzip');
+        const writer = ds.writable.getWriter();
+        writer.write(new Uint8Array(gzBuf));
+        writer.close();
+        const reader = ds.readable.getReader();
+        const chunks = [];
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+        }
+        const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+        const hgtBuf = new Uint8Array(totalLen);
+        let offset = 0;
+        for (const c of chunks) { hgtBuf.set(c, offset); offset += c.length; }
+
+        // Save to disk via IPC
+        if (window.topography && window.topography.save) {
+            await window.topography.save(filename, hgtBuf.buffer);
+            availableHgtFiles.add(filename);
+        }
+
+        // Register in memory
+        const file = new File([hgtBuf.buffer], filename, { type: 'application/octet-stream' });
+        addHGTFile(filename, file);
+        console.log(`[terrain] Auto-downloaded and registered ${filename} (${(totalLen / 1024 / 1024).toFixed(1)} MB)`);
+        return file;
+    } catch (e) {
+        console.warn(`[terrain] Auto-download error for ${filename}:`, e.message);
+        _autoDownloadFailed.add(filename);
+        return null;
+    } finally {
+        _autoDownloadInProgress.delete(filename);
+    }
+}
+
 // Caching
 let lastTerrainQuery = { lat: null, lon: null, height: null };
 
@@ -547,6 +614,10 @@ export async function getTerrainElevationAsync(lat, lon) {
             await ensureHgtLoaded(filename);
             file = hgtFiles[filename];
         }
+        // If still not available, auto-download from AWS Mapzen
+        if (!file && !_autoDownloadFailed.has(filename)) {
+            file = await autoDownloadSRTM(filename, latBase, lonBase);
+        }
         if (file) {
             const buf = await file.arrayBuffer();
             const len = buf.byteLength;
@@ -580,6 +651,10 @@ export function getTerrainElevationCached(lat, lon) {
     }
 
     const height = getTerrainElevationFromHGT(lat, lon);
+    // If tile is missing, trigger background auto-download for next frame
+    if (height === null) {
+        getTerrainElevationAsync(lat, lon).catch(() => {});
+    }
     lastTerrainQuery = { lat, lon, height };
     return height;
 }
@@ -611,6 +686,8 @@ export function addHGTFile(filename, file) {
                         elevationArray[i] = dataView.getInt16(i * 2, false);
                     }
                     hgtElevationData[key] = { data: elevationArray, size };
+                    // Invalidate cached query so next frame picks up new data
+                    lastTerrainQuery = { lat: null, lon: null, height: null };
                     console.log(`[terrain] Pre-parsed elevation data for ${filename} (${size}x${size})`);
                 }
             }).catch(() => {});
