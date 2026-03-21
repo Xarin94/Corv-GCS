@@ -361,6 +361,8 @@ function mapCommandAck(data) {
     const resultName = MAV_RESULT_NAMES[data.result] || `RESULT_${data.result}`;
     const level = data.result === 0 ? 'info' : 'warning';
     STATE.lastCmdAck = { command: data.command, result: data.result, cmdName, resultName };
+    // Don't show toast for internal polling commands (REQUEST_MESSAGE = 512)
+    if (data.command === 512) return;
     // Dispatch event so HUD can display it
     window.dispatchEvent(new CustomEvent('commandAck', { detail: { cmdName, resultName, level } }));
 }

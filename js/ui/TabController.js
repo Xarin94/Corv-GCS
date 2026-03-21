@@ -291,9 +291,6 @@ function initMissionMap() {
             <a href="#" class="mission-tb-btn" id="mission-survey-toggle" title="Draw survey area (click vertices, double-click to close)">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 4h16v16H4z" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2" stroke-linejoin="round"/><path d="M8 12h8M12 8v8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/></svg>
             </a>
-            <a href="#" class="mission-tb-btn" id="mission-alt-toggle" title="Altitude profile">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><rect x="4" y="14" width="3" height="6" rx="0.5" stroke="currentColor" stroke-width="2"/><rect x="10.5" y="9" width="3" height="11" rx="0.5" stroke="currentColor" stroke-width="2"/><rect x="17" y="4" width="3" height="16" rx="0.5" stroke="currentColor" stroke-width="2"/></svg>
-            </a>
             <a href="#" class="mission-tb-btn active" id="mission-sat-toggle" title="Toggle satellite imagery">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M3 12h18M12 3c-2.5 3-2.5 9 0 9s2.5 6 0 9" stroke="currentColor" stroke-width="1.5"/></svg>
             </a>
@@ -321,13 +318,6 @@ function initMissionMap() {
                 missionMap.doubleClickZoom.enable();
             }
             e.currentTarget.classList.toggle('active', surveyDrawMode);
-        });
-
-        // ALT PROFILE toggle
-        bar.querySelector('#mission-alt-toggle').addEventListener('click', (e) => {
-            e.preventDefault();
-            toggleAltitudeProfile();
-            e.currentTarget.classList.toggle('active', altProfileVisible);
         });
 
         // SATELLITE TOGGLE

@@ -116,18 +116,13 @@ let _homePollingInterval = null;
 
 function startHomePolling() {
     stopHomePolling();
-    // Poll every 5s until home is received, then every 30s to catch updates
-    const interval = STATE.homeLat !== null ? 30000 : 5000;
+    // Poll every 5s until a valid home is received, then stop
     _homePollingInterval = setInterval(() => {
         const connected = (Date.now() - STATE.lastHeartbeatTime) < 3000;
         if (!connected) { stopHomePolling(); return; }
-        // Speed up polling if home not yet received
-        if (STATE.homeLat === null && interval > 5000) {
-            startHomePolling(); // restart with faster interval
-            return;
-        }
+        if (STATE.homeLat !== null) { stopHomePolling(); return; }
         requestHomePosition().catch(() => {});
-    }, interval);
+    }, 5000);
 }
 
 function stopHomePolling() {

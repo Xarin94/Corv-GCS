@@ -21,7 +21,7 @@ function ensureMAVLinkLoaded() {
     send = mavlink.send;
     minimal = mavlink.minimal;
     common = mavlink.common;
-    protocol = new MavLinkProtocolV2();
+    protocol = new MavLinkProtocolV2(255, 190);  // sysid 255, compid 190 (MAV_COMP_ID_MISSIONPLANNER)
 
     // Build unified message registry from all dialects
     messageRegistry = new Map();
