@@ -39,6 +39,14 @@ function buildSrtmTileList(latSouth, latNorth, lonWest, lonEast) {
  * @returns {'downloaded'|'skipped'|'not_found'|'error'}
  */
 async function downloadSrtmTile(name, signal) {
+    const filename = `${name}.hgt`;
+
+    // Skip if already downloaded on disk
+    if (window.topography && window.topography.loadOne) {
+        const existing = await window.topography.loadOne(filename);
+        if (existing) return 'skipped';
+    }
+
     const ns = name.substring(0, 1);
     const folder = `${ns}${name.substring(1, 3)}`;
     const url = `${SRTM_BASE}/${folder}/${name}.hgt.gz`;
