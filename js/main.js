@@ -1755,6 +1755,42 @@ window.toggleADSB = function(enabled) {
     pushHudMessage(enabled ? 'ADS-B traffic enabled' : 'ADS-B traffic disabled', 'info');
 };
 
+// Sync ADS-B checkbox in sidebar with sys config
+window.toggleADSB = (function(orig) {
+    return function(enabled) {
+        orig(enabled);
+        const sidebarChk = document.getElementById('chk-adsb-enable');
+        const syscfgChk = document.getElementById('syscfg-adsb-enable');
+        if (sidebarChk) sidebarChk.checked = enabled;
+        if (syscfgChk) syscfgChk.checked = enabled;
+    };
+})(window.toggleADSB);
+
+// Battery voltage-based percentage calculation
+window._batVMin = 9.6; window._batVMax = 12.6;
+window.updateBatteryVoltageRange = function() {
+    const vmin = parseFloat(document.getElementById('syscfg-bat-vmin')?.value) || 9.6;
+    const vmax = parseFloat(document.getElementById('syscfg-bat-vmax')?.value) || 12.6;
+    window._batVMin = vmin;
+    window._batVMax = vmax;
+    // Auto-detect cells: assume 3.0V empty / 4.2V full per cell
+    const cells = Math.round(vmax / 4.2);
+    const cellsEl = document.getElementById('syscfg-bat-cells');
+    if (cellsEl) cellsEl.textContent = cells + 'S';
+    // Save to localStorage
+    localStorage.setItem('bat-vmin', vmin);
+    localStorage.setItem('bat-vmax', vmax);
+};
+
+// Restore battery settings on load
+(function restoreBatSettings() {
+    const vmin = parseFloat(localStorage.getItem('bat-vmin'));
+    const vmax = parseFloat(localStorage.getItem('bat-vmax'));
+    if (!isNaN(vmin)) { window._batVMin = vmin; const el = document.getElementById('syscfg-bat-vmin'); if (el) el.value = vmin; }
+    if (!isNaN(vmax)) { window._batVMax = vmax; const el = document.getElementById('syscfg-bat-vmax'); if (el) el.value = vmax; }
+    window.updateBatteryVoltageRange();
+})();
+
 // Download traffic CSV from menu
 window.downloadTraffic = function() {
     if (STATE.traffic.length === 0) {

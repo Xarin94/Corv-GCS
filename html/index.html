@@ -1495,6 +1495,28 @@
                 </div>
             </div>
             <div class="setup-panel">
+                <div class="panel-header">GCS OPTIONS</div>
+                <div class="cfg-row">
+                    <label>ADS-B TRAFFIC</label>
+                    <label style="display:flex;align-items:center;gap:6px;">
+                        <input type="checkbox" id="syscfg-adsb-enable" checked onchange="toggleADSB(this.checked)">
+                        <span>Show ADS-B traffic overlay</span>
+                    </label>
+                </div>
+                <div class="cfg-row">
+                    <label>BATTERY MIN VOLTAGE</label>
+                    <input type="number" id="syscfg-bat-vmin" class="failsafe-input" value="9.6" step="0.1" min="0" max="60" onchange="updateBatteryVoltageRange()">
+                </div>
+                <div class="cfg-row">
+                    <label>BATTERY MAX VOLTAGE</label>
+                    <input type="number" id="syscfg-bat-vmax" class="failsafe-input" value="12.6" step="0.1" min="0" max="60" onchange="updateBatteryVoltageRange()">
+                </div>
+                <div class="cfg-row">
+                    <label>CELLS (AUTO)</label>
+                    <span class="cfg-val" id="syscfg-bat-cells">3S</span>
+                </div>
+            </div>
+            <div class="setup-panel">
                 <div class="panel-header">OFFLINE DATA DOWNLOAD</div>
                 <div class="cfg-row">
                     <label>NORTH LAT</label>

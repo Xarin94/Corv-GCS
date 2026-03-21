@@ -155,7 +155,16 @@ function mapHeartbeat(data) {
 function mapSysStatus(data) {
     STATE.batteryVoltage = data.voltageBattery / 1000; // mV -> V
     STATE.batteryCurrent = data.currentBattery / 100;  // cA -> A
-    STATE.batteryRemaining = data.batteryRemaining;     // 0-100%
+    const rawPct = data.batteryRemaining;               // 0-100% or -1
+    // If vehicle doesn't report %, calculate from voltage using user-defined range
+    if (rawPct < 0 || rawPct > 100) {
+        const vmin = window._batVMin || 9.6;
+        const vmax = window._batVMax || 12.6;
+        const v = STATE.batteryVoltage;
+        STATE.batteryRemaining = v > 0 ? Math.max(0, Math.min(100, Math.round((v - vmin) / (vmax - vmin) * 100))) : -1;
+    } else {
+        STATE.batteryRemaining = rawPct;
+    }
     STATE.linkQuality = 100 - data.dropRateComm / 100; // percent
 }
 
