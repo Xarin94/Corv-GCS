@@ -1146,3 +1146,124 @@ body.has-tabs.mode-split {
     margin-top: 4px;
     text-align: center;
 }
+
+/* ==================== Offline Maps Overlay ==================== */
+.offline-maps-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(5, 10, 20, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+.offline-maps-dialog {
+    background: rgba(10, 15, 25, 0.95);
+    border: 1px solid rgba(0, 210, 255, 0.25);
+    border-radius: 6px;
+    padding: 16px 20px;
+    min-width: 280px;
+    max-width: 340px;
+    font-family: var(--font-data);
+    color: var(--text-primary);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+.offline-maps-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--accent-cyan);
+    margin-bottom: 12px;
+    text-align: center;
+}
+.offline-maps-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.offline-maps-row label {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.offline-maps-row .gcs-input,
+.offline-maps-row .cfg-select {
+    width: 140px;
+}
+.offline-maps-estimate {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-align: center;
+    margin: 8px 0 4px;
+}
+.offline-maps-warning {
+    font-size: 10px;
+    color: #ffaa00;
+    text-align: center;
+    margin-bottom: 4px;
+}
+.offline-maps-progress {
+    margin: 8px 0;
+    text-align: center;
+}
+.offline-maps-progress progress {
+    width: 100%;
+    height: 6px;
+    appearance: none;
+    -webkit-appearance: none;
+    border: none;
+    border-radius: 3px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.08);
+}
+.offline-maps-progress progress::-webkit-progress-bar {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+}
+.offline-maps-progress progress::-webkit-progress-value {
+    background: var(--accent-cyan);
+    border-radius: 3px;
+}
+.offline-maps-progress span {
+    display: block;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 4px;
+}
+.offline-maps-stats {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: center;
+    margin: 6px 0;
+}
+.offline-maps-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+.offline-maps-buttons .gcs-btn {
+    flex: 1;
+    font-size: 10px;
+    padding: 5px 8px;
+}
+
+/* Sys Config offline download progress */
+#offline-dl-progress {
+    height: 6px;
+    appearance: none;
+    -webkit-appearance: none;
+    border: none;
+    border-radius: 3px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.08);
+}
+#offline-dl-progress::-webkit-progress-bar {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+}
+#offline-dl-progress::-webkit-progress-value {
+    background: var(--accent-cyan);
+    border-radius: 3px;
+}

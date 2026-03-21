@@ -82,6 +82,7 @@ import { initTabs, getCurrentTab } from './ui/TabController.js';
 import { initParamsPage, toggleParamsPage } from './ui/ParametersPageController.js';
 
 import { setTerrainSatelliteEnabled } from './terrain/TerrainManager.js';
+import { initOfflinePanel } from './maps/OfflineDownloader.js';
 
 // FPV imports
 import { initFPV, onFPVButtonClick, resizeFPV, isFPVActive, openFPVSettings, stopFPVStream } from './ui/FPVController.js';
@@ -1511,11 +1512,11 @@ async function loadTopographyAtStart() {
 
 // ============== CONNECTIVITY CHECK ==============
 async function checkConnectivity() {
-    const TEST_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/0/0/0';
+    const TEST_URL = 'https://mt0.google.com/vt/lyrs=s&x=0&y=0&z=0';
     try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
-        const res = await fetch(TEST_URL, { mode: 'cors', signal: controller.signal });
+        const res = await fetch(TEST_URL, { signal: controller.signal });
         clearTimeout(timeout);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         // Connection OK - satellite stays enabled
@@ -1592,6 +1593,7 @@ function init() {
     initGCSSidebar();
     initHudCells();
     initTabs();
+    initOfflinePanel();
     initMap('mini-map');
     initMinimapSwap();
     updateMinimapHoverSize();

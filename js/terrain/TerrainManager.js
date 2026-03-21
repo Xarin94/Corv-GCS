@@ -14,6 +14,7 @@ const SATELLITE_RADIUS = 10000; // 10km - raggio della mappa satellitare (in met
 import { STATE } from '../core/state.js';
 import { latLonToMeters, calculateDistance, getHeightColor, latLonToTile, tileToBounds } from '../core/utils.js';
 import { LRUCache } from '../core/LRUCache.js';
+import { getTile as getCachedTile, putTile as putCachedTile } from '../maps/TileCache.js';
 
 // ============== MEMORY TRACKING ==============
 let texturesCreated = 0;
@@ -347,6 +348,13 @@ function initTileWorker() {
                 if (data.bitmap) {
                     imageLRU.set(data.key, data.bitmap);
                     consecutiveTileErrors = 0; // Reset on success
+                }
+                // Opportunistic cache: store blob in IndexedDB for offline use
+                if (data.blob && data.key) {
+                    const parts = data.key.split('/');
+                    if (parts.length === 3) {
+                        putCachedTile('esri', parseInt(parts[0]), parseInt(parts[1]), parseInt(parts[2]), data.blob).catch(() => {});
+                    }
                 }
                 resolveTileCallbacks(data.key, data.bitmap || null);
                 currentTileLoads = Math.max(0, currentTileLoads - 1);
@@ -1165,7 +1173,7 @@ function processTextureApplyQueue() {
 function loadTileImage(tileX, tileY, tileZ, callback) {
     const key = `${tileZ}/${tileX}/${tileY}`;
 
-    // Check cache first
+    // Check in-memory LRU cache first
     const cached = imageLRU.get(key);
     if (cached) {
         callback(cached);
@@ -1174,10 +1182,27 @@ function loadTileImage(tileX, tileY, tileZ, callback) {
 
     if (!enqueueTileCallback(key, callback)) return;
 
-    // Add to queue
-    tileLoadQueue.push({ tileX, tileY, tileZ, key, callback });
-    
-    // Start processing queue if not already running
+    // Check IndexedDB persistent cache before network
+    getCachedTile('esri', tileZ, tileX, tileY).then(blob => {
+        if (blob) {
+            createImageBitmap(blob).then(bitmap => {
+                imageLRU.set(key, bitmap);
+                resolveTileCallbacks(key, bitmap);
+            }).catch(() => {
+                // Corrupted blob, fall through to network
+                enqueueForNetwork(tileX, tileY, tileZ, key);
+            });
+            return;
+        }
+        // Cache miss — fetch from network
+        enqueueForNetwork(tileX, tileY, tileZ, key);
+    }).catch(() => {
+        enqueueForNetwork(tileX, tileY, tileZ, key);
+    });
+}
+
+function enqueueForNetwork(tileX, tileY, tileZ, key) {
+    tileLoadQueue.push({ tileX, tileY, tileZ, key });
     if (!isProcessingTileQueue) {
         processTileLoadQueue();
     }
@@ -1230,21 +1255,24 @@ function processTileLoadQueue() {
             tileWorker.postMessage({
                 type: 'loadTile',
                 key: item.key,
-                url: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${item.tileZ}/${item.tileY}/${item.tileX}`
+                url: `https://mt${item.tileX % 4}.google.com/vt/lyrs=s&x=${item.tileX}&y=${item.tileY}&z=${item.tileZ}`
             });
         } else {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            
-            img.onload = () => {
-                imageLRU.set(item.key, img);
+            const tileUrl = `https://mt${item.tileX % 4}.google.com/vt/lyrs=s&x=${item.tileX}&y=${item.tileY}&z=${item.tileZ}`;
+            fetch(tileUrl).then(res => {
+                if (!res.ok) throw new Error(res.status);
+                return res.blob();
+            }).then(blob => {
+                // Store in IndexedDB for offline use
+                putCachedTile('esri', item.tileZ, item.tileX, item.tileY, blob).catch(() => {});
+                return createImageBitmap(blob);
+            }).then(bitmap => {
+                imageLRU.set(item.key, bitmap);
                 consecutiveTileErrors = 0;
-                resolveTileCallbacks(item.key, img);
+                resolveTileCallbacks(item.key, bitmap);
                 currentTileLoads--;
                 processTileLoadQueue();
-            };
-
-            img.onerror = () => {
+            }).catch(() => {
                 consecutiveTileErrors++;
                 if (consecutiveTileErrors >= CONSECUTIVE_ERROR_THRESHOLD && !connectionLostNotified) {
                     connectionLostNotified = true;
@@ -1255,9 +1283,7 @@ function processTileLoadQueue() {
                 resolveTileCallbacks(item.key, null);
                 currentTileLoads--;
                 processTileLoadQueue();
-            };
-            
-            img.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${item.tileZ}/${item.tileY}/${item.tileX}`;
+            });
         }
     }
 }

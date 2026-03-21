@@ -11,9 +11,12 @@ import { formatParamValue } from './ParametersPageController.js';
 import { initJoystick } from '../joystick/JoystickUI.js';
 import { getTerrainElevationFromHGT, getTerrainElevationAsync } from '../terrain/TerrainManager.js';
 import { getCmdShortName, getCmdColor, getCmdParams, getCmdDefaults, isNavCmd, getGroupedCommands } from '../mission/MissionCommands.js';
+import { cachedTileLayer } from '../maps/CachedTileLayer.js';
 
 let currentTab = 'flight-data';
 let missionMap = null; // Leaflet map for flight plan tab
+let missionSatelliteLayer = null;
+let missionSatelliteVisible = true;
 
 /**
  * Ensure HGT elevation data is parsed for all 1° tiles covered by the mission path.
@@ -234,15 +237,19 @@ function initMissionMap() {
         keyboard: false
     });
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    cachedTileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
-        attribution: '&copy; OpenStreetMap'
+        attribution: '&copy; OpenStreetMap',
+        provider: 'osm'
     }).addTo(missionMap);
 
-    // Add satellite layer option
-    const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 19
+    // Satellite layer — added to map by default, togglable via toolbar
+    missionSatelliteLayer = cachedTileLayer('https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+        subdomains: ['0','1','2','3'],
+        maxZoom: 20,
+        provider: 'esri'
     });
+    missionSatelliteLayer.addTo(missionMap);
 
     // Click to add waypoint or survey polygon vertex (left-click)
     missionMap.on('click', (e) => {
@@ -287,6 +294,9 @@ function initMissionMap() {
             <a href="#" class="mission-tb-btn" id="mission-alt-toggle" title="Altitude profile">
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><rect x="4" y="14" width="3" height="6" rx="0.5" stroke="currentColor" stroke-width="2"/><rect x="10.5" y="9" width="3" height="11" rx="0.5" stroke="currentColor" stroke-width="2"/><rect x="17" y="4" width="3" height="16" rx="0.5" stroke="currentColor" stroke-width="2"/></svg>
             </a>
+            <a href="#" class="mission-tb-btn active" id="mission-sat-toggle" title="Toggle satellite imagery">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M3 12h18M12 3c-2.5 3-2.5 9 0 9s2.5 6 0 9" stroke="currentColor" stroke-width="1.5"/></svg>
+            </a>
         `;
         L.DomEvent.disableClickPropagation(bar);
 
@@ -320,6 +330,17 @@ function initMissionMap() {
             e.currentTarget.classList.toggle('active', altProfileVisible);
         });
 
+        // SATELLITE TOGGLE
+        bar.querySelector('#mission-sat-toggle').addEventListener('click', (e) => {
+            e.preventDefault();
+            missionSatelliteVisible = !missionSatelliteVisible;
+            if (missionSatelliteVisible) {
+                missionSatelliteLayer.addTo(missionMap);
+            } else {
+                missionMap.removeLayer(missionSatelliteLayer);
+            }
+            e.currentTarget.classList.toggle('active', missionSatelliteVisible);
+        });
 
         return bar;
     };

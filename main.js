@@ -84,6 +84,21 @@ ipcMain.handle('topography-load', async (event, folderName = 'topography') => {
   return [];
 });
 
+// IPC handler to save a single .hgt file to the topo folder
+ipcMain.handle('topography-save', async (event, filename, arrayBuffer) => {
+  const dir = path.join(__dirname, 'topo');
+  try {
+    await fs.promises.mkdir(dir, { recursive: true });
+    const filePath = path.join(dir, filename);
+    await fs.promises.writeFile(filePath, Buffer.from(arrayBuffer));
+    console.log(`topography-save: saved ${filename} (${arrayBuffer.byteLength} bytes)`);
+    return true;
+  } catch (err) {
+    console.error(`topography-save: failed to save ${filename}`, err.message);
+    return false;
+  }
+});
+
 // Renderer error bridge: print uncaught errors and unhandled promise rejections
 // from the renderer into this (main) process terminal output.
 ipcMain.on('renderer-global-error', (event, payload) => {

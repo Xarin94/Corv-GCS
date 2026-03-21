@@ -110,11 +110,42 @@ export function isHeartbeatAlive() {
 }
 
 // Request HOME_POSITION when vehicle arms (home is set at arm time)
+// and poll periodically until received + on re-arm
 let _prevArmed = false;
+let _homePollingInterval = null;
+
+function startHomePolling() {
+    stopHomePolling();
+    // Poll every 5s until home is received, then every 30s to catch updates
+    const interval = STATE.homeLat !== null ? 30000 : 5000;
+    _homePollingInterval = setInterval(() => {
+        const connected = (Date.now() - STATE.lastHeartbeatTime) < 3000;
+        if (!connected) { stopHomePolling(); return; }
+        // Speed up polling if home not yet received
+        if (STATE.homeLat === null && interval > 5000) {
+            startHomePolling(); // restart with faster interval
+            return;
+        }
+        requestHomePosition().catch(() => {});
+    }, interval);
+}
+
+function stopHomePolling() {
+    if (_homePollingInterval) { clearInterval(_homePollingInterval); _homePollingInterval = null; }
+}
+
 onMessage(0, () => { // heartbeat
     if (STATE.armed && !_prevArmed) {
-        // Just armed — request home position after a short delay
-        setTimeout(() => requestHomePosition().catch(() => {}), 1500);
+        // Just armed — request home position after a short delay, then start polling
+        setTimeout(() => {
+            requestHomePosition().catch(() => {});
+            startHomePolling();
+        }, 1500);
     }
     _prevArmed = STATE.armed;
+
+    // If connected but no home polling yet, start it
+    if (!_homePollingInterval) {
+        startHomePolling();
+    }
 });

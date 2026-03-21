@@ -6,6 +6,7 @@
 import { STATE } from '../core/state.js';
 import { RAD } from '../core/constants.js';
 import { downsample } from '../core/utils.js';
+import { cachedTileLayer } from './CachedTileLayer.js';
 
 let map = null;
 let marker = null;
@@ -44,13 +45,15 @@ export function initMap(containerId) {
     // Prevent map container from stealing focus from input fields
     map.getContainer().setAttribute('tabindex', '-1');
 
-    // Satellite layer
-    satelliteLayer = L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', 
+    // Satellite layer (with offline cache)
+    satelliteLayer = cachedTileLayer(
+        'https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
         {
-            maxZoom: 19, 
-            opacity: 0.6, 
-            attribution: 'Tiles &copy; Esri'
+            maxZoom: 20,
+            opacity: 0.6,
+            subdomains: ['0','1','2','3'],
+            attribution: 'Google',
+            provider: 'esri'
         }
     );
     satelliteLayer.addTo(map);

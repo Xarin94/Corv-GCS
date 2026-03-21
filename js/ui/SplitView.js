@@ -626,10 +626,11 @@ function initSplitView() {
             keyboard: false
         }).setView([STATE.lat, STATE.lon], 13);
         
-        splitSatelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            maxZoom: 19,
+        splitSatelliteLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
             opacity: 0.9,
-            attribution: 'Tiles &copy; Esri'
+            subdomains: ['0','1','2','3'],
+            attribution: 'Google'
         });
         if (splitSatelliteEnabled) splitSatelliteLayer.addTo(splitMap);
 

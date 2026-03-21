@@ -56,6 +56,14 @@ contextBridge.exposeInMainWorld('topography', {
       console.debug('topography.load: ipc invoke failed', e);
       return [];
     }
+  },
+  save: async (filename, arrayBuffer) => {
+    try {
+      return await ipcRenderer.invoke('topography-save', filename, arrayBuffer);
+    } catch (e) {
+      console.debug('topography.save: ipc invoke failed', e);
+      return false;
+    }
   }
 });
 
