@@ -2,9 +2,9 @@
 
 > Desktop Ground Control Station for ArduPilot — Electron + Three.js + Leaflet
 
-**Version:** 1.2.2 | **License:** Apache-2.0 | **Repository:** [github.com/Xarin94/Corv-GCS](https://github.com/Xarin94/Corv-GCS)
+**Version:** 1.2.25 | **License:** Apache-2.0 | **Repository:** [github.com/Xarin94/Corv-GCS](https://github.com/Xarin94/Corv-GCS)
 
-Corv-GCS is a frameless Electron desktop application providing 3D terrain visualization, 2D mapping, HUD flight instruments, an Airbus-style Navigation Display, telemetry charting, mission planning, FPV camera, RTK corrections, ADS-B traffic awareness, joystick RC override, and flight log recording/playback. It supports ArduPilot vehicles (Copter, Plane, Rover, Sub, Heli, QuadPlane) via MAVLink v2.
+Corv-GCS is a frameless Electron desktop application providing 3D terrain visualization, 2D mapping, HUD flight instruments, an Airbus-style Navigation Display, telemetry charting, mission planning, FPV camera, RTK corrections, ADS-B traffic awareness, joystick RC override, flight log recording/playback, and offline map/elevation caching. It supports ArduPilot vehicles (Copter, Plane, Rover, Sub, Heli, QuadPlane) via MAVLink v2 with GCS sysid 255 (Mission Planner compatible).
 
 ---
 
@@ -41,7 +41,8 @@ Corv-GCS is a frameless Electron desktop application providing 3D terrain visual
 │     │              SunPosition                                       │
 │     ├── terrain/   TerrainManager + 4 Web Workers                    │
 │     ├── hud/       HUDRenderer (Canvas 2D)                           │
-│     ├── maps/      MapEngine (Leaflet 2D)                            │
+│     ├── maps/      MapEngine, CachedTileLayer, TileCache,            │
+│     │              OfflineDownloader                                  │
 │     ├── ui/        TabController, SplitView, NDView, NDController,   │
 │     │              UIController, CommandBarController,                │
 │     │              GCSSidebarController, ParametersPageController,    │
@@ -94,7 +95,10 @@ Corv-GCS/
 │   ├── hud/
 │   │   └── HUDRenderer.js      Canvas 2D flight instruments overlay
 │   ├── maps/
-│   │   └── MapEngine.js         Leaflet 2D mini-map
+│   │   ├── MapEngine.js         Leaflet 2D mini-map
+│   │   ├── CachedTileLayer.js   Cache-first Leaflet tile layer
+│   │   ├── TileCache.js         IndexedDB tile cache + bulk download
+│   │   └── OfflineDownloader.js Offline satellite + SRTM1 download engine
 │   ├── mavlink/                 MAVLink protocol layer (renderer side)
 │   │   ├── MAVLinkManager.js    Message dispatcher & connection bridge
 │   │   ├── MAVLinkStateMapper.js Message → STATE field mapping
@@ -176,9 +180,9 @@ Corv-GCS/
 
 | File | Key Functions | Purpose |
 |------|---------------|---------|
-| `main.js` | `createWindow()`, IPC handlers for models/topography/ADS-B/CRV | Electron app lifecycle, window management, file I/O |
-| `main-mavlink.js` | `initMAVLinkHandlers()`, `connectSerial/UDP/TCP()`, `handlePacket()`, `sendMAVLinkCommand()`, `sendMAVLinkMessage()`, `startHeartbeat()`, `disconnectCurrent()`, `sendRawBuffer()` | MAVLink v2 connection pipeline: serial/UDP/TCP transport, packet splitting/parsing/deserialization, 1 Hz heartbeat, command encoding |
-| `preload.js` | Context bridge: `mavlink`, `sitl`, `rtk`, `fpv`, `telForward`, `adsb`, `crvLogger`, `topography`, `models`, `windowControls`, `devtools` | Secure IPC bridge between main and renderer processes (10 namespaced APIs) |
+| `main.js` | `createWindow()`, IPC handlers for models/topography/ADS-B/CRV/topography-save | Electron app lifecycle, window management, file I/O, HGT file persistence |
+| `main-mavlink.js` | `initMAVLinkHandlers()`, `connectSerial/UDP/TCP()`, `handlePacket()`, `sendMAVLinkCommand()`, `sendMAVLinkMessage()`, `startHeartbeat()`, `disconnectCurrent()`, `sendRawBuffer()` | MAVLink v2 connection pipeline: serial/UDP/TCP transport, packet splitting/parsing/deserialization, 1 Hz GCS heartbeat (sysid 255, compid 190, MAV_TYPE_GCS), command encoding, GCS output mute toggle |
+| `preload.js` | Context bridge: `mavlink`, `sitl`, `rtk`, `fpv`, `telForward`, `adsb`, `crvLogger`, `topography` (load/loadOne/save), `models`, `windowControls`, `devtools` | Secure IPC bridge between main and renderer processes (11 namespaced APIs). Topography API supports load, loadOne, and save for offline SRTM management |
 | `sitl-manager.js` | `initSITLHandlers()`, `cleanup()` | Download ArduPilot SITL binaries, spawn process (native Linux or WSL on Windows), TCP 5760 |
 | `rtk-manager.js` | `initRTKHandlers()`, `cleanup()` | RTCM3 frame parsing from serial GPS base station, GPS_RTCM_DATA (ID 233) injection to drone via raw MAVLink v2 packets |
 | `fpv-manager.js` | `initFPVHandlers()`, `cleanupFPV()` | Spawn ffmpeg for RTSP-to-MJPEG conversion, extract JPEG frames (SOI/EOI markers), send base64 frames via IPC |
@@ -202,7 +206,7 @@ Corv-GCS/
 | `MAVLinkManager.js` | `initMAVLink()`, `onMessage(msgId, handler)`, `offMessage()`, `connectMAVLinkSerial/UDP/TCP()`, `disconnectMAVLink()`, `listSerialPorts()` | Renderer-side message router. Registers IPC listeners, dispatches messages to handlers, calls `mapMessageToState()`, fires `serialUpdate` CustomEvent |
 | `MAVLinkStateMapper.js` | `mapMessageToState(msgId, data)`, `getFlightModeName()`, `getFlightModeNumber()`, `getAvailableFlightModes()`, `getGPSFixName()`, `getVehicleTypeName()`, `computeAeroAngles()` | Decodes 17+ MAVLink message types into STATE fields. Maintains ArduPilot mode tables for Copter/Plane/Rover/Sub. Computes AoA/SSA from NED velocity |
 | `CommandSender.js` | `armVehicle()`, `disarmVehicle()`, `setFlightMode()`, `takeoff()`, `land()`, `returnToLaunch()`, `setGuidedTarget()`, `setParameter()`, `requestAllParameters()`, `requestAllDataStreams()`, `uploadMission()`, `sendRCChannelsOverride()`, `changeAltitude()`, `calibrateAccel/Compass/Gyro()`, `rebootAutopilot()` | High-level autopilot command abstraction with retry/ACK logic. Covers arming, modes, navigation, parameters, mission upload protocol, RC override, calibration |
-| `ConnectionManager.js` | `connect(type, options)`, `disconnect()`, `getAvailablePorts()`, `isHeartbeatAlive()`, `getConnectionInfo()` | Connection lifecycle orchestrator. Auto-requests data streams and home position on MAVLink connect. Supports serial, UDP, TCP, legacy corv-binary |
+| `ConnectionManager.js` | `connect(type, options)`, `disconnect()`, `getAvailablePorts()`, `isHeartbeatAlive()`, `getConnectionInfo()` | Connection lifecycle orchestrator. Auto-requests data streams and home position on MAVLink connect. Polls HOME_POSITION every 5s until received, restarts on re-arm. Supports serial, UDP, TCP, legacy corv-binary |
 
 ### 3.4 3D Engine (`js/engine/`)
 
@@ -228,7 +232,10 @@ Corv-GCS/
 | File | Key Exports | Purpose |
 |------|-------------|---------|
 | `hud/HUDRenderer.js` | `initHUD()`, `drawHUD()`, `resizeHUD()`, `pushHudMessage()`, `initGLoadWidget()`, `drawGLoadWidget()`, `setViewMode()` | Canvas 2D flight instruments overlay: artificial horizon, altitude/speed tapes, compass rose, G-load graph (350-element object pool), vertical speed indicator, status messages (max 5, 5s duration) |
-| `maps/MapEngine.js` | `initMap()`, `updateMap()`, `invalidateSize()`, `updateMissionOverlay()`, `setTargetMarker()`, `clearTargetMarker()` | Leaflet 2D mini-map with Esri World Imagery. Aircraft SVG marker, red trail polyline (3000 points max, downsampled), mission waypoint circles, home marker, click-to-go guided target |
+| `maps/MapEngine.js` | `initMap()`, `updateMap()`, `invalidateSize()`, `updateMissionOverlay()`, `setTargetMarker()`, `clearTargetMarker()` | Leaflet 2D mini-map with Google Satellite imagery (cache-first). Aircraft SVG marker, red trail polyline (3000 points max, downsampled), mission waypoint circles, home marker, ADS-B traffic dots, click-to-go guided target |
+| `maps/TileCache.js` | `TileCache` class: `get()`, `put()`, `getStats()`, `clear()`, `enumerateTiles()`, `bulkDownload()` | IndexedDB-based persistent tile cache. Cache-first strategy for satellite/OSM tiles. Bulk download engine with configurable concurrency (6 parallel). Tile enumeration for bounding-box download |
+| `maps/CachedTileLayer.js` | `cachedTileLayer()` | Drop-in Leaflet TileLayer replacement with IndexedDB caching. Uses native `<img>` loading (CORS-safe for Electron), opportunistic cache-write via canvas→blob conversion |
+| `maps/OfflineDownloader.js` | `estimateOfflineDownload()`, `startOfflineDownload()`, `initOfflinePanel()` | Bulk download engine for satellite tiles + SRTM1 elevation data. SRTM1 from AWS Mapzen (free, no auth). Gzip decompression via DecompressionStream. Saves HGT files to disk via IPC, registers in terrain engine immediately |
 
 ### 3.7 UI Controllers (`js/ui/`)
 
@@ -374,6 +381,33 @@ FPVController.js
     │ set <img>.src = 'data:image/jpeg;base64,...'
     ▼
 Rendered as overlay on 3D view
+```
+
+### 4.6 Offline Data Download Pipeline
+
+```
+User (Sys Config → Offline Data Download panel)
+    │ lat/lon rectangle + zoom level + type selection
+    ▼
+OfflineDownloader.js
+    │ startOfflineDownload()
+    │
+    ├── Phase 1: Satellite Tiles
+    │   │ enumerateTiles(bbox, zoom 1→maxZoom)
+    │   ▼
+    │   TileCache.js → bulkDownload()
+    │   │ 6 concurrent fetches → IndexedDB 'datad-tile-cache'
+    │   ▼
+    │   Available to CachedTileLayer (cache-first)
+    │
+    └── Phase 2: SRTM1 Elevation
+        │ enumerate HGT files (N44E022.hgt, ...)
+        ▼
+        AWS Mapzen: elevation-tiles-prod.s3.amazonaws.com/skadi/
+        │ fetch .hgt.gz → DecompressionStream → ArrayBuffer
+        │
+        ├── IPC: topography-save → disk (topo/N44E022.hgt)
+        └── TerrainManager.addHGTFile() → immediate use
 ```
 
 ---

@@ -1208,8 +1208,6 @@
 
             <!-- Section: Simulation -->
             <div class="sub-tab-content" id="subtab-simulation">
-                <div class="tab-panel-left">
-            <div class="setup-panel-column">
                 <div class="setup-panel">
                     <div class="panel-header">SITL LAUNCHER (ArduPilot)</div>
                     <div class="cfg-row">
@@ -1257,30 +1255,27 @@
                         <button class="gcs-btn" id="sim-load-log" onclick="document.getElementById('log-input').click()">LOAD LOG FILE</button>
                     </div>
                 </div>
-            </div>
-            <div class="setup-panel">
-                <div class="panel-header">SITL MANUAL CONNECTION</div>
-                <div class="cfg-row">
-                    <label>HOST</label>
-                    <input type="text" id="sitl-host" class="gcs-input" value="127.0.0.1">
+                <div class="setup-panel">
+                    <div class="panel-header">SITL MANUAL CONNECTION</div>
+                    <div class="cfg-row">
+                        <label>HOST</label>
+                        <input type="text" id="sitl-host" class="gcs-input" value="127.0.0.1">
+                    </div>
+                    <div class="cfg-row">
+                        <label>PORT</label>
+                        <input type="number" id="sitl-port" class="gcs-input" value="14550">
+                    </div>
+                    <div class="cfg-row">
+                        <button class="gcs-btn gcs-btn-connect" id="sitl-connect">CONNECT UDP</button>
+                    </div>
                 </div>
-                <div class="cfg-row">
-                    <label>PORT</label>
-                    <input type="number" id="sitl-port" class="gcs-input" value="14550">
-                </div>
-                <div class="cfg-row">
-                    <button class="gcs-btn gcs-btn-connect" id="sitl-connect">CONNECT UDP</button>
-                </div>
-            </div>
-            </div>
             </div>
 
             <!-- Section: RTK / GPS -->
             <div class="sub-tab-content" id="subtab-rtk-gps">
-                <div class="tab-panel-center" style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
-
-            <div class="setup-panel" style="min-width:320px; flex:1;">
-                <div class="cfg-row">
+                <div class="setup-panel">
+                    <div class="panel-header">RTK BASE STATION</div>
+                    <div class="cfg-row">
                     <label>SERIAL PORT</label>
                     <select id="rtk-serial-port" class="cfg-select">
                         <option value="">Select port...</option>
@@ -1307,32 +1302,33 @@
                 </div>
             </div>
 
-            <div class="setup-panel" style="min-width:320px; flex:1;">
-                <div class="cfg-row">
-                    <label>STATUS</label>
-                    <span class="cfg-val" id="rtk-stream-status">No data</span>
+                <div class="setup-panel">
+                    <div class="panel-header">RTK STREAM STATUS</div>
+                    <div class="cfg-row">
+                        <label>STATUS</label>
+                        <span class="cfg-val" id="rtk-stream-status">No data</span>
+                    </div>
+                    <div class="cfg-row">
+                        <label>MSG RATE</label>
+                        <span class="cfg-val" id="rtk-msg-rate">0 msg/s</span>
+                    </div>
+                    <div class="cfg-row">
+                        <label>TOTAL MSGS</label>
+                        <span class="cfg-val" id="rtk-msg-total">0</span>
+                    </div>
+                    <div class="cfg-row">
+                        <label>BYTES RX</label>
+                        <span class="cfg-val" id="rtk-bytes-rx">0</span>
+                    </div>
+                    <div class="panel-header" style="margin-top:8px;">RTCM MESSAGE TYPES</div>
+                    <div id="rtk-msg-types" class="rtk-msg-types-list" style="max-height:180px; overflow-y:auto; font-size:11px; font-family:var(--font-data); color:var(--text-dim); padding:4px 0;">
+                        <span style="opacity:0.5;">No messages yet</span>
+                    </div>
                 </div>
-                <div class="cfg-row">
-                    <label>MSG RATE</label>
-                    <span class="cfg-val" id="rtk-msg-rate">0 msg/s</span>
-                </div>
-                <div class="cfg-row">
-                    <label>TOTAL MSGS</label>
-                    <span class="cfg-val" id="rtk-msg-total">0</span>
-                </div>
-                <div class="cfg-row">
-                    <label>BYTES RX</label>
-                    <span class="cfg-val" id="rtk-bytes-rx">0</span>
-                </div>
-                <div class="panel-header" style="margin-top:8px;">RTCM MESSAGE TYPES</div>
-                <div id="rtk-msg-types" class="rtk-msg-types-list" style="max-height:180px; overflow-y:auto; font-size:11px; font-family:var(--font-data); color:var(--text-dim); padding:4px 0;">
-                    <span style="opacity:0.5;">No messages yet</span>
-                </div>
-            </div>
 
-            <!-- Drone RTK Status -->
-            <div class="setup-panel" style="min-width:320px; flex:1;">
-                <div class="panel-header">DRONE RTK STATUS</div>
+                <!-- Drone RTK Status -->
+                <div class="setup-panel">
+                    <div class="panel-header">DRONE RTK STATUS</div>
                 <div class="cfg-row">
                     <label>GPS FIX</label>
                     <span class="cfg-val" id="rtk-drone-fix" style="font-weight:700;">---</span>
@@ -1357,17 +1353,14 @@
                     <label>IAR HYPOTHESES</label>
                     <span class="cfg-val" id="rtk-drone-iar">---</span>
                 </div>
-            </div>
-
                 </div>
             </div>
 
             <!-- Sub-tab: Telemetry Forward -->
             <div class="sub-tab-content" id="subtab-tel-forward">
-                <div class="tab-panel-center" style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start;">
 
                     <!-- Connection Panel -->
-                    <div class="setup-panel" style="min-width:320px; flex:1;">
+                    <div class="setup-panel">
                         <div class="panel-header">TELEMETRY OUTPUT</div>
                         <div class="cfg-row">
                             <label>SERIAL PORT</label>
@@ -1405,7 +1398,7 @@
                     </div>
 
                     <!-- Stats Panel -->
-                    <div class="setup-panel" style="min-width:320px; flex:1;">
+                    <div class="setup-panel">
                         <div class="panel-header">FORWARD STATUS</div>
                         <div class="cfg-row">
                             <label>STATUS</label>
@@ -1430,7 +1423,7 @@
                     </div>
 
                     <!-- Current Data Panel -->
-                    <div class="setup-panel" style="min-width:320px; flex:1;">
+                    <div class="setup-panel">
                         <div class="panel-header">CURRENT DATA</div>
                         <div class="cfg-row">
                             <label>LAT</label>
@@ -1454,7 +1447,6 @@
                         </div>
                     </div>
 
-                </div>
             </div>
 
         </div>
