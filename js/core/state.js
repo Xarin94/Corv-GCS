@@ -112,6 +112,13 @@ export const STATE = {
     joystickConnected: false,
     rcOverrideActive: false,
 
+    // Terrain feed to vehicle (MAVLink terrain protocol)
+    terrainFeedEnabled: true,
+    terrainPending: 0,        // from TERRAIN_REPORT: blocks still pending on vehicle
+    terrainLoaded: 0,         // from TERRAIN_REPORT: blocks loaded by vehicle
+    terrainFeedSent: 0,       // count of TERRAIN_DATA messages sent by GCS
+    terrainFeedErrors: 0,     // count of elevation lookups that returned null
+
     // ADS-B traffic (from OpenSky API or MAVLink ADSB_VEHICLE)
     // Array of { icao24, callsign, lat, lon, alt, velocity, heading, vertRate, onGround, dist }
     traffic: []

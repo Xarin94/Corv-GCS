@@ -421,6 +421,13 @@ function handlePacket(packet) {
             const instance = packet.protocol.data(packet.payload, MessageClass);
             // Convert to plain object, resolving enums to numbers and BigInts
             data = instanceToPlainObject(instance, MessageClass);
+
+            // TERRAIN_REQUEST (133): preserve 64-bit mask as two 32-bit halves
+            // Number() loses precision above 2^53, but terrain mask uses up to 56 bits
+            if (msgId === 133 && typeof instance.mask === 'bigint') {
+                data.maskLow  = Number(instance.mask & BigInt(0xFFFFFFFF));
+                data.maskHigh = Number((instance.mask >> BigInt(32)) & BigInt(0xFFFFFFFF));
+            }
         }
 
         mainWindow.webContents.send('mavlink-message', {
@@ -643,6 +650,15 @@ async function sendMAVLinkMessage(msg) {
             mavMsg.vx = 0; mavMsg.vy = 0; mavMsg.vz = 0;
             mavMsg.afx = 0; mavMsg.afy = 0; mavMsg.afz = 0;
             mavMsg.yaw = 0; mavMsg.yawRate = 0;
+            break;
+        }
+        case 'TERRAIN_DATA': {
+            mavMsg = new common.TerrainData();
+            mavMsg.lat = msg.lat;
+            mavMsg.lon = msg.lon;
+            mavMsg.gridSpacing = msg.gridSpacing;
+            mavMsg.gridbit = msg.gridbit;
+            mavMsg.data = msg.data; // int16[16]
             break;
         }
         case 'COMMAND_LONG': {

@@ -135,6 +135,7 @@ export function mapMessageToState(msgId, data) {
         case 77: mapCommandAck(data); break;
         case 127: mapGpsRtk(data); break;
         case 132: mapDistanceSensor(data); break;
+        case 136: mapTerrainReport(data); break;
         case 241: mapVibration(data); break;
         case 242: mapHomePosition(data); break;
         case 246: mapAdsbVehicle(data); break;
@@ -344,6 +345,11 @@ function mapGpsRtk(data) {
     const d = data.baseline_c_mm || 0;
     STATE.rtkBaseline = Math.sqrt(n * n + e * e + d * d);
     STATE.rtkAccuracy = data.accuracy || 0;
+}
+
+function mapTerrainReport(data) {
+    STATE.terrainPending = data.pending || 0;
+    STATE.terrainLoaded = data.loaded || 0;
 }
 
 function mapDistanceSensor(data) {

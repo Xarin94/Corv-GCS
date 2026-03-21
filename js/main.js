@@ -74,6 +74,7 @@ import {
 // MAVLink imports
 import { initMAVLink, onMessage } from './mavlink/MAVLinkManager.js';
 import { setParameter, requestParameter } from './mavlink/CommandSender.js';
+import { initTerrainFeeder } from './mavlink/TerrainFeeder.js';
 
 // GCS imports
 import { initCommandBar, updateCommandBar } from './ui/CommandBarController.js';
@@ -1572,6 +1573,7 @@ function init() {
 
     // Initialize MAVLink and GCS controls
     initMAVLink();
+    initTerrainFeeder();
     initCommandBar();
     initGCSSidebar();
     initHudCells();
