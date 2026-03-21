@@ -16,6 +16,48 @@ let currentTab = 'flight-data';
 let missionMap = null; // Leaflet map for flight plan tab
 
 /**
+ * Ensure HGT elevation data is parsed for all 1° tiles covered by the mission path.
+ * Covers waypoint locations AND all 1° tiles along segments between waypoints.
+ * After this resolves, synchronous getTerrainElevationFromHGT() will return data
+ * for any point along the mission path (provided the HGT file was loaded).
+ */
+async function ensureMissionTerrainLoaded() {
+    const items = STATE.missionItems;
+    if (!items || items.length === 0) return;
+    const navItems = items.filter(it => isNavCmd(it.command));
+    // Collect unique 1° tile keys along the entire mission path
+    const seen = new Set();
+    const addTile = (lat, lng) => {
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+        const key = `${Math.floor(lat)}_${Math.floor(lng)}`;
+        if (!seen.has(key)) seen.add(key);
+    };
+    for (let i = 0; i < navItems.length; i++) {
+        addTile(navItems[i].lat, navItems[i].lng);
+        // Sample along segment to catch any 1° tile boundaries crossed
+        if (i < navItems.length - 1) {
+            const latStep = navItems[i + 1].lat - navItems[i].lat;
+            const lngStep = navItems[i + 1].lng - navItems[i].lng;
+            // Sample every ~0.5° to ensure we don't miss tiles
+            const steps = Math.max(2, Math.ceil(Math.max(Math.abs(latStep), Math.abs(lngStep)) * 2));
+            for (let s = 1; s <= steps; s++) {
+                const t = s / steps;
+                addTile(navItems[i].lat + latStep * t, navItems[i].lng + lngStep * t);
+            }
+        }
+    }
+    // Also add non-nav items
+    for (const it of items) addTile(it.lat, it.lng);
+
+    const promises = [];
+    for (const key of seen) {
+        const [lat, lon] = key.split('_').map(Number);
+        promises.push(getTerrainElevationAsync(lat + 0.5, lon + 0.5));
+    }
+    await Promise.all(promises);
+}
+
+/**
  * Initialize tab controller
  */
 export function initTabs() {
@@ -571,6 +613,9 @@ function initMissionControls() {
                     itemsToUpload = [homeItem, ...itemsToUpload.map((it, i) => ({ ...it, seq: i + 1 }))];
                 }
 
+                // Ensure terrain data is available for all waypoints before computing
+                await ensureMissionTerrainLoaded();
+
                 // Terrain-following: adjust altitudes relative to home.
                 // Frame 3 (GLOBAL_RELATIVE_ALT) means alt relative to home elevation.
                 // To follow terrain, each WP alt must be: terrain(wp) - terrain(home) + desired_AGL
@@ -694,7 +739,10 @@ function calcMissionDistance() {
 /**
  * Update mission display on map and list
  */
-function updateMissionDisplay() {
+async function updateMissionDisplay() {
+    // Ensure HGT elevation data is parsed for distant waypoint tiles
+    await ensureMissionTerrainLoaded();
+
     // Clear existing markers and polyline
     missionMarkers.forEach(m => m.remove());
     missionMarkers = [];

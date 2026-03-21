@@ -4,6 +4,7 @@
  */
 
 import { STATE } from '../core/state.js';
+import { purgeStaleTraffic } from '../adsb/ADSBManager.js';
 
 let vibHistoryIdx = 0; // circular index for vibHistory
 
@@ -380,9 +381,15 @@ function mapStatusText(data) {
 }
 
 // ADSB_VEHICLE (246): real-time ADS-B traffic from onboard receiver
-const ADSB_MAX_AGE = 60000; // remove stale entries after 60s
 const trafficIndex = new Map(); // icao24 → array index (O(1) lookup)
 let lastTrafficPurge = 0;
+
+function rebuildTrafficIndex() {
+    trafficIndex.clear();
+    for (let i = 0; i < STATE.traffic.length; i++) {
+        trafficIndex.set(STATE.traffic[i].icao24, i);
+    }
+}
 
 function mapAdsbVehicle(data) {
     const icao24 = (data.ICAO_address || data.icaoAddress || 0).toString(16).padStart(6, '0');
@@ -411,11 +418,8 @@ function mapAdsbVehicle(data) {
     // Purge stale entries at most once per second (not on every message)
     if (now - lastTrafficPurge > 1000) {
         lastTrafficPurge = now;
-        STATE.traffic = STATE.traffic.filter(t => now - t._ts < ADSB_MAX_AGE);
-        // Rebuild index after filter
-        trafficIndex.clear();
-        for (let i = 0; i < STATE.traffic.length; i++) {
-            trafficIndex.set(STATE.traffic[i].icao24, i);
+        if (purgeStaleTraffic()) {
+            rebuildTrafficIndex();
         }
     }
 }

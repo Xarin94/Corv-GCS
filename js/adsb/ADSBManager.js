@@ -8,6 +8,18 @@ import { STATE } from '../core/state.js';
 
 let lastFetchTime = 0;
 const FETCH_COOLDOWN = 10000; // 10s OpenSky rate limit
+const ADSB_MAX_AGE = 60000; // remove stale entries after 60s
+
+/**
+ * Purge stale traffic entries older than ADSB_MAX_AGE.
+ * Returns true if any entries were removed.
+ */
+export function purgeStaleTraffic() {
+    const now = Date.now();
+    const before = STATE.traffic.length;
+    STATE.traffic = STATE.traffic.filter(t => now - t._ts < ADSB_MAX_AGE);
+    return STATE.traffic.length < before;
+}
 
 /**
  * Compute distance in meters between two lat/lon points (Haversine)
@@ -75,6 +87,9 @@ export async function fetchADSBData() {
             STATE.traffic.push(ac);
         }
     }
+
+    // Purge aircraft not seen for >60s (handles disappearing aircraft)
+    purgeStaleTraffic();
 
     return { count: fetched.length, traffic: fetched };
 }
