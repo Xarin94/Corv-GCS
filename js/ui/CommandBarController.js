@@ -124,6 +124,7 @@ export function initCommandBar() {
         landBtn: document.getElementById('cmd-land'),
         speedInput: document.getElementById('cmd-speed-input'),
         rssi: document.getElementById('cmd-rssi'),
+        remRssi: document.getElementById('cmd-remrssi'),
         autoBtn: document.getElementById('cmd-auto'),
         fbwaBtn: document.getElementById('cmd-fbwa'),
         posholdBtn: document.getElementById('cmd-poshold'),
@@ -426,9 +427,20 @@ export function updateCommandBar() {
         }
     }
 
-    // RSSI
-    const lq = STATE.linkQuality;
-    els.rssi.textContent = lq > 0 ? Math.round(lq) + '%' : '--';
+    // RSSI — prefer RADIO_STATUS values; fall back to SYS_STATUS linkQuality
+    if (STATE.rssi !== null) {
+        els.rssi.textContent = STATE.rssi;
+        if (STATE.remRssi !== null && els.remRssi) {
+            els.remRssi.textContent = 'R:' + STATE.remRssi;
+            els.remRssi.style.display = '';
+        } else if (els.remRssi) {
+            els.remRssi.style.display = 'none';
+        }
+    } else {
+        const lq = STATE.linkQuality;
+        els.rssi.textContent = lq > 0 ? Math.round(lq) + '%' : '--';
+        if (els.remRssi) els.remRssi.style.display = 'none';
+    }
 }
 
 function updateConnectionStatus(state) {

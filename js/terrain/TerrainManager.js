@@ -84,9 +84,15 @@ async function ensureHgtLoaded(filename) {
     }
 }
 
-// Track tiles that failed auto-download to avoid retrying
+// Track tiles that failed auto-download to avoid retrying within a session burst.
+// Call resetAutoDownloadFailures() before critical operations (SITL launch,
+// mission upload) to allow one more attempt after transient network errors.
 const _autoDownloadFailed = new Set();
 const _autoDownloadInProgress = new Set();
+
+export function resetAutoDownloadFailures() {
+    _autoDownloadFailed.clear();
+}
 
 /**
  * Auto-download a single SRTM tile from AWS Mapzen (free, no auth).
@@ -1708,25 +1714,14 @@ function cleanupDistantChunks() {
 }
 
 /**
- * Cleanup HGT elevation cache far from player
+ * Cleanup HGT elevation cache far from player.
+ * Parsed elevation arrays are kept permanently in memory to avoid
+ * re-parsing or re-downloading the same tile repeatedly.
  */
 function cleanupHgtCache() {
-    const playerPos = latLonToMeters(STATE.lat, STATE.lon);
-    const keys = Object.keys(hgtElevationData);
-    for (const key of keys) {
-        const parts = key.split('_');
-        if (parts.length < 2) continue;
-        const latBase = Number(parts[0]);
-        const lonBase = Number(parts[1]);
-        if (!Number.isFinite(latBase) || !Number.isFinite(lonBase)) continue;
-        const centerWorld = latLonToMeters(latBase + 0.5, lonBase + 0.5);
-        const dx = centerWorld.x - playerPos.x;
-        const dz = centerWorld.z - playerPos.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist > HGT_CACHE_RADIUS) {
-            delete hgtElevationData[key];
-        }
-    }
+    // Intentionally left empty: hgtElevationData entries are retained for the
+    // full session lifetime. Each 1°×1° SRTM tile is ~2.9 MB parsed; keeping
+    // them avoids repeated AWS downloads and re-parse overhead.
 }
 
 /**

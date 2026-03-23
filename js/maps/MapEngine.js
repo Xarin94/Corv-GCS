@@ -118,7 +118,7 @@ export function updateMap() {
 /**
  * Update ADS-B traffic markers on mini-map
  */
-function updateTrafficOverlay() {
+export function updateTrafficOverlay() {
     if (!map) return;
 
     if (!STATE.traffic || STATE.traffic.length === 0) {

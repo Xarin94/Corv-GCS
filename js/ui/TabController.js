@@ -9,7 +9,7 @@ import { setParameter, requestAllParameters, requestParameter, requestDataStream
 import { onMessage } from '../mavlink/MAVLinkManager.js';
 import { formatParamValue } from './ParametersPageController.js';
 import { initJoystick } from '../joystick/JoystickUI.js';
-import { getTerrainElevationFromHGT, getTerrainElevationAsync } from '../terrain/TerrainManager.js';
+import { getTerrainElevationFromHGT, getTerrainElevationAsync, resetAutoDownloadFailures } from '../terrain/TerrainManager.js';
 import { getCmdShortName, getCmdColor, getCmdParams, getCmdDefaults, isNavCmd, getGroupedCommands } from '../mission/MissionCommands.js';
 import { cachedTileLayer } from '../maps/CachedTileLayer.js';
 
@@ -51,6 +51,9 @@ async function ensureMissionTerrainLoaded() {
     }
     // Also add non-nav items
     for (const it of items) addTile(it.lat, it.lng);
+
+    // Allow one retry for tiles that previously failed (e.g. transient AWS error)
+    resetAutoDownloadFailures();
 
     const promises = [];
     for (const key of seen) {
@@ -470,7 +473,7 @@ function addWaypointAtLocation(lat, lng) {
     const seq = STATE.missionItems.length;
     const altInput = document.getElementById('mission-default-alt');
     const cmdSelect = document.getElementById('mission-wp-cmd');
-    const alt = altInput ? parseFloat(altInput.value) || 50 : 50;
+    const alt = altInput ? parseFloat(altInput.value) || 100 : 100;
     const command = cmdSelect ? parseInt(cmdSelect.value) || 16 : 16;
 
     const defaults = getCmdDefaults(command);
@@ -705,7 +708,7 @@ function initMissionControls() {
     if (altInput) {
         altInput.addEventListener('change', () => {
             if (selectedWpIdx >= 0 && selectedWpIdx < STATE.missionItems.length) {
-                STATE.missionItems[selectedWpIdx].alt = parseFloat(altInput.value) || 50;
+                STATE.missionItems[selectedWpIdx].alt = parseFloat(altInput.value) || 100;
                 updateMissionDisplay();
             }
         });
@@ -1958,7 +1961,8 @@ function initSimulationTab() {
             const homeLon = parseFloat(document.getElementById('sitl-home-lon')?.value) || 11.3439;
             const speedup = parseInt(document.getElementById('sitl-speedup')?.value) || 1;
 
-            // Get terrain elevation at home position from HGT data (async to ensure file is parsed)
+            // Get terrain elevation at home position — allow retry if a prior attempt failed
+            resetAutoDownloadFailures();
             const terrainElev = await getTerrainElevationAsync(homeLat, homeLon);
             const homeAlt = (terrainElev !== null && terrainElev > 0) ? terrainElev : 0;
             console.log(`[sitl] Home: ${homeLat}, ${homeLon}, terrain=${terrainElev}, homeAlt=${homeAlt}`);

@@ -55,6 +55,8 @@ export const STATE = {
     gpsNumSat: 0,
     gpsHdop: 99.9,
     linkQuality: 0,
+    rssi: null,       // local RX RSSI from RADIO_STATUS (0-254, 255=invalid)
+    remRssi: null,    // remote RSSI from RADIO_STATUS (0-254, 255=invalid)
     heartbeatCount: 0,
     lastHeartbeatTime: 0,
     systemId: 1,

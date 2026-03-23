@@ -132,6 +132,7 @@ export function mapMessageToState(msgId, data) {
         case 36: mapServoOutputRaw(data); break;
         case 65: mapRcChannels(data); break;
         case 74: mapVfrHud(data); break;
+        case 109: mapRadioStatus(data); break;
         case 77: mapCommandAck(data); break;
         case 127: mapGpsRtk(data); break;
         case 132: mapDistanceSensor(data); break;
@@ -151,6 +152,12 @@ function mapHeartbeat(data) {
     STATE.armed = (data.baseMode & 128) !== 0; // MAV_MODE_FLAG_SAFETY_ARMED = 128
     STATE.flightModeNum = data.customMode;
     STATE.flightMode = getFlightModeName(data.customMode, data.type);
+}
+
+function mapRadioStatus(data) {
+    // rssi/remrssi: 0-254 are valid RSSI counts; 255 = invalid/unknown
+    STATE.rssi    = data.rssi    < 255 ? data.rssi    : null;
+    STATE.remRssi = data.remrssi < 255 ? data.remrssi : null;
 }
 
 function mapSysStatus(data) {

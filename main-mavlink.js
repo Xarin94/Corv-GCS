@@ -111,11 +111,15 @@ function stopTlogRecording() {
  */
 function writeTlogPacket(rawPacketBuffer) {
     if (!tlogStream) return;
+    // MavLinkPacketSplitter emits { buffer, timestamp } objects in objectMode —
+    // extract the raw Buffer; fall back to the value itself if already a Buffer.
+    const buf = Buffer.isBuffer(rawPacketBuffer) ? rawPacketBuffer : rawPacketBuffer && rawPacketBuffer.buffer;
+    if (!buf) return;
     const nowUs = BigInt(Date.now()) * 1000n;
     const tsBuf = Buffer.alloc(8);
     tsBuf.writeBigUInt64LE(nowUs, 0);
     tlogStream.write(tsBuf);
-    tlogStream.write(rawPacketBuffer);
+    tlogStream.write(buf);
 }
 
 /**

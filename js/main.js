@@ -51,7 +51,7 @@ import {
 import { initHUD, drawHUD, resizeHUD, setViewMode as setHUDViewMode, pushHudMessage } from './hud/HUDRenderer.js';
 
 // Map imports
-import { initMap, updateMap, invalidateSize as invalidateMapSize, updateMissionOverlay } from './maps/MapEngine.js';
+import { initMap, updateMap, invalidateSize as invalidateMapSize, updateMissionOverlay, updateTrafficOverlay } from './maps/MapEngine.js';
 
 // Serial imports
 import { connectSerial } from './serial/SerialHandler.js';
@@ -1617,6 +1617,7 @@ window.toggleADSB = function(enabled) {
     } else {
         if (adsbPollTimer) { clearInterval(adsbPollTimer); adsbPollTimer = null; }
         STATE.traffic = [];
+        updateTrafficOverlay(); // remove dots from 2D map immediately
     }
     pushHudMessage(enabled ? 'ADS-B traffic enabled' : 'ADS-B traffic disabled', 'info');
 };
