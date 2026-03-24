@@ -56,6 +56,7 @@ function initTelForwardHandlers(win) {
             return ports.map(p => ({
                 path: p.path,
                 manufacturer: p.manufacturer || '',
+                friendlyName: p.friendlyName || '',
                 vendorId: p.vendorId || '',
                 productId: p.productId || '',
                 serialNumber: p.serialNumber || ''

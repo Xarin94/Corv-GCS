@@ -1425,6 +1425,12 @@ function renderAltitudeProfile() {
     ctx.fillText('ALTITUDE PROFILE', pad.left, 13);
 }
 
+function portLabel(p) {
+    if (p.friendlyName) return p.friendlyName;
+    if (p.manufacturer) return `${p.path} (${p.manufacturer})`;
+    return p.path;
+}
+
 /**
  * Initialize Initial Setup tab
  */
@@ -1440,7 +1446,7 @@ function initSetupTab() {
             if (select) {
                 select.innerHTML = ports.length === 0
                     ? '<option value="">No ports found</option>'
-                    : ports.map(p => `<option value="${p.path}">${p.path} (${p.manufacturer || 'unknown'})</option>`).join('');
+                    : ports.map(p => `<option value="${p.path}">${portLabel(p)}</option>`).join('');
             }
         });
     }
@@ -2056,8 +2062,7 @@ function initRTKTab() {
             const ports = await window.rtk.listPorts();
             portSelect.innerHTML = '<option value="">Select port...</option>';
             ports.forEach(p => {
-                const label = p.manufacturer ? `${p.path} (${p.manufacturer})` : p.path;
-                portSelect.innerHTML += `<option value="${p.path}">${label}</option>`;
+                portSelect.innerHTML += `<option value="${p.path}">${portLabel(p)}</option>`;
             });
         };
         scanBtn.addEventListener('click', doScan);
@@ -2227,7 +2232,7 @@ function initTelForwardTab() {
         for (const p of ports) {
             const opt = document.createElement('option');
             opt.value = p.path;
-            opt.textContent = p.path + (p.manufacturer ? ` (${p.manufacturer})` : '');
+            opt.textContent = portLabel(p);
             portSelect.appendChild(opt);
         }
         // Restore previous selection or saved port
