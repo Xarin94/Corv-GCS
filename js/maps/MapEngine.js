@@ -247,3 +247,8 @@ export function clearTargetMarker() {
     if (targetMarkerInner) { map.removeLayer(targetMarkerInner); targetMarkerInner = null; }
 }
 
+export function resetMapTrail() {
+    livePathPoints = [];
+    if (pathLine) pathLine.setLatLngs([]);
+}
+

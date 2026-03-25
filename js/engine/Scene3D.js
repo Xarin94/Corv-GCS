@@ -409,8 +409,8 @@ export function updateHomeMarker3D() {
     }
 
     const pos = latLonToMeters(STATE.homeLat, STATE.homeLon);
-    // Home marker is always at ground level (offsetAlt is the scene's ground plane)
-    const alt = STATE.offsetAlt || 0;
+    // Home marker at MSL altitude of home + any user offset correction
+    const alt = (STATE.homeAlt || 0) + (STATE.offsetAlt || 0);
 
     const group = new THREE.Group();
 

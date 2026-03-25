@@ -131,7 +131,10 @@ function stopHomePolling() {
 
 onMessage(0, () => { // heartbeat
     if (STATE.armed && !_prevArmed) {
-        // Just armed — request home position after a short delay, then start polling
+        // Just armed — reset stale home so polling doesn't exit early, then request new one
+        STATE.homeLat = null;
+        STATE.homeLon = null;
+        STATE.homeAlt = null;
         setTimeout(() => {
             requestHomePosition().catch(() => {});
             startHomePolling();

@@ -237,6 +237,9 @@
 
         </div><!-- end #ui-layer -->
 
+        <!-- MAVLink status messages overlay -->
+        <div id="mav-msg-overlay"></div>
+
         <!-- Mini-map overlay (always visible in fullscreen) -->
         <div id="mini-map-container">
             <div id="mini-map"></div>
@@ -1465,6 +1468,13 @@
                     <label style="display:flex;align-items:center;gap:6px;">
                         <input type="checkbox" id="syscfg-adsb-enable" checked onchange="toggleADSB(this.checked)">
                         <span>Show ADS-B traffic overlay</span>
+                    </label>
+                </div>
+                <div class="cfg-row">
+                    <label>GROUND CLAMP</label>
+                    <label style="display:flex;align-items:center;gap:6px;">
+                        <input type="checkbox" id="syscfg-ground-clamp-enable" checked onchange="toggleGroundClamp(this.checked)">
+                        <span>Clamp model to terrain surface</span>
                     </label>
                 </div>
                 <div class="cfg-row">

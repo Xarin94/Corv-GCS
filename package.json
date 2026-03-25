@@ -1,6 +1,6 @@
 {
   "name": "corv-gcs",
-  "version": "1.2.27",
+  "version": "1.2.28",
   "description": "CORV SYSTEMS Ground Control Station",
   "main": "main.js",
   "scripts": {

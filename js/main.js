@@ -51,7 +51,7 @@ import {
 import { initHUD, drawHUD, resizeHUD, setViewMode as setHUDViewMode, pushHudMessage } from './hud/HUDRenderer.js';
 
 // Map imports
-import { initMap, updateMap, invalidateSize as invalidateMapSize, updateMissionOverlay, updateTrafficOverlay } from './maps/MapEngine.js';
+import { initMap, updateMap, invalidateSize as invalidateMapSize, updateMissionOverlay, updateTrafficOverlay, resetMapTrail } from './maps/MapEngine.js';
 
 // Serial imports
 import { connectSerial } from './serial/SerialHandler.js';
@@ -649,7 +649,7 @@ function update3DWorld() {
     if (terrHeight !== null) {
         STATE.terrainHeight = terrHeight;
         // Ensure vehicle renders above terrain (visual clamp only, doesn't modify STATE.rawAlt)
-        if (totalAlt < terrHeight + 0.5) {
+        if (window._groundClampEnabled !== false && totalAlt < terrHeight + 0.5) {
             totalAlt = terrHeight + 0.5;
         }
     }
@@ -1461,12 +1461,31 @@ function init() {
 
     // Forward STATUSTEXT messages to HUD
     const SEVERITY_LEVELS = ['EMERGENCY', 'ALERT', 'CRITICAL', 'ERROR', 'WARNING', 'NOTICE', 'INFO', 'DEBUG'];
+    let _mavMsgOverlay = null;
+    const MAV_MSG_DURATION = 10000;
+    const MAV_MSG_MAX = 5;
+    function pushMavOverlayError(text) {
+        if (!_mavMsgOverlay) _mavMsgOverlay = document.getElementById('mav-msg-overlay');
+        if (!_mavMsgOverlay) return;
+        const item = document.createElement('div');
+        item.className = 'mav-msg-item';
+        item.textContent = text;
+        _mavMsgOverlay.insertBefore(item, _mavMsgOverlay.firstChild);
+        while (_mavMsgOverlay.children.length > MAV_MSG_MAX) {
+            _mavMsgOverlay.removeChild(_mavMsgOverlay.lastChild);
+        }
+        setTimeout(() => {
+            item.classList.add('fading');
+            setTimeout(() => { if (item.parentNode) item.parentNode.removeChild(item); }, 700);
+        }, MAV_MSG_DURATION);
+    }
     onMessage(253, (data) => {
         const sev = data.severity ?? 6;
         const prefix = SEVERITY_LEVELS[sev] || 'INFO';
         const text = `[${prefix}] ${data.text || ''}`;
         const level = sev <= 3 ? 'error' : sev <= 4 ? 'warning' : 'info';
         pushHudMessage(text, level);
+        if (sev <= 3) pushMavOverlayError(text);
     });
 
     // Command ACK toast overlay
@@ -1582,6 +1601,7 @@ window.toggleGcsMute = async function(forceState) {
 // Clear flight trail
 window.clearTrail = function() {
     resetTrail();
+    resetMapTrail();
     pushHudMessage('Trail cleared');
 };
 
@@ -1676,7 +1696,20 @@ window.updateBatteryVoltageRange = function() {
         const muteChk = document.getElementById('chk-mute-gcs');
         if (muteChk) { muteChk.checked = true; window.toggleGcsMute(true); }
     }
+
+    // Ground clamp
+    const clampSaved = localStorage.getItem('ground-clamp-enabled');
+    if (clampSaved === '0') {
+        window._groundClampEnabled = false;
+        const el = document.getElementById('syscfg-ground-clamp-enable');
+        if (el) el.checked = false;
+    }
 })();
+
+window.toggleGroundClamp = function(enabled) {
+    window._groundClampEnabled = enabled;
+    localStorage.setItem('ground-clamp-enabled', enabled ? '1' : '0');
+};
 
 // Download traffic CSV from menu
 window.downloadTraffic = function() {

@@ -483,7 +483,7 @@ function addWaypointAtLocation(lat, lng) {
         lat,
         lng,
         alt,
-        frame: 3, // MAV_FRAME_GLOBAL_RELATIVE_ALT
+        frame: 0, // MAV_FRAME_GLOBAL (absolute MSL — converted at upload)
         param1: defaults.param1,
         param2: defaults.param2,
         param3: defaults.param3,
@@ -630,23 +630,21 @@ function initMissionControls() {
                 // Ensure terrain data is available for all waypoints before computing
                 await ensureMissionTerrainLoaded();
 
-                // Terrain-following: adjust altitudes relative to home.
-                // Frame 3 (GLOBAL_RELATIVE_ALT) means alt relative to home elevation.
-                // To follow terrain, each WP alt must be: terrain(wp) - terrain(home) + desired_AGL
+                // Absolute MSL: alt_MSL = terrain_elevation(wp) + desired_AGL
+                // Frame 0 (MAV_FRAME_GLOBAL) = absolute MSL — ArduPilot flies exactly at this altitude
                 const homeWp = itemsToUpload[0];
                 const homeElev = getTerrainElevationFromHGT(homeWp.lat, homeWp.lng);
-                if (homeElev !== null) {
-                    for (let i = 1; i < itemsToUpload.length; i++) {
-                        const wp = itemsToUpload[i];
-                        if (wp.frame === 3 || wp.frame === 6) {
-                            const wpElev = getTerrainElevationFromHGT(wp.lat, wp.lng);
-                            if (wpElev !== null) {
-                                // wp.alt is the desired AGL (height above local terrain)
-                                // Convert to altitude relative to home for ArduPilot
-                                wp.alt = Math.round(wpElev - homeElev + (wp.alt || 0));
-                            }
-                        }
-                    }
+
+                // Set home item altitude to actual terrain MSL (ArduPilot uses this as reference)
+                if (homeElev !== null) homeWp.alt = Math.round(homeElev);
+
+                for (let i = 1; i < itemsToUpload.length; i++) {
+                    const wp = itemsToUpload[i];
+                    const wpElev = getTerrainElevationFromHGT(wp.lat, wp.lng);
+                    // Fallback: if terrain not available for this WP, use home elevation
+                    const baseElev = wpElev !== null ? wpElev : (homeElev !== null ? homeElev : (STATE.homeAlt || 0));
+                    wp.alt = Math.round(baseElev + (wp.alt || 0));
+                    wp.frame = 0; // MAV_FRAME_GLOBAL — absolute MSL
                 }
 
                 const result = await uploadMission(itemsToUpload);

@@ -167,6 +167,57 @@ button.ui-btn.recording {
     100% { color: #ff2020; opacity: 1; }
 }
 
+/* MAVLink critical error overlay */
+#mav-msg-overlay {
+    position: absolute;
+    left: 16px;
+    bottom: calc(25% + 18px);
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    pointer-events: none;
+    z-index: var(--z-ui-layer);
+    max-width: 480px;
+    align-items: flex-start;
+}
+
+.mav-msg-item {
+    font-family: var(--font-data);
+    font-size: clamp(12px, 1.2vw, 16px);
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 4px 14px 4px 10px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.6);
+    border-left: 3px solid #ff3c3c;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 480px;
+    text-shadow: 0 0 8px rgba(255, 60, 60, 0.6);
+    animation: mav-error-appear 0.15s ease-out, mav-error-blink 1.6s ease-in-out infinite;
+    transition: opacity 0.6s ease;
+}
+
+.mav-msg-item.fading {
+    opacity: 0;
+    animation: none;
+}
+
+@keyframes mav-error-appear {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes mav-error-blink {
+    0%   { color: #ff2020; }
+    25%  { color: #ff6600; opacity: 0.85; }
+    50%  { color: #ff3300; opacity: 0.6; }
+    75%  { color: #ff8800; opacity: 0.85; }
+    100% { color: #ff2020; }
+}
+
 /* DATA TAPES */
 .tape-col {
     display: flex;
