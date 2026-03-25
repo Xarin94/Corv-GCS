@@ -1573,6 +1573,12 @@ function clearPendingTextureOperations() {
  * When enabling, schedules texture generation for chunks that don't have it yet.
  * @param {boolean} enabled
  */
+export function setTerrainChunksVisible(visible) {
+    for (const key in activeChunks) {
+        if (activeChunks[key]) activeChunks[key].visible = visible;
+    }
+}
+
 export function setTerrainSatelliteEnabled(enabled) {
     const on = !!enabled;
     if (!activeChunks) return;

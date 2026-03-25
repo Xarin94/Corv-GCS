@@ -86,7 +86,7 @@ import { setTerrainSatelliteEnabled } from './terrain/TerrainManager.js';
 import { initOfflinePanel } from './maps/OfflineDownloader.js';
 
 // FPV imports
-import { initFPV, onFPVButtonClick, saveFPVSettings, resizeFPV, isFPVActive, stopFPVStream } from './ui/FPVController.js';
+import { initFPV, onFPVButtonClick, saveFPVSettings, resizeFPV, isFPVActive, isFPVARMode, stopFPVStream } from './ui/FPVController.js';
 
 // Loading overlay imports
 import {
@@ -721,9 +721,9 @@ function update3DWorld() {
         (planePos.z - STATE.lastUpdatePos.z) ** 2
     );
     
-    // Only update terrain and render if 3D is visible
-    if (visible3D) {
-        if (getHGTFileCount() > 0 && (Object.keys(getActiveChunks()).length === 0 || dist > 2000)) {
+    // Update terrain and render if 3D is visible or AR overlay is active
+    if (visible3D || isFPVARMode()) {
+        if (visible3D && getHGTFileCount() > 0 && (Object.keys(getActiveChunks()).length === 0 || dist > 2000)) {
             STATE.lastUpdatePos = { x: planePos.x, z: planePos.z };
             updateTerrainChunks();
         }
@@ -1082,8 +1082,8 @@ function animate() {
         update3DWorld();
         updateHomeMarker3D();
 
-        // Check if nearby chunks need high-res textures
-        if (is3DVisible()) {
+        // Check if nearby chunks need high-res textures (skip in AR mode — terrain is hidden)
+        if (is3DVisible() && !isFPVARMode()) {
             refreshNearbyChunkTextures();
         }
 

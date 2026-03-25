@@ -533,6 +533,19 @@ export function getTimeOverride() { return timeOverride; }
 export function getShadowChunkSize() { return SHADOW_CHUNK_SIZE; }
 export function getLastShadowChunk() { return { x: lastShadowChunkX, z: lastShadowChunkZ }; }
 
+// AR overlay mode: black background (becomes transparent via CSS mix-blend-mode:screen)
+export function setARMode(enabled) {
+    if (enabled) {
+        scene.background = new THREE.Color(0x000000);
+        scene.fog = null;
+        renderer.setClearColor(0x000000, 1);
+    } else {
+        scene.background = new THREE.Color(0x87ceeb);
+        scene.fog = new THREE.FogExp2(0x87ceeb, 0.00005);
+        renderer.setClearColor(0x000000, 1);
+    }
+}
+
 // Setters
 export function setSunlightEnabled(enabled) { sunlightEnabled = enabled; }
 export function setTimeOverride(time) { timeOverride = time; }

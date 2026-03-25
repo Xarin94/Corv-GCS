@@ -44,6 +44,13 @@
     border-color: var(--accent-cyan, #00d2ff);
 }
 
+/* AR mode: amber/orange tint to distinguish from camera-only */
+#btn-fpv.ar-active {
+    color: #ffaa00;
+    background: rgba(255, 170, 0, 0.15);
+    border-color: #ffaa00;
+}
+
 /* Pulsing dot when streaming */
 #btn-fpv.streaming::after {
     content: '';
