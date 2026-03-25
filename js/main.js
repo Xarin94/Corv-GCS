@@ -86,7 +86,7 @@ import { setTerrainSatelliteEnabled } from './terrain/TerrainManager.js';
 import { initOfflinePanel } from './maps/OfflineDownloader.js';
 
 // FPV imports
-import { initFPV, onFPVButtonClick, resizeFPV, isFPVActive, openFPVSettings, stopFPVStream } from './ui/FPVController.js';
+import { initFPV, onFPVButtonClick, saveFPVSettings, resizeFPV, isFPVActive, stopFPVStream } from './ui/FPVController.js';
 
 // Loading overlay imports
 import {
@@ -1578,6 +1578,7 @@ window.toggleViewMode = () => {
     return mode;
 };
 window.onFPVButtonClick = onFPVButtonClick;
+window.saveFPVSettings = saveFPVSettings;
 
 // GCS output mute toggle — suppresses all outgoing MAVLink (heartbeat, RTK, RC override, commands)
 let _gcsMuted = false;

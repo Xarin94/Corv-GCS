@@ -2,20 +2,17 @@
  * FPVController.js - FPV Camera Stream Controller
  *
  * Manages the SIYI HM30 (or generic RTSP) camera feed display.
- * - First click: show connection settings dialog
- * - Once connected: button toggles between 3D view and FPV feed
- * - HUD overlay and all data remain visible on top of the video
+ * - Settings are configured in SYS CONFIG > SIYI CAMERA STREAM panel
+ * - Main screen button toggles stream on/off
  */
 
 // ============== STATE ==============
 let fpvActive = false;       // Currently showing FPV feed
 let fpvConnected = false;    // Stream is connected
-let fpvConfigured = false;   // Connection settings have been saved
 
 // DOM references (cached after init)
 let fpvCanvas = null;
 let fpvCtx = null;
-let fpvDialog = null;
 let fpvBtn = null;
 let sceneContainer = null;
 
@@ -42,9 +39,7 @@ function loadSettings() {
   try {
     const saved = localStorage.getItem('fpv-settings');
     if (saved) {
-      const s = JSON.parse(saved);
-      fpvConfigured = true;
-      return { ...DEFAULTS, ...s };
+      return { ...DEFAULTS, ...JSON.parse(saved) };
     }
   } catch (_) {}
   return { ...DEFAULTS };
@@ -52,17 +47,43 @@ function loadSettings() {
 
 function saveSettings(settings) {
   localStorage.setItem('fpv-settings', JSON.stringify(settings));
-  fpvConfigured = true;
+}
+
+// Called by onchange handlers in the SYS CONFIG panel
+export function saveFPVSettings() {
+  const settings = getSysConfigValues();
+  saveSettings(settings);
+}
+
+// ============== READ / WRITE SYSCFG INPUTS ==============
+function getSysConfigValues() {
+  return {
+    ip: (document.getElementById('fpv-ip')?.value || DEFAULTS.ip).trim(),
+    port: parseInt(document.getElementById('fpv-port')?.value) || DEFAULTS.port,
+    path: (document.getElementById('fpv-path')?.value || DEFAULTS.path).trim(),
+    fps: parseInt(document.getElementById('fpv-fps')?.value) || DEFAULTS.fps,
+    quality: DEFAULTS.quality
+  };
+}
+
+function populateSysConfigInputs(settings) {
+  const ipInput = document.getElementById('fpv-ip');
+  const portInput = document.getElementById('fpv-port');
+  const pathInput = document.getElementById('fpv-path');
+  const fpsInput = document.getElementById('fpv-fps');
+  if (ipInput) ipInput.value = settings.ip;
+  if (portInput) portInput.value = settings.port;
+  if (pathInput) pathInput.value = settings.path;
+  if (fpsInput) fpsInput.value = settings.fps;
 }
 
 // ============== INIT ==============
 export function initFPV() {
   fpvCanvas = document.getElementById('fpv-canvas');
-  fpvDialog = document.getElementById('fpv-dialog');
   fpvBtn = document.getElementById('btn-fpv');
   sceneContainer = document.getElementById('scene-container');
 
-  if (!fpvCanvas || !fpvDialog || !fpvBtn) {
+  if (!fpvCanvas || !fpvBtn) {
     console.warn('[FPV] Missing DOM elements, FPV disabled');
     return;
   }
@@ -117,25 +138,16 @@ export function initFPV() {
       fpvConnected = status.connected;
       updateButtonState();
       if (!status.connected && fpvActive) {
-        showFPVStatus('Stream disconnected', true);
+        showFPVStatus('Stream disconnesso', true);
+        fpvActive = false;
+        applyViewState();
       }
     });
   }
 
-  // Dialog event handlers
-  const connectBtn = fpvDialog.querySelector('#fpv-connect-btn');
-  const cancelBtn = fpvDialog.querySelector('#fpv-cancel-btn');
-  if (connectBtn) connectBtn.addEventListener('click', onDialogConnect);
-  if (cancelBtn) cancelBtn.addEventListener('click', closeDialog);
-
-  // Close dialog on backdrop click
-  fpvDialog.addEventListener('click', (e) => {
-    if (e.target === fpvDialog) closeDialog();
-  });
-
-  // Load saved settings into dialog inputs
+  // Populate SYS CONFIG inputs with saved settings
   const settings = loadSettings();
-  setDialogValues(settings);
+  populateSysConfigInputs(settings);
 
   // Update button initial state
   updateButtonState();
@@ -143,24 +155,18 @@ export function initFPV() {
 
 // ============== BUTTON CLICK HANDLER ==============
 export function onFPVButtonClick() {
-  if (!fpvConnected && !fpvConfigured) {
-    // First time: show connection dialog
-    openDialog();
-  } else if (!fpvConnected) {
-    // Configured but not connected: try to connect with saved settings
-    connectWithSavedSettings();
+  if (!fpvConnected) {
+    // Not connected: start stream with current settings
+    const settings = getSysConfigValues();
+    saveSettings(settings);
+    startFPVStream(settings);
   } else {
-    // Connected: toggle view
-    toggleFPV();
+    // Connected: stop stream
+    stopFPVStream();
   }
 }
 
 // ============== TOGGLE FPV / 3D ==============
-function toggleFPV() {
-  fpvActive = !fpvActive;
-  applyViewState();
-}
-
 export function setFPVActive(active) {
   fpvActive = active;
   applyViewState();
@@ -184,72 +190,23 @@ function applyViewState() {
 function updateButtonState() {
   if (!fpvBtn) return;
 
-  if (fpvActive && fpvConnected) {
+  if (fpvConnected) {
     fpvBtn.classList.add('active');
-    fpvBtn.title = 'Switch to 3D view';
-  } else if (fpvConnected) {
-    fpvBtn.classList.remove('active');
-    fpvBtn.title = 'Switch to FPV camera';
+    fpvBtn.title = 'FPV Camera (stream attivo - clicca per fermare)';
   } else {
     fpvBtn.classList.remove('active');
-    fpvBtn.title = 'FPV Camera (click to configure)';
+    fpvBtn.title = 'FPV Camera (clicca per avviare stream)';
   }
-}
-
-// ============== DIALOG ==============
-function openDialog() {
-  if (!fpvDialog) return;
-  const settings = loadSettings();
-  setDialogValues(settings);
-  fpvDialog.classList.add('visible');
-}
-
-function closeDialog() {
-  if (!fpvDialog) return;
-  fpvDialog.classList.remove('visible');
-}
-
-function setDialogValues(settings) {
-  const ipInput = document.getElementById('fpv-ip');
-  const portInput = document.getElementById('fpv-port');
-  const pathInput = document.getElementById('fpv-path');
-  const fpsInput = document.getElementById('fpv-fps');
-  if (ipInput) ipInput.value = settings.ip;
-  if (portInput) portInput.value = settings.port;
-  if (pathInput) pathInput.value = settings.path;
-  if (fpsInput) fpsInput.value = settings.fps;
-}
-
-function getDialogValues() {
-  return {
-    ip: (document.getElementById('fpv-ip')?.value || DEFAULTS.ip).trim(),
-    port: parseInt(document.getElementById('fpv-port')?.value) || DEFAULTS.port,
-    path: (document.getElementById('fpv-path')?.value || DEFAULTS.path).trim(),
-    fps: parseInt(document.getElementById('fpv-fps')?.value) || DEFAULTS.fps,
-    quality: DEFAULTS.quality
-  };
-}
-
-async function onDialogConnect() {
-  const settings = getDialogValues();
-  saveSettings(settings);
-  closeDialog();
-  await startFPVStream(settings);
-}
-
-async function connectWithSavedSettings() {
-  const settings = loadSettings();
-  await startFPVStream(settings);
 }
 
 // ============== STREAM CONTROL ==============
 async function startFPVStream(settings) {
   if (!window.fpv) {
-    showFPVStatus('FPV not available (no ffmpeg bridge)', true);
+    showFPVStatus('FPV non disponibile (ffmpeg bridge mancante)', true);
     return;
   }
 
-  showFPVStatus('Connecting...');
+  showFPVStatus('Connessione in corso...');
 
   const result = await window.fpv.start(
     settings.ip,
@@ -262,9 +219,9 @@ async function startFPVStream(settings) {
     fpvConnected = true;
     fpvActive = true;
     applyViewState();
-    showFPVStatus('Connected', false);
+    showFPVStatus('Connesso', false);
   } else {
-    showFPVStatus('Connection failed: ' + (result.error || 'unknown'), true);
+    showFPVStatus('Connessione fallita: ' + (result.error || 'errore sconosciuto'), true);
   }
 }
 
@@ -275,6 +232,7 @@ export async function stopFPVStream() {
   fpvConnected = false;
   fpvActive = false;
   applyViewState();
+  showFPVStatus('Stream fermato', false);
 }
 
 // ============== STATUS MESSAGES ==============
@@ -313,8 +271,3 @@ export function resizeFPV() {
 export function isFPVActive() { return fpvActive; }
 export function isFPVConnected() { return fpvConnected; }
 export function getFPVFps() { return fpvFps; }
-
-// ============== OPEN SETTINGS (for menu access) ==============
-export function openFPVSettings() {
-  openDialog();
-}

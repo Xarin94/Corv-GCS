@@ -62,7 +62,7 @@
         <button class="gcs-tab" data-tab="setup">SETUP</button>
         <button class="gcs-tab" data-tab="sys-config">SYS CONFIG</button>
         <div style="flex:1;"></div>
-        <button id="btn-fpv" class="ui-btn square" onclick="onFPVButtonClick()" title="FPV Camera (click to configure)" aria-label="FPV Camera">
+        <button id="btn-fpv" class="ui-btn square" onclick="onFPVButtonClick()" title="FPV Camera (attiva/disattiva stream)" aria-label="FPV Camera">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="18" height="18">
                 <rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2"/>
                 <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
@@ -1491,6 +1491,28 @@
                 </div>
             </div>
             <div class="setup-panel">
+                <div class="panel-header">SIYI CAMERA STREAM</div>
+                <div class="cfg-row">
+                    <label>IP ADDRESS</label>
+                    <input type="text" id="fpv-ip" value="192.168.144.25" class="failsafe-input" style="width:160px;" onchange="saveFPVSettings()">
+                </div>
+                <div class="cfg-row">
+                    <label>RTSP PORT</label>
+                    <input type="number" id="fpv-port" value="8554" class="failsafe-input" style="width:80px;" onchange="saveFPVSettings()">
+                </div>
+                <div class="cfg-row">
+                    <label>STREAM PATH</label>
+                    <input type="text" id="fpv-path" value="/main.264" class="failsafe-input" style="width:160px;" onchange="saveFPVSettings()">
+                </div>
+                <div class="cfg-row">
+                    <label>TARGET FPS</label>
+                    <input type="number" id="fpv-fps" value="30" min="1" max="60" class="failsafe-input" style="width:80px;" onchange="saveFPVSettings()">
+                </div>
+                <div class="cfg-row" style="opacity:0.6;font-size:11px;line-height:1.4;">
+                    <span>Adattatore di rete: IP statico nella subnet 192.168.144.x. ffmpeg deve essere nel PATH.</span>
+                </div>
+            </div>
+            <div class="setup-panel">
                 <div class="panel-header">OFFLINE DATA DOWNLOAD</div>
                 <div class="cfg-row">
                     <label>NORTH LAT</label>
@@ -1955,38 +1977,6 @@
         </div>
     </div>
 
-    <!-- ==================== FPV CONNECTION DIALOG ==================== -->
-    <div id="fpv-dialog" class="fpv-dialog-backdrop">
-        <div class="fpv-dialog">
-            <div class="panel-header">FPV CAMERA - SIYI HM30</div>
-            <div class="fpv-dialog-body">
-                <div class="cfg-row">
-                    <label>IP ADDRESS</label>
-                    <input type="text" id="fpv-ip" value="192.168.144.25" class="failsafe-input" style="width:160px;">
-                </div>
-                <div class="cfg-row">
-                    <label>RTSP PORT</label>
-                    <input type="number" id="fpv-port" value="8554" class="failsafe-input" style="width:80px;">
-                </div>
-                <div class="cfg-row">
-                    <label>STREAM PATH</label>
-                    <input type="text" id="fpv-path" value="/main.264" class="failsafe-input" style="width:160px;">
-                </div>
-                <div class="cfg-row">
-                    <label>TARGET FPS</label>
-                    <input type="number" id="fpv-fps" value="30" min="1" max="60" class="failsafe-input" style="width:80px;">
-                </div>
-                <div class="fpv-dialog-hint">
-                    Ensure your network adapter is configured with a static IP in the 192.168.144.x subnet (e.g. 192.168.144.100).
-                    ffmpeg must be installed and available in PATH.
-                </div>
-                <div class="fpv-dialog-actions">
-                    <button id="fpv-cancel-btn" class="gcs-btn">CANCEL</button>
-                    <button id="fpv-connect-btn" class="gcs-btn cmd-btn-auto">CONNECT</button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- Fix keyboard input behavior in Electron frameless window -->
     <script>
