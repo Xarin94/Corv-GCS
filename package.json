@@ -1,6 +1,6 @@
 {
   "name": "corv-gcs",
-  "version": "1.2.28",
+  "version": "1.2.29",
   "description": "CORV SYSTEMS Ground Control Station",
   "main": "main.js",
   "scripts": {
@@ -13,6 +13,7 @@
   "build": {
     "appId": "com.corvsystems.gcs",
     "productName": "CORV GCS",
+    "afterPack": "./scripts/afterPack.js",
     "asar": true,
     "asarUnpack": [
       "**/*.node",
