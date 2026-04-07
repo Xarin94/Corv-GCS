@@ -108,6 +108,9 @@ export function initTabs() {
 
     // Telemetry Forward tab handlers
     initTelForwardTab();
+
+    // CORV Setup tab handlers
+    initCorvSetupTab();
 }
 
 /**
@@ -2995,5 +2998,270 @@ export function initSurveyGrid() {
         // Also clear generated waypoints
         STATE.missionItems.length = 0;
         updateMissionDisplay();
+    });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CORV SETUP TAB — Config protocol (0x10/0x11) for CORV INS
+═══════════════════════════════════════════════════════════════ */
+function initCorvSetupTab() {
+    if (!window.corvSerial) return;
+
+    const CFG_STRUCT_SIZE = 110;
+    const CMD_SET_CONFIG  = 0x01;
+    const CMD_GET_CONFIG  = 0x02;
+    const CMD_SAVE_CONFIG = 0x03;
+    const CMD_REBOOT      = 0x05;
+    let configSeq = 0;
+
+    // --- DOM refs ---
+    const statusEl = document.getElementById('corv-cfg-status');
+    const btnRead     = document.getElementById('corv-cfg-btn-read');
+    const btnSendSave = document.getElementById('corv-cfg-btn-send-save');
+    const btnReboot   = document.getElementById('corv-cfg-btn-reboot');
+    if (!statusEl || !btnRead) return;
+
+    // --- Toggle helpers ---
+    function isToggleOn(id) {
+        const el = document.getElementById(id);
+        return el ? el.classList.contains('on') : false;
+    }
+    function setToggle(id, val) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (val) el.classList.add('on');
+        else el.classList.remove('on');
+    }
+
+    // Bind toggle click on all corv-cfg-toggle elements
+    document.querySelectorAll('.corv-cfg-toggle').forEach(el => {
+        el.addEventListener('click', () => el.classList.toggle('on'));
+    });
+
+    // --- Status display ---
+    function setCfgStatus(msg, color) {
+        statusEl.textContent = msg;
+        statusEl.style.color = color || 'var(--text-dim)';
+    }
+
+    // --- Scientific notation formatter ---
+    function fmtSci(v) {
+        if (v === 0) return '0';
+        const e = Math.floor(Math.log10(Math.abs(v)));
+        if (e >= -2 && e <= 4) return parseFloat(v.toPrecision(6)).toString();
+        return v.toExponential(3);
+    }
+
+    // --- CRC-16-CCITT (poly 0x1021, init 0xFFFF) ---
+    function crc16ccitt(data, offset, length) {
+        let crc = 0xFFFF;
+        for (let i = offset; i < offset + length; i++) {
+            crc ^= data[i] << 8;
+            for (let bit = 0; bit < 8; bit++) {
+                crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xFFFF : (crc << 1) & 0xFFFF;
+            }
+        }
+        return crc;
+    }
+
+    // --- Send config packet (0x10) via IPC ---
+    async function sendConfigPacket(cmdId, cmdData) {
+        if (STATE.connectionType !== 'corv-binary') {
+            setCfgStatus('Not connected via CORV Binary', 'var(--accent-red)');
+            return false;
+        }
+        const payloadLen = 1 + (cmdData ? cmdData.length : 0);
+        const totalLen = 5 + payloadLen + 2;
+        const buf = new Uint8Array(totalLen);
+        buf[0] = 0xA5;
+        buf[1] = 0x5A;
+        buf[2] = 0x10;
+        buf[3] = payloadLen;
+        buf[4] = configSeq++ & 0xFF;
+        buf[5] = cmdId;
+        if (cmdData) {
+            for (let i = 0; i < cmdData.length; i++) buf[6 + i] = cmdData[i];
+        }
+        const crc = crc16ccitt(buf, 2, 3 + payloadLen);
+        buf[5 + payloadLen] = crc & 0xFF;
+        buf[5 + payloadLen + 1] = (crc >> 8) & 0xFF;
+
+        try {
+            await window.corvSerial.sendConfig(Array.from(buf));
+            return true;
+        } catch (e) {
+            setCfgStatus('Send failed: ' + e.message, 'var(--accent-red)');
+            return false;
+        }
+    }
+
+    // --- Build 110-byte SystemConfig struct from UI ---
+    function buildConfigStruct() {
+        const buf = new ArrayBuffer(CFG_STRUCT_SIZE);
+        const dv = new DataView(buf);
+        let o = 0;
+
+        // Offset 0: gps_type
+        dv.setUint8(o, parseInt(document.getElementById('corv-cfg-gps-type').value)); o += 1;
+        // Offset 1-4: gps_baud_rate
+        dv.setUint32(o, parseInt(document.getElementById('corv-cfg-gps-baud').value), true); o += 4;
+        // Offset 5-8: serial1_baud
+        dv.setUint32(o, parseInt(document.getElementById('corv-cfg-serial1-baud').value), true); o += 4;
+        // Offset 9: output_protocol
+        dv.setUint8(o, parseInt(document.getElementById('corv-cfg-output-proto').value)); o += 1;
+        // Offset 10: telemetry_usb
+        dv.setUint8(o, isToggleOn('corv-cfg-telem-usb') ? 1 : 0); o += 1;
+        // Offset 11: telemetry_serial1
+        dv.setUint8(o, isToggleOn('corv-cfg-telem-serial1') ? 1 : 0); o += 1;
+        // Offset 12: nav_rate_hz
+        dv.setUint8(o, parseInt(document.getElementById('corv-cfg-nav-rate').value)); o += 1;
+        // Offset 13: debug_rate_hz
+        dv.setUint8(o, parseInt(document.getElementById('corv-cfg-debug-rate').value)); o += 1;
+        // Offset 14: raw_rate_hz
+        dv.setUint8(o, parseInt(document.getElementById('corv-cfg-raw-rate').value)); o += 1;
+
+        // Offset 15-24: feature flags (10 x uint8)
+        dv.setUint8(o, isToggleOn('corv-cfg-mag') ? 1 : 0); o += 1;
+        dv.setUint8(o, isToggleOn('corv-cfg-gps-hdg') ? 1 : 0); o += 1;
+        dv.setUint8(o, isToggleOn('corv-cfg-earth-rot') ? 1 : 0); o += 1;
+        dv.setUint8(o, isToggleOn('corv-cfg-zupt') ? 1 : 0); o += 1;
+        dv.setUint8(o, isToggleOn('corv-cfg-gyrocomp') ? 1 : 0); o += 1;
+        dv.setUint8(o, isToggleOn('corv-cfg-accel-lev') ? 1 : 0); o += 1;
+        dv.setUint8(o, isToggleOn('corv-cfg-wind') ? 1 : 0); o += 1;
+        dv.setUint8(o, isToggleOn('corv-cfg-airspeed') ? 1 : 0); o += 1;
+        dv.setUint8(o, isToggleOn('corv-cfg-gps-sim') ? 1 : 0); o += 1;
+        dv.setUint8(o, isToggleOn('corv-cfg-delay-comp') ? 1 : 0); o += 1;
+
+        // Offset 25: baro_sensor_type (auto-detected, write 0)
+        dv.setUint8(o, 0); o += 1;
+
+        // Offset 26-65: Initial Covariance P₀ (10 x float32 LE)
+        const initIds = [
+            'corv-cfg-init-att', 'corv-cfg-init-rp', 'corv-cfg-init-yaw',
+            'corv-cfg-init-pos', 'corv-cfg-init-vel', 'corv-cfg-init-gbias',
+            'corv-cfg-init-abias', 'corv-cfg-init-bbias', 'corv-cfg-init-hiron',
+            'corv-cfg-init-wind'
+        ];
+        for (const id of initIds) {
+            dv.setFloat32(o, parseFloat(document.getElementById(id).value), true); o += 4;
+        }
+
+        // Offset 66-105: Process Noise Q (10 x float32 LE)
+        const procIds = [
+            'corv-cfg-proc-att', 'corv-cfg-proc-vel', 'corv-cfg-proc-pos',
+            'corv-cfg-proc-gbias', 'corv-cfg-proc-abias', 'corv-cfg-proc-abias-xy',
+            'corv-cfg-proc-bbias', 'corv-cfg-proc-hiron', 'corv-cfg-proc-wind',
+            'corv-cfg-proc-attlin'
+        ];
+        for (const id of procIds) {
+            dv.setFloat32(o, parseFloat(document.getElementById(id).value), true); o += 4;
+        }
+
+        // Offset 106-109: reserved (4 bytes)
+        for (let i = 0; i < 4; i++) { dv.setUint8(o, 0); o += 1; }
+
+        return new Uint8Array(buf);
+    }
+
+    // --- Parse 110-byte SystemConfig struct into UI ---
+    function parseConfigStruct(data) {
+        if (data.length < CFG_STRUCT_SIZE) return;
+        const dv = new DataView(data.buffer, data.byteOffset, data.length);
+        let o = 0;
+
+        document.getElementById('corv-cfg-gps-type').value = dv.getUint8(o); o += 1;
+        document.getElementById('corv-cfg-gps-baud').value = dv.getUint32(o, true); o += 4;
+        document.getElementById('corv-cfg-serial1-baud').value = dv.getUint32(o, true); o += 4;
+        document.getElementById('corv-cfg-output-proto').value = dv.getUint8(o); o += 1;
+        setToggle('corv-cfg-telem-usb', dv.getUint8(o)); o += 1;
+        setToggle('corv-cfg-telem-serial1', dv.getUint8(o)); o += 1;
+        document.getElementById('corv-cfg-nav-rate').value = dv.getUint8(o); o += 1;
+        document.getElementById('corv-cfg-debug-rate').value = dv.getUint8(o); o += 1;
+        document.getElementById('corv-cfg-raw-rate').value = dv.getUint8(o); o += 1;
+
+        setToggle('corv-cfg-mag', dv.getUint8(o)); o += 1;
+        setToggle('corv-cfg-gps-hdg', dv.getUint8(o)); o += 1;
+        setToggle('corv-cfg-earth-rot', dv.getUint8(o)); o += 1;
+        setToggle('corv-cfg-zupt', dv.getUint8(o)); o += 1;
+        setToggle('corv-cfg-gyrocomp', dv.getUint8(o)); o += 1;
+        setToggle('corv-cfg-accel-lev', dv.getUint8(o)); o += 1;
+        setToggle('corv-cfg-wind', dv.getUint8(o)); o += 1;
+        setToggle('corv-cfg-airspeed', dv.getUint8(o)); o += 1;
+        setToggle('corv-cfg-gps-sim', dv.getUint8(o)); o += 1;
+        setToggle('corv-cfg-delay-comp', dv.getUint8(o)); o += 1;
+
+        o += 1; // baro_sensor_type — auto-detected, skip
+
+        // Initial Covariance P₀ (10 floats)
+        const initIds = [
+            'corv-cfg-init-att', 'corv-cfg-init-rp', 'corv-cfg-init-yaw',
+            'corv-cfg-init-pos', 'corv-cfg-init-vel', 'corv-cfg-init-gbias',
+            'corv-cfg-init-abias', 'corv-cfg-init-bbias', 'corv-cfg-init-hiron',
+            'corv-cfg-init-wind'
+        ];
+        for (const id of initIds) {
+            document.getElementById(id).value = fmtSci(dv.getFloat32(o, true)); o += 4;
+        }
+
+        // Process Noise Q (10 floats)
+        const procIds = [
+            'corv-cfg-proc-att', 'corv-cfg-proc-vel', 'corv-cfg-proc-pos',
+            'corv-cfg-proc-gbias', 'corv-cfg-proc-abias', 'corv-cfg-proc-abias-xy',
+            'corv-cfg-proc-bbias', 'corv-cfg-proc-hiron', 'corv-cfg-proc-wind',
+            'corv-cfg-proc-attlin'
+        ];
+        for (const id of procIds) {
+            document.getElementById(id).value = fmtSci(dv.getFloat32(o, true)); o += 4;
+        }
+    }
+
+    // --- Handle 0x11 Config Response from device ---
+    const RESP_NAMES = ['OK', 'ERROR', 'CRC_FAIL', 'INVALID'];
+    const CMD_NAMES = { 0x01: 'SET', 0x02: 'GET', 0x03: 'SAVE', 0x04: 'RESET', 0x05: 'REBOOT' };
+    let pendingSaveAfterSet = false;
+
+    function handleConfigResponse(payloadArr) {
+        const payload = new Uint8Array(payloadArr);
+        if (payload.length < 2) return;
+        const respCode = payload[0];
+        const cmdId = payload[1];
+        const respName = RESP_NAMES[respCode] || 'UNKNOWN';
+        const cmdName = CMD_NAMES[cmdId] || '0x' + cmdId.toString(16);
+
+        if (respCode === 0 && cmdId === CMD_GET_CONFIG && payload.length >= 2 + CFG_STRUCT_SIZE) {
+            parseConfigStruct(payload.slice(2, 2 + CFG_STRUCT_SIZE));
+            setCfgStatus('Config loaded from device', 'var(--accent-green)');
+        } else if (respCode === 0 && cmdId === CMD_SET_CONFIG && pendingSaveAfterSet) {
+            pendingSaveAfterSet = false;
+            setCfgStatus('Config written, saving to EEPROM...', 'var(--accent-cyan)');
+            sendConfigPacket(CMD_SAVE_CONFIG);
+        } else if (respCode === 0) {
+            setCfgStatus(`${cmdName}: ${respName}`, 'var(--accent-green)');
+        } else {
+            setCfgStatus(`${cmdName}: ${respName}`, 'var(--accent-red)');
+            pendingSaveAfterSet = false;
+        }
+    }
+
+    // Register response listener
+    window.corvSerial.onConfigResponse(handleConfigResponse);
+
+    // --- Action buttons ---
+    btnRead.addEventListener('click', async () => {
+        setCfgStatus('Reading config...', 'var(--accent-cyan)');
+        await sendConfigPacket(CMD_GET_CONFIG);
+    });
+
+    btnSendSave.addEventListener('click', async () => {
+        setCfgStatus('Writing config...', 'var(--accent-cyan)');
+        pendingSaveAfterSet = true;
+        const ok = await sendConfigPacket(CMD_SET_CONFIG, buildConfigStruct());
+        if (!ok) pendingSaveAfterSet = false;
+    });
+
+    btnReboot.addEventListener('click', async () => {
+        if (!confirm('Reboot the CORV device?')) return;
+        setCfgStatus('Rebooting...', 'var(--accent-orange)');
+        await sendConfigPacket(CMD_REBOOT);
     });
 }

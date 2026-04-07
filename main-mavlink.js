@@ -411,6 +411,7 @@ function initMAVLinkHandlers(win) {
                         const payload = Buffer.from(corvBuf.subarray(5, 5 + pLen));
                         if (pType === 0x01) corvEmitNavigation(payload);
                         else if (pType === 0x02) corvEmitDebug(payload);
+                        else if (pType === 0x11) corvEmitConfigResponse(payload);
                         corvBuf.copyWithin(0, total, corvLen);
                         corvLen -= total;
                         again = true;
@@ -445,6 +446,16 @@ function initMAVLinkHandlers(win) {
     // Disconnect
     ipcMain.handle('mavlink-disconnect', async () => {
         await disconnectCurrent();
+        return { success: true };
+    });
+
+    // Send a raw CORV config packet (0x10) — renderer builds the full packet
+    ipcMain.handle('corv-send-config', async (event, packetBytes) => {
+        if (!activeConnection || activeConnection.type !== 'serial') {
+            throw new Error('No active serial connection');
+        }
+        const buf = Buffer.from(packetBytes);
+        activeConnection.port.write(buf);
         return { success: true };
     });
 
@@ -1039,6 +1050,15 @@ function corvEmitDebug(p) {
     const loopTime   = p.readUInt16LE(36);
     const filterTime = p.readUInt16LE(38);
     console.log(`[corv] Debug: loop=${loopTime}us filter=${filterTime}us`);
+}
+
+/**
+ * Forward CORV Config Response packet (0x11) payload to renderer
+ */
+function corvEmitConfigResponse(p) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('corv-config-response', Array.from(p));
+    }
 }
 
 module.exports = { initMAVLinkHandlers, cleanup, sendRawBuffer, getNextSequenceNumber, registerRawPacketCallback, isGcsOutputMuted };

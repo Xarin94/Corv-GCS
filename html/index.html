@@ -687,6 +687,7 @@
             <button class="setup-nav-btn" data-section="simulation">SIMULATION</button>
             <button class="setup-nav-btn" data-section="rtk-gps">RTK / GPS</button>
             <button class="setup-nav-btn" data-section="tel-forward">TEL FORWARD</button>
+            <button class="setup-nav-btn" data-section="corv-setup">CORV SETUP</button>
         </nav>
         <div class="setup-content-area">
 
@@ -1413,6 +1414,129 @@
                             <span class="cfg-val" id="telfwd-gs">---</span>
                         </div>
                     </div>
+
+            </div>
+
+            <!-- Sub-tab: CORV Setup -->
+            <div class="sub-tab-content" id="subtab-corv-setup">
+
+                <!-- GPS -->
+                <div class="setup-panel">
+                    <div class="panel-header">GPS</div>
+                    <div class="cfg-row">
+                        <label>GPS TYPE</label>
+                        <select id="corv-cfg-gps-type" class="cfg-select">
+                            <option value="0">UBlox ZED-F9P</option>
+                            <option value="1">Septentrio Mosaic-X5</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>GPS BAUD RATE</label>
+                        <select id="corv-cfg-gps-baud" class="cfg-select">
+                            <option value="115200">115200</option>
+                            <option value="230400">230400</option>
+                            <option value="460800" selected>460800</option>
+                            <option value="921600">921600</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Telemetry Output -->
+                <div class="setup-panel">
+                    <div class="panel-header">TELEMETRY OUTPUT</div>
+                    <div class="cfg-row">
+                        <label>SERIAL1 PROTOCOL</label>
+                        <select id="corv-cfg-output-proto" class="cfg-select">
+                            <option value="0">Binary Custom</option>
+                            <option value="1">VectorNav VN-300</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>SERIAL1 BAUD</label>
+                        <select id="corv-cfg-serial1-baud" class="cfg-select">
+                            <option value="115200">115200</option>
+                            <option value="230400">230400</option>
+                            <option value="460800">460800</option>
+                            <option value="921600" selected>921600</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>USB TELEMETRY</label>
+                        <div class="corv-cfg-toggle on" id="corv-cfg-telem-usb"><div class="knob"></div></div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>SERIAL1 TELEMETRY</label>
+                        <div class="corv-cfg-toggle on" id="corv-cfg-telem-serial1"><div class="knob"></div></div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>NAV RATE (Hz)</label>
+                        <input type="number" class="gcs-input corv-cfg-num" id="corv-cfg-nav-rate" min="10" max="100" value="50"/>
+                    </div>
+                    <div class="cfg-row">
+                        <label>DEBUG RATE (Hz)</label>
+                        <input type="number" class="gcs-input corv-cfg-num" id="corv-cfg-debug-rate" min="1" max="10" value="1"/>
+                    </div>
+                    <div class="cfg-row">
+                        <label>RAW RATE (Hz)</label>
+                        <input type="number" class="gcs-input corv-cfg-num" id="corv-cfg-raw-rate" min="1" max="20" value="5"/>
+                    </div>
+                </div>
+
+                <!-- Feature Flags -->
+                <div class="setup-panel">
+                    <div class="panel-header">FEATURE FLAGS</div>
+                    <div class="cfg-row"><label>MAGNETOMETER</label><div class="corv-cfg-toggle on" id="corv-cfg-mag"><div class="knob"></div></div></div>
+                    <div class="cfg-row"><label>GPS HEADING INIT</label><div class="corv-cfg-toggle" id="corv-cfg-gps-hdg"><div class="knob"></div></div></div>
+                    <div class="cfg-row"><label>EARTH ROTATION COMP</label><div class="corv-cfg-toggle on" id="corv-cfg-earth-rot"><div class="knob"></div></div></div>
+                    <div class="cfg-row"><label>ZUPT</label><div class="corv-cfg-toggle on" id="corv-cfg-zupt"><div class="knob"></div></div></div>
+                    <div class="cfg-row"><label>GYROCOMPASSING</label><div class="corv-cfg-toggle on" id="corv-cfg-gyrocomp"><div class="knob"></div></div></div>
+                    <div class="cfg-row"><label>ACCEL LEVELING</label><div class="corv-cfg-toggle on" id="corv-cfg-accel-lev"><div class="knob"></div></div></div>
+                    <div class="cfg-row"><label>WIND ESTIMATION</label><div class="corv-cfg-toggle on" id="corv-cfg-wind"><div class="knob"></div></div></div>
+                    <div class="cfg-row"><label>AIRSPEED</label><div class="corv-cfg-toggle" id="corv-cfg-airspeed"><div class="knob"></div></div></div>
+                    <div class="cfg-row"><label>GPS NOISE SIM</label><div class="corv-cfg-toggle" id="corv-cfg-gps-sim"><div class="knob"></div></div></div>
+                    <div class="cfg-row"><label>DELAY COMPENSATION</label><div class="corv-cfg-toggle on" id="corv-cfg-delay-comp"><div class="knob"></div></div></div>
+                </div>
+
+                <!-- Initial Covariance P₀ -->
+                <div class="setup-panel">
+                    <div class="panel-header">INITIAL COVARIANCE P₀</div>
+                    <div class="cfg-row"><label>ATTITUDE (LEGACY RESET)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-att" value="1e-2"/></div>
+                    <div class="cfg-row"><label>ROLL / PITCH (rad²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-rp" value="1e-3"/></div>
+                    <div class="cfg-row"><label>YAW (rad²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-yaw" value="1.0"/></div>
+                    <div class="cfg-row"><label>POSITION (m²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-pos" value="2.5"/></div>
+                    <div class="cfg-row"><label>VELOCITY (m²/s²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-vel" value="0.1"/></div>
+                    <div class="cfg-row"><label>GYRO BIAS (rad²/s²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-gbias" value="1e-6"/></div>
+                    <div class="cfg-row"><label>ACCEL BIAS (m²/s⁴)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-abias" value="1e-5"/></div>
+                    <div class="cfg-row"><label>BARO BIAS (m²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-bbias" value="2500"/></div>
+                    <div class="cfg-row"><label>HARD IRON (nT²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-hiron" value="1e6"/></div>
+                    <div class="cfg-row"><label>WIND (m²/s²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-wind" value="100"/></div>
+                </div>
+
+                <!-- Process Noise Q -->
+                <div class="setup-panel">
+                    <div class="panel-header">PROCESS NOISE Q (σ²/Hz)</div>
+                    <div class="cfg-row"><label>ATTITUDE / GYRO</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-att" value="7.5e-9"/></div>
+                    <div class="cfg-row"><label>VELOCITY / ACCEL</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-vel" value="1.5e-6"/></div>
+                    <div class="cfg-row"><label>POSITION</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-pos" value="1e-10"/></div>
+                    <div class="cfg-row"><label>GYRO BIAS STABILITY</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-gbias" value="1e-13"/></div>
+                    <div class="cfg-row"><label>ACCEL BIAS Z DRIFT</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-abias" value="2e-10"/></div>
+                    <div class="cfg-row"><label>ACCEL BIAS X/Y DRIFT</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-abias-xy" value="2e-11"/></div>
+                    <div class="cfg-row"><label>BARO BIAS DRIFT</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-bbias" value="1e-5"/></div>
+                    <div class="cfg-row"><label>HARD IRON DRIFT</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-hiron" value="1e-3"/></div>
+                    <div class="cfg-row"><label>WIND VARIATION</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-wind" value="0.15"/></div>
+                    <div class="cfg-row"><label>ATT. LINEARIZATION</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-attlin" value="1e-4"/></div>
+                </div>
+
+                <!-- Actions -->
+                <div class="setup-panel full-width">
+                    <div class="panel-header">ACTIONS</div>
+                    <div class="corv-cfg-status" id="corv-cfg-status">Connect via CORV Binary and click READ to load device configuration</div>
+                    <div class="corv-cfg-actions">
+                        <button class="gcs-btn" id="corv-cfg-btn-read">READ</button>
+                        <button class="gcs-btn corv-save" id="corv-cfg-btn-send-save">SEND + SAVE</button>
+                        <button class="gcs-btn corv-danger" id="corv-cfg-btn-reboot">REBOOT</button>
+                    </div>
+                </div>
 
             </div>
 

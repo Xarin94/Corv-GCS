@@ -133,7 +133,9 @@ contextBridge.exposeInMainWorld('sitl', {
 // CORV Binary serial API bridge (parsing happens in main process)
 contextBridge.exposeInMainWorld('corvSerial', {
   connect: (portPath, baudRate) => ipcRenderer.invoke('corv-connect-serial', portPath, baudRate),
-  disconnect: () => ipcRenderer.invoke('mavlink-disconnect')
+  disconnect: () => ipcRenderer.invoke('mavlink-disconnect'),
+  sendConfig: (packetBytes) => ipcRenderer.invoke('corv-send-config', packetBytes),
+  onConfigResponse: (callback) => ipcRenderer.on('corv-config-response', (event, data) => callback(data)),
 });
 
 // MAVLink API bridge

@@ -1267,3 +1267,94 @@ body.has-tabs.mode-split {
     background: var(--accent-cyan);
     border-radius: 3px;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   CORV SETUP — Toggle switch, status, action buttons
+═══════════════════════════════════════════════════════════ */
+.corv-cfg-toggle {
+    position: relative;
+    width: 36px;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+.corv-cfg-toggle .knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    background: var(--text-dim);
+    border-radius: 50%;
+    transition: all 0.2s;
+}
+.corv-cfg-toggle.on {
+    background: rgba(0, 210, 255, 0.3);
+}
+.corv-cfg-toggle.on .knob {
+    left: 20px;
+    background: var(--accent-cyan);
+}
+
+/* Number and scientific notation inputs */
+.corv-cfg-num {
+    width: 80px !important;
+}
+.corv-cfg-sci {
+    width: 120px !important;
+    text-align: right;
+    font-family: var(--font-data);
+    font-size: 11px;
+}
+
+/* Status message */
+.corv-cfg-status {
+    text-align: center;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 8px 0;
+    letter-spacing: 0.5px;
+}
+
+/* Action button row */
+.corv-cfg-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    padding-top: 4px;
+}
+.corv-cfg-actions .gcs-btn {
+    width: auto;
+    padding: 7px 18px;
+}
+
+/* SEND + SAVE button — green accent */
+.gcs-btn.corv-save {
+    border-color: rgba(68, 255, 68, 0.4);
+    color: var(--accent-green);
+}
+.gcs-btn.corv-save:hover {
+    border-color: var(--accent-green);
+    box-shadow: 0 0 8px rgba(68, 255, 68, 0.2);
+}
+
+/* REBOOT button — red accent */
+.gcs-btn.corv-danger {
+    border-color: rgba(255, 0, 0, 0.3);
+    color: var(--accent-red);
+}
+.gcs-btn.corv-danger:hover {
+    border-color: var(--accent-red);
+    box-shadow: 0 0 8px rgba(255, 0, 0, 0.2);
+}
+
+/* Toggle rows inside CORV setup: inline layout */
+#subtab-corv-setup .cfg-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
