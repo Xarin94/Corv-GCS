@@ -49,7 +49,7 @@
 
     <!-- ==================== GLOBAL HEADER ==================== -->
     <div id="global-header">
-        <div class="brand">CORV <span>SYSTEMS</span></div>
+        <div class="brand" onclick="window.open('https://www.corvsystems.com', '_blank')" style="cursor:pointer" title="www.corvsystems.com">CORV <span>SYSTEMS</span></div>
         <div class="controls">
             <span id="fps-counter" class="fps-counter">-- FPS</span>
         </div>
@@ -62,7 +62,7 @@
         <button class="gcs-tab" data-tab="setup">SETUP</button>
         <button class="gcs-tab" data-tab="sys-config">SYS CONFIG</button>
         <div style="flex:1;"></div>
-        <button id="btn-fpv" class="ui-btn square" onclick="onFPVButtonClick()" title="FPV Camera (attiva/disattiva stream)" aria-label="FPV Camera">
+        <button id="btn-fpv" class="ui-btn square" onclick="onFPVButtonClick()" title="FPV Camera (enable/disable stream)" aria-label="FPV Camera">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="18" height="18">
                 <rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2"/>
                 <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
@@ -486,7 +486,7 @@
                         <option value="sqrt(state.vn^2 + state.ve^2 + state.vd^2)">Total Speed</option>
                         <option value="abs(imu.az) / 9.81">Vertical G</option>
                     </select>
-                    <input type="text" class="trace-formula" value="state.as" placeholder="es: sqrt(imu.ax^2 + imu.ay^2)" title="Formula expression">
+                    <input type="text" class="trace-formula" value="state.as" placeholder="e.g. sqrt(imu.ax^2 + imu.ay^2)" title="Formula expression">
                     <input type="color" class="trace-color" value="#00FF00" title="Trace color">
                     <select class="trace-axis" title="Y Axis">
                         <option value="y" selected>Left (Y1)</option>
@@ -512,7 +512,7 @@
                         <option value="sqrt(state.vn^2 + state.ve^2 + state.vd^2)">Total Speed</option>
                         <option value="abs(imu.az) / 9.81">Vertical G</option>
                     </select>
-                    <input type="text" class="trace-formula" value="state.alt" placeholder="es: sqrt(imu.ax^2 + imu.ay^2)" title="Formula expression">
+                    <input type="text" class="trace-formula" value="state.alt" placeholder="e.g. sqrt(imu.ax^2 + imu.ay^2)" title="Formula expression">
                     <input type="color" class="trace-color" value="#FFFF00" title="Trace color">
                     <select class="trace-axis" title="Y Axis">
                         <option value="y">Left (Y1)</option>
@@ -538,7 +538,7 @@
                         <option value="sqrt(state.vn^2 + state.ve^2 + state.vd^2)">Total Speed</option>
                         <option value="abs(imu.az) / 9.81">Vertical G</option>
                     </select>
-                    <input type="text" class="trace-formula" value="sqrt(imu.ax^2 + imu.ay^2 + imu.az^2)" placeholder="es: sqrt(imu.ax^2 + imu.ay^2)" title="Formula expression">
+                    <input type="text" class="trace-formula" value="sqrt(imu.ax^2 + imu.ay^2 + imu.az^2)" placeholder="e.g. sqrt(imu.ax^2 + imu.ay^2)" title="Formula expression">
                     <input type="color" class="trace-color" value="#FF3300" title="Trace color">
                     <select class="trace-axis" title="Y Axis">
                         <option value="y" selected>Left (Y1)</option>
@@ -564,7 +564,7 @@
                         <option value="sqrt(state.vn^2 + state.ve^2 + state.vd^2)">Total Speed</option>
                         <option value="abs(imu.az) / 9.81">Vertical G</option>
                     </select>
-                    <input type="text" class="trace-formula" value="state.roll * RAD" placeholder="es: sqrt(imu.ax^2 + imu.ay^2)" title="Formula expression">
+                    <input type="text" class="trace-formula" value="state.roll * RAD" placeholder="e.g. sqrt(imu.ax^2 + imu.ay^2)" title="Formula expression">
                     <input type="color" class="trace-color" value="#FF00FF" title="Trace color">
                     <select class="trace-axis" title="Y Axis">
                         <option value="y">Left (Y1)</option>

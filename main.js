@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { initMAVLinkHandlers, cleanup: cleanupMAVLink } = require('./main-mavlink');
@@ -142,6 +142,14 @@ function createWindow() {
   });
 
   win.loadFile(path.join(__dirname, 'html', 'index.html'));
+
+  // Route window.open / target=_blank to the system browser
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
 
   // Fix frameless window focus: force webContents focus when the OS window is activated
   win.on('focus', () => {
