@@ -223,7 +223,14 @@ function onState(state) {
         });
         if (els.scrubber) els.scrubber.dataset.totalMs = String(state.totalMs || 0);
         setTimelineVisible(true);
-        if (!wasLoaded) switchToReplayModel();
+        if (!wasLoaded) {
+            // Disable the demo-mode aerobatics loop so it doesn't overwrite
+            // the replayed attitude/position every frame. main.js runs demo
+            // only while STATE.mode === 'LIVE' && !STATE.connected.
+            STATE.mode = 'REPLAY';
+            document.body.classList.add('log-replay-active');
+            switchToReplayModel();
+        }
     } else if (s === 'UNLOADED') {
         replayLoaded = false;
         replayPlaying = false;
@@ -234,6 +241,9 @@ function onState(state) {
         if (els.timeCurrent) els.timeCurrent.textContent = '00:00';
         if (els.timeTotal) els.timeTotal.textContent = '00:00';
         if (wasLoaded) {
+            // Restore normal mode — demo loop and bottom-bar come back on
+            STATE.mode = 'LIVE';
+            document.body.classList.remove('log-replay-active');
             // Remove the static pre-drawn trail and let live updates resume
             setTrailFrozen(false);
             resetTrail();

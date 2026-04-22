@@ -160,3 +160,10 @@
         width: calc(100vw - 20px);
     }
 }
+
+/* While a replay is loaded the bottom-right LAT/LON/RADAR-ALT + ADS-B
+   stack would otherwise cover the timeline. Hide it: the same lat/lon
+   is visible in the 3D scene, on the map trail, and in the HUD tapes. */
+body.log-replay-active .bottom-bar-group {
+    display: none !important;
+}
