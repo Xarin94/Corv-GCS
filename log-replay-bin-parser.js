@@ -109,6 +109,7 @@ function indexBinFile(filePath) {
     // Single-pass scan: FMT records always precede the messages they describe.
     // Unknown msgType => resync by scanning for next HEAD.
     const items = [];
+    const gpsTrack = [];  // {lat, lon, alt} for full-flight trail overlay
     let minUs = null;
 
     // Carry-over state for messages that contribute multiple fields to one
@@ -222,6 +223,14 @@ function indexBinFile(filePath) {
                             hdg: Math.round(gcrs * 100)
                         }
                     });
+                    // Capture for full-flight trail overlay (skip zero fixes)
+                    if (lat !== 0 || lon !== 0) {
+                        gpsTrack.push({
+                            lat: lat / 1e7,
+                            lon: lon / 1e7,
+                            alt: alt_m
+                        });
+                    }
                 }
                 items.push({
                     tsUs, msgId: 24, sysId: 1, compId: 1,
@@ -379,7 +388,7 @@ function indexBinFile(filePath) {
     index.sort((a, b) => a.tsMs - b.tsMs);
 
     const totalMs = index.length ? index[index.length - 1].tsMs : 0;
-    return { index, totalMs, totalMessages: index.length };
+    return { index, totalMs, totalMessages: index.length, gpsTrack };
 }
 
 module.exports = { indexBinFile };

@@ -13,6 +13,10 @@ let satelliteLayer = null;
 let pathLine = null;
 let livePathPoints = [];
 let lastLiveLatLng = null;
+// When true, updateMap() leaves the trail polyline untouched — used during log
+// replay so a pre-drawn full-flight trajectory stays visible and is not
+// clobbered by the live-path append logic.
+let trailFrozen = false;
 
 const MAX_MAP_PATH_POINTS = 3000;
 
@@ -90,8 +94,8 @@ export function updateMap() {
         if (svg) svg.style.transform = `rotate(${deg}deg)`;
     }
 
-    // Update path
-    if (pathLine) {
+    // Update path (skip while a frozen replay trail is on display)
+    if (pathLine && !trailFrozen) {
         const cur = newLatLng;
         if (!lastLiveLatLng) {
             lastLiveLatLng = cur;
@@ -249,6 +253,39 @@ export function clearTargetMarker() {
 
 export function resetMapTrail() {
     livePathPoints = [];
+    lastLiveLatLng = null;
+    if (pathLine) pathLine.setLatLngs([]);
+}
+
+/**
+ * Draw a static full-flight trail on the mini-map from a pre-computed list of
+ * {lat, lon} (or {lat, lng}) points and freeze live path updates so the line
+ * stays intact during replay. If points is empty, trail is cleared and live
+ * updates resume.
+ */
+export function setMapTrail(points) {
+    trailFrozen = false;
+    livePathPoints = [];
+    lastLiveLatLng = null;
+    if (!pathLine) return;
+    if (!Array.isArray(points) || points.length === 0) {
+        pathLine.setLatLngs([]);
+        return;
+    }
+    const latLngs = points.map(p => [p.lat, p.lon !== undefined ? p.lon : p.lng]);
+    pathLine.setLatLngs(latLngs);
+    trailFrozen = true;
+
+    // Fit the map view to show the full track
+    if (map && latLngs.length >= 2) {
+        try { map.fitBounds(L.latLngBounds(latLngs), { padding: [20, 20] }); } catch {}
+    }
+}
+
+export function unfreezeMapTrail() {
+    trailFrozen = false;
+    livePathPoints = [];
+    lastLiveLatLng = null;
     if (pathLine) pathLine.setLatLngs([]);
 }
 

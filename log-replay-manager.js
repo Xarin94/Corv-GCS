@@ -87,6 +87,7 @@ function indexTlogFile(filePath) {
     const buf = fs.readFileSync(filePath);
     const raw = [];
     const firstValid = [];  // for median-based baseline
+    const gpsTrack = [];    // {lat, lon, alt} per GLOBAL_POSITION_INT packet
     let gapWarnings = 0;
 
     let offset = 0;
@@ -133,6 +134,26 @@ function indexTlogFile(filePath) {
             offsetBytes: stxOff,
             pktLen
         });
+
+        // Extract GPS coordinates for the full-flight trail overlay.
+        // GLOBAL_POSITION_INT (msgId=33) payload: timeBootMs(4) lat(4) lon(4) alt(4) ...
+        // For v2 the payload starts at stxOff+10, for v1 at stxOff+6.
+        if (msgId === 33) {
+            const payloadStart = stxOff + (stx === MAV_V2_STX ? 10 : 6);
+            if (payloadStart + 16 <= stxOff + pktLen) {
+                const latE7 = buf.readInt32LE(payloadStart + 4);
+                const lonE7 = buf.readInt32LE(payloadStart + 8);
+                const altMm = buf.readInt32LE(payloadStart + 12);
+                // Skip obvious invalid fixes (no GPS lock → lat/lon = 0)
+                if (latE7 !== 0 || lonE7 !== 0) {
+                    gpsTrack.push({
+                        lat: latE7 / 1e7,
+                        lon: lonE7 / 1e7,
+                        alt: altMm / 1000
+                    });
+                }
+            }
+        }
 
         offset = stxOff + pktLen;
     }
@@ -192,7 +213,8 @@ function indexTlogFile(filePath) {
         rawBuffer: buf,
         index,
         totalMs,
-        totalMessages: index.length
+        totalMessages: index.length,
+        gpsTrack
     };
 }
 
@@ -438,6 +460,7 @@ function load(filePath) {
     replay.index = parsed.index;
     replay.totalMs = parsed.totalMs;
     replay.cursor = 0;
+    replay.gpsTrack = parsed.gpsTrack || [];
 
     setReplayActive(true);
 
@@ -458,7 +481,8 @@ function load(filePath) {
         fileName,
         format: replay.format,
         totalMs: replay.totalMs,
-        totalMessages: parsed.totalMessages
+        totalMessages: parsed.totalMessages,
+        gpsTrack: replay.gpsTrack
     };
 }
 

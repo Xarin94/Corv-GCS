@@ -11,6 +11,9 @@ import { latLonToMeters } from '../core/utils.js';
 let scene, camera, renderer;
 let sunLight, ambientLight;
 let trailLine, trailIdx = 0;
+// When true, updateTrail() is a no-op — the trail is driven externally via
+// setTrailPoints() (used during log replay to show the whole pre-recorded path).
+let trailFrozen = false;
 
 // Mission trajectory 3D visualization
 let missionLine = null;
@@ -163,6 +166,7 @@ function ensureTrailCapacity(pointCount) {
  */
 export function updateTrail(x, y, z) {
     if (!trailLine) return;
+    if (trailFrozen) return;  // full trail is pre-drawn during log replay
 
     // Check if we've hit the limit - downsample the trail by 2x to free space
     if (trailIdx >= MAX_TRAIL_POINTS) {
@@ -208,6 +212,14 @@ function downsampleTrail() {
     trailIdx = writeIdx;
     trailLine.geometry.setDrawRange(0, trailIdx);
     posAttr.needsUpdate = true;
+}
+
+/**
+ * Freeze (or unfreeze) live trail updates. While frozen, updateTrail() is a
+ * no-op and the caller is expected to drive the trail via setTrailPoints().
+ */
+export function setTrailFrozen(frozen) {
+    trailFrozen = !!frozen;
 }
 
 /**

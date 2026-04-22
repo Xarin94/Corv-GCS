@@ -11,6 +11,9 @@
  */
 
 import { STATE, resetReplayState } from '../core/state.js';
+import { latLonToMeters } from '../core/utils.js';
+import { setTrailPoints, resetTrail, setTrailFrozen } from '../engine/Scene3D.js';
+import { setMapTrail, unfreezeMapTrail } from '../maps/MapEngine.js';
 
 const REPLAY_MODEL = 'foxx.glb';
 
@@ -132,12 +135,34 @@ async function handleOpenFile() {
             alert('Failed to load log: ' + (loadRes && loadRes.error ? loadRes.error : 'unknown error'));
             return;
         }
-        // Make sure the renderer is at a clean baseline before any replay emits
-        resetReplayState();
-        try { if (window.clearTrail) window.clearTrail(); } catch {}
+        // Draw the entire recorded trajectory as a static red trail so the user
+        // can see the whole flight path from the moment the log is loaded.
+        drawFullTrack(loadRes.gpsTrack || []);
     } catch (e) {
         alert('Open log failed: ' + e.message);
     }
+}
+
+/**
+ * Convert the loaded GPS track into both 3D world coordinates and map lat/lon,
+ * push them to the trail renderers, and freeze live-trail updates.
+ */
+function drawFullTrack(gpsTrack) {
+    if (!gpsTrack || !gpsTrack.length) {
+        setTrailFrozen(false);
+        unfreezeMapTrail();
+        return;
+    }
+    // 3D: latLon → meters (x, z); altitude (m) → y
+    const points3D = gpsTrack.map(p => {
+        const m = latLonToMeters(p.lat, p.lon);
+        return { x: m.x, y: p.alt || 0, z: m.z };
+    });
+    setTrailPoints(points3D);
+    setTrailFrozen(true);
+
+    // 2D mini-map polyline
+    setMapTrail(gpsTrack);
 }
 
 async function handlePlayPause() {
@@ -208,13 +233,24 @@ function onState(state) {
         if (els.scrubber) { els.scrubber.value = '0'; els.scrubber.dataset.totalMs = '0'; }
         if (els.timeCurrent) els.timeCurrent.textContent = '00:00';
         if (els.timeTotal) els.timeTotal.textContent = '00:00';
-        if (wasLoaded) restorePreviousModel();
+        if (wasLoaded) {
+            // Remove the static pre-drawn trail and let live updates resume
+            setTrailFrozen(false);
+            resetTrail();
+            unfreezeMapTrail();
+            restorePreviousModel();
+        }
     }
 }
 
 function onResetState() {
     resetReplayState();
-    try { if (window.clearTrail) window.clearTrail(); } catch {}
+    // Do NOT clear the trail while a replay trajectory is pre-drawn — that
+    // full-flight red line must stay visible across play/pause/seek. It is
+    // only cleared explicitly on UNLOAD. During live operation we still clear.
+    if (!replayLoaded) {
+        try { if (window.clearTrail) window.clearTrail(); } catch {}
+    }
 }
 
 function onConnectionStateChange(state) {
