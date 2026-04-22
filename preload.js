@@ -136,6 +136,8 @@ contextBridge.exposeInMainWorld('corvSerial', {
   disconnect: () => ipcRenderer.invoke('mavlink-disconnect'),
   sendConfig: (packetBytes) => ipcRenderer.invoke('corv-send-config', packetBytes),
   onConfigResponse: (callback) => ipcRenderer.on('corv-config-response', (event, data) => callback(data)),
+  onDebug: (callback) => ipcRenderer.on('corv-debug', (event, data) => callback(data)),
+  onRawSensor: (callback) => ipcRenderer.on('corv-raw-sensor', (event, data) => callback(data)),
 });
 
 // MAVLink API bridge

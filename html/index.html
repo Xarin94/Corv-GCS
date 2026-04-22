@@ -1486,45 +1486,88 @@
                 <div class="setup-panel">
                     <div class="panel-header">FEATURE FLAGS</div>
                     <div class="cfg-row"><label>MAGNETOMETER</label><div class="corv-cfg-toggle on" id="corv-cfg-mag"><div class="knob"></div></div></div>
-                    <div class="cfg-row"><label>GPS HEADING INIT</label><div class="corv-cfg-toggle" id="corv-cfg-gps-hdg"><div class="knob"></div></div></div>
+                    <div class="cfg-row">
+                        <label>MAG BUS</label>
+                        <select id="corv-cfg-mag-bus" class="cfg-select">
+                            <option value="0">SPI (onboard RM3100)</option>
+                            <option value="1">CAN (DroneCAN RM3100)</option>
+                        </select>
+                    </div>
                     <div class="cfg-row"><label>EARTH ROTATION COMP</label><div class="corv-cfg-toggle on" id="corv-cfg-earth-rot"><div class="knob"></div></div></div>
                     <div class="cfg-row"><label>ZUPT</label><div class="corv-cfg-toggle on" id="corv-cfg-zupt"><div class="knob"></div></div></div>
-                    <div class="cfg-row"><label>GYROCOMPASSING</label><div class="corv-cfg-toggle on" id="corv-cfg-gyrocomp"><div class="knob"></div></div></div>
                     <div class="cfg-row"><label>ACCEL LEVELING</label><div class="corv-cfg-toggle on" id="corv-cfg-accel-lev"><div class="knob"></div></div></div>
                     <div class="cfg-row"><label>WIND ESTIMATION</label><div class="corv-cfg-toggle on" id="corv-cfg-wind"><div class="knob"></div></div></div>
                     <div class="cfg-row"><label>AIRSPEED</label><div class="corv-cfg-toggle" id="corv-cfg-airspeed"><div class="knob"></div></div></div>
-                    <div class="cfg-row"><label>GPS NOISE SIM</label><div class="corv-cfg-toggle" id="corv-cfg-gps-sim"><div class="knob"></div></div></div>
-                    <div class="cfg-row"><label>DELAY COMPENSATION</label><div class="corv-cfg-toggle on" id="corv-cfg-delay-comp"><div class="knob"></div></div></div>
+                    <div class="cfg-row">
+                        <label>AIRSPEED BUS</label>
+                        <select id="corv-cfg-airspeed-bus" class="cfg-select">
+                            <option value="0">SPI (ELVH-M250D)</option>
+                            <option value="1">CAN (DroneCAN)</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>PITOT MOUNT AXIS</label>
+                        <select id="corv-cfg-airspeed-mount" class="cfg-select">
+                            <option value="0">X — Front (fixed-wing)</option>
+                            <option value="1">Z — Up (multirotor)</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>AIRSPEED RATIO</label>
+                        <input type="number" class="gcs-input corv-cfg-num" id="corv-cfg-airspeed-ratio" step="0.01" min="0.5" max="10" value="1.00"/>
+                    </div>
                 </div>
 
-                <!-- Initial Covariance P₀ -->
+                <!-- Board & Hardware -->
                 <div class="setup-panel">
-                    <div class="panel-header">INITIAL COVARIANCE P₀</div>
-                    <div class="cfg-row"><label>ATTITUDE (LEGACY RESET)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-att" value="1e-2"/></div>
-                    <div class="cfg-row"><label>ROLL / PITCH (rad²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-rp" value="1e-3"/></div>
-                    <div class="cfg-row"><label>YAW (rad²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-yaw" value="1.0"/></div>
-                    <div class="cfg-row"><label>POSITION (m²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-pos" value="2.5"/></div>
-                    <div class="cfg-row"><label>VELOCITY (m²/s²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-vel" value="0.1"/></div>
+                    <div class="panel-header">BOARD &amp; HARDWARE</div>
+                    <div class="cfg-row">
+                        <label>BOARD TYPE</label>
+                        <select id="corv-cfg-board-type" class="cfg-select">
+                            <option value="0">FULL — Dual IMU, Mag</option>
+                            <option value="1">MINI — Single IMU, No Mag</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row"><label>GPS NOISE SIM</label><div class="corv-cfg-toggle" id="corv-cfg-gps-sim"><div class="knob"></div></div></div>
+                </div>
+
+                <!-- Particle Filter -->
+                <div class="setup-panel">
+                    <div class="panel-header">PARTICLE FILTER</div>
+                    <div class="cfg-row"><label>N PARTICLES (100-1000)</label><input type="number" class="gcs-input corv-cfg-num" id="corv-cfg-pf-n" value="1000" min="100" max="1000" step="100"/></div>
+                    <div class="cfg-row"><label>ESS THRESHOLD (0.1-0.5)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-pf-ess" value="0.333"/></div>
+                    <div class="cfg-row"><label>ROUGHENING ATT (rad)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-pf-rough-att" value="0.01"/></div>
+                    <div class="cfg-row"><label>ROUGHENING POS (m)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-pf-rough-pos" value="1.0"/></div>
+                    <div class="cfg-row"><label>ROUGHENING VEL (m/s)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-pf-rough-vel" value="0.1"/></div>
+                    <div class="cfg-row"><label>GPS SIGMA H (m)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-pf-gps-h" value="75"/></div>
+                    <div class="cfg-row"><label>GPS SIGMA V (m)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-pf-gps-v" value="100"/></div>
+                </div>
+
+                <!-- Shared EKF Bias Noise -->
+                <div class="setup-panel">
+                    <div class="panel-header">SHARED EKF BIAS NOISE</div>
+                    <div class="cfg-row"><label>GYRO BIAS</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-bias-gyro" value="1e-13"/></div>
+                    <div class="cfg-row"><label>ACCEL BIAS</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-bias-accel" value="2e-10"/></div>
+                    <div class="cfg-row"><label>HARD IRON</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-bias-hiron" value="1e-3"/></div>
+                    <div class="cfg-row"><label>BARO BIAS</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-bias-baro" value="1e-5"/></div>
+                    <div class="cfg-row"><label>WIND</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-bias-wind" value="0.15"/></div>
+                </div>
+
+                <!-- Shared EKF Initial Covariance -->
+                <div class="setup-panel">
+                    <div class="panel-header">SHARED EKF INITIAL COVARIANCE</div>
                     <div class="cfg-row"><label>GYRO BIAS (rad²/s²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-gbias" value="1e-6"/></div>
                     <div class="cfg-row"><label>ACCEL BIAS (m²/s⁴)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-abias" value="1e-5"/></div>
-                    <div class="cfg-row"><label>BARO BIAS (m²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-bbias" value="2500"/></div>
                     <div class="cfg-row"><label>HARD IRON (nT²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-hiron" value="1e6"/></div>
+                    <div class="cfg-row"><label>BARO BIAS (m²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-bbias" value="2500"/></div>
                     <div class="cfg-row"><label>WIND (m²/s²)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-init-wind" value="100"/></div>
                 </div>
 
-                <!-- Process Noise Q -->
+                <!-- Per-Particle EKF Process Noise -->
                 <div class="setup-panel">
-                    <div class="panel-header">PROCESS NOISE Q (σ²/Hz)</div>
-                    <div class="cfg-row"><label>ATTITUDE / GYRO</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-att" value="7.5e-9"/></div>
-                    <div class="cfg-row"><label>VELOCITY / ACCEL</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-vel" value="1.5e-6"/></div>
-                    <div class="cfg-row"><label>POSITION</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-pos" value="1e-10"/></div>
-                    <div class="cfg-row"><label>GYRO BIAS STABILITY</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-gbias" value="1e-13"/></div>
-                    <div class="cfg-row"><label>ACCEL BIAS Z DRIFT</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-abias" value="2e-10"/></div>
-                    <div class="cfg-row"><label>ACCEL BIAS X/Y DRIFT</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-abias-xy" value="2e-11"/></div>
-                    <div class="cfg-row"><label>BARO BIAS DRIFT</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-bbias" value="1e-5"/></div>
-                    <div class="cfg-row"><label>HARD IRON DRIFT</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-hiron" value="1e-3"/></div>
-                    <div class="cfg-row"><label>WIND VARIATION</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-wind" value="0.15"/></div>
-                    <div class="cfg-row"><label>ATT. LINEARIZATION</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-proc-attlin" value="1e-4"/></div>
+                    <div class="panel-header">PER-PARTICLE EKF PROCESS NOISE</div>
+                    <div class="cfg-row"><label>VELOCITY Q ((m/s)²/s)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-ekf-vel-q" value="0.01"/></div>
+                    <div class="cfg-row"><label>POSITION Q (m²/s)</label><input type="text" class="gcs-input corv-cfg-sci" id="corv-cfg-ekf-pos-q" value="0.001"/></div>
                 </div>
 
                 <!-- Actions -->
@@ -1533,8 +1576,7 @@
                     <div class="corv-cfg-status" id="corv-cfg-status">Connect via CORV Binary and click READ to load device configuration</div>
                     <div class="corv-cfg-actions">
                         <button class="gcs-btn" id="corv-cfg-btn-read">READ</button>
-                        <button class="gcs-btn corv-save" id="corv-cfg-btn-send-save">SEND + SAVE</button>
-                        <button class="gcs-btn corv-danger" id="corv-cfg-btn-reboot">REBOOT</button>
+                        <button class="gcs-btn corv-save" id="corv-cfg-btn-send-save">WRITE + SAVE</button>
                     </div>
                 </div>
 

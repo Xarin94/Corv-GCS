@@ -3007,18 +3007,16 @@ export function initSurveyGrid() {
 function initCorvSetupTab() {
     if (!window.corvSerial) return;
 
-    const CFG_STRUCT_SIZE = 110;
+    const CFG_STRUCT_SIZE = 106;
     const CMD_SET_CONFIG  = 0x01;
     const CMD_GET_CONFIG  = 0x02;
     const CMD_SAVE_CONFIG = 0x03;
-    const CMD_REBOOT      = 0x05;
     let configSeq = 0;
 
     // --- DOM refs ---
     const statusEl = document.getElementById('corv-cfg-status');
     const btnRead     = document.getElementById('corv-cfg-btn-read');
     const btnSendSave = document.getElementById('corv-cfg-btn-send-save');
-    const btnReboot   = document.getElementById('corv-cfg-btn-reboot');
     if (!statusEl || !btnRead) return;
 
     // --- Toggle helpers ---
@@ -3095,82 +3093,81 @@ function initCorvSetupTab() {
         }
     }
 
-    // --- Build 110-byte SystemConfig struct from UI ---
+    // --- Build 106-byte SystemConfig struct from UI (protocol v7) ---
     function buildConfigStruct() {
         const buf = new ArrayBuffer(CFG_STRUCT_SIZE);
         const dv = new DataView(buf);
         let o = 0;
 
-        // Offset 0: gps_type
+        // GPS (5 bytes)
         dv.setUint8(o, parseInt(document.getElementById('corv-cfg-gps-type').value)); o += 1;
-        // Offset 1-4: gps_baud_rate
         dv.setUint32(o, parseInt(document.getElementById('corv-cfg-gps-baud').value), true); o += 4;
-        // Offset 5-8: serial1_baud
+
+        // Telemetry (10 bytes)
         dv.setUint32(o, parseInt(document.getElementById('corv-cfg-serial1-baud').value), true); o += 4;
-        // Offset 9: output_protocol
         dv.setUint8(o, parseInt(document.getElementById('corv-cfg-output-proto').value)); o += 1;
-        // Offset 10: telemetry_usb
         dv.setUint8(o, isToggleOn('corv-cfg-telem-usb') ? 1 : 0); o += 1;
-        // Offset 11: telemetry_serial1
         dv.setUint8(o, isToggleOn('corv-cfg-telem-serial1') ? 1 : 0); o += 1;
-        // Offset 12: nav_rate_hz
         dv.setUint8(o, parseInt(document.getElementById('corv-cfg-nav-rate').value)); o += 1;
-        // Offset 13: debug_rate_hz
         dv.setUint8(o, parseInt(document.getElementById('corv-cfg-debug-rate').value)); o += 1;
-        // Offset 14: raw_rate_hz
         dv.setUint8(o, parseInt(document.getElementById('corv-cfg-raw-rate').value)); o += 1;
 
-        // Offset 15-24: feature flags (10 x uint8)
+        // Feature flags (8 bytes)
         dv.setUint8(o, isToggleOn('corv-cfg-mag') ? 1 : 0); o += 1;
-        dv.setUint8(o, isToggleOn('corv-cfg-gps-hdg') ? 1 : 0); o += 1;
+        dv.setUint8(o, 0); o += 1; // reserved (was gps_heading_init)
         dv.setUint8(o, isToggleOn('corv-cfg-earth-rot') ? 1 : 0); o += 1;
         dv.setUint8(o, isToggleOn('corv-cfg-zupt') ? 1 : 0); o += 1;
-        dv.setUint8(o, isToggleOn('corv-cfg-gyrocomp') ? 1 : 0); o += 1;
         dv.setUint8(o, isToggleOn('corv-cfg-accel-lev') ? 1 : 0); o += 1;
         dv.setUint8(o, isToggleOn('corv-cfg-wind') ? 1 : 0); o += 1;
         dv.setUint8(o, isToggleOn('corv-cfg-airspeed') ? 1 : 0); o += 1;
         dv.setUint8(o, isToggleOn('corv-cfg-gps-sim') ? 1 : 0); o += 1;
-        dv.setUint8(o, isToggleOn('corv-cfg-delay-comp') ? 1 : 0); o += 1;
 
-        // Offset 25: baro_sensor_type (auto-detected, write 0)
-        dv.setUint8(o, 0); o += 1;
+        // Hardware (3 bytes)
+        dv.setUint8(o, 0); o += 1; // baro_sensor_type — auto-detected
+        dv.setUint8(o, parseInt(document.getElementById('corv-cfg-airspeed-bus').value)); o += 1;
+        dv.setUint8(o, parseInt(document.getElementById('corv-cfg-airspeed-mount').value)); o += 1;
 
-        // Offset 26-65: Initial Covariance P₀ (10 x float32 LE)
-        const initIds = [
-            'corv-cfg-init-att', 'corv-cfg-init-rp', 'corv-cfg-init-yaw',
-            'corv-cfg-init-pos', 'corv-cfg-init-vel', 'corv-cfg-init-gbias',
-            'corv-cfg-init-abias', 'corv-cfg-init-bbias', 'corv-cfg-init-hiron',
-            'corv-cfg-init-wind'
-        ];
-        for (const id of initIds) {
-            dv.setFloat32(o, parseFloat(document.getElementById(id).value), true); o += 4;
-        }
+        // Particle Filter: uint16 + 6 floats (26 bytes)
+        dv.setUint16(o, parseInt(document.getElementById('corv-cfg-pf-n').value), true); o += 2;
+        const pfIds = ['corv-cfg-pf-ess','corv-cfg-pf-rough-att','corv-cfg-pf-rough-pos',
+                       'corv-cfg-pf-rough-vel','corv-cfg-pf-gps-h','corv-cfg-pf-gps-v'];
+        for (const id of pfIds) { dv.setFloat32(o, parseFloat(document.getElementById(id).value), true); o += 4; }
 
-        // Offset 66-105: Process Noise Q (10 x float32 LE)
-        const procIds = [
-            'corv-cfg-proc-att', 'corv-cfg-proc-vel', 'corv-cfg-proc-pos',
-            'corv-cfg-proc-gbias', 'corv-cfg-proc-abias', 'corv-cfg-proc-abias-xy',
-            'corv-cfg-proc-bbias', 'corv-cfg-proc-hiron', 'corv-cfg-proc-wind',
-            'corv-cfg-proc-attlin'
-        ];
-        for (const id of procIds) {
-            dv.setFloat32(o, parseFloat(document.getElementById(id).value), true); o += 4;
-        }
+        // Shared EKF bias noise (5 floats)
+        const biasNoiseIds = ['corv-cfg-bias-gyro','corv-cfg-bias-accel','corv-cfg-bias-hiron',
+                              'corv-cfg-bias-baro','corv-cfg-bias-wind'];
+        for (const id of biasNoiseIds) { dv.setFloat32(o, parseFloat(document.getElementById(id).value), true); o += 4; }
 
-        // Offset 106-109: reserved (4 bytes)
-        for (let i = 0; i < 4; i++) { dv.setUint8(o, 0); o += 1; }
+        // Shared EKF initial covariance (5 floats)
+        const biasInitIds = ['corv-cfg-init-gbias','corv-cfg-init-abias','corv-cfg-init-hiron',
+                             'corv-cfg-init-bbias','corv-cfg-init-wind'];
+        for (const id of biasInitIds) { dv.setFloat32(o, parseFloat(document.getElementById(id).value), true); o += 4; }
+
+        // Per-particle EKF process noise (2 floats)
+        dv.setFloat32(o, parseFloat(document.getElementById('corv-cfg-ekf-vel-q').value), true); o += 4;
+        dv.setFloat32(o, parseFloat(document.getElementById('corv-cfg-ekf-pos-q').value), true); o += 4;
+
+        // board_type + mag_bus (2 bytes)
+        dv.setUint8(o, parseInt(document.getElementById('corv-cfg-board-type').value)); o += 1;
+        dv.setUint8(o, parseInt(document.getElementById('corv-cfg-mag-bus').value)); o += 1;
+
+        // Airspeed ratio (1 float)
+        dv.setFloat32(o, parseFloat(document.getElementById('corv-cfg-airspeed-ratio').value) || 1.0, true); o += 4;
 
         return new Uint8Array(buf);
     }
 
-    // --- Parse 110-byte SystemConfig struct into UI ---
+    // --- Parse 106-byte SystemConfig struct into UI (protocol v7) ---
     function parseConfigStruct(data) {
         if (data.length < CFG_STRUCT_SIZE) return;
         const dv = new DataView(data.buffer, data.byteOffset, data.length);
         let o = 0;
 
+        // GPS
         document.getElementById('corv-cfg-gps-type').value = dv.getUint8(o); o += 1;
         document.getElementById('corv-cfg-gps-baud').value = dv.getUint32(o, true); o += 4;
+
+        // Telemetry
         document.getElementById('corv-cfg-serial1-baud').value = dv.getUint32(o, true); o += 4;
         document.getElementById('corv-cfg-output-proto').value = dv.getUint8(o); o += 1;
         setToggle('corv-cfg-telem-usb', dv.getUint8(o)); o += 1;
@@ -3179,40 +3176,47 @@ function initCorvSetupTab() {
         document.getElementById('corv-cfg-debug-rate').value = dv.getUint8(o); o += 1;
         document.getElementById('corv-cfg-raw-rate').value = dv.getUint8(o); o += 1;
 
+        // Feature flags (8 bytes)
         setToggle('corv-cfg-mag', dv.getUint8(o)); o += 1;
-        setToggle('corv-cfg-gps-hdg', dv.getUint8(o)); o += 1;
+        o += 1; // reserved (was gps_heading_init)
         setToggle('corv-cfg-earth-rot', dv.getUint8(o)); o += 1;
         setToggle('corv-cfg-zupt', dv.getUint8(o)); o += 1;
-        setToggle('corv-cfg-gyrocomp', dv.getUint8(o)); o += 1;
         setToggle('corv-cfg-accel-lev', dv.getUint8(o)); o += 1;
         setToggle('corv-cfg-wind', dv.getUint8(o)); o += 1;
         setToggle('corv-cfg-airspeed', dv.getUint8(o)); o += 1;
         setToggle('corv-cfg-gps-sim', dv.getUint8(o)); o += 1;
-        setToggle('corv-cfg-delay-comp', dv.getUint8(o)); o += 1;
 
+        // Hardware (3 bytes)
         o += 1; // baro_sensor_type — auto-detected, skip
+        document.getElementById('corv-cfg-airspeed-bus').value = dv.getUint8(o); o += 1;
+        document.getElementById('corv-cfg-airspeed-mount').value = dv.getUint8(o); o += 1;
 
-        // Initial Covariance P₀ (10 floats)
-        const initIds = [
-            'corv-cfg-init-att', 'corv-cfg-init-rp', 'corv-cfg-init-yaw',
-            'corv-cfg-init-pos', 'corv-cfg-init-vel', 'corv-cfg-init-gbias',
-            'corv-cfg-init-abias', 'corv-cfg-init-bbias', 'corv-cfg-init-hiron',
-            'corv-cfg-init-wind'
-        ];
-        for (const id of initIds) {
-            document.getElementById(id).value = fmtSci(dv.getFloat32(o, true)); o += 4;
-        }
+        // Particle Filter
+        document.getElementById('corv-cfg-pf-n').value = dv.getUint16(o, true); o += 2;
+        const pfIds = ['corv-cfg-pf-ess','corv-cfg-pf-rough-att','corv-cfg-pf-rough-pos',
+                       'corv-cfg-pf-rough-vel','corv-cfg-pf-gps-h','corv-cfg-pf-gps-v'];
+        for (const id of pfIds) { document.getElementById(id).value = fmtSci(dv.getFloat32(o, true)); o += 4; }
 
-        // Process Noise Q (10 floats)
-        const procIds = [
-            'corv-cfg-proc-att', 'corv-cfg-proc-vel', 'corv-cfg-proc-pos',
-            'corv-cfg-proc-gbias', 'corv-cfg-proc-abias', 'corv-cfg-proc-abias-xy',
-            'corv-cfg-proc-bbias', 'corv-cfg-proc-hiron', 'corv-cfg-proc-wind',
-            'corv-cfg-proc-attlin'
-        ];
-        for (const id of procIds) {
-            document.getElementById(id).value = fmtSci(dv.getFloat32(o, true)); o += 4;
-        }
+        // Shared EKF bias noise
+        const biasNoiseIds = ['corv-cfg-bias-gyro','corv-cfg-bias-accel','corv-cfg-bias-hiron',
+                              'corv-cfg-bias-baro','corv-cfg-bias-wind'];
+        for (const id of biasNoiseIds) { document.getElementById(id).value = fmtSci(dv.getFloat32(o, true)); o += 4; }
+
+        // Shared EKF initial covariance
+        const biasInitIds = ['corv-cfg-init-gbias','corv-cfg-init-abias','corv-cfg-init-hiron',
+                             'corv-cfg-init-bbias','corv-cfg-init-wind'];
+        for (const id of biasInitIds) { document.getElementById(id).value = fmtSci(dv.getFloat32(o, true)); o += 4; }
+
+        // Per-particle EKF process noise
+        document.getElementById('corv-cfg-ekf-vel-q').value = fmtSci(dv.getFloat32(o, true)); o += 4;
+        document.getElementById('corv-cfg-ekf-pos-q').value = fmtSci(dv.getFloat32(o, true)); o += 4;
+
+        // board_type + mag_bus
+        document.getElementById('corv-cfg-board-type').value = dv.getUint8(o); o += 1;
+        document.getElementById('corv-cfg-mag-bus').value = dv.getUint8(o); o += 1;
+
+        // Airspeed ratio
+        document.getElementById('corv-cfg-airspeed-ratio').value = dv.getFloat32(o, true).toFixed(3); o += 4;
     }
 
     // --- Handle 0x11 Config Response from device ---
@@ -3257,11 +3261,5 @@ function initCorvSetupTab() {
         pendingSaveAfterSet = true;
         const ok = await sendConfigPacket(CMD_SET_CONFIG, buildConfigStruct());
         if (!ok) pendingSaveAfterSet = false;
-    });
-
-    btnReboot.addEventListener('click', async () => {
-        if (!confirm('Reboot the CORV device?')) return;
-        setCfgStatus('Rebooting...', 'var(--accent-orange)');
-        await sendConfigPacket(CMD_REBOOT);
     });
 }

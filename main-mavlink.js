@@ -411,6 +411,7 @@ function initMAVLinkHandlers(win) {
                         const payload = Buffer.from(corvBuf.subarray(5, 5 + pLen));
                         if (pType === 0x01) corvEmitNavigation(payload);
                         else if (pType === 0x02) corvEmitDebug(payload);
+                        else if (pType === 0x03) corvEmitRawSensor(payload);
                         else if (pType === 0x11) corvEmitConfigResponse(payload);
                         corvBuf.copyWithin(0, total, corvLen);
                         corvLen -= total;
@@ -1041,15 +1042,50 @@ function corvEmitNavigation(p) {
 }
 
 /**
- * Parse CORV Debug packet (0x02, 64-byte payload) and emit as MAVLink messages
+ * Parse CORV Debug packet (0x02, 92-byte payload — protocol v8) and forward to renderer
+ * Layout:
+ *   0-3   ts (uint32)
+ *   4-15  gyro bias XYZ (3 x float)
+ *   16-27 accel bias XYZ (3 x float)
+ *   28-31 baro bias (float)
+ *   32-35 mag quality (float)
+ *   36-47 hard iron XYZ (3 x float)
+ *   48-55 loop/filt/sens/maxl (4 x uint16, µs)
+ *   56-59 ghacc (float, m)
+ *   60-63 gvacc (float, m)
+ *   64    baroc (uint8)
+ *   65    gpsq  (uint8)
+ *   66    imuf  (uint8)
+ *   67    reserved
+ *   68-69 year (uint16)
+ *   70-75 mo,day,hr,mn,sc,tv (6 x uint8)
+ *   76-79 pf ESS (float)
+ *   80-83 pf spread (float)
+ *   84-85 pf resample count (uint16)
+ *   86-87 pf N particles (uint16)
+ *   88-91 indicated airspeed (float, m/s)
  */
 function corvEmitDebug(p) {
-    // GPS accuracy (offsets 44-51)
-    // No direct MAVLink equivalent used by the GCS, but we could emit STATUSTEXT
-    // Performance metrics could go to console for now
-    const loopTime   = p.readUInt16LE(36);
-    const filterTime = p.readUInt16LE(38);
-    console.log(`[corv] Debug: loop=${loopTime}us filter=${filterTime}us`);
+    if (p.length < 92) return;
+    const loopTime   = p.readUInt16LE(48);
+    const filterTime = p.readUInt16LE(50);
+    const sensorTime = p.readUInt16LE(52);
+    const maxLoop    = p.readUInt16LE(54);
+    console.log(`[corv] Debug v8: loop=${loopTime}us filter=${filterTime}us sens=${sensorTime}us max=${maxLoop}us`);
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('corv-debug', Array.from(p));
+    }
+}
+
+/**
+ * Parse CORV Raw Sensor packet (0x03, 74-byte payload — protocol v4) and forward to renderer
+ */
+function corvEmitRawSensor(p) {
+    if (p.length < 74) return;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('corv-raw-sensor', Array.from(p));
+    }
 }
 
 /**
