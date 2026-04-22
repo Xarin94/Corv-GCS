@@ -6,6 +6,7 @@ const { initSITLHandlers, cleanup: cleanupSITL } = require('./sitl-manager');
 const { initRTKHandlers, cleanup: cleanupRTK } = require('./rtk-manager');
 const { initFPVHandlers, cleanupFPV } = require('./fpv-manager');
 const { initTelForwardHandlers, cleanup: cleanupTelFwd } = require('./telforward-manager');
+const { initLogReplayHandlers, cleanup: cleanupLogReplay } = require('./log-replay-manager');
 
 // Hide the application menu (will be set when app is ready)
 
@@ -171,6 +172,10 @@ function createWindow() {
   // Initialize Telemetry Forward handlers
   initTelForwardHandlers(win);
 
+  // Initialize Log Replay handlers (must come AFTER initMAVLinkHandlers so the
+  // replay engine can reuse handlePacket() and mainWindow from main-mavlink)
+  initLogReplayHandlers(win);
+
   // Forward renderer console.* messages to the terminal (PowerShell) so we can debug
   // without opening DevTools.
   win.webContents.on('console-message', (event) => {
@@ -220,6 +225,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  cleanupLogReplay();
   cleanupMAVLink();
   cleanupSITL();
   cleanupRTK();

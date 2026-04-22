@@ -71,6 +71,11 @@ let tlogStream = null;
 let tlogPath = null;
 let tlogAutoStarted = false;  // track auto-start so we auto-stop on disconnect
 
+// Log replay flag — set by log-replay-manager to prevent auto-start of TLOG recording
+// while a log is being replayed (otherwise we'd record the replay into a new log).
+let replayActive = false;
+function setReplayActive(active) { replayActive = !!active; }
+
 function getTlogLogsDir() {
     const dir = path.join(app.getPath('userData'), 'logs');
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -79,6 +84,7 @@ function getTlogLogsDir() {
 
 function startTlogRecording() {
     if (tlogStream) return { success: true, filePath: tlogPath };
+    if (replayActive) return { success: false, error: 'replay-active' };
     const logsDir = getTlogLogsDir();
     const now = new Date();
     const stamp = now.getFullYear()
@@ -937,6 +943,32 @@ function registerRawPacketCallback(cb) { rawPacketCallback = typeof cb === 'func
 let gcsOutputMuted = false;
 function isGcsOutputMuted() { return gcsOutputMuted; }
 
+/**
+ * Emit a synthetic mavlink-message to the renderer with pre-built data object.
+ * Used by log-replay-manager when playing back .bin files (where the MAVLink data
+ * is constructed from ArduPilot dataflash fields rather than parsed from bytes).
+ */
+function emitFakeMavlinkMessage({ msgId, data, sysId = 1, compId = 1 }) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('mavlink-message', { msgId, data, sysId, compId });
+    }
+}
+
+/**
+ * Feed a raw MAVLink packet buffer through a fresh parser instance and emit
+ * via handlePacket() just like a live connection. Used by log-replay-manager
+ * for .tlog playback. The splitter/parser instances are created by the caller
+ * (so state persists across calls) and must push parsed packets to a listener
+ * that calls handlePacket().
+ */
+function getReplayParserBuilder() {
+    ensureMAVLinkLoaded();
+    return () => ({
+        splitter: new MavLinkPacketSplitter(),
+        parser: new MavLinkPacketParser()
+    });
+}
+
 // ── CORV Binary Protocol helpers ──────────────────────────────────────────────
 
 /**
@@ -1097,4 +1129,16 @@ function corvEmitConfigResponse(p) {
     }
 }
 
-module.exports = { initMAVLinkHandlers, cleanup, sendRawBuffer, getNextSequenceNumber, registerRawPacketCallback, isGcsOutputMuted };
+module.exports = {
+    initMAVLinkHandlers,
+    cleanup,
+    sendRawBuffer,
+    getNextSequenceNumber,
+    registerRawPacketCallback,
+    isGcsOutputMuted,
+    // Log-replay integration
+    handlePacket,
+    emitFakeMavlinkMessage,
+    getReplayParserBuilder,
+    setReplayActive
+};

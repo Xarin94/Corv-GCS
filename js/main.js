@@ -79,6 +79,7 @@ import { initTerrainFeeder } from './mavlink/TerrainFeeder.js';
 // GCS imports
 import { initCommandBar, updateCommandBar } from './ui/CommandBarController.js';
 import { initGCSSidebar, updateGCSSidebar, getTargetCoords } from './ui/GCSSidebarController.js';
+import { initLogReplay } from './logging/LogReplayController.js';
 import { initTabs, getCurrentTab } from './ui/TabController.js';
 import { initParamsPage, toggleParamsPage } from './ui/ParametersPageController.js';
 
@@ -1443,6 +1444,7 @@ function init() {
     initTerrainFeeder();
     initCommandBar();
     initGCSSidebar();
+    initLogReplay();
     initHudCells();
     initTabs();
     initOfflinePanel();

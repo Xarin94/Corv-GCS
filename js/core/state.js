@@ -249,3 +249,75 @@ export function resetDataBuffer() {
     dataBuffer.clear();
     lastSampleTime = 0;
 }
+
+/**
+ * Reset all live-telemetry state. Called by the Log Replay controller before
+ * loading a new log and when seeking backward, so the UI doesn't keep stale
+ * trails/values from a previous position. Does NOT touch connection state,
+ * user preferences, or RC calibration.
+ */
+export function resetReplayState() {
+    STATE.roll = 0; STATE.pitch = 0; STATE.yaw = 0;
+    STATE.aoa = 0; STATE.ssa = 0; STATE.gamma = 0; STATE.track = 0;
+    STATE.lat = ORIGIN.lat; STATE.lon = ORIGIN.lon;
+    STATE.rawAlt = 0; STATE.offsetAlt = 0;
+    STATE.as = 0; STATE.gs = 0; STATE.vs = 0;
+    STATE.ax = 0; STATE.ay = 0; STATE.az = 0;
+    STATE.vn = 0; STATE.ve = 0; STATE.vd = 0;
+    STATE.terrainHeight = null;
+    STATE.gHistory.fill(1.0);
+    _gHistoryBuffer.clear();
+    for (let i = 0; i < 300; i++) _gHistoryBuffer.push(1.0);
+    STATE.lastUpdatePos = { x: 0, z: 0 };
+    STATE.lastReloadPos = { lat: null, lon: null };
+
+    STATE.armed = false;
+    STATE.flightMode = 'UNKNOWN';
+    STATE.flightModeNum = 0;
+    STATE.baseMode = 0;
+    STATE.customMode = 0;
+    STATE.batteryVoltage = 0;
+    STATE.batteryCurrent = 0;
+    STATE.batteryRemaining = -1;
+    STATE.gpsFix = 0;
+    STATE.gpsNumSat = 0;
+    STATE.gpsHdop = 99.9;
+    STATE.linkQuality = 0;
+    STATE.rssi = null;
+    STATE.remRssi = null;
+    STATE.heartbeatCount = 0;
+    STATE.lastHeartbeatTime = 0;
+
+    STATE.rcChannels.fill(0);
+    STATE.servoOutputs.fill(0);
+    STATE.missionCurrentSeq = 0;
+    STATE.missionItems = [];
+    STATE.geofenceItems = [];
+    STATE.rallyPoints = [];
+    STATE.statusText = '';
+    STATE.statusSeverity = 0;
+
+    STATE.rangefinderDist = null;
+
+    STATE.rtkIar = 0;
+    STATE.rtkBaseline = 0;
+    STATE.rtkAccuracy = 0;
+
+    STATE.vibX = 0; STATE.vibY = 0; STATE.vibZ = 0;
+    STATE.vibClip0 = 0; STATE.vibClip1 = 0; STATE.vibClip2 = 0;
+    STATE.vibHistory = [];
+
+    STATE.homeLat = null;
+    STATE.homeLon = null;
+    STATE.homeAlt = null;
+
+    STATE.terrainPending = 0;
+    STATE.terrainLoaded = 0;
+    STATE.terrainFeedSent = 0;
+    STATE.terrainFeedErrors = 0;
+
+    STATE.traffic = [];
+
+    dataBuffer.clear();
+    lastSampleTime = 0;
+}

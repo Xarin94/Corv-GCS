@@ -176,6 +176,19 @@ contextBridge.exposeInMainWorld('tlogLogger', {
   getLogsDir: () => ipcRenderer.invoke('tlog-get-logs-dir')
 });
 
+// Log Replay API bridge
+contextBridge.exposeInMainWorld('logReplay', {
+  openDialog: () => ipcRenderer.invoke('log-replay-open-dialog'),
+  load: (filePath) => ipcRenderer.invoke('log-replay-load', filePath),
+  play: () => ipcRenderer.invoke('log-replay-play'),
+  pause: () => ipcRenderer.invoke('log-replay-pause'),
+  seek: (ms) => ipcRenderer.invoke('log-replay-seek', ms),
+  unload: () => ipcRenderer.invoke('log-replay-unload'),
+  onTick: (cb) => ipcRenderer.on('log-replay-tick', (_e, d) => cb(d)),
+  onState: (cb) => ipcRenderer.on('log-replay-state', (_e, d) => cb(d)),
+  onResetState: (cb) => ipcRenderer.on('log-replay-reset-state', (_e, d) => cb(d))
+});
+
 // Forward uncaught errors / unhandled promise rejections to the main process
 // so they appear in the PowerShell terminal.
 window.addEventListener('error', (event) => {

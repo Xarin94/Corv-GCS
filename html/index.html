@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CORV GCS v1.2.1</title>
+    <title>CORV GCS v1.3.0</title>
 
     <!-- Critical inline styles to prevent flash of unstyled content -->
     <style>
@@ -2107,9 +2107,40 @@
                 </div>
             </div>
 
+            <!-- LOG REPLAY Section (visible only when telemetry is disconnected) -->
+            <div class="gcs-sidebar-section" data-section="logreplay" id="gcs-section-logreplay">
+                <div class="gcs-section-header" data-collapse="logreplay">
+                    <span>LOG REPLAY</span>
+                    <span class="collapse-icon">&#9660;</span>
+                </div>
+                <div class="gcs-section-body">
+                    <button class="gcs-btn" id="replay-open-file">OPEN LOG FILE...</button>
+                    <div class="replay-file-info" id="replay-file-info" style="display:none;">
+                        <div class="replay-fi-row"><span class="gcs-info-lbl">FILE</span><span class="gcs-info-val" id="replay-fi-name">--</span></div>
+                        <div class="replay-fi-row"><span class="gcs-info-lbl">FORMAT</span><span class="gcs-info-val" id="replay-fi-format">--</span></div>
+                        <div class="replay-fi-row"><span class="gcs-info-lbl">DUR</span><span class="gcs-info-val" id="replay-fi-dur">--</span></div>
+                        <div class="replay-fi-row"><span class="gcs-info-lbl">MSGS</span><span class="gcs-info-val" id="replay-fi-msgs">--</span></div>
+                        <button class="gcs-btn" id="replay-unload" style="margin-top:6px;">UNLOAD</button>
+                    </div>
+                    <div class="replay-hint" id="replay-hint">
+                        Load an ArduPilot <b>.tlog</b> or <b>.bin</b> to replay a past flight.
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
     <button id="gcs-toggle-sidebar" class="gcs-toggle-btn" title="Toggle GCS Controls">&#9664;</button>
+
+    <!-- ==================== LOG REPLAY TIMELINE (bottom-right overlay) ==================== -->
+    <div id="log-replay-timeline" class="log-replay-timeline" style="display:none;">
+        <span class="lrt-label">REPLAY</span>
+        <button class="lrt-btn" id="lrt-play" title="Play">&#9654;</button>
+        <span class="lrt-time" id="lrt-time-current">00:00</span>
+        <input type="range" id="lrt-scrubber" class="lrt-scrubber" min="0" max="1000" value="0" step="1">
+        <span class="lrt-time" id="lrt-time-total">00:00</span>
+        <button class="lrt-btn lrt-btn-close" id="lrt-close" title="Unload log">&times;</button>
+    </div>
 
     <!-- ==================== PARAMETERS PAGE (Full-screen overlay) ==================== -->
     <div id="params-page" class="params-page">

@@ -1,0 +1,162 @@
+/**
+ * log-replay.css — Log Replay sidebar section + bottom-right timeline overlay
+ * Design tokens: variables.css; glass morphism consistent with gcs-sidebar / command-bar.
+ */
+
+/* ========== Sidebar section: LOG REPLAY file info ========== */
+
+.replay-file-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 8px;
+    background: var(--glass-panel-section);
+    border: 1px solid var(--border-subtle);
+    border-radius: 3px;
+    margin-top: 4px;
+}
+
+.replay-fi-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-data);
+    font-size: 10px;
+}
+
+.replay-fi-row .gcs-info-lbl {
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    font-weight: 600;
+}
+
+.replay-fi-row .gcs-info-val {
+    color: var(--text-main);
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 130px;
+}
+
+.replay-hint {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.4;
+    padding: 4px 2px;
+}
+
+/* ========== Bottom-right timeline overlay ========== */
+
+.log-replay-timeline {
+    position: fixed;
+    bottom: 48px;                 /* above #gcs-command-bar (48px) */
+    right: 0;
+    width: min(500px, calc(100vw - 260px));
+    height: 40px;
+    z-index: calc(var(--z-chrome) - 1);
+    background: var(--glass-panel-toolbar);
+    border: 1px solid var(--border-accent);
+    border-right: none;
+    border-bottom: none;
+    border-radius: 6px 0 0 0;
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    box-shadow: -2px -2px 8px rgba(0, 0, 0, 0.4);
+    font-family: var(--font-ui);
+}
+
+.lrt-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: var(--accent-cyan);
+    opacity: 0.75;
+    user-select: none;
+}
+
+.lrt-btn {
+    background: var(--bg-cmd-btn);
+    border: 1px solid var(--border-input);
+    color: var(--text-main);
+    width: 28px;
+    height: 24px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background 0.15s;
+}
+
+.lrt-btn:hover {
+    background: var(--bg-cmd-btn-hover);
+    color: var(--accent-cyan);
+}
+
+.lrt-btn-close {
+    margin-left: auto;
+    font-size: 16px;
+    line-height: 1;
+    width: 24px;
+}
+
+.lrt-time {
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--text-main);
+    min-width: 42px;
+    text-align: center;
+    letter-spacing: 0.5px;
+}
+
+.lrt-scrubber {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--bg-slider-track);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+    margin: 0;
+}
+
+.lrt-scrubber::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    cursor: pointer;
+    border: 0;
+    box-shadow: 0 0 4px rgba(0, 210, 255, 0.6);
+    transition: transform 0.1s;
+}
+
+.lrt-scrubber::-webkit-slider-thumb:hover { transform: scale(1.15); }
+
+.lrt-scrubber::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    cursor: pointer;
+    border: 0;
+    box-shadow: 0 0 4px rgba(0, 210, 255, 0.6);
+}
+
+/* Responsive: on narrow windows, let the timeline span most of the width */
+@media (max-width: 900px) {
+    .log-replay-timeline {
+        width: calc(100vw - 20px);
+    }
+}
