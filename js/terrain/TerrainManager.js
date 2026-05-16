@@ -1158,8 +1158,17 @@ function processTileDrawQueue() {
             continue;
         }
 
-        if (img) {
-            job.ctx.drawImage(img, localX * tileSize, localY * tileSize, tileSize, tileSize);
+        // The ImageBitmap may have been evicted + closed by imageLRU while
+        // queued (detached → width/height become 0). Drawing it throws an
+        // uncaught InvalidStateError, which would kill the queue loop and
+        // leave isProcessingTileDrawQueue stuck true, stalling all future
+        // tile draws. Guard against it and just skip the tile.
+        if (img && img.width > 0 && img.height > 0) {
+            try {
+                job.ctx.drawImage(img, localX * tileSize, localY * tileSize, tileSize, tileSize);
+            } catch (e) {
+                // Detached/invalid image source — skip; chunk re-textures on next refresh
+            }
         }
         job.tilesDrawn++;
         if (job.tilesDrawn >= job.totalTiles) {
@@ -1471,13 +1480,15 @@ function applyCompositeTexture(mesh, canvas, latTop, latBottom, lonLeft, lonRigh
 
     const texture = new THREE.CanvasTexture(croppedCanvas);
     texturesCreated++;
-    
-    // Force GPU upload and release cropped canvas memory
+
+    // Force an early GPU upload. IMPORTANT: croppedCanvas must stay alive — it
+    // is texture.image, the source THREE re-reads on every re-upload (e.g.
+    // after a WebGL context loss/restore). Shrinking it here permanently
+    // blanked the texture to white. It is GC'd naturally when the texture is
+    // disposed (unloadChunkTexture / LOD swap), so there is no leak.
     if (rendererRef) {
         rendererRef.initTexture(texture);
     }
-    croppedCanvas.width = 1;
-    croppedCanvas.height = 1;
     texture.wrapS = THREE.ClampToEdgeWrapping;
     texture.wrapT = THREE.ClampToEdgeWrapping;
     texture.minFilter = THREE.LinearMipmapLinearFilter;
