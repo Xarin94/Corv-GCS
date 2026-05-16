@@ -105,6 +105,11 @@ let currentModelName = '';
 let modelScale = 1.0;
 let loadedModel = null; // Reference to the currently loaded 3D model
 
+// The Log Replay aircraft is normalized to a fixed real-world width (wingspan),
+// independent of the model-scale slider — see loadModel() / updateModelScale().
+const REPLAY_MODEL_NAME = 'foxx.glb';
+const REPLAY_MODEL_WIDTH_M = 14;
+
 const orbit = {
     yaw: 0,
     pitch: 0.35,
@@ -297,10 +302,28 @@ async function loadModel(filename) {
             // Adjustments
             model.position.set(0, 0, 0);
             model.rotation.set(0, Math.PI / 2, 0);
-            model.scale.set(modelScale, modelScale, modelScale);
+
+            // The replay aircraft is locked to a fixed real-world width
+            // (REPLAY_MODEL_WIDTH_M, measured across its widest horizontal
+            // extent). The model-scale slider does not affect it. Every other
+            // model honours the slider scale as before.
+            if (filename.toLowerCase() === REPLAY_MODEL_NAME) {
+                model.scale.set(1, 1, 1);
+                try {
+                    model.updateMatrixWorld(true);
+                    const nativeSize = new THREE.Vector3();
+                    new THREE.Box3().setFromObject(model).getSize(nativeSize);
+                    const nativeWidth = Math.max(nativeSize.x, nativeSize.z);
+                    const s = nativeWidth > 0 ? REPLAY_MODEL_WIDTH_M / nativeWidth : 1;
+                    model.scale.set(s, s, s);
+                } catch (e) {}
+            } else {
+                model.scale.set(modelScale, modelScale, modelScale);
+            }
 
             // Recenter pivot
             try {
+                model.updateMatrixWorld(true);
                 const box = new THREE.Box3().setFromObject(model);
                 const center = new THREE.Vector3();
                 box.getCenter(center);
@@ -331,8 +354,10 @@ async function loadModel(filename) {
 function updateModelScale(scale) {
     modelScale = scale;
     localStorage.setItem('modelScale', scale.toString());
-    
-    if (loadedModel) {
+
+    // The replay aircraft has a fixed real-world width — the slider doesn't
+    // touch it; its scale is recomputed on load.
+    if (loadedModel && currentModelName.toLowerCase() !== REPLAY_MODEL_NAME) {
         loadedModel.scale.set(scale, scale, scale);
     }
 }

@@ -25,7 +25,7 @@ const {
     getReplayParserBuilder,
     setReplayActive
 } = require('./main-mavlink');
-const { indexBinFile } = require('./log-replay-bin-parser');
+const { indexBinFile, smoothLatLonTrack } = require('./log-replay-bin-parser');
 
 const DEBUG = !!process.env.LOG_REPLAY_DEBUG;
 
@@ -214,7 +214,8 @@ function indexTlogFile(filePath) {
         index,
         totalMs,
         totalMessages: index.length,
-        gpsTrack
+        // Light, fixed smoothing of the full-flight trail (same as .bin).
+        gpsTrack: smoothLatLonTrack(gpsTrack)
     };
 }
 

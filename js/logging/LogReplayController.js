@@ -17,6 +17,11 @@ import { setMapTrail, unfreezeMapTrail } from '../maps/MapEngine.js';
 
 const REPLAY_MODEL = 'foxx.glb';
 
+// Vertical offset (metres) applied to the full-flight trail. Drawing the red
+// line slightly below the recorded altitude keeps it from running straight
+// through the camera viewpoint — instead it passes just under it.
+const TRAIL_VIEW_OFFSET_M = 0.4;
+
 let els = {};
 let replayLoaded = false;
 let replayPlaying = false;
@@ -153,10 +158,11 @@ function drawFullTrack(gpsTrack) {
         unfreezeMapTrail();
         return;
     }
-    // 3D: latLon → meters (x, z); altitude (m) → y
+    // 3D: latLon → meters (x, z); altitude (m) → y, dropped a few cm so the
+    // trail passes under the camera viewpoint rather than through it.
     const points3D = gpsTrack.map(p => {
         const m = latLonToMeters(p.lat, p.lon);
-        return { x: m.x, y: p.alt || 0, z: m.z };
+        return { x: m.x, y: (p.alt || 0) - TRAIL_VIEW_OFFSET_M, z: m.z };
     });
     setTrailPoints(points3D);
     setTrailFrozen(true);

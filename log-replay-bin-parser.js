@@ -98,6 +98,36 @@ function findNextHead(buf, start) {
     return buf.length;
 }
 
+// Light, fixed trajectory smoothing — a centred 5-point moving average
+// (±2 samples). Deliberately gentle so the flight path is de-jittered without
+// being visibly distorted; the window is a constant, not user-configurable.
+const TRAJECTORY_SMOOTH_WINDOW = 2;
+
+/**
+ * Smooth a [{lat, lon, alt}] track with a centred moving average. Returns a new
+ * array; the input is left untouched. Tracks shorter than the window are
+ * returned as-is.
+ */
+function smoothLatLonTrack(track) {
+    const n = track.length;
+    const W = TRAJECTORY_SMOOTH_WINDOW;
+    if (n < 2 * W + 1) return track.slice();
+    const out = new Array(n);
+    for (let i = 0; i < n; i++) {
+        let sLat = 0, sLon = 0, sAlt = 0, c = 0;
+        for (let k = -W; k <= W; k++) {
+            const j = i + k;
+            if (j < 0 || j >= n) continue;
+            sLat += track[j].lat;
+            sLon += track[j].lon;
+            sAlt += track[j].alt;
+            c++;
+        }
+        out[i] = { lat: sLat / c, lon: sLon / c, alt: sAlt / c };
+    }
+    return out;
+}
+
 /**
  * Parse the file and return { index, totalMs, totalMessages }.
  * index entries: { tsMs, msgId, data, sysId, compId }
@@ -109,14 +139,35 @@ function indexBinFile(filePath) {
     // Single-pass scan: FMT records always precede the messages they describe.
     // Unknown msgType => resync by scanning for next HEAD.
     const items = [];
-    const gpsTrack = [];  // {lat, lon, alt} for full-flight trail overlay
+    const gpsTrackRaw = [];  // {lat, lon, alt} per valid GPS fix (full-flight trail)
+    const gpiData = [];      // refs to GLOBAL_POSITION_INT data objects, paired 1:1 with gpsTrackRaw
     let minUs = null;
 
-    // Carry-over state for messages that contribute multiple fields to one
-    // MAVLink message (VFR_HUD combines BARO + ARSP).
+    // Carry-over state for VFR_HUD, which is synthesized from several sources:
+    // airspeed ← ARSP, groundspeed/climb ← GPS, altitude/climb ← BARO.
     let vfrAirspeed = 0;
+    let vfrGroundspeed = 0;
     let vfrClimb = 0;
     let vfrAlt = 0;
+    let hasArsp = false;   // true once an ARSP (airspeed sensor) message is seen
+    let hasBaro = false;   // true once a BARO message is seen
+
+    // Emit a VFR_HUD (msgId 74) from the current carry-over state. When the log
+    // has no airspeed sensor (no ARSP), airspeed falls back to ground speed —
+    // this matches how ArduPilot reports VFR_HUD on sensorless vehicles.
+    const pushVfrHud = (tsUs) => {
+        items.push({
+            tsUs, msgId: 74, sysId: 1, compId: 1,
+            data: {
+                airspeed: hasArsp ? vfrAirspeed : vfrGroundspeed,
+                groundspeed: vfrGroundspeed,
+                climb: vfrClimb,
+                altitude: vfrAlt,
+                heading: 0,
+                throttle: 0
+            }
+        });
+    };
     let gpsFix = 0;
     let gpsNumSat = 0;
     let gpsHdop = 99.9;
@@ -206,32 +257,40 @@ function indexBinFile(filePath) {
                 const alt_m = fm.Alt || 0;
                 const spd = fm.Spd || 0;
                 const gcrs = fm.GCrs || 0;
+                // GPS VZ in the log is up-positive; the pipeline expects NED
+                // down-positive (GLOBAL_POSITION_INT.vz → STATE.vd) → negate it.
+                const vz_ms = -(fm.VZ || 0);
                 const vx = spd * Math.cos(gcrs * Math.PI / 180);
                 const vy = spd * Math.sin(gcrs * Math.PI / 180);
 
                 if (lat !== undefined && lon !== undefined) {
-                    items.push({
-                        tsUs, msgId: 33, sysId: 1, compId: 1,
-                        data: {
-                            lat: Math.round(lat),
-                            lon: Math.round(lon),
-                            alt: Math.round(alt_m * 1000),
-                            relativeAlt: Math.round(alt_m * 1000),
-                            vx: Math.round(vx * 100),
-                            vy: Math.round(vy * 100),
-                            vz: 0,
-                            hdg: Math.round(gcrs * 100)
-                        }
-                    });
-                    // Capture for full-flight trail overlay (skip zero fixes)
+                    const gpi = {
+                        lat: Math.round(lat),
+                        lon: Math.round(lon),
+                        alt: Math.round(alt_m * 1000),
+                        relativeAlt: Math.round(alt_m * 1000),
+                        vx: Math.round(vx * 100),
+                        vy: Math.round(vy * 100),
+                        vz: Math.round(vz_ms * 100),
+                        hdg: Math.round(gcrs * 100)
+                    };
+                    items.push({ tsUs, msgId: 33, sysId: 1, compId: 1, data: gpi });
+                    // Capture for full-flight trail overlay (skip zero fixes).
+                    // gpsTrackRaw and gpiData stay paired 1:1 so the post-pass
+                    // smoothing can be written back into the replayed positions.
                     if (lat !== 0 || lon !== 0) {
-                        gpsTrack.push({
-                            lat: lat / 1e7,
-                            lon: lon / 1e7,
-                            alt: alt_m
-                        });
+                        gpsTrackRaw.push({ lat: lat / 1e7, lon: lon / 1e7, alt: alt_m });
+                        gpiData.push(gpi);
                     }
                 }
+
+                // Ground speed (and, lacking BARO, climb) come from GPS — feed
+                // them into VFR_HUD so the HUD shows real gnd speed + velocity
+                // vector. Without an airspeed sensor, airspeed mirrors gnd speed.
+                vfrGroundspeed = spd;
+                if (!hasBaro) vfrClimb = -vz_ms;  // NED down-positive → climb up-positive
+                pushVfrHud(tsUs);
+
                 items.push({
                     tsUs, msgId: 24, sysId: 1, compId: 1,
                     data: {
@@ -248,34 +307,16 @@ function indexBinFile(filePath) {
                 break;
             }
             case 'BARO': {
+                hasBaro = true;
                 vfrAlt = (fm.Alt !== undefined) ? fm.Alt : vfrAlt;
                 vfrClimb = (fm.CRt !== undefined) ? fm.CRt : vfrClimb;
-                items.push({
-                    tsUs, msgId: 74, sysId: 1, compId: 1,
-                    data: {
-                        airspeed: vfrAirspeed,
-                        groundspeed: vfrAirspeed, // best-effort until GPS fills gs
-                        climb: vfrClimb,
-                        altitude: vfrAlt,
-                        heading: 0,
-                        throttle: 0
-                    }
-                });
+                pushVfrHud(tsUs);
                 break;
             }
             case 'ARSP': {
+                hasArsp = true;
                 vfrAirspeed = (fm.Airspeed !== undefined) ? fm.Airspeed : vfrAirspeed;
-                items.push({
-                    tsUs, msgId: 74, sysId: 1, compId: 1,
-                    data: {
-                        airspeed: vfrAirspeed,
-                        groundspeed: vfrAirspeed,
-                        climb: vfrClimb,
-                        altitude: vfrAlt,
-                        heading: 0,
-                        throttle: 0
-                    }
-                });
+                pushVfrHud(tsUs);
                 break;
             }
             case 'BAT': {
@@ -377,6 +418,20 @@ function indexBinFile(filePath) {
 
     if (minUs === null) minUs = 0;
 
+    // Light, fixed trajectory smoothing: a centred 5-point moving average over
+    // the valid GPS fixes. Applied to the trail overlay AND written back into
+    // the replayed GLOBAL_POSITION_INT positions so the model and the red trail
+    // stay aligned. Velocity fields (vx/vy/vz) are left untouched — only the
+    // position is smoothed.
+    const gpsTrack = smoothLatLonTrack(gpsTrackRaw);
+    for (let i = 0; i < gpsTrack.length && i < gpiData.length; i++) {
+        const d = gpiData[i];
+        d.lat = Math.round(gpsTrack[i].lat * 1e7);
+        d.lon = Math.round(gpsTrack[i].lon * 1e7);
+        d.alt = Math.round(gpsTrack[i].alt * 1000);
+        d.relativeAlt = d.alt;
+    }
+
     // Normalize to start at 0 and sort stably by tsMs
     const index = items.map(it => ({
         tsMs: Math.max(0, Math.floor((it.tsUs - minUs) / 1000)),
@@ -391,4 +446,4 @@ function indexBinFile(filePath) {
     return { index, totalMs, totalMessages: index.length, gpsTrack };
 }
 
-module.exports = { indexBinFile };
+module.exports = { indexBinFile, smoothLatLonTrack };
