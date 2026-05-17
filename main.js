@@ -90,6 +90,24 @@ ipcMain.handle('topography-load-one', async (event, filename) => {
   return null;
 });
 
+// IPC handler to CHECK if a .hgt file exists (cheap stat — no file read).
+// Used by the offline downloader's skip check; reading the full ~25 MB file
+// just to test existence is wasteful.
+ipcMain.handle('topography-exists', async (event, filename) => {
+  if (!filename || /[\/\\]/.test(filename)) return false;
+  const candidates = ['topo', 'topography'];
+  for (const cand of candidates) {
+    const full = path.join(__dirname, cand, filename);
+    try {
+      const st = await fs.promises.stat(full);
+      if (st.isFile() && st.size > 0) return true;
+    } catch (err) {
+      // try next candidate
+    }
+  }
+  return false;
+});
+
 // IPC handler to save a single .hgt file to the topo folder
 ipcMain.handle('topography-save', async (event, filename, arrayBuffer) => {
   const dir = path.join(__dirname, 'topo');

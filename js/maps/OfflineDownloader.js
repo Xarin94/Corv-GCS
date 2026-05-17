@@ -10,6 +10,11 @@ import { addHGTFile } from '../terrain/TerrainManager.js';
 const SRTM_BASE = 'https://elevation-tiles-prod.s3.amazonaws.com/skadi';
 const MAX_CONCURRENT_SRTM = 4;
 
+// Min satellite zoom to download. The 2D map opens at zoom 13 and the 3D
+// terrain uses zoom 15-16; zoom < 11 is regional/world overview that loads
+// fast from network anyway, so caching it offline is wasted bandwidth.
+const SAT_MIN_ZOOM = 11;
+
 // ============== SRTM1 Download ==============
 
 /**
@@ -41,8 +46,13 @@ function buildSrtmTileList(latSouth, latNorth, lonWest, lonEast) {
 async function downloadSrtmTile(name, signal) {
     const filename = `${name}.hgt`;
 
-    // Skip if already downloaded on disk
-    if (window.topography && window.topography.loadOne) {
+    // Skip if already downloaded on disk. Use the cheap exists() check — not
+    // loadOne(), which would read and IPC-transfer the whole ~25 MB file.
+    if (window.topography && window.topography.exists) {
+        const present = await window.topography.exists(filename);
+        if (present) return 'skipped';
+    } else if (window.topography && window.topography.loadOne) {
+        // Fallback for older preload bridge without exists()
         const existing = await window.topography.loadOne(filename);
         if (existing) return 'skipped';
     }
@@ -151,7 +161,7 @@ export function estimateOfflineDownload(latSouth, latNorth, lonWest, lonEast, sa
     let satTiles = 0;
     if (dlSatellite) {
         const bounds = { north: latNorth, south: latSouth, east: lonEast, west: lonWest };
-        satTiles = estimateTileCount(bounds, 1, satZoomMax);
+        satTiles = estimateTileCount(bounds, SAT_MIN_ZOOM, satZoomMax);
     }
 
     let srtmTiles = 0;
@@ -189,7 +199,7 @@ export function initOfflinePanel() {
         const s = parseFloat(southEl.value) || 0;
         const w = parseFloat(westEl.value) || 0;
         const e = parseFloat(eastEl.value) || 0;
-        const z = parseInt(zoomEl.value) || 13;
+        const z = parseInt(zoomEl.value) || 16;
         const dlSat = satChk.checked;
         const dlSrtm = srtmChk.checked;
 
@@ -274,7 +284,7 @@ export async function startOfflineDownload(latSouth, latNorth, lonWest, lonEast,
     if (dlSatellite) {
         const bounds = { north: latNorth, south: latSouth, east: lonEast, west: lonWest };
         results.satellite = await downloadArea(
-            bounds, 1, satZoomMax, ['esri'],
+            bounds, SAT_MIN_ZOOM, satZoomMax, ['esri'],
             ({ downloaded, failed, total }) => {
                 onProgress({ phase: 'satellite', downloaded, failed, total, current: downloaded + failed });
             },

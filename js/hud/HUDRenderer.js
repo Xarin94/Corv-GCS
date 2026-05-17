@@ -711,7 +711,9 @@ function drawRoll(x, y, stepRange, radius, bottom) {
 
     ctx.beginPath();
     for (let i = -stepZeroOffset + stepValueOffset; i < stepZeroOffset + stepValueOffset; i++) {
-        ctx.rotate((mf * -(stepValueOffset - i + stepOffset) * style.stepWidth) / radius);
+        // Sign chosen so the moving scale rotates with the same convention as
+        // the horizon/pitch ladder (bank right -> scale rotates counterclockwise).
+        ctx.rotate((mf * (stepValueOffset - i + stepOffset) * style.stepWidth) / radius);
         ctx.translate(0, mf * -radius);
 
         ctx.moveTo(0, 0);
@@ -733,7 +735,7 @@ function drawRoll(x, y, stepRange, radius, bottom) {
         }
 
         ctx.translate(0, mf * radius);
-        ctx.rotate((mf * (stepValueOffset - i + stepOffset) * style.stepWidth) / radius);
+        ctx.rotate((mf * -(stepValueOffset - i + stepOffset) * style.stepWidth) / radius);
     }
     ctx.stroke();
 

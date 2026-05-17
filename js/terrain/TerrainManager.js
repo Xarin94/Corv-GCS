@@ -9,7 +9,10 @@ import { VISIBILITY_RADIUS, RELOAD_DISTANCE } from '../core/constants.js';
 const TILE_ZOOM = 15;       // ~5m/pixel - standard definition for all chunks
 const HD_TILE_ZOOM = 17;    // ~1.2m/pixel - high definition for nearby chunks
 const HD_RADIUS = 2000;     // 2km - radius for high-res satellite textures
-const MAX_CANVAS_DIM = 4096; // Max texture dimension (GPU limit)
+// Max texture dimension. 8192 lets nearby chunks render at zoom 16 (~2.4m/pixel,
+// 2x the standard zoom-15 detail). Clamped to the GPU's real maxTextureSize in
+// initTerrain() so weak GPUs (4096 limit) fall back gracefully instead of crashing.
+let MAX_CANVAS_DIM = 8192;
 const SATELLITE_RADIUS = 10000; // 10km - raggio della mappa satellitare (in metri)
 import { STATE } from '../core/state.js';
 import { latLonToMeters, calculateDistance, getHeightColor, latLonToTile, tileToBounds } from '../core/utils.js';
@@ -376,6 +379,13 @@ export function initTerrain(scene, renderer, sunDirection) {
     sceneRef = scene;
     rendererRef = renderer;
     currentSunDirectionRef = sunDirection;
+
+    // Clamp the texture cap to the GPU's real limit so we never allocate a
+    // canvas larger than the hardware can upload as a texture.
+    const gpuMaxTexture = renderer?.capabilities?.maxTextureSize;
+    if (gpuMaxTexture > 0) {
+        MAX_CANVAS_DIM = Math.min(MAX_CANVAS_DIM, gpuMaxTexture);
+    }
     cachedSunDir = new THREE.Vector3(0, 1, 0);
 
     initTerrainWorker();
@@ -511,7 +521,24 @@ function initHillshadeWorker() {
 
             const colorAttr = mesh.geometry.attributes.color;
             if (data.colors && data.colors.length === colorAttr.count * 3) {
-                colorAttr.array.set(data.colors);
+                const hasTexture = mesh.userData && mesh.userData.textureLoaded;
+                if (hasTexture) {
+                    // Textured chunk: grayscale intensity lets the texture show through
+                    colorAttr.array.set(data.colors);
+                } else {
+                    // Un-textured chunk: tint the shading with the height-based
+                    // terrain color so it stays green instead of showing white
+                    // before the satellite texture loads.
+                    const posAttr = mesh.geometry.attributes.position;
+                    const arr = colorAttr.array;
+                    for (let i = 0; i < colorAttr.count; i++) {
+                        const intensity = data.colors[i * 3];
+                        const c = getHeightColor(posAttr.getY(i));
+                        arr[i * 3]     = c.r * intensity;
+                        arr[i * 3 + 1] = c.g * intensity;
+                        arr[i * 3 + 2] = c.b * intensity;
+                    }
+                }
                 colorAttr.needsUpdate = true;
             }
         };
@@ -1065,8 +1092,12 @@ function createChunkTexture(mesh, latTop, latBottom, lonLeft, lonRight) {
         return;
     }
 
-    // Use appropriate zoom level based on distance, with canvas size cap
-    let zoomLevel = getZoomForChunk(latTop, latBottom, lonLeft, lonRight);
+    // Use appropriate zoom level based on distance, with canvas size cap.
+    // requestedZoom is the LOD intent (HD vs standard) before the canvas cap
+    // possibly lowers it; the LOD swap logic keys off this, not the effective
+    // zoom, since the cap can reduce HD chunks below HD_TILE_ZOOM.
+    const requestedZoom = getZoomForChunk(latTop, latBottom, lonLeft, lonRight);
+    let zoomLevel = requestedZoom;
 
     // Reduce zoom if canvas would exceed GPU texture limits
     const TILE_SIZE = 256;
@@ -1116,8 +1147,11 @@ function createChunkTexture(mesh, latTop, latBottom, lonLeft, lonRight) {
     // Aggiungi al contatore globale delle tile da caricare
     totalTilesToLoad += totalTilesForChunk;
 
-    // Store zoom level used for this texture
+    // Store zoom level used for this texture, plus the HD intent. textureIsHD
+    // tracks whether this is an HD-LOD texture regardless of the cap-reduced
+    // effective zoom, so the LOD swap doesn't re-texture HD chunks forever.
     mesh.userData.textureZoom = zoomLevel;
+    mesh.userData.textureIsHD = (requestedZoom === HD_TILE_ZOOM);
 
     for (let ty = tileTopLeft.y; ty <= tileBottomRight.y; ty++) {
         for (let tx = tileTopLeft.x; tx <= tileBottomRight.x; tx++) {
@@ -1542,6 +1576,7 @@ function unloadChunkTexture(mesh) {
         mesh.userData.textureLoaded = false;
         mesh.userData.textureQueued = false;
         mesh.userData.textureZoom = 0;
+        mesh.userData.textureIsHD = false;
     }
 }
 
@@ -1647,6 +1682,7 @@ function applyHillshadeToMesh(mesh) {
         return;
     }
 
+    const hasTexture = mesh.userData && mesh.userData.textureLoaded;
     const normal = new THREE.Vector3();
     for (let i = 0; i < posAttr.count; i++) {
         normal.set(normalAttr.getX(i), normalAttr.getY(i), normalAttr.getZ(i));
@@ -1657,7 +1693,13 @@ function applyHillshadeToMesh(mesh) {
         } else {
             intensity = mapBrightness;
         }
-        colorAttr.setXYZ(i, intensity, intensity, intensity);
+        if (hasTexture) {
+            colorAttr.setXYZ(i, intensity, intensity, intensity);
+        } else {
+            // Un-textured chunk: keep the standard green terrain color
+            const c = getHeightColor(posAttr.getY(i));
+            colorAttr.setXYZ(i, c.r * intensity, c.g * intensity, c.b * intensity);
+        }
     }
     colorAttr.needsUpdate = true;
 }
@@ -2020,10 +2062,10 @@ export function refreshNearbyChunkTextures() {
             chunksToLoad.push({ mesh, ud, dist });
         } else if (initialTexturesLoaded) {
             // LOD swap only after initial base textures are loaded
-            if (dist <= hdUpgradeRadius && ud.textureZoom !== HD_TILE_ZOOM) {
+            if (dist <= hdUpgradeRadius && !ud.textureIsHD) {
                 // Close chunk with low-res texture — upgrade to HD
                 chunksToUpgrade.push({ mesh, ud, dist });
-            } else if (dist > hdDowngradeRadius && ud.textureZoom === HD_TILE_ZOOM) {
+            } else if (dist > hdDowngradeRadius && ud.textureIsHD) {
                 // Far chunk with HD texture — downgrade to save memory
                 chunksToDowngrade.push({ mesh, ud, dist });
             }

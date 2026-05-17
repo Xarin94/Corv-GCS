@@ -66,6 +66,15 @@ contextBridge.exposeInMainWorld('topography', {
       return null;
     }
   },
+  // Check if a HGT file exists on disk — returns boolean (cheap, no file read)
+  exists: async (filename) => {
+    try {
+      return await ipcRenderer.invoke('topography-exists', filename);
+    } catch (e) {
+      console.debug('topography.exists: ipc invoke failed', e);
+      return false;
+    }
+  },
   save: async (filename, arrayBuffer) => {
     try {
       return await ipcRenderer.invoke('topography-save', filename, arrayBuffer);
