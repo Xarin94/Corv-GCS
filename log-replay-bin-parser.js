@@ -257,9 +257,10 @@ function indexBinFile(filePath) {
                 const alt_m = fm.Alt || 0;
                 const spd = fm.Spd || 0;
                 const gcrs = fm.GCrs || 0;
-                // GPS VZ in the log is up-positive; the pipeline expects NED
-                // down-positive (GLOBAL_POSITION_INT.vz → STATE.vd) → negate it.
-                const vz_ms = -(fm.VZ || 0);
+                // GPS VZ in the log is already NED down-positive — the same
+                // convention the pipeline expects (GLOBAL_POSITION_INT.vz →
+                // STATE.vd) — so use it as-is, no negation.
+                const vz_ms = (fm.VZ || 0);
                 const vx = spd * Math.cos(gcrs * Math.PI / 180);
                 const vy = spd * Math.sin(gcrs * Math.PI / 180);
 
