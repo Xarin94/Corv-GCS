@@ -23,7 +23,7 @@ const FMT_MSG_TYPE = 128;
 const FMT_RECORD_LENGTH = 89;
 
 const WHITELIST = new Set([
-    'ATT', 'GPS', 'BARO', 'ARSP', 'BAT', 'MODE', 'MSG',
+    'ATT', 'AHR2', 'GPS', 'BARO', 'ARSP', 'BAT', 'MODE', 'MSG',
     'RCIN', 'RCOU', 'VIBE', 'ORGN'
 ]);
 
@@ -139,9 +139,16 @@ function indexBinFile(filePath) {
     // Single-pass scan: FMT records always precede the messages they describe.
     // Unknown msgType => resync by scanning for next HEAD.
     const items = [];
-    const gpsTrackRaw = [];  // {lat, lon, alt} per valid GPS fix (full-flight trail)
+    const gpsTrackRaw = [];  // {lat, lon, alt} per AHR2 sample (full-flight trail)
     const gpiData = [];      // refs to GLOBAL_POSITION_INT data objects, paired 1:1 with gpsTrackRaw
     let minUs = null;
+
+    // GPS-derived velocity carry-over. AHR2 has position+attitude but no
+    // velocity, so when we emit GLOBAL_POSITION_INT from AHR2 we reuse the
+    // most recent GPS-derived velocity (cm/s, NED — vz down-positive).
+    let lastVxCmS = 0;
+    let lastVyCmS = 0;
+    let lastVzCmS = 0;
 
     // Carry-over state for VFR_HUD, which is synthesized from several sources:
     // airspeed ← ARSP, groundspeed/climb ← GPS, altitude/climb ← BARO.
@@ -264,26 +271,11 @@ function indexBinFile(filePath) {
                 const vx = spd * Math.cos(gcrs * Math.PI / 180);
                 const vy = spd * Math.sin(gcrs * Math.PI / 180);
 
-                if (lat !== undefined && lon !== undefined) {
-                    const gpi = {
-                        lat: Math.round(lat),
-                        lon: Math.round(lon),
-                        alt: Math.round(alt_m * 1000),
-                        relativeAlt: Math.round(alt_m * 1000),
-                        vx: Math.round(vx * 100),
-                        vy: Math.round(vy * 100),
-                        vz: Math.round(vz_ms * 100),
-                        hdg: Math.round(gcrs * 100)
-                    };
-                    items.push({ tsUs, msgId: 33, sysId: 1, compId: 1, data: gpi });
-                    // Capture for full-flight trail overlay (skip zero fixes).
-                    // gpsTrackRaw and gpiData stay paired 1:1 so the post-pass
-                    // smoothing can be written back into the replayed positions.
-                    if (lat !== 0 || lon !== 0) {
-                        gpsTrackRaw.push({ lat: lat / 1e7, lon: lon / 1e7, alt: alt_m });
-                        gpiData.push(gpi);
-                    }
-                }
+                // Carry GPS velocity over for the next AHR2 sample, which is
+                // where GLOBAL_POSITION_INT is emitted from (AHR2 has no vel).
+                lastVxCmS = Math.round(vx * 100);
+                lastVyCmS = Math.round(vy * 100);
+                lastVzCmS = Math.round(vz_ms * 100);
 
                 // Ground speed (and, lacking BARO, climb) come from GPS — feed
                 // them into VFR_HUD so the HUD shows real gnd speed + velocity
@@ -305,6 +297,32 @@ function indexBinFile(filePath) {
                         cog: Math.round(gcrs * 100)
                     }
                 });
+                break;
+            }
+            case 'AHR2': {
+                // Trajectory source: AHR2 is the secondary AHRS estimate, runs
+                // at IMU rate (~10× GPS), already EKF/DCM-smoothed. Position
+                // (Lat/Lng/Alt) and Yaw come from AHR2; velocity carries over
+                // from the most recent GPS sample.
+                const lat = fm.Lat;
+                const lon = fm.Lng;
+                const alt_m = fm.Alt || 0;
+                const yawDeg = fm.Yaw || 0;
+                if (lat !== undefined && lon !== undefined && (lat !== 0 || lon !== 0)) {
+                    const gpi = {
+                        lat: Math.round(lat),
+                        lon: Math.round(lon),
+                        alt: Math.round(alt_m * 1000),
+                        relativeAlt: Math.round(alt_m * 1000),
+                        vx: lastVxCmS,
+                        vy: lastVyCmS,
+                        vz: lastVzCmS,
+                        hdg: Math.round(yawDeg * 100)
+                    };
+                    items.push({ tsUs, msgId: 33, sysId: 1, compId: 1, data: gpi });
+                    gpsTrackRaw.push({ lat: lat / 1e7, lon: lon / 1e7, alt: alt_m });
+                    gpiData.push(gpi);
+                }
                 break;
             }
             case 'BARO': {
