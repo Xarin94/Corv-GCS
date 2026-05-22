@@ -194,7 +194,9 @@ function mapGpsRawInt(data) {
     if (data.lat !== undefined && data.lon !== undefined) {
         const lat = data.lat / 1e7;
         const lon = data.lon / 1e7;
-        if (Math.abs(lat) > 0.1 || Math.abs(lon) > 0.1) {
+        // Reject (0,0) AND partial nulls like (0,X) or (X,0) that the autopilot
+        // emits at boot before the GPS has a fix — both axes must be non-null.
+        if (Math.abs(lat) > 0.1 && Math.abs(lon) > 0.1) {
             STATE.lat = lat;
             STATE.lon = lon;
         }
@@ -244,7 +246,9 @@ function mapGlobalPositionInt(data) {
 
     const lat = data.lat / 1e7;
     const lon = data.lon / 1e7;
-    if (Math.abs(lat) > 0.1 || Math.abs(lon) > 0.1) {
+    // Reject (0,0) AND partial nulls like (0,X) or (X,0) that the autopilot
+    // emits at boot before the GPS has a fix — both axes must be non-null.
+    if (Math.abs(lat) > 0.1 && Math.abs(lon) > 0.1) {
         STATE.lat = lat;
         STATE.lon = lon;
     }

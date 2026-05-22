@@ -29,6 +29,11 @@ let userIsScrubbing = false;
 let seekDebounceTimer = null;
 let liveConnected = false;  // derived from mavlinkConnectionState events
 let previousModelName = null;  // model selected before replay took over
+// First valid coord from the loaded log's GPS track. Used to seed STATE.lat/lon
+// at load and after each seek so the 2D map doesn't snap to Innsbruck (the
+// global ORIGIN default) or to (0,0) before the first GPS message streams in.
+// Null when the log contains no usable coords — then Innsbruck is kept.
+let replayInitialPos = null;
 
 function formatMs(ms) {
     if (!Number.isFinite(ms) || ms < 0) ms = 0;
@@ -156,6 +161,7 @@ function drawFullTrack(gpsTrack) {
     if (!gpsTrack || !gpsTrack.length) {
         setTrailFrozen(false);
         unfreezeMapTrail();
+        replayInitialPos = null;
         return;
     }
     // 3D: latLon → meters (x, z); altitude (m) → y, dropped a few cm so the
@@ -169,6 +175,15 @@ function drawFullTrack(gpsTrack) {
 
     // 2D mini-map polyline
     setMapTrail(gpsTrack);
+
+    // Seed STATE.lat/lon with the first valid coord so the 2D mini-map is
+    // centered on the actual flight site from frame zero — before play starts
+    // and before the first streamed GLOBAL_POSITION_INT arrives. Without this
+    // the map would sit at Innsbruck (ORIGIN default) for the entire pre-GPS
+    // portion of the replay (which can be up to a minute on some logs).
+    replayInitialPos = { lat: gpsTrack[0].lat, lon: gpsTrack[0].lon };
+    STATE.lat = replayInitialPos.lat;
+    STATE.lon = replayInitialPos.lon;
 }
 
 async function handlePlayPause() {
@@ -255,12 +270,20 @@ function onState(state) {
             resetTrail();
             unfreezeMapTrail();
             restorePreviousModel();
+            replayInitialPos = null;
         }
     }
 }
 
 function onResetState() {
     resetReplayState();
+    // resetReplayState() snaps STATE.lat/lon back to ORIGIN (Innsbruck). If we
+    // have a known first coord for the loaded log, re-seed it now so the next
+    // frame's map.panTo() doesn't briefly jump to Innsbruck after every seek.
+    if (replayInitialPos) {
+        STATE.lat = replayInitialPos.lat;
+        STATE.lon = replayInitialPos.lon;
+    }
     // Do NOT clear the trail while a replay trajectory is pre-drawn — that
     // full-flight red line must stay visible across play/pause/seek. It is
     // only cleared explicitly on UNLOAD. During live operation we still clear.
