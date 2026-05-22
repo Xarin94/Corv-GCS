@@ -176,10 +176,39 @@ function mapSysStatus(data) {
     STATE.linkQuality = 100 - data.dropRateComm / 100; // percent
 }
 
+// Tracks the last time GLOBAL_POSITION_INT (msg 33) was received. GPS_RAW_INT
+// and VFR_HUD fall back into the position/velocity slots only when this is
+// stale, so EKF-blended data wins whenever the flight controller provides it.
+let _lastGlobalPosTs = 0;
+const GLOBAL_POS_STALE_MS = 2000;
+
 function mapGpsRawInt(data) {
     STATE.gpsFix = data.fixType;
     STATE.gpsNumSat = data.satellitesVisible;
     STATE.gpsHdop = data.eph / 100; // cm -> m (HDOP * 100)
+
+    // Fallback path: only use raw GPS for position/velocity when no
+    // GLOBAL_POSITION_INT has arrived recently (otherwise EKF data wins).
+    if (Date.now() - _lastGlobalPosTs <= GLOBAL_POS_STALE_MS) return;
+
+    if (data.lat !== undefined && data.lon !== undefined) {
+        const lat = data.lat / 1e7;
+        const lon = data.lon / 1e7;
+        if (Math.abs(lat) > 0.1 || Math.abs(lon) > 0.1) {
+            STATE.lat = lat;
+            STATE.lon = lon;
+        }
+    }
+    if (data.alt !== undefined) STATE.rawAlt = data.alt / 1000; // mm -> m AMSL
+    // GPS_RAW_INT.vel is uint16 cm/s; 65535 = unknown
+    if (data.vel !== undefined && data.vel !== 65535) {
+        STATE.gs = data.vel / 100;
+    }
+    // GPS_RAW_INT.cog is uint16 cdeg; 65535 = unknown. Use for track when EKF
+    // velocity vector isn't available.
+    if (data.cog !== undefined && data.cog !== 65535) {
+        STATE.track = (data.cog / 100) * Math.PI / 180;
+    }
 }
 
 // Track whether primary IMU (msg 26) is active; if so, ignore IMU2/3
@@ -207,6 +236,8 @@ function mapAttitude(data) {
 }
 
 function mapGlobalPositionInt(data) {
+    _lastGlobalPosTs = Date.now();
+
     const lat = data.lat / 1e7;
     const lon = data.lon / 1e7;
     if (Math.abs(lat) > 0.1 || Math.abs(lon) > 0.1) {
@@ -221,8 +252,12 @@ function mapGlobalPositionInt(data) {
     STATE.ve = (data.vy || 0) / 100;
     STATE.vd = (data.vz || 0) / 100;
 
-    // Compute flight path angle (gamma) and track
+    // Ground speed comes from the EKF horizontal velocity vector — this is the
+    // authoritative source. VFR_HUD.groundspeed can lag or be GPS-only on some
+    // firmwares, and STATE.gs feeds the HUD/ND/predictor, so prefer this.
     const vHoriz = Math.sqrt(STATE.vn * STATE.vn + STATE.ve * STATE.ve);
+    STATE.gs = vHoriz;
+
     STATE.gamma = Math.atan2(-STATE.vd, vHoriz); // positive = climbing
     STATE.track = Math.atan2(STATE.ve, STATE.vn); // NED track angle
 
@@ -302,10 +337,17 @@ function mapRcChannels(data) {
 }
 
 function mapVfrHud(data) {
+    // VFR_HUD is the only source of airspeed (no equivalent in
+    // GLOBAL_POSITION_INT), so always take it from here.
     STATE.as = data.airspeed;
-    STATE.gs = data.groundspeed;
-    // VfrHud climb overrides GlobalPositionInt vs if available
-    if (data.climb !== undefined) STATE.vs = data.climb;
+
+    // Ground speed / vertical speed must come from GLOBAL_POSITION_INT (EKF NED
+    // velocity) when available — VFR_HUD.groundspeed can be GPS-only on some
+    // firmwares and is what was producing the wrong velocity in the HUD.
+    if (Date.now() - _lastGlobalPosTs > GLOBAL_POS_STALE_MS) {
+        if (data.groundspeed !== undefined) STATE.gs = data.groundspeed;
+        if (data.climb !== undefined) STATE.vs = data.climb;
+    }
 }
 
 function mapVibration(data) {
