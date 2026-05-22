@@ -233,6 +233,10 @@ function mapAttitude(data) {
     STATE.roll = data.roll;   // already radians
     STATE.pitch = data.pitch;
     STATE.yaw = data.yaw;
+    // ATTITUDE arrives at ~25 Hz, faster than GLOBAL_POSITION_INT on many
+    // setups, so refresh AoA/SSA here too — otherwise the HUD flight-path
+    // marker only moves at the slower of the two streams.
+    computeAeroAngles();
 }
 
 function mapGlobalPositionInt(data) {
@@ -269,12 +273,7 @@ function mapGlobalPositionInt(data) {
  * Rotate NED velocity to body frame and compute AoA (alpha) and SSA (beta)
  * Body frame: X = forward, Y = right, Z = down
  */
-let _lastAeroRoll = NaN, _lastAeroPitch = NaN, _lastAeroYaw = NaN;
 function computeAeroAngles() {
-    // Skip recomputation if attitude hasn't changed (saves 8 trig ops)
-    if (STATE.roll === _lastAeroRoll && STATE.pitch === _lastAeroPitch && STATE.yaw === _lastAeroYaw) return;
-    _lastAeroRoll = STATE.roll; _lastAeroPitch = STATE.pitch; _lastAeroYaw = STATE.yaw;
-
     const cr = Math.cos(STATE.roll),  sr = Math.sin(STATE.roll);
     const cp = Math.cos(STATE.pitch), sp = Math.sin(STATE.pitch);
     const cy = Math.cos(STATE.yaw),   sy = Math.sin(STATE.yaw);

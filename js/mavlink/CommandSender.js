@@ -258,7 +258,11 @@ export async function requestAllDataStreams() {
         { id: 1, rate: 4 },   // RAW_SENSORS
         { id: 2, rate: 2 },   // EXTENDED_STATUS
         { id: 3, rate: 4 },   // RC_CHANNELS
-        { id: 6, rate: 10 },  // POSITION
+        { id: 6, rate: 25 },  // POSITION (GLOBAL_POSITION_INT) — matched to
+                              //   EXTRA1 (attitude) so the EKF NED velocity
+                              //   used for AoA/SSA refreshes at the same rate
+                              //   as roll/pitch/yaw. Lower rates make the HUD
+                              //   flight-path marker visibly step-jitter.
         { id: 10, rate: 25 }, // EXTRA1 (attitude) - high rate for smooth HUD
         { id: 11, rate: 10 }, // EXTRA2 (VFR_HUD)
         { id: 12, rate: 2 },  // EXTRA3

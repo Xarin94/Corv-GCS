@@ -11,8 +11,10 @@
  *     { type:u8, length:u8, name:char[4], format:char[16], labels:char[64] }
  *
  * Scope: we only decode the messages the GCS UI consumes (ATT/GPS/BARO/ARSP/
- * BAT/MODE/MSG/RCIN/RCOU/VIBE/ORGN) and produce MAVLink message IDs that
- * MAVLinkStateMapper already handles (30/33/24/74/1/0/253/35/36/241/242).
+ * BAT/MODE/MSG/RCIN/RCOU/VIBE/ORGN/NKF1/XKF1) and produce MAVLink message IDs
+ * that MAVLinkStateMapper already handles (30/33/24/74/1/0/253/35/36/241/242).
+ * NKF1/XKF1 are not emitted as MAVLink messages — they only feed the NED
+ * velocity carry-over used by the AHR2-derived GLOBAL_POSITION_INT.
  */
 
 const fs = require('fs');
@@ -24,7 +26,8 @@ const FMT_RECORD_LENGTH = 89;
 
 const WHITELIST = new Set([
     'ATT', 'AHR2', 'GPS', 'BARO', 'ARSP', 'BAT', 'MODE', 'MSG',
-    'RCIN', 'RCOU', 'VIBE', 'ORGN'
+    'RCIN', 'RCOU', 'VIBE', 'ORGN',
+    'NKF1', 'XKF1'  // EKF2/EKF3 state — provides NED velocity at IMU rate
 ]);
 
 function typeSize(c) {
@@ -143,12 +146,16 @@ function indexBinFile(filePath) {
     const gpiData = [];      // refs to GLOBAL_POSITION_INT data objects, paired 1:1 with gpsTrackRaw
     let minUs = null;
 
-    // GPS-derived velocity carry-over. AHR2 has position+attitude but no
-    // velocity, so when we emit GLOBAL_POSITION_INT from AHR2 we reuse the
-    // most recent GPS-derived velocity (cm/s, NED — vz down-positive).
+    // NED velocity carry-over (cm/s, vz down-positive). AHR2 has position +
+    // attitude but no velocity, so each AHR2-derived GLOBAL_POSITION_INT reuses
+    // the most recent velocity sample. Source preference:
+    //   1. NKF1/XKF1 (EKF state) — IMU rate, EKF-filtered → preferred
+    //   2. GPS — ~5 Hz, step-wise, noisy VZ → fallback only
+    // Once any EKF velocity has been seen, GPS velocity is ignored.
     let lastVxCmS = 0;
     let lastVyCmS = 0;
     let lastVzCmS = 0;
+    let hasEkfVel = false;
 
     // Carry-over state for VFR_HUD, which is synthesized from several sources:
     // airspeed ← ARSP, groundspeed/climb ← GPS, altitude/climb ← BARO.
@@ -273,9 +280,14 @@ function indexBinFile(filePath) {
 
                 // Carry GPS velocity over for the next AHR2 sample, which is
                 // where GLOBAL_POSITION_INT is emitted from (AHR2 has no vel).
-                lastVxCmS = Math.round(vx * 100);
-                lastVyCmS = Math.round(vy * 100);
-                lastVzCmS = Math.round(vz_ms * 100);
+                // Only used as a fallback — if NKF1/XKF1 has been seen, the
+                // EKF velocity is already in the carry-over slot and we don't
+                // want a 5 Hz GPS sample to overwrite it between EKF updates.
+                if (!hasEkfVel) {
+                    lastVxCmS = Math.round(vx * 100);
+                    lastVyCmS = Math.round(vy * 100);
+                    lastVzCmS = Math.round(vz_ms * 100);
+                }
 
                 // Ground speed (and, lacking BARO, climb) come from GPS — feed
                 // them into VFR_HUD so the HUD shows real gnd speed + velocity
@@ -323,6 +335,22 @@ function indexBinFile(filePath) {
                     gpsTrackRaw.push({ lat: lat / 1e7, lon: lon / 1e7, alt: alt_m });
                     gpiData.push(gpi);
                 }
+                break;
+            }
+            case 'NKF1':
+            case 'XKF1': {
+                // EKF NED velocity (m/s) at IMU rate, EKF-filtered. Replaces
+                // GPS-derived velocity in the AHR2 → GLOBAL_POSITION_INT
+                // carry-over so the live pipeline (and the HUD flight-path
+                // marker, which derives AoA/SSA from vn/ve/vd rotated into
+                // body frame) sees a smooth NED velocity instead of the 5 Hz
+                // step-wise GPS vector. Primary core only (C===0); secondary
+                // cores can disagree slightly and would re-introduce jitter.
+                if (fm.C !== 0) break;
+                hasEkfVel = true;
+                lastVxCmS = Math.round((fm.VN || 0) * 100);
+                lastVyCmS = Math.round((fm.VE || 0) * 100);
+                lastVzCmS = Math.round((fm.VD || 0) * 100);
                 break;
             }
             case 'BARO': {
