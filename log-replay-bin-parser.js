@@ -317,11 +317,21 @@ function indexBinFile(filePath) {
                 // at IMU rate (~10× GPS), already EKF/DCM-smoothed. Position
                 // (Lat/Lng/Alt) and Yaw come from AHR2; velocity carries over
                 // from the most recent GPS sample.
+                //
+                // Skip samples where lat or lon are essentially zero (raw int
+                // magnitude ≤ 100, i.e. < 1e-5° ≈ 1 m from the equator/prime-
+                // meridian intersection). AHR2 emits hundreds of these during
+                // boot before the EKF has a position estimate — values like
+                // Lat=-1, Lng=0 or Lat=2, Lng=-3 — and the previous check
+                // `(lat !== 0 || lon !== 0)` let them through, producing a
+                // giant spurious segment from (≈0°N, 0°E) off west Africa to
+                // the real flight site and ruining map auto-fit (and any
+                // trail-length / bounding-box computation downstream).
                 const lat = fm.Lat;
                 const lon = fm.Lng;
                 const alt_m = fm.Alt || 0;
                 const yawDeg = fm.Yaw || 0;
-                if (lat !== undefined && lon !== undefined && (lat !== 0 || lon !== 0)) {
+                if (lat !== undefined && lon !== undefined && Math.abs(lat) > 100 && Math.abs(lon) > 100) {
                     const gpi = {
                         lat: Math.round(lat),
                         lon: Math.round(lon),
