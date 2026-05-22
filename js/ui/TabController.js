@@ -3007,7 +3007,7 @@ export function initSurveyGrid() {
 function initCorvSetupTab() {
     if (!window.corvSerial) return;
 
-    const CFG_STRUCT_SIZE = 106;
+    const CFG_STRUCT_SIZE = 109;  // v9: 106 + 3 SSA noise bytes
     const CMD_SET_CONFIG  = 0x01;
     const CMD_GET_CONFIG  = 0x02;
     const CMD_SAVE_CONFIG = 0x03;
@@ -3093,7 +3093,7 @@ function initCorvSetupTab() {
         }
     }
 
-    // --- Build 106-byte SystemConfig struct from UI (protocol v7) ---
+    // --- Build 109-byte SystemConfig struct from UI (protocol v9) ---
     function buildConfigStruct() {
         const buf = new ArrayBuffer(CFG_STRUCT_SIZE);
         const dv = new DataView(buf);
@@ -3154,10 +3154,15 @@ function initCorvSetupTab() {
         // Airspeed ratio (1 float)
         dv.setFloat32(o, parseFloat(document.getElementById('corv-cfg-airspeed-ratio').value) || 1.0, true); o += 4;
 
+        // Airspeed angular gates (3 bytes, uint8 deg; config v9 layout)
+        dv.setUint8(o, parseInt(document.getElementById('corv-cfg-sideslip-noise').value) || 3); o += 1;
+        dv.setUint8(o, parseInt(document.getElementById('corv-cfg-aoa-valid').value) || 8); o += 1;
+        dv.setUint8(o, parseInt(document.getElementById('corv-cfg-air-angle-legacy').value) || 6); o += 1;
+
         return new Uint8Array(buf);
     }
 
-    // --- Parse 106-byte SystemConfig struct into UI (protocol v7) ---
+    // --- Parse 109-byte SystemConfig struct into UI (protocol v9) ---
     function parseConfigStruct(data) {
         if (data.length < CFG_STRUCT_SIZE) return;
         const dv = new DataView(data.buffer, data.byteOffset, data.length);
@@ -3217,6 +3222,11 @@ function initCorvSetupTab() {
 
         // Airspeed ratio
         document.getElementById('corv-cfg-airspeed-ratio').value = dv.getFloat32(o, true).toFixed(3); o += 4;
+
+        // Airspeed angular gates (3 bytes, uint8 deg; config v9 layout)
+        document.getElementById('corv-cfg-sideslip-noise').value   = dv.getUint8(o); o += 1;
+        document.getElementById('corv-cfg-aoa-valid').value        = dv.getUint8(o); o += 1;
+        document.getElementById('corv-cfg-air-angle-legacy').value = dv.getUint8(o); o += 1;
     }
 
     // --- Handle 0x11 Config Response from device ---
