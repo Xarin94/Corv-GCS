@@ -27,7 +27,8 @@ const FMT_RECORD_LENGTH = 89;
 const WHITELIST = new Set([
     'ATT', 'AHR2', 'GPS', 'BARO', 'ARSP', 'BAT', 'MODE', 'MSG',
     'RCIN', 'RCOU', 'VIBE', 'ORGN',
-    'NKF1', 'XKF1'  // EKF2/EKF3 state — provides NED velocity at IMU rate
+    'NKF1', 'XKF1', // EKF2/EKF3 state — provides NED velocity at IMU rate
+    'GPI'           // Custom GLOBAL_POSITION_INT pre-log — VN/VE/VD at IMU rate
 ]);
 
 function typeSize(c) {
@@ -347,6 +348,21 @@ function indexBinFile(filePath) {
                 // step-wise GPS vector. Primary core only (C===0); secondary
                 // cores can disagree slightly and would re-introduce jitter.
                 if (fm.C !== 0) break;
+                hasEkfVel = true;
+                lastVxCmS = Math.round((fm.VN || 0) * 100);
+                lastVyCmS = Math.round((fm.VE || 0) * 100);
+                lastVzCmS = Math.round((fm.VD || 0) * 100);
+                break;
+            }
+            case 'GPI': {
+                // GPI is the autopilot's pre-formatted GLOBAL_POSITION_INT
+                // payload logged at IMU rate (~39 Hz). VN/VE/VD (m/s, NED) are
+                // already EKF-derived — exactly the same source the live
+                // pipeline consumes from MAVLink msg 33. Feed it into the
+                // carry-over so AHR2 emissions carry a fresh, smooth velocity
+                // instead of the 5 Hz GPS step-wise vector. Some firmware logs
+                // don't emit NKF1/XKF1, so GPI is the only high-rate EKF
+                // velocity source available.
                 hasEkfVel = true;
                 lastVxCmS = Math.round((fm.VN || 0) * 100);
                 lastVyCmS = Math.round((fm.VE || 0) * 100);
