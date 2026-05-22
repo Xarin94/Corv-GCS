@@ -2,9 +2,9 @@
 
 > Desktop Ground Control Station for ArduPilot — Electron + Three.js + Leaflet
 
-**Version:** 1.2.25 | **License:** Apache-2.0 | **Repository:** [github.com/Xarin94/Corv-GCS](https://github.com/Xarin94/Corv-GCS)
+**Version:** 1.3.2 | **License:** Apache-2.0 | **Repository:** [github.com/Xarin94/Corv-GCS](https://github.com/Xarin94/Corv-GCS)
 
-Corv-GCS is a frameless Electron desktop application providing 3D terrain visualization, 2D mapping, HUD flight instruments, an Airbus-style Navigation Display, telemetry charting, mission planning, FPV camera, RTK corrections, ADS-B traffic awareness, joystick RC override, flight log recording/playback, and offline map/elevation caching. It supports ArduPilot vehicles (Copter, Plane, Rover, Sub, Heli, QuadPlane) via MAVLink v2 with GCS sysid 255 (Mission Planner compatible).
+Corv-GCS is a frameless Electron desktop application providing 3D terrain visualization, 2D mapping, HUD flight instruments, an Airbus-style Navigation Display, telemetry charting, mission planning, FPV camera, RTK corrections, ADS-B traffic awareness, joystick RC override, `.tlog` flight recording, `.tlog` and ArduPilot `.bin` log replay, and offline map/elevation caching. It supports ArduPilot vehicles (Copter, Plane, Rover, Sub, Heli, QuadPlane) via MAVLink v2 with GCS sysid 255 (Mission Planner compatible), and the CORV binary protocol (v7/v8) for the onboard CORV autopilot.
 
 ---
 
@@ -17,9 +17,12 @@ Corv-GCS is a frameless Electron desktop application providing 3D terrain visual
 │                                                                      │
 │  main.js ── Window lifecycle, IPC handlers, file I/O                 │
 │     │                                                                │
-│     ├── main-mavlink.js ── Serial/UDP/TCP + MAVLink v2 parse/send    │
+│     ├── main-mavlink.js ── Serial/UDP/TCP + MAVLink v2 parse/send +  │
+│     │                       CORV binary protocol + .tlog recording   │
+│     ├── log-replay-manager.js ── .tlog/.bin replay engine (20 Hz)    │
+│     ├── log-replay-bin-parser.js ── ArduPilot DataFlash .bin parser  │
 │     ├── sitl-manager.js ── SITL binary download & process spawn      │
-│     ├── rtk-manager.js  ── RTCM3 parse + GPS_RTCM_DATA injection    │
+│     ├── rtk-manager.js  ── RTCM3 parse + GPS_RTCM_DATA injection     │
 │     ├── fpv-manager.js  ── ffmpeg RTSP → MJPEG frame extraction      │
 │     └── telforward-manager.js ── LTM / MAVLink passthrough output    │
 │                                                                      │
@@ -49,10 +52,9 @@ Corv-GCS is a frameless Electron desktop application providing 3D terrain visual
 │     │              FPVController, TraceManager, LoadingOverlay        │
 │     ├── adsb/      ADSBManager                                       │
 │     ├── joystick/  JoystickManager, JoystickUI                       │
-│     ├── logging/   CRVLogger                                         │
-│     ├── playback/  LogPlayer                                         │
+│     ├── logging/   TlogLogger, LogReplayController                   │
 │     ├── mission/   MissionCommands                                   │
-│     └── serial/    SerialHandler (legacy binary protocol)            │
+│     └── serial/    SerialHandler (CORV binary protocol v7/v8)        │
 │                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
@@ -64,8 +66,10 @@ Corv-GCS is a frameless Electron desktop application providing 3D terrain visual
 ```
 Corv-GCS/
 ├── main.js                     Electron main process entry point
-├── preload.js                  Context bridge (10 IPC API namespaces)
-├── main-mavlink.js             MAVLink serial/UDP/TCP connections + parsing
+├── preload.js                  Context bridge (13 IPC API namespaces)
+├── main-mavlink.js             MAVLink serial/UDP/TCP + CORV binary + .tlog rec
+├── log-replay-manager.js       .tlog / .bin replay engine (main process)
+├── log-replay-bin-parser.js    ArduPilot DataFlash .bin parser
 ├── sitl-manager.js             ArduPilot SITL simulator launcher
 ├── rtk-manager.js              RTK GNSS base station (RTCM3)
 ├── fpv-manager.js              FPV camera stream (ffmpeg RTSP→MJPEG)
@@ -122,13 +126,12 @@ Corv-GCS/
 │   │   ├── JoystickManager.js   Gamepad RC override (25 Hz)
 │   │   └── JoystickUI.js        Joystick configuration UI
 │   ├── logging/
-│   │   └── CRVLogger.js         Binary .CRV telemetry recording (10 Hz)
-│   ├── playback/
-│   │   └── LogPlayer.js         Flight log playback (variable speed)
+│   │   ├── TlogLogger.js        .tlog auto-recording (start/stop bridge to main)
+│   │   └── LogReplayController.js Log Replay UI: open file, timeline scrub, full-track trail
 │   ├── mission/
 │   │   └── MissionCommands.js   MAVLink command catalog (100+ commands)
 │   └── serial/
-│       └── SerialHandler.js     Legacy binary protocol (WebSerial)
+│       └── SerialHandler.js     CORV binary protocol v7/v8 (WebSerial)
 │
 ├── html/
 │   ├── index.html               Main page (loads all modules)
@@ -180,9 +183,11 @@ Corv-GCS/
 
 | File | Key Functions | Purpose |
 |------|---------------|---------|
-| `main.js` | `createWindow()`, IPC handlers for models/topography/ADS-B/CRV/topography-save | Electron app lifecycle, window management, file I/O, HGT file persistence |
-| `main-mavlink.js` | `initMAVLinkHandlers()`, `connectSerial/UDP/TCP()`, `handlePacket()`, `sendMAVLinkCommand()`, `sendMAVLinkMessage()`, `startHeartbeat()`, `disconnectCurrent()`, `sendRawBuffer()` | MAVLink v2 connection pipeline: serial/UDP/TCP transport, packet splitting/parsing/deserialization, 1 Hz GCS heartbeat (sysid 255, compid 190, MAV_TYPE_GCS), command encoding, GCS output mute toggle |
-| `preload.js` | Context bridge: `mavlink`, `sitl`, `rtk`, `fpv`, `telForward`, `adsb`, `crvLogger`, `topography` (load/loadOne/save), `models`, `windowControls`, `devtools` | Secure IPC bridge between main and renderer processes (11 namespaced APIs). Topography API supports load, loadOne, and save for offline SRTM management |
+| `main.js` | `createWindow()`, IPC handlers for models/topography/ADS-B/tlog/topography-save | Electron app lifecycle, window management, file I/O, HGT file persistence |
+| `main-mavlink.js` | `initMAVLinkHandlers()`, `connectSerial/UDP/TCP()`, `handlePacket()`, `sendMAVLinkCommand()`, `sendMAVLinkMessage()`, `startHeartbeat()`, `disconnectCurrent()`, `sendRawBuffer()`, `corvEmitNavigation()`, `corvEmitDebug()`, `corvEmitRawSensor()`, `emitFakeMavlinkMessage()`, `getReplayParserBuilder()` | MAVLink v2 connection pipeline: serial/UDP/TCP transport, packet splitting/parsing/deserialization, 1 Hz GCS heartbeat (sysid 255, compid 190, MAV_TYPE_GCS), command encoding, GCS output mute toggle. Also hosts the CORV binary protocol v7/v8 decoder (re-emits as synthetic MAVLink to share the renderer pipeline) and the .tlog raw-packet recorder (auto-start on connect). Exports replay hooks consumed by `log-replay-manager.js` |
+| `log-replay-manager.js` | `initLogReplay()`, internal: `loadFile()`, `play()/pause()`, `seek()`, `tick()`, sticky-message re-emit, 20 Hz emitter + 10 Hz UI tick | Main-process replay engine. Indexes a .tlog or .bin file once, then streams its MAVLink messages into the renderer via the same `mavlink-message` IPC channel live connections use — the UI is animated without awareness of the source. .tlog uses a replay-scoped `MavLinkPacketSplitter`/`MavLinkPacketParser` from node-mavlink; .bin uses a custom minimal parser. Sticky whitelist re-emits the last HOME/MODE/etc. on seek so the UI stays coherent |
+| `log-replay-bin-parser.js` | `parseBinLog()` | Minimal ArduPilot DataFlash (.bin) parser. Decodes a whitelisted subset (ATT/GPS/AHR2/BARO/ARSP/BAT/MODE/MSG/RCIN/RCOU/VIBE/ORGN) and synthesizes MAVLink-shaped records for IDs 30/33/24/74/1/0/253/35/36/241/242. Trajectory comes from AHR2 (EKF-smoothed), velocity carries over from the most recent GPS sample; VFR_HUD is synthesized from GPS speed + (barometer climb when present) so the HUD shows real values on logs without sensors |
+| `preload.js` | Context bridge: `mavlink`, `sitl`, `rtk`, `fpv`, `telForward`, `adsb`, `tlogLogger`, `logReplay`, `corvSerial`, `topography` (load/loadOne/save), `models`, `windowControls`, `devtools` | Secure IPC bridge between main and renderer processes (13 namespaced APIs). Topography API supports load, loadOne, and save for offline SRTM management. `corvSerial` exposes the CORV binary protocol bridge; `logReplay` exposes open-file / play / pause / seek / unload + tick & state events |
 | `sitl-manager.js` | `initSITLHandlers()`, `cleanup()` | Download ArduPilot SITL binaries, spawn process (native Linux or WSL on Windows), TCP 5760 |
 | `rtk-manager.js` | `initRTKHandlers()`, `cleanup()` | RTCM3 frame parsing from serial GPS base station, GPS_RTCM_DATA (ID 233) injection to drone via raw MAVLink v2 packets |
 | `fpv-manager.js` | `initFPVHandlers()`, `cleanupFPV()` | Spawn ffmpeg for RTSP-to-MJPEG conversion, extract JPEG frames (SOI/EOI markers), send base64 frames via IPC |
@@ -192,7 +197,7 @@ Corv-GCS/
 
 | File | Key Exports | Purpose |
 |------|-------------|---------|
-| `state.js` | `STATE`, `dataBuffer`, `pushGHistory()`, `demoAttitude`, `demoSurveyState`, `activeTraces`, `viewMode`, `resetDataBuffer()` | Global mutable state (~100+ properties): attitude, position, velocity, MAVLink state, battery, GPS, RTK, vibration, mission, traffic. RingBuffer-backed time-series via `dataBuffer` proxy |
+| `state.js` | `STATE`, `dataBuffer`, `pushGHistory()`, `demoAttitude`, `demoSurveyState`, `activeTraces`, `viewMode`, `resetDataBuffer()`, `resetReplayState()` | Global mutable state (~100+ properties): attitude, position, velocity (incl. NED `vn/ve/vd`), MAVLink state, battery, GPS, RTK, vibration, mission, traffic. RingBuffer-backed time-series via `dataBuffer` proxy. `resetReplayState()` clears live-telemetry state without touching connection or preferences — called by Log Replay before loading a file and on backward seek |
 | `constants.js` | `ORIGIN`, `CAMERA_FOV`, `VISIBILITY_RADIUS`, `BUFFER_SIZE`, `SAMPLE_INTERVAL`, `TRACE_CONFIG`, demo constants | All configuration constants (reference origin, camera, terrain chunks, demo mode) |
 | `utils.js` | `latLonToMeters()`, `calculateDistance()`, `lerpColor()`, `getHeightColor()`, `calculateCRC16()`, `latLonToTile()`, `tileToBounds()` | Coordinate conversion (WGS84 → local meters), Haversine distance, color interpolation, terrain palette, CRC-16, tile math |
 | `RingBuffer.js` | `RingBuffer`, `MultiChannelRingBuffer` | O(1) circular buffer (Float64Array) with binary search (`lowerBound`), array export, clear. Used for telemetry time-series |
@@ -204,7 +209,7 @@ Corv-GCS/
 | File | Key Exports | Purpose |
 |------|-------------|---------|
 | `MAVLinkManager.js` | `initMAVLink()`, `onMessage(msgId, handler)`, `offMessage()`, `connectMAVLinkSerial/UDP/TCP()`, `disconnectMAVLink()`, `listSerialPorts()` | Renderer-side message router. Registers IPC listeners, dispatches messages to handlers, calls `mapMessageToState()`, fires `serialUpdate` CustomEvent |
-| `MAVLinkStateMapper.js` | `mapMessageToState(msgId, data)`, `getFlightModeName()`, `getFlightModeNumber()`, `getAvailableFlightModes()`, `getGPSFixName()`, `getVehicleTypeName()`, `computeAeroAngles()` | Decodes 17+ MAVLink message types into STATE fields. Maintains ArduPilot mode tables for Copter/Plane/Rover/Sub. Computes AoA/SSA from NED velocity |
+| `MAVLinkStateMapper.js` | `mapMessageToState(msgId, data)`, `getFlightModeName()`, `getFlightModeNumber()`, `getAvailableFlightModes()`, `getGPSFixName()`, `getVehicleTypeName()`, `computeAeroAngles()` | Decodes 17+ MAVLink message types into STATE fields. Maintains ArduPilot mode tables for Copter/Plane/Rover/Sub. Computes AoA/SSA from NED velocity. **Position/velocity priority chain (v1.3.2)**: GLOBAL_POSITION_INT (msg 33) is the primary source — lat/lon/alt + EKF NED velocity, with `STATE.gs = √(vn²+ve²)`. VFR_HUD (msg 74) always provides airspeed; it only fills `gs`/`vs` when GLOBAL_POSITION_INT is stale (>2 s window). GPS_RAW_INT (msg 24) is the final fallback for lat/lon/alt/gs/track (sentinel 65535 filtered). This prevents VFR_HUD's GPS-only groundspeed on some firmwares from poisoning the HUD |
 | `CommandSender.js` | `armVehicle()`, `disarmVehicle()`, `setFlightMode()`, `takeoff()`, `land()`, `returnToLaunch()`, `setGuidedTarget()`, `setParameter()`, `requestAllParameters()`, `requestAllDataStreams()`, `uploadMission()`, `sendRCChannelsOverride()`, `changeAltitude()`, `calibrateAccel/Compass/Gyro()`, `rebootAutopilot()` | High-level autopilot command abstraction with retry/ACK logic. Covers arming, modes, navigation, parameters, mission upload protocol, RC override, calibration |
 | `ConnectionManager.js` | `connect(type, options)`, `disconnect()`, `getAvailablePorts()`, `isHeartbeatAlive()`, `getConnectionInfo()` | Connection lifecycle orchestrator. Auto-requests data streams and home position on MAVLink connect. Polls HOME_POSITION every 5s until received, restarts on re-arm. Supports serial, UDP, TCP, legacy corv-binary |
 
@@ -260,10 +265,10 @@ Corv-GCS/
 | `adsb/ADSBManager.js` | `fetchADSBData()`, `getNearestTraffic(n)`, `downloadTrafficCSV()` | OpenSky Network ADS-B traffic polling (50km radius, via main process for CORS bypass). Rate limited (10s), stale entry removal (60s), CSV export |
 | `joystick/JoystickManager.js` | `JoystickManager` class | Gamepad API polling at 25 Hz. Axis mapping (roll/pitch/yaw/throttle), deadzone, expo, inversion config. Sends RC_CHANNELS_OVERRIDE (1000–2000 PWM). Config persisted to localStorage |
 | `joystick/JoystickUI.js` | `initJoystick()` | Joystick configuration UI: gamepad selection, axis live display, channel mapping |
-| `logging/CRVLogger.js` | `CRVLogger` class | Binary .CRV telemetry recording at 10 Hz. Packet types: FILE_HEADER (0x10), NAVIGATION (0x11), SYS_STATUS (0x12), EVENT (0x13). Auto-starts on MAVLink connect, 8KB flush buffer |
-| `playback/LogPlayer.js` | `initPlaybackControls()`, `tickPlayback()`, `togglePlay()`, `seekTo()`, `setPlaybackSpeed()`, `updateFromLog()` | Flight log playback with variable speed (0.1x–4x), timeline scrubber, auto UI mode switching |
+| `logging/TlogLogger.js` | `TlogLogger` class | `.tlog` flight recording (raw MAVLink v2 packet capture). Auto-starts on MAVLink connect, auto-stops on disconnect — the actual file write happens in `main-mavlink.js`; this class is a renderer-side controller over IPC |
+| `logging/LogReplayController.js` | `initLogReplay()` | Log Replay UI controller. Wires the GCS sidebar (OPEN FILE / UNLOAD / file info) and the bottom-right timeline (play/pause, scrubber, current/total). Gates visibility on connection state — replay is only allowed while disconnected, and going live auto-unloads. On file load, swaps to a dedicated replay model, draws the full flight trail in red (slightly under the camera plane), and on backward seek invokes `resetReplayState()` + clears the trail |
 | `mission/MissionCommands.js` | `MISSION_COMMANDS`, `getCmdDef()`, `getCmdName()`, `getCmdParams()`, `isNavCmd()`, `getGroupedCommands()` | MAVLink mission command catalog (100+ commands). Categories: Navigation, Condition, DO, Camera/Gimbal. Used by mission planner UI and CommandSender.uploadMission() |
-| `serial/SerialHandler.js` | `connectSerial()` | Legacy binary protocol via WebSerial API (460800 baud). Custom packets: [0xA5, 0x5A, TYPE, LEN, PAYLOAD, CRC16]. Parses navigation packets directly to STATE |
+| `serial/SerialHandler.js` | `connectSerial()` | CORV binary protocol v7/v8 via WebSerial API (460800 baud). Custom packets: `[0xA5, 0x5A, TYPE, LEN, PAYLOAD, CRC16]`. Decodes Navigation / Debug (with particle filter ESS/spread/N) / Raw Sensor frames. Re-emits as synthetic MAVLink (msgs 30/33/74/26/24/0) so the renderer telemetry pipeline is shared |
 
 ---
 
@@ -383,7 +388,47 @@ FPVController.js
 Rendered as overlay on 3D view
 ```
 
-### 4.6 Offline Data Download Pipeline
+### 4.6 Log Replay Pipeline (.tlog / .bin)
+
+```
+User opens .tlog or .bin file
+    │
+    ▼
+log-replay-manager.js  (main process)
+    │ indexFile() ── timestamp + offset table
+    │ format-detect: tlog (MAVLink raw stream) | bin (ArduPilot DataFlash)
+    │
+    ├── .tlog path
+    │   │ replay-scoped MavLinkPacketSplitter / MavLinkPacketParser
+    │   │ handlePacket() ── full decode (same as live)
+    │
+    └── .bin path
+        │ log-replay-bin-parser.js
+        │ AHR2 → GLOBAL_POSITION_INT (33), with GPS velocity carry-over
+        │ GPS  → GPS_RAW_INT (24) + VFR_HUD synthesis (gs from GPS,
+        │        climb from BARO if present)
+        │ ATT  → ATTITUDE (30); BAT/MODE/MSG/RCIN/RCOU/VIBE/ORGN → 1/0/253/35/36/241/242
+        ▼
+    emitFakeMavlinkMessage()  via 20 Hz wall-clock tick (50 ms slices,
+                              max 200 packets per tick)
+        │
+        ▼
+IPC: 'mavlink-message'        (same channel as live connections)
+        │
+        ▼
+MAVLinkManager → mapMessageToState → STATE  →  60 FPS render
+        │
+        │ Plus 10 Hz UI tick:
+        │   'logReplay-tick' { tMs, durationMs, playing }  →  scrubber
+        │
+        │ Sticky re-emit on backward seek:
+        │   re-emits the last HEARTBEAT/HOME_POSITION/MODE/BATTERY so
+        │   the UI stays coherent after time travel
+```
+
+Replay is gated on telemetry connection state: it only runs while disconnected, and going live auto-unloads.
+
+### 4.7 Offline Data Download Pipeline
 
 ```
 User (Sys Config → Offline Data Download panel)
@@ -418,7 +463,7 @@ OfflineDownloader.js
 All telemetry flows through the global `STATE` object in `core/state.js`. The 60 FPS render loop reads STATE — no UI component queries the autopilot directly. `MAVLinkStateMapper` writes to STATE; all rendering and UI modules read from it.
 
 ### 5.2 IPC Bridge Architecture
-`preload.js` exposes 10 namespaced APIs via `contextBridge.exposeInMainWorld()`. All IPC uses `invoke`/`handle` (request-response) or `send`/`on` (events). Security: `contextIsolation: true`, no `nodeIntegration`.
+`preload.js` exposes 13 namespaced APIs via `contextBridge.exposeInMainWorld()`: `mavlink`, `sitl`, `rtk`, `fpv`, `telForward`, `adsb`, `tlogLogger`, `logReplay`, `corvSerial`, `topography`, `models`, `windowControls`, `devtools`. All IPC uses `invoke`/`handle` (request-response) or `send`/`on` (events). Security: `contextIsolation: true`, no `nodeIntegration`.
 
 ### 5.3 Web Workers for Heavy Computation
 4 dedicated Web Workers handle terrain processing: mesh generation, tile download, hillshade, frustum culling. Workers communicate via `postMessage` with transferable ArrayBuffers. This keeps the main thread free for 60 FPS rendering.
@@ -437,6 +482,9 @@ All telemetry flows through the global `STATE` object in `core/state.js`. The 60
 
 ### 5.7 ArduPilot Vehicle Abstraction
 `MAVLinkStateMapper` maintains mode tables for Copter, Plane, Rover, and Sub. Vehicle type is auto-detected from the HEARTBEAT message `type` field. Mode names and available modes adapt per vehicle type.
+
+### 5.8 Unified Telemetry Pipeline (live / CORV / replay)
+Three completely different data sources converge on a single render path. Live MAVLink (serial/UDP/TCP) is decoded by `main-mavlink.js`, the CORV binary protocol (v7/v8, WebSerial) is decoded by `js/serial/SerialHandler.js`, and Log Replay (.tlog/.bin) is decoded by `log-replay-manager.js` + `log-replay-bin-parser.js`. All three emit MAVLink-shaped messages onto the same `mavlink-message` IPC channel → `MAVLinkManager.handleMessage()` → `mapMessageToState()` → STATE. UI modules read STATE without knowing the source. This is what makes the v1.3.2 velocity priority chain work uniformly across live, CORV, and replay.
 
 ---
 
