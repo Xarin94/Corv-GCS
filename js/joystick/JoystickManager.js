@@ -97,11 +97,12 @@ export class JoystickManager {
 
         // Configure ArduPilot to accept RC overrides from this GCS
         try {
-            // Set SYSID_MYGCS to match our GCS sysid (254)
-            // ArduPilot ONLY accepts RC_CHANNELS_OVERRIDE from this sysid
+            // Set SYSID_MYGCS to match our GCS sysid (255)
+            // ArduPilot ONLY accepts RC_CHANNELS_OVERRIDE from this sysid.
+            // Must match the sysid in MavLinkProtocolV2 in main-mavlink.js.
             this._savedSysidMygcs = (STATE.parameters.get('SYSID_MYGCS') || {}).value;
-            await setParameter('SYSID_MYGCS', 254);
-            console.log('[Joystick] Set SYSID_MYGCS = 254');
+            await setParameter('SYSID_MYGCS', 255);
+            console.log('[Joystick] Set SYSID_MYGCS = 255');
         } catch (e) {
             console.warn('[Joystick] Could not set SYSID_MYGCS:', e.message);
         }

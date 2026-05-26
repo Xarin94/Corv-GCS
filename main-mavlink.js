@@ -679,7 +679,8 @@ async function sendMAVLinkMessage(msg) {
             mavMsg.targetSystem = msg.targetSystem || 1;
             mavMsg.targetComponent = msg.targetComponent || 1;
             mavMsg.seq = msg.seq || 0;
-            mavMsg.frame = msg.frame || 3; // MAV_FRAME_GLOBAL_RELATIVE_ALT
+            // Use ?? so frame=0 (MAV_FRAME_GLOBAL / absolute MSL) is preserved — `||` would coerce it to 3
+            mavMsg.frame = msg.frame ?? 3; // default: MAV_FRAME_GLOBAL_RELATIVE_ALT
             mavMsg.command = msg.command || 16; // MAV_CMD_NAV_WAYPOINT
             mavMsg.current = msg.current || 0;
             mavMsg.autocontinue = msg.autocontinue !== undefined ? msg.autocontinue : 1;

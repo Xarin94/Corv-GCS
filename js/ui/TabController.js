@@ -597,9 +597,9 @@ function initMissionControls() {
             if (STATE.lat && STATE.lon) {
                 const home = {
                     seq: 0, command: 16, lat: STATE.lat, lng: STATE.lon,
-                    alt: 0, frame: 0
+                    alt: 0, frame: 0, isHome: true
                 };
-                if (STATE.missionItems.length > 0 && STATE.missionItems[0].seq === 0) {
+                if (STATE.missionItems.length > 0 && STATE.missionItems[0].isHome) {
                     STATE.missionItems[0] = home;
                 } else {
                     STATE.missionItems.unshift(home);
@@ -621,12 +621,14 @@ function initMissionControls() {
             uploadBtn.textContent = 'UPLOADING...';
             try {
                 // ArduPilot requires seq 0 = HOME. Auto-prepend if missing.
+                // Detect home by the explicit isHome marker — frame===0 alone matches every
+                // user-added waypoint (they all carry frame=0 since alt is entered as AGL/MSL).
                 let itemsToUpload = STATE.missionItems.map(it => ({ ...it }));
-                const hasHome = itemsToUpload.length > 0 && itemsToUpload[0].frame === 0;
+                const hasHome = itemsToUpload.length > 0 && itemsToUpload[0].isHome === true;
                 if (!hasHome) {
                     const homeLat = STATE.homeLat || STATE.lat || 0;
                     const homeLng = STATE.homeLon || STATE.lon || 0;
-                    const homeItem = { seq: 0, command: 16, lat: homeLat, lng: homeLng, alt: 0, frame: 0 };
+                    const homeItem = { seq: 0, command: 16, lat: homeLat, lng: homeLng, alt: 0, frame: 0, isHome: true };
                     itemsToUpload = [homeItem, ...itemsToUpload.map((it, i) => ({ ...it, seq: i + 1 }))];
                 }
 

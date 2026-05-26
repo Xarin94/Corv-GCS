@@ -458,7 +458,8 @@ export async function uploadMission(items) {
                 targetSystem: STATE.systemId,
                 targetComponent: STATE.componentId,
                 seq: seq,
-                frame: item.frame || 3,
+                // ?? not || — frame=0 (MAV_FRAME_GLOBAL / absolute MSL) must not be coerced to 3
+                frame: item.frame ?? 3,
                 command: item.command || 16,
                 current: seq === 0 ? 1 : 0,
                 autocontinue: 1,
