@@ -104,12 +104,14 @@ function indexTlogFile(filePath) {
             const payloadLen = buf[stxOff + 1];
             const incompatFlags = buf[stxOff + 2];
             const signed = (incompatFlags & 0x01) ? 13 : 0;
-            pktLen = 12 + payloadLen + 2 + signed;
+            // V2 frame = 10-byte header + payload + 2-byte CRC (+ 13-byte signature)
+            pktLen = 10 + payloadLen + 2 + signed;
             msgId = buf[stxOff + 7] | (buf[stxOff + 8] << 8) | (buf[stxOff + 9] << 16);
         } else if (stx === MAV_V1_STX) {
             if (stxOff + 6 > buf.length) break;
             const payloadLen = buf[stxOff + 1];
-            pktLen = 8 + payloadLen + 2;
+            // V1 frame = 6-byte header + payload + 2-byte CRC
+            pktLen = 6 + payloadLen + 2;
             msgId = buf[stxOff + 5];
         } else {
             // Not a valid STX — resync by advancing one byte
