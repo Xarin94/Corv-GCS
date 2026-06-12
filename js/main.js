@@ -1476,7 +1476,13 @@ function init() {
     // Initialize terrain manager
     initTerrain(scene, renderer, getCurrentSunDirection());
     window.sunlightEnabled = isSunlightEnabled();
-    
+
+    // Realistic sunlight OFF by default at startup: flat lighting is lighter
+    // (no shadow pass, no per-sun hillshade refresh) and more readable.
+    // Going through toggleSunlight() applies the full disable path (button
+    // state, overhead light, hillshade, brightness slider visibility).
+    if (isSunlightEnabled()) toggleSunlight();
+
     // Initialize HUD
     initHUD(document.getElementById('hud-canvas'));
     
