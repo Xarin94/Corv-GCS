@@ -250,6 +250,29 @@ export async function requestDataStream(streamId, rate = 10, start = 1) {
 }
 
 /**
+ * Request a single message at a fixed rate via MAV_CMD_SET_MESSAGE_INTERVAL (511).
+ * This is the modern, reliable mechanism: ArduPilot honors it regardless of the
+ * SR*_* stream parameters, whereas the deprecated REQUEST_DATA_STREAM is ignored
+ * for some stream groups (notably EXTRA1/EXTRA2 → ATTITUDE/VFR_HUD) when the
+ * matching SR* param is 0 — which is why those messages can be displayed by
+ * another GCS yet never reach (or get recorded by) this one.
+ * @param {number} msgId  MAVLink message ID
+ * @param {number} rateHz Desired rate in Hz (<=0 disables the message)
+ */
+export async function setMessageInterval(msgId, rateHz) {
+    const intervalUs = rateHz > 0 ? Math.round(1e6 / rateHz) : -1;
+    return sendCommand({
+        type: 'COMMAND_LONG',
+        targetSystem: STATE.systemId,
+        targetComponent: STATE.componentId,
+        command: 511, // MAV_CMD_SET_MESSAGE_INTERVAL
+        param1: msgId,
+        param2: intervalUs,
+        param7: 0     // 0 = respond on the requesting link
+    });
+}
+
+/**
  * Request all common data streams at default rates
  */
 export async function requestAllDataStreams() {
@@ -267,8 +290,23 @@ export async function requestAllDataStreams() {
         { id: 11, rate: 10 }, // EXTRA2 (VFR_HUD)
         { id: 12, rate: 2 },  // EXTRA3
     ];
+    // Per-stream try/catch so one failed request never skips the rest.
     for (const s of streams) {
-        await requestDataStream(s.id, s.rate);
+        try { await requestDataStream(s.id, s.rate); } catch (e) { /* keep going */ }
+    }
+
+    // Reliable backstop: explicitly pin the per-message rates that the EXTRA
+    // streams are supposed to provide. Many ArduPilot setups ignore the
+    // REQUEST_DATA_STREAM for EXTRA1/EXTRA2, leaving ATTITUDE/VFR_HUD missing
+    // from both the HUD horizon and the recorded tlog.
+    const messages = [
+        { id: 30,  rate: 25 }, // ATTITUDE   (EXTRA1) — artificial horizon
+        { id: 74,  rate: 10 }, // VFR_HUD    (EXTRA2) — airspeed/altitude/climb
+        { id: 31,  rate: 10 }, // ATTITUDE_QUATERNION (fallback attitude source)
+        { id: 241, rate: 2 },  // VIBRATION  (EXTRA3)
+    ];
+    for (const m of messages) {
+        try { await setMessageInterval(m.id, m.rate); } catch (e) { /* keep going */ }
     }
 }
 
