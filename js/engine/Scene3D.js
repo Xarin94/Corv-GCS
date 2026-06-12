@@ -108,8 +108,10 @@ function initLighting() {
     sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
     sunLight.position.set(20000, 30000, 10000);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 4096;
-    sunLight.shadow.mapSize.height = 4096;
+    // 2048 is plenty: the only shadow caster is the vehicle (terrain has
+    // castShadow=false), and shadows are disabled entirely in first person.
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
     sunLight.shadow.camera.near = 1;
     sunLight.shadow.camera.far = 50000;
     // Shadow camera area matches SHADOW_CHUNK_SIZE for better resolution
@@ -500,36 +502,41 @@ export function clearTargetMarker3D() {
 }
 
 /**
- * Update 3D traffic markers (wireframe pyramids) for nearest ADS-B traffic
+ * Update 3D traffic markers (wireframe pyramids) for nearest ADS-B traffic.
+ * Marker groups are created once and reused: only position/visibility change,
+ * avoiding per-call scene-graph churn and allocations.
  * @param {Array} nearest - Array from getNearestTraffic() with lat, lon, alt, dist
  */
 export function updateTrafficMarkers3D(nearest) {
     if (!scene) return;
 
-    // Remove old markers (geometry/materials are pooled — just remove from scene)
-    for (const m of trafficMarkers3D) {
-        scene.remove(m);
-    }
-    trafficMarkers3D = [];
+    const list = nearest || [];
+    let used = 0;
 
-    if (!nearest || nearest.length === 0) return;
-
-    for (const ac of nearest) {
+    for (const ac of list) {
         if (ac.lat == null || ac.lon == null) continue;
+
+        let group = trafficMarkers3D[used];
+        if (!group) {
+            group = new THREE.Group();
+            const cone = new THREE.Mesh(pooledGeo.trafficCone, pooledMat.trafficRed);
+            cone.rotation.x = Math.PI; // point down
+            group.add(cone);
+            group.renderOrder = 999;
+            scene.add(group);
+            trafficMarkers3D[used] = group;
+        }
+
         const pos = latLonToMeters(ac.lat, ac.lon);
         const alt = (ac.alt || 0) + (STATE.offsetAlt || 0);
-
-        const group = new THREE.Group();
         group.position.set(pos.x, alt, pos.z);
+        group.visible = true;
+        used++;
+    }
 
-        // Wireframe pyramid (pooled geometry/material)
-        const cone = new THREE.Mesh(pooledGeo.trafficCone, pooledMat.trafficRed);
-        cone.rotation.x = Math.PI; // point down
-        group.add(cone);
-
-        group.renderOrder = 999;
-        scene.add(group);
-        trafficMarkers3D.push(group);
+    // Hide unused pooled markers instead of removing them
+    for (let i = used; i < trafficMarkers3D.length; i++) {
+        if (trafficMarkers3D[i]) trafficMarkers3D[i].visible = false;
     }
 }
 

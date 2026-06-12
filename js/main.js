@@ -420,6 +420,10 @@ function setCameraMode(mode) {
         vehicle.visible = (cameraMode === 'THIRD');
     }
 
+    // Engage/disengage the shadow pass immediately on camera mode change
+    const sl = getSunLight();
+    if (sl) sl.castShadow = (cameraMode === 'THIRD') && isSunlightEnabled();
+
     // Hide HUD overlay in 3rd person to avoid clutter.
     const hudCanvas = document.getElementById('hud-canvas');
     if (hudCanvas) {
@@ -562,8 +566,10 @@ function updateSunPosition() {
     const currentSunDirection = getCurrentSunDirection();
     
     if (!sunLight || !isSunlightEnabled()) return;
-    
-    sunLight.castShadow = true;
+
+    // Shadows only in 3rd person: the vehicle is the sole shadow caster and is
+    // invisible in 1st person — skip the shadow pass + per-fragment PCF there.
+    sunLight.castShadow = (cameraMode === 'THIRD');
     ambientLight.intensity = 0.6;
     
     const SHADOW_CHUNK_SIZE = getShadowChunkSize();
@@ -928,9 +934,14 @@ let fpsFrameCount = 0;
 let fpsLastTime = performance.now();
 let lastFrameTime = performance.now();
 let lastRenderTime = 0; // Throttle heavy 3D render to TARGET_RENDER_FPS
-const TARGET_RENDER_FPS = 60;
+const TARGET_RENDER_FPS = 60; // caps render work on >60Hz monitors
 const RENDER_INTERVAL = 1000 / TARGET_RENDER_FPS; // ~16.6ms
 let demoTargetChangeTime = 0;
+
+// Slow-path update throttles (these don't need to run at monitor refresh rate)
+let lastSunPositionUpdate = 0;     // solar almanac + hillshade check: 1 Hz
+let lastUiBarUpdate = 0;           // command bar / sidebar DOM writes: 10 Hz
+let lastTrafficMarkersUpdate = 0;  // ADS-B 3D markers (data refreshes every ~10 s): 2 Hz
 
 
 // Demo speed smoothing (m/s)
@@ -960,7 +971,13 @@ function animate() {
     lastFrameTime = now;
     
     updateFPS();
-    updateSunPosition();
+
+    // The sun moves ~0.25°/min: recomputing the solar almanac (new Date() +
+    // trig) every frame is wasted work — 1 Hz is more than enough.
+    if (now - lastSunPositionUpdate >= 1000) {
+        lastSunPositionUpdate = now;
+        updateSunPosition();
+    }
 
     // Demo mode - fixed-wing survey drone
     if (STATE.mode === 'LIVE' && !STATE.connected) {
@@ -1120,15 +1137,25 @@ function animate() {
         }
     }
 
-    // Update GCS command bar, sidebar, and mini-map
-    updateCommandBar();
-    updateGCSSidebar();
-    const tc = getTargetCoords();
-    if (tc) {
-        const tElev = getTerrainElevationCached(tc.lat, tc.lon);
-        updateTargetMarker3D(tElev);
+    // Update GCS command bar, sidebar and target marker at 10 Hz — DOM writes
+    // don't need to run at monitor refresh rate.
+    if (now - lastUiBarUpdate >= 100) {
+        lastUiBarUpdate = now;
+        updateCommandBar();
+        updateGCSSidebar();
+        const tc = getTargetCoords();
+        if (tc) {
+            const tElev = getTerrainElevationCached(tc.lat, tc.lon);
+            updateTargetMarker3D(tElev);
+        }
     }
-    updateTrafficMarkers3D(getNearestTraffic(4));
+
+    // ADS-B data refreshes every ~10 s — 2 Hz is plenty for the 3D markers
+    if (now - lastTrafficMarkersUpdate >= 500) {
+        lastTrafficMarkersUpdate = now;
+        updateTrafficMarkers3D(getNearestTraffic(4));
+    }
+
     if (getViewMode() !== 'SPLIT') updateMap();
 
     checkInitialLoadComplete(
@@ -1207,7 +1234,7 @@ function toggleSunlight() {
         btn.classList.add('active');
         ambientLight.intensity = 0.6;
         sunLight.intensity = 1.5;
-        sunLight.castShadow = true;
+        sunLight.castShadow = (cameraMode === 'THIRD');
         updateSunPosition();
         setHillshadeNeedsUpdate();
         updateTerrainHillshading(true);
@@ -1268,6 +1295,8 @@ function setupTimeSlider() {
     document.getElementById('time-slider').oninput = (e) => {
         const minutes = parseInt(e.target.value);
         setTimeOverride(minutes);
+        // Apply immediately — the animation loop only refreshes the sun at 1 Hz
+        updateSunPosition();
         const hours = Math.floor(minutes / 60);
         const mins = minutes % 60;
         document.getElementById('time-display').textContent = 

@@ -213,6 +213,29 @@ const CHUNKS_PER_FRAME = 5; // Aumentato per velocizzare
 const chunkCreationQueue = [];
 let isProcessingChunks = false;
 
+// ============== GEOMETRY LOD ==============
+// Distance-based mesh decimation: distant chunks sample every Nth HGT cell.
+// At 12 km one screen pixel covers ~10 m of terrain, so halving the grid
+// (30→60 m for SRTM1) keeps seam cracks at sub-pixel size while cutting
+// vertex count by ~4x per band.
+const LOD_BANDS = [
+    { maxDist: 12000, step: 1 },
+    { maxDist: 22000, step: 2 },
+    { maxDist: Infinity, step: 4 }
+];
+const LOD_REBUILDS_PER_PASS = 10; // max chunk rebuilds per cleanup pass (5s)
+
+function lodStepForDistance(dist) {
+    for (const band of LOD_BANDS) {
+        if (dist <= band.maxDist) return band.step;
+    }
+    return LOD_BANDS[LOD_BANDS.length - 1].step;
+}
+
+function sanitizeLodStep(step, vertsPerChunk) {
+    return (step > 1 && vertsPerChunk % step === 0) ? step : 1;
+}
+
 // Cleanup settings (più aggressivi)
 const CLEANUP_RADIUS = VISIBILITY_RADIUS * 1.05; // poco oltre la visibilità
 const MAX_ACTIVE_CHUNKS = 240; // limite più basso per liberare memoria
@@ -414,8 +437,14 @@ function initTerrainWorker() {
                 workerInflight = Math.max(0, workerInflight - 1);
                 markChunkActivity();
 
+                // LOD rebuild: swap the old mesh only now that the new one is
+                // ready, so the chunk never disappears for a few frames.
+                if (item.lodRebuild && activeChunks[data.chunkKey]) {
+                    disposeChunk(data.chunkKey, activeChunks[data.chunkKey]);
+                }
+
                 if (!activeChunks[data.chunkKey] && isChunkInRange(item)) {
-                    createSingleChunkFromBuffers(item, data.positions, data.uvs, data.colors);
+                    createSingleChunkFromBuffers(item, data.positions, data.uvs, data.colors, data.normals);
                 }
                 return;
             }
@@ -436,7 +465,7 @@ function initTerrainWorker() {
             workerAvailable = false;
             terrainWorker = null;
             for (const item of workerPending.values()) {
-                if (!activeChunks[item.chunkKey]) {
+                if (!activeChunks[item.chunkKey] || item.lodRebuild) {
                     chunkCreationQueue.unshift(item);
                 }
             }
@@ -844,6 +873,7 @@ function generateChunksFromBuffer(buffer, latBase, lonBase) {
                 chunksList.push({
                     cx, cy, dist, chunkKey,
                     latBase, lonBase, size, vertsPerChunk,
+                    lodStep: sanitizeLodStep(lodStepForDistance(dist), vertsPerChunk),
                     hgtKey: key,
                     dataView: workerAvailable ? null : new DataView(buffer.slice(0))
                 });
@@ -883,8 +913,11 @@ function processChunkQueue() {
             if (requestedAt && now - requestedAt > WORKER_STALE_MS) {
                 workerPending.delete(chunkKey);
                 workerInflight = Math.max(0, workerInflight - 1);
-                if (!activeChunks[chunkKey] && isChunkInRange(item)) {
+                if ((!activeChunks[chunkKey] || item.lodRebuild) && isChunkInRange(item)) {
                     chunkCreationQueue.unshift(item);
+                } else if (item.lodRebuild && activeChunks[chunkKey]) {
+                    // Rebuild dropped — release the flag so a later pass can retry
+                    activeChunks[chunkKey].userData.lodRebuildQueued = false;
                 }
             }
         }
@@ -922,7 +955,7 @@ function processChunkQueue() {
         let scheduled = 0;
         while (scheduled < CHUNKS_PER_FRAME && chunkCreationQueue.length > 0 && workerInflight < MAX_WORKER_INFLIGHT) {
             const item = chunkCreationQueue.shift();
-            if (!activeChunks[item.chunkKey]) {
+            if (!activeChunks[item.chunkKey] || item.lodRebuild) {
                 if (!isChunkInRange(item)) {
                     continue;
                 }
@@ -937,6 +970,7 @@ function processChunkQueue() {
                     lonBase: item.lonBase,
                     size: item.size,
                     vertsPerChunk: item.vertsPerChunk,
+                    step: item.lodStep || 1,
                     cx: item.cx,
                     cy: item.cy
                 });
@@ -946,9 +980,12 @@ function processChunkQueue() {
     } else {
         for (let i = 0; i < CHUNKS_PER_FRAME && chunkCreationQueue.length > 0; i++) {
             const item = chunkCreationQueue.shift();
-            if (!activeChunks[item.chunkKey]) {
+            if (!activeChunks[item.chunkKey] || item.lodRebuild) {
                 if (!isChunkInRange(item)) {
                     continue;
+                }
+                if (item.lodRebuild && activeChunks[item.chunkKey]) {
+                    disposeChunk(item.chunkKey, activeChunks[item.chunkKey]);
                 }
                 createSingleChunk(item);
             }
@@ -965,13 +1002,14 @@ function processChunkQueue() {
 function createSingleChunk(item) {
     const { cx, cy, chunkKey, latBase, lonBase, size, vertsPerChunk, dataView, hgtKey } = item;
     const chunksPerAxis = 10;
+    const step = sanitizeLodStep(item.lodStep || 1, vertsPerChunk);
 
     const chunkLatTop = latBase + 1 - (cy / chunksPerAxis);
     const chunkLatBottom = latBase + 1 - ((cy + 1) / chunksPerAxis);
     const chunkLonLeft = lonBase + (cx / chunksPerAxis);
     const chunkLonRight = lonBase + ((cx + 1) / chunksPerAxis);
 
-    const geoW = vertsPerChunk + 1;
+    const geoW = vertsPerChunk / step + 1;
     const geometry = new THREE.PlaneGeometry(1, 1, geoW - 1, geoW - 1);
     const posAttr = geometry.attributes.position;
     const uvAttr = new THREE.BufferAttribute(new Float32Array(posAttr.count * 2), 2);
@@ -985,8 +1023,8 @@ function createSingleChunk(item) {
     const hgtCache = !dataView && hgtKey ? hgtElevationData[hgtKey] : null;
     for (let r = 0; r < geoW; r++) {
         for (let c = 0; c < geoW; c++) {
-            const hgtRow = Math.min(startRow + r, size - 1);
-            const hgtCol = Math.min(startCol + c, size - 1);
+            const hgtRow = Math.min(startRow + r * step, size - 1);
+            const hgtCol = Math.min(startCol + c * step, size - 1);
             const height = dataView
                 ? dataView.getInt16((hgtRow * size + hgtCol) * 2, false)
                 : (hgtCache ? hgtCache.data[hgtRow * size + hgtCol] : 0);
@@ -1012,47 +1050,7 @@ function createSingleChunk(item) {
 
     const material = new THREE.MeshLambertMaterial({
         vertexColors: true,
-        side: THREE.DoubleSide
-    });
-
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.castShadow = false;  // terrain doesn't need to cast shadows (saves shadow-map draw calls)
-    mesh.receiveShadow = true;
-    mesh.userData = { 
-        chunkLatTop, chunkLatBottom, chunkLonLeft, chunkLonRight, 
-        textureLoaded: false 
-    };
-    
-    sceneRef.add(mesh);
-    activeChunks[chunkKey] = mesh;
-    chunksCreated++;
-    markChunkActivity();
-
-    applyHillshadeToMesh(mesh);
-
-    // NON caricare satellite qui - verrà fatto da refreshNearbyChunkTextures
-    // dopo che il terreno base è completamente caricato
-}
-
-function createSingleChunkFromBuffers(item, positions, uvs, colors) {
-    const { cx, cy, chunkKey, latBase, lonBase, vertsPerChunk } = item;
-    const chunksPerAxis = 10;
-
-    const chunkLatTop = latBase + 1 - (cy / chunksPerAxis);
-    const chunkLatBottom = latBase + 1 - ((cy + 1) / chunksPerAxis);
-    const chunkLonLeft = lonBase + (cx / chunksPerAxis);
-    const chunkLonRight = lonBase + ((cx + 1) / chunksPerAxis);
-
-    const geoW = vertsPerChunk + 1;
-    const geometry = new THREE.PlaneGeometry(1, 1, geoW - 1, geoW - 1);
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    geometry.computeVertexNormals();
-
-    const material = new THREE.MeshLambertMaterial({
-        vertexColors: true,
-        side: THREE.DoubleSide
+        side: THREE.FrontSide  // heightfield seen from above: backface culling halves rasterization
     });
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -1060,6 +1058,7 @@ function createSingleChunkFromBuffers(item, positions, uvs, colors) {
     mesh.receiveShadow = true;
     mesh.userData = {
         chunkLatTop, chunkLatBottom, chunkLonLeft, chunkLonRight,
+        lodStep: step,
         textureLoaded: false
     };
 
@@ -1069,6 +1068,67 @@ function createSingleChunkFromBuffers(item, positions, uvs, colors) {
     markChunkActivity();
 
     applyHillshadeToMesh(mesh);
+    requeueTextureAfterLodRebuild(item, mesh);
+
+    // NON caricare satellite qui - verrà fatto da refreshNearbyChunkTextures
+    // dopo che il terreno base è completamente caricato
+}
+
+/**
+ * After a LOD rebuild, the fresh mesh lost its satellite texture — re-enqueue
+ * it right away instead of waiting for the next movement-based refresh.
+ */
+function requeueTextureAfterLodRebuild(item, mesh) {
+    if (!item.lodRebuild || !initialTexturesLoaded || !window.satelliteEnabled) return;
+    const dist = getChunkDistanceToPlayer(item);
+    if (dist <= SATELLITE_RADIUS) {
+        enqueueChunkTexture(mesh, mesh.userData, dist);
+    }
+}
+
+function createSingleChunkFromBuffers(item, positions, uvs, colors, normals) {
+    const { cx, cy, chunkKey, latBase, lonBase, vertsPerChunk } = item;
+    const chunksPerAxis = 10;
+    const step = sanitizeLodStep(item.lodStep || 1, vertsPerChunk);
+
+    const chunkLatTop = latBase + 1 - (cy / chunksPerAxis);
+    const chunkLatBottom = latBase + 1 - ((cy + 1) / chunksPerAxis);
+    const chunkLonLeft = lonBase + (cx / chunksPerAxis);
+    const chunkLonRight = lonBase + ((cx + 1) / chunksPerAxis);
+
+    const geoW = vertsPerChunk / step + 1;
+    const geometry = new THREE.PlaneGeometry(1, 1, geoW - 1, geoW - 1);
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    if (normals && normals.length === positions.length) {
+        // Normals computed in the worker — avoids a 10-30ms main-thread stall per chunk
+        geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    } else {
+        geometry.computeVertexNormals();
+    }
+
+    const material = new THREE.MeshLambertMaterial({
+        vertexColors: true,
+        side: THREE.FrontSide  // heightfield seen from above: backface culling halves rasterization
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.castShadow = false;  // terrain doesn't need to cast shadows (saves shadow-map draw calls)
+    mesh.receiveShadow = true;
+    mesh.userData = {
+        chunkLatTop, chunkLatBottom, chunkLonLeft, chunkLonRight,
+        lodStep: step,
+        textureLoaded: false
+    };
+
+    sceneRef.add(mesh);
+    activeChunks[chunkKey] = mesh;
+    chunksCreated++;
+    markChunkActivity();
+
+    applyHillshadeToMesh(mesh);
+    requeueTextureAfterLodRebuild(item, mesh);
 }
 
 /**
@@ -1116,11 +1176,33 @@ function createChunkTexture(mesh, latTop, latBottom, lonLeft, lonRight) {
     const tilesX = tileBottomRight.x - tileTopLeft.x + 1;
     const tilesY = tileBottomRight.y - tileTopLeft.y + 1;
 
-    const canvasWidth = tilesX * TILE_SIZE;
-    const canvasHeight = tilesY * TILE_SIZE;
+    // Compute the chunk's crop rectangle in mosaic pixel space up front and
+    // allocate ONLY the cropped canvas: tiles are drawn directly at negative
+    // offsets (canvas clips them). This avoids a transient full-mosaic canvas
+    // (up to 8192² = 268 MB) plus a full-size copy per chunk.
+    const mosaicWidth = tilesX * TILE_SIZE;
+    const mosaicHeight = tilesY * TILE_SIZE;
+
+    const topLeftBounds = tileToBounds(tileTopLeft.x, tileTopLeft.y, zoomLevel);
+    const bottomRightBounds = tileToBounds(tileBottomRight.x, tileBottomRight.y, zoomLevel);
+    const tilesLatTop = topLeftBounds.latTop;
+    const tilesLatBottom = bottomRightBounds.latBottom;
+    const tilesLonLeft = topLeftBounds.lonLeft;
+    const tilesLonRight = bottomRightBounds.lonRight;
+
+    const uMin = (lonLeft - tilesLonLeft) / (tilesLonRight - tilesLonLeft);
+    const uMax = (lonRight - tilesLonLeft) / (tilesLonRight - tilesLonLeft);
+    const vMin = (tilesLatTop - latTop) / (tilesLatTop - tilesLatBottom);
+    const vMax = (tilesLatTop - latBottom) / (tilesLatTop - tilesLatBottom);
+
+    const cropX = Math.floor(uMin * mosaicWidth);
+    const cropY = Math.floor(vMin * mosaicHeight);
+    const cropW = Math.max(1, Math.floor((uMax - uMin) * mosaicWidth));
+    const cropH = Math.max(1, Math.floor((vMax - vMin) * mosaicHeight));
+
     const canvas = document.createElement('canvas');
-    canvas.width = canvasWidth;
-    canvas.height = canvasHeight;
+    canvas.width = cropW;
+    canvas.height = cropH;
     const ctx = canvas.getContext('2d');
     canvasesCreated++;
 
@@ -1129,12 +1211,8 @@ function createChunkTexture(mesh, latTop, latBottom, lonLeft, lonRight) {
         mesh,
         canvas,
         ctx,
-        latTop,
-        latBottom,
-        lonLeft,
-        lonRight,
-        tileTopLeft,
-        tileBottomRight,
+        cropX,
+        cropY,
         zoomLevel,
         totalTiles: totalTilesForChunk,
         tilesDrawn: 0,
@@ -1199,7 +1277,9 @@ function processTileDrawQueue() {
         // tile draws. Guard against it and just skip the tile.
         if (img && img.width > 0 && img.height > 0) {
             try {
-                job.ctx.drawImage(img, localX * tileSize, localY * tileSize, tileSize, tileSize);
+                // Draw in mosaic space shifted by the crop origin — out-of-bounds
+                // portions are clipped by the canvas for free.
+                job.ctx.drawImage(img, localX * tileSize - job.cropX, localY * tileSize - job.cropY, tileSize, tileSize);
             } catch (e) {
                 // Detached/invalid image source — skip; chunk re-textures on next refresh
             }
@@ -1212,7 +1292,7 @@ function processTileDrawQueue() {
             const canvas = job.canvas;
             job.ctx = null;
             job.canvas = null;
-            enqueueCompositeTexture(job.mesh, canvas, job.latTop, job.latBottom, job.lonLeft, job.lonRight, job.tileTopLeft, job.tileBottomRight, job.zoomLevel);
+            enqueueCompositeTexture(job.mesh, canvas);
         }
 
         processed++;
@@ -1229,7 +1309,7 @@ function processTileDrawQueue() {
     }
 }
 
-function enqueueCompositeTexture(mesh, canvas, latTop, latBottom, lonLeft, lonRight, tileTopLeft, tileBottomRight, zoomLevel) {
+function enqueueCompositeTexture(mesh, canvas) {
     if (!mesh || (mesh.userData && mesh.userData.disposed)) {
         if (canvas) {
             canvas.width = 1;
@@ -1238,7 +1318,7 @@ function enqueueCompositeTexture(mesh, canvas, latTop, latBottom, lonLeft, lonRi
         }
         return;
     }
-    textureApplyQueue.push({ mesh, canvas, latTop, latBottom, lonLeft, lonRight, tileTopLeft, tileBottomRight, zoomLevel });
+    textureApplyQueue.push({ mesh, canvas });
     if (!isProcessingTextureQueue) {
         requestAnimationFrame(processTextureApplyQueue);
     }
@@ -1314,17 +1394,7 @@ function processTextureApplyQueue() {
 
     while (textureApplyQueue.length > 0) {
         const job = textureApplyQueue.shift();
-        applyCompositeTexture(
-            job.mesh,
-            job.canvas,
-            job.latTop,
-            job.latBottom,
-            job.lonLeft,
-            job.lonRight,
-            job.tileTopLeft,
-            job.tileBottomRight,
-            job.zoomLevel
-        );
+        applyCompositeTexture(job.mesh, job.canvas);
         processed++;
 
         const elapsed = performance.now() - start;
@@ -1462,9 +1532,11 @@ function processTileLoadQueue() {
 }
 
 /**
- * Apply composite texture to mesh
+ * Apply composite texture to mesh.
+ * The canvas arrives already cropped to the chunk bounds (tiles are drawn
+ * directly at the crop offset in processTileDrawQueue), so no copy happens here.
  */
-function applyCompositeTexture(mesh, canvas, latTop, latBottom, lonLeft, lonRight, tileTopLeft, tileBottomRight, zoomLevel) {
+function applyCompositeTexture(mesh, canvas) {
     // If satellite got disabled while tiles were loading, don't apply.
     if (!window.satelliteEnabled) {
         if (mesh && mesh.userData) mesh.userData.textureLoaded = false;
@@ -1480,42 +1552,10 @@ function applyCompositeTexture(mesh, canvas, latTop, latBottom, lonLeft, lonRigh
         return;
     }
 
-    const topLeftBounds = tileToBounds(tileTopLeft.x, tileTopLeft.y, zoomLevel);
-    const bottomRightBounds = tileToBounds(tileBottomRight.x, tileBottomRight.y, zoomLevel);
-
-    const tilesLatTop = topLeftBounds.latTop;
-    const tilesLatBottom = bottomRightBounds.latBottom;
-    const tilesLonLeft = topLeftBounds.lonLeft;
-    const tilesLonRight = bottomRightBounds.lonRight;
-
-    const uMin = (lonLeft - tilesLonLeft) / (tilesLonRight - tilesLonLeft);
-    const uMax = (lonRight - tilesLonLeft) / (tilesLonRight - tilesLonLeft);
-    const vMin = (tilesLatTop - latTop) / (tilesLatTop - tilesLatBottom);
-    const vMax = (tilesLatTop - latBottom) / (tilesLatTop - tilesLatBottom);
-
-    const cropX = Math.floor(uMin * canvas.width);
-    const cropY = Math.floor(vMin * canvas.height);
-    const cropW = Math.floor((uMax - uMin) * canvas.width);
-    const cropH = Math.floor((vMax - vMin) * canvas.height);
-
-    const croppedCanvas = document.createElement('canvas');
-    croppedCanvas.width = Math.max(1, cropW);
-    croppedCanvas.height = Math.max(1, cropH);
-    const croppedCtx = croppedCanvas.getContext('2d');
-
-    if (cropW > 0 && cropH > 0) {
-        croppedCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-    }
-
-    // Release source canvas memory immediately
-    canvas.width = 1;
-    canvas.height = 1;
-    canvasesReleased++;
-
-    const texture = new THREE.CanvasTexture(croppedCanvas);
+    const texture = new THREE.CanvasTexture(canvas);
     texturesCreated++;
 
-    // Force an early GPU upload. IMPORTANT: croppedCanvas must stay alive — it
+    // Force an early GPU upload. IMPORTANT: the canvas must stay alive — it
     // is texture.image, the source THREE re-reads on every re-upload (e.g.
     // after a WebGL context loss/restore). Shrinking it here permanently
     // blanked the texture to white. It is GC'd naturally when the texture is
@@ -1568,6 +1608,8 @@ function unloadChunkTexture(mesh) {
     }
     
     if (mesh.material.map) {
+        // The texture's backing canvas is released along with it
+        if (mesh.material.map.image) canvasesReleased++;
         try { mesh.material.map.dispose(); texturesDisposed++; } catch (e) {}
         mesh.material.map = null;
         mesh.material.needsUpdate = true;
@@ -1767,9 +1809,90 @@ function cleanupDistantChunks() {
         }
     }
 
+    // LOD maintenance: rebuild chunks whose distance band changed
+    updateChunkLods(playerPos);
+
     // Prune HGT cache far from player to free memory
     cleanupHgtCache();
-    
+
+}
+
+/**
+ * Rebuild chunks whose LOD band no longer matches their distance.
+ * Hysteresis (±15%) prevents rebuild ping-pong at band boundaries; the old
+ * mesh stays in the scene until the worker delivers the replacement.
+ */
+function updateChunkLods(playerPos) {
+    const rebuilds = [];
+
+    for (const [key, mesh] of Object.entries(activeChunks)) {
+        const ud = mesh.userData;
+        if (!ud || ud.chunkLatTop == null || !ud.lodStep || ud.lodRebuildQueued) continue;
+        if (workerPending.has(key)) continue;
+
+        const centerLat = (ud.chunkLatTop + ud.chunkLatBottom) / 2;
+        const centerLon = (ud.chunkLonLeft + ud.chunkLonRight) / 2;
+        const centerWorld = latLonToMeters(centerLat, centerLon);
+        const dist = Math.sqrt(
+            (centerWorld.x - playerPos.x) ** 2 +
+            (centerWorld.z - playerPos.z) ** 2
+        );
+
+        const desired = lodStepForDistance(dist);
+        if (desired === ud.lodStep) continue;
+
+        if (desired < ud.lodStep) {
+            // Upgrade only when firmly inside the finer band
+            if (lodStepForDistance(dist * 1.15) < ud.lodStep) {
+                rebuilds.push({ key, mesh, dist, upgrade: 1 });
+            }
+        } else {
+            // Downgrade only when firmly outside the current band
+            if (lodStepForDistance(dist * 0.85) > ud.lodStep) {
+                rebuilds.push({ key, mesh, dist, upgrade: 0 });
+            }
+        }
+    }
+
+    if (rebuilds.length === 0) return;
+
+    // Upgrades first, nearest first
+    rebuilds.sort((a, b) => (b.upgrade - a.upgrade) || (a.dist - b.dist));
+
+    for (const rb of rebuilds.slice(0, LOD_REBUILDS_PER_PASS)) {
+        requeueChunkForLod(rb.key, rb.mesh, rb.dist);
+    }
+
+    if (!isProcessingChunks && chunkCreationQueue.length > 0) {
+        processChunkQueue();
+    }
+}
+
+function requeueChunkForLod(chunkKey, mesh, dist) {
+    const parts = chunkKey.split('_');
+    if (parts.length !== 4) return;
+    const latBase = parseInt(parts[0], 10);
+    const lonBase = parseInt(parts[1], 10);
+    const cx = parseInt(parts[2], 10);
+    const cy = parseInt(parts[3], 10);
+    if (!Number.isFinite(latBase) || !Number.isFinite(lonBase)) return;
+
+    const hgtKey = `${latBase}_${lonBase}`;
+    const hgt = hgtElevationData[hgtKey];
+    if (!hgt) return; // elevation data no longer in memory — skip
+
+    const size = hgt.size;
+    const vertsPerChunk = Math.floor((size - 1) / 10);
+
+    mesh.userData.lodRebuildQueued = true;
+    chunkCreationQueue.push({
+        cx, cy, dist, chunkKey,
+        latBase, lonBase, size, vertsPerChunk,
+        lodStep: sanitizeLodStep(lodStepForDistance(dist), vertsPerChunk),
+        hgtKey,
+        dataView: null,
+        lodRebuild: true
+    });
 }
 
 /**
@@ -1886,56 +2009,48 @@ export function updateTerrainHillshading(forceUpdate = false) {
 }
 
 /**
- * Perform the actual hillshade update
+ * Perform the actual hillshade update.
+ * Instead of recomputing every vertex of every chunk synchronously (a single
+ * multi-hundred-ms main-thread stall when the sun moves), chunks are queued
+ * and dispatched a few per frame to the HillshadeWorker via
+ * applyHillshadeToMesh(). A new sun update simply refills the queue.
  */
-function performHillshadeUpdate() {
-    const sunDir = cachedSunDir;
-    const normal = new THREE.Vector3();
-    const sunlightEnabled = window.sunlightEnabled !== false;
+const hillshadeChunkQueue = [];
+let isProcessingHillshadeQueue = false;
+const MAX_HILLSHADE_CHUNKS_PER_FRAME = 3;
 
+function performHillshadeUpdate() {
+    hillshadeChunkQueue.length = 0;
     for (const key in activeChunks) {
+        hillshadeChunkQueue.push(key);
+    }
+
+    if (!isProcessingHillshadeQueue && hillshadeChunkQueue.length > 0) {
+        isProcessingHillshadeQueue = true;
+        requestAnimationFrame(processHillshadeQueue);
+    }
+}
+
+function processHillshadeQueue() {
+    const sunlightEnabled = window.sunlightEnabled !== false;
+    let processed = 0;
+
+    while (hillshadeChunkQueue.length > 0 && processed < MAX_HILLSHADE_CHUNKS_PER_FRAME) {
+        const key = hillshadeChunkQueue.shift();
         const mesh = activeChunks[key];
         if (!mesh || !mesh.geometry) continue;
 
-        const geometry = mesh.geometry;
-        const posAttr = geometry.attributes.position;
-        const normalAttr = geometry.attributes.normal;
-        const colorAttr = geometry.attributes.color;
-
-        if (!posAttr || !normalAttr || !colorAttr) continue;
-
-        const hasTexture = mesh.userData && mesh.userData.textureLoaded;
-        const count = posAttr.count;
-
-        for (let i = 0; i < count; i++) {
-            normal.set(normalAttr.getX(i), normalAttr.getY(i), normalAttr.getZ(i));
-
-            let intensity = normal.dot(sunDir);
-
-            if (sunlightEnabled) {
-                intensity = Math.max(0, intensity);
-                intensity = 0.6 + intensity * 0.8;
-                if (mesh.material && mesh.material.color) {
-                    mesh.material.color.setRGB(1, 1, 1);
-                }
-            } else {
-                intensity = mapBrightness;
-            }
-
-            if (hasTexture) {
-                colorAttr.setXYZ(i, intensity, intensity, intensity);
-            } else {
-                const height = posAttr.getY(i);
-                const baseColor = getHeightColor(height);
-                colorAttr.setXYZ(i,
-                    baseColor.r * intensity,
-                    baseColor.g * intensity,
-                    baseColor.b * intensity
-                );
-            }
+        if (sunlightEnabled && mesh.material && mesh.material.color) {
+            mesh.material.color.setRGB(1, 1, 1);
         }
+        applyHillshadeToMesh(mesh);
+        processed++;
+    }
 
-        colorAttr.needsUpdate = true;
+    if (hillshadeChunkQueue.length > 0) {
+        requestAnimationFrame(processHillshadeQueue);
+    } else {
+        isProcessingHillshadeQueue = false;
     }
 }
 

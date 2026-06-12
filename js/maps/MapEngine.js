@@ -77,10 +77,21 @@ export function initMap(containerId) {
 }
 
 /**
- * Update mini-map position and marker rotation
+ * Update mini-map position and marker rotation.
+ * Internally throttled to 10 Hz: the caller runs at monitor refresh rate, but
+ * Leaflet pan/marker/DOM updates are far too expensive for that cadence.
+ * NOTE: container resizes are handled by the ResizeObservers in main.js
+ * (invalidateMapSize) — invalidateSize() must NOT run per-frame, it forces a
+ * full layout reflow.
  */
+let lastMapUpdateAt = 0;
+
 export function updateMap() {
     if (!map) return;
+
+    const now = performance.now();
+    if (now - lastMapUpdateAt < 100) return;
+    lastMapUpdateAt = now;
 
     const newLatLng = new L.LatLng(STATE.lat, STATE.lon);
     marker.setLatLng(newLatLng);
@@ -97,23 +108,28 @@ export function updateMap() {
     // Update path (skip while a frozen replay trail is on display)
     if (pathLine && !trailFrozen) {
         const cur = newLatLng;
+        let pathChanged = false;
         if (!lastLiveLatLng) {
             lastLiveLatLng = cur;
             livePathPoints = [cur];
+            pathChanged = true;
         } else {
             const moved = map.distance(lastLiveLatLng, cur);
             if (moved >= 5) {
                 livePathPoints.push(cur);
                 lastLiveLatLng = cur;
+                pathChanged = true;
             }
         }
         if (livePathPoints.length > MAX_MAP_PATH_POINTS) {
             livePathPoints = livePathPoints.slice(livePathPoints.length - MAX_MAP_PATH_POINTS);
+            pathChanged = true;
         }
-        pathLine.setLatLngs(livePathPoints);
+        // Rebuilding the polyline is expensive — only when points actually changed
+        if (pathChanged) {
+            pathLine.setLatLngs(livePathPoints);
+        }
     }
-
-    map.invalidateSize();
 
     // Update ADS-B traffic dots
     updateTrafficOverlay();

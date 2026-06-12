@@ -40,6 +40,50 @@ function getHeightColor(height) {
     return { r: B[0], g: B[1], b: B[2] };
 }
 
+/**
+ * Compute smooth vertex normals for a regular grid via central differences.
+ * Much faster than face-normal accumulation and runs off the main thread.
+ */
+function computeGridNormals(positions, geoW) {
+    const normals = new Float32Array(positions.length);
+
+    for (let r = 0; r < geoW; r++) {
+        for (let c = 0; c < geoW; c++) {
+            // East tangent: P(r, c+1) - P(r, c-1) (one-sided at edges)
+            const cE = Math.min(c + 1, geoW - 1) ;
+            const cW = Math.max(c - 1, 0);
+            const iE = (r * geoW + cE) * 3;
+            const iW = (r * geoW + cW) * 3;
+            const ex = positions[iE] - positions[iW];
+            const ey = positions[iE + 1] - positions[iW + 1];
+            const ez = positions[iE + 2] - positions[iW + 2];
+
+            // South tangent: P(r+1, c) - P(r-1, c)
+            const rS = Math.min(r + 1, geoW - 1);
+            const rN = Math.max(r - 1, 0);
+            const iS = (rS * geoW + c) * 3;
+            const iN = (rN * geoW + c) * 3;
+            const sx = positions[iS] - positions[iN];
+            const sy = positions[iS + 1] - positions[iN + 1];
+            const sz = positions[iS + 2] - positions[iN + 2];
+
+            // n = S × E (points +Y up with this grid orientation)
+            let nx = sy * ez - sz * ey;
+            let ny = sz * ex - sx * ez;
+            let nz = sx * ey - sy * ex;
+            const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+            nx /= len; ny /= len; nz /= len;
+
+            const o = (r * geoW + c) * 3;
+            normals[o] = nx;
+            normals[o + 1] = ny;
+            normals[o + 2] = nz;
+        }
+    }
+
+    return normals;
+}
+
 function buildChunk(data) {
     const { chunkKey, hgtKey, latBase, lonBase, size, vertsPerChunk, cx, cy } = data;
     const entry = hgtBuffers.get(hgtKey);
@@ -47,8 +91,11 @@ function buildChunk(data) {
         return { type: 'chunkFailed', chunkKey, reason: 'missing-hgt' };
     }
 
+    // LOD decimation: sample every `step` HGT cells (1 = full res).
+    const step = (data.step && vertsPerChunk % data.step === 0) ? data.step : 1;
+
     const dataView = new DataView(entry.buffer);
-    const geoW = vertsPerChunk + 1;
+    const geoW = vertsPerChunk / step + 1;
     const vertCount = geoW * geoW;
 
     const positions = new Float32Array(vertCount * 3);
@@ -64,8 +111,8 @@ function buildChunk(data) {
 
     for (let r = 0; r < geoW; r++) {
         for (let col = 0; col < geoW; col++) {
-            const hgtRow = Math.min(startRow + r, size - 1);
-            const hgtCol = Math.min(startCol + col, size - 1);
+            const hgtRow = Math.min(startRow + r * step, size - 1);
+            const hgtCol = Math.min(startCol + col * step, size - 1);
             const height = dataView.getInt16((hgtRow * size + hgtCol) * 2, false);
             const nLat = 1.0 - (hgtRow / (size - 1));
             const nLon = hgtCol / (size - 1);
@@ -89,12 +136,16 @@ function buildChunk(data) {
         }
     }
 
+    const normals = computeGridNormals(positions, geoW);
+
     return {
         type: 'chunkBuilt',
         chunkKey,
+        step,
         positions,
         uvs,
-        colors
+        colors,
+        normals
     };
 }
 
@@ -109,7 +160,7 @@ self.onmessage = (e) => {
     if (data.type === 'buildChunk') {
         const result = buildChunk(data);
         if (result.type === 'chunkBuilt') {
-            self.postMessage(result, [result.positions.buffer, result.uvs.buffer, result.colors.buffer]);
+            self.postMessage(result, [result.positions.buffer, result.uvs.buffer, result.colors.buffer, result.normals.buffer]);
         } else {
             self.postMessage(result);
         }
