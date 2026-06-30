@@ -1441,6 +1441,27 @@ function initSetupTab() {
     const scanBtn = document.getElementById('setup-scan-ports');
     const connectBtn = document.getElementById('setup-connect');
     const disconnectBtn = document.getElementById('setup-disconnect');
+    const connTypeSel = document.getElementById('setup-conn-type');
+
+    // Show only the fields relevant to the selected connection type
+    const updateConnFields = () => {
+        const type = connTypeSel?.value;
+        // serial/baud for serial & legacy binary, udp host/port for UDP, tcp host/port for TCP
+        const groups = {
+            'serial-field': type === 'mavlink-serial' || type === 'corv-binary',
+            'udp-field': type === 'mavlink-udp',
+            'tcp-field': type === 'mavlink-tcp'
+        };
+        for (const [cls, visible] of Object.entries(groups)) {
+            document.querySelectorAll('.conn-field.' + cls).forEach(el => {
+                el.style.display = visible ? '' : 'none';
+            });
+        }
+    };
+    if (connTypeSel) {
+        connTypeSel.addEventListener('change', updateConnFields);
+        updateConnFields();
+    }
 
     if (scanBtn) {
         scanBtn.addEventListener('click', async () => {
@@ -1467,6 +1488,10 @@ function initSetupTab() {
                     const host = document.getElementById('setup-udp-host')?.value || '127.0.0.1';
                     const port = parseInt(document.getElementById('setup-udp-port')?.value) || 14550;
                     await connect('mavlink-udp', { host, port });
+                } else if (type === 'mavlink-tcp') {
+                    const host = document.getElementById('setup-tcp-host')?.value || '127.0.0.1';
+                    const port = parseInt(document.getElementById('setup-tcp-port')?.value) || 5760;
+                    await connect('mavlink-tcp', { host, port });
                 } else if (type === 'corv-binary') {
                     const port = document.getElementById('setup-serial-port')?.value;
                     const baud = parseInt(document.getElementById('setup-baud')?.value) || 460800;

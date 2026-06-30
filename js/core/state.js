@@ -42,7 +42,7 @@ export const STATE = {
     connected: false,
 
     // MAVLink / GCS state
-    connectionType: 'none',  // 'none', 'corv-binary', 'mavlink-serial', 'mavlink-udp'
+    connectionType: 'none',  // 'none', 'corv-binary', 'mavlink-serial', 'mavlink-udp', 'mavlink-tcp'
     armed: false,
     flightMode: 'UNKNOWN',
     flightModeNum: 0,

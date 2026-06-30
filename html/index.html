@@ -700,17 +700,18 @@
                         <select id="setup-conn-type" class="cfg-select">
                             <option value="mavlink-serial">MAVLink Serial</option>
                             <option value="mavlink-udp">MAVLink UDP</option>
+                            <option value="mavlink-tcp">MAVLink TCP</option>
                             <option value="corv-binary">CORV Binary (Legacy)</option>
                         </select>
                     </div>
-                    <div class="cfg-row">
+                    <div class="cfg-row conn-field serial-field">
                         <label>SERIAL PORT</label>
                         <select id="setup-serial-port" class="cfg-select">
                             <option value="">-- Scan ports --</option>
                         </select>
                         <button class="gcs-btn" id="setup-scan-ports">SCAN</button>
                     </div>
-                    <div class="cfg-row">
+                    <div class="cfg-row conn-field serial-field">
                         <label>BAUD RATE</label>
                         <select id="setup-baud" class="cfg-select">
                             <option value="9600">9600</option>
@@ -723,13 +724,21 @@
                             <option value="921600">921600</option>
                         </select>
                     </div>
-                    <div class="cfg-row">
+                    <div class="cfg-row conn-field udp-field">
                         <label>UDP HOST</label>
                         <input type="text" id="setup-udp-host" class="gcs-input" value="127.0.0.1">
                     </div>
-                    <div class="cfg-row">
+                    <div class="cfg-row conn-field udp-field">
                         <label>UDP PORT</label>
                         <input type="number" id="setup-udp-port" class="gcs-input" value="14550">
+                    </div>
+                    <div class="cfg-row conn-field tcp-field">
+                        <label>TCP HOST</label>
+                        <input type="text" id="setup-tcp-host" class="gcs-input" value="127.0.0.1" placeholder="Simulator IP (e.g. 192.168.x.x)">
+                    </div>
+                    <div class="cfg-row conn-field tcp-field">
+                        <label>TCP PORT</label>
+                        <input type="number" id="setup-tcp-port" class="gcs-input" value="5760">
                     </div>
                     <div class="cfg-row">
                         <button class="gcs-btn gcs-btn-connect" id="setup-connect">CONNECT</button>
