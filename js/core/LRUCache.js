@@ -38,7 +38,8 @@ export class LRUCache {
         if (this.cache.has(key)) {
             const oldValue = this.cache.get(key);
             this.cache.delete(key);
-            if (this.onEvict) this.onEvict(oldValue);
+            // Don't evict the value we're about to keep (same-value re-set)
+            if (this.onEvict && oldValue !== value) this.onEvict(oldValue);
         } else if (this.cache.size >= this.maxSize) {
             const oldestKey = this.cache.keys().next().value;
             const oldestValue = this.cache.get(oldestKey);

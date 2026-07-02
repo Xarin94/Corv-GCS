@@ -180,7 +180,8 @@ export class JoystickManager {
      * Set send rate in Hz
      */
     setSendRate(hz) {
-        this.sendRateHz = hz;
+        // Clamp: hz <= 0 would produce a 0 ms setInterval (RC override flood)
+        this.sendRateHz = Number.isFinite(hz) ? Math.max(1, Math.min(50, hz)) : 25;
         if (this.sendInterval !== null) {
             this._stopSending();
             this._startSending();
@@ -365,8 +366,19 @@ export class JoystickManager {
             const raw = localStorage.getItem(STORAGE_KEY);
             if (!raw) return;
             const config = JSON.parse(raw);
-            if (config.sendRateHz) this.sendRateHz = config.sendRateHz;
-            if (Array.isArray(config.axisMap)) this.axisMap = config.axisMap;
+            // Sanitize persisted values: corrupted/hand-edited config must not
+            // produce a 0 ms send interval or NaN PWM (deadzone >= 1 divides by 0)
+            if (Number.isFinite(config.sendRateHz)) {
+                this.sendRateHz = Math.max(1, Math.min(50, config.sendRateHz));
+            }
+            if (Array.isArray(config.axisMap)) {
+                this.axisMap = config.axisMap.map(m => ({
+                    channel: Number.isInteger(m?.channel) && m.channel >= 0 && m.channel <= 18 ? m.channel : 0,
+                    inverted: !!(m && m.inverted),
+                    deadzone: Number.isFinite(m?.deadzone) ? Math.max(0, Math.min(0.9, m.deadzone)) : 0.05,
+                    expo: Number.isFinite(m?.expo) ? Math.max(0, Math.min(1, m.expo)) : 0
+                }));
+            }
         } catch (e) { /* ignore */ }
     }
 

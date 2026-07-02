@@ -145,6 +145,8 @@ export function mapMessageToState(msgId, data) {
 }
 
 function mapHeartbeat(data) {
+    // Empty payload (parse-error fallback) → don't flip armed/mode state
+    if (!Number.isFinite(data.baseMode)) return;
     STATE.baseMode = data.baseMode;
     STATE.customMode = data.customMode;
     STATE.autopilotType = data.autopilot;
@@ -161,19 +163,30 @@ function mapRadioStatus(data) {
 }
 
 function mapSysStatus(data) {
-    STATE.batteryVoltage = data.voltageBattery / 1000; // mV -> V
-    STATE.batteryCurrent = data.currentBattery / 100;  // cA -> A
+    // voltageBattery: uint16 mV, 65535 = "not measured"; currentBattery: int16
+    // cA, -1 = "not measured". Malformed payloads (empty {} from a parse-error
+    // fallback) must not write NaN into STATE — validate every field.
+    if (Number.isFinite(data.voltageBattery) && data.voltageBattery !== 65535) {
+        STATE.batteryVoltage = data.voltageBattery / 1000; // mV -> V
+    }
+    if (Number.isFinite(data.currentBattery) && data.currentBattery >= 0) {
+        STATE.batteryCurrent = data.currentBattery / 100;  // cA -> A
+    }
     const rawPct = data.batteryRemaining;               // 0-100% or -1
     // If vehicle doesn't report %, calculate from voltage using user-defined range
-    if (rawPct < 0 || rawPct > 100) {
-        const vmin = window._batVMin || 9.6;
-        const vmax = window._batVMax || 12.6;
+    if (!Number.isFinite(rawPct) || rawPct < 0 || rawPct > 100) {
+        let vmin = window._batVMin || 9.6;
+        let vmax = window._batVMax || 12.6;
+        // User misconfiguration (vmax <= vmin) would divide by zero / invert
+        if (!(vmax > vmin)) { vmin = 9.6; vmax = 12.6; }
         const v = STATE.batteryVoltage;
         STATE.batteryRemaining = v > 0 ? Math.max(0, Math.min(100, Math.round((v - vmin) / (vmax - vmin) * 100))) : -1;
     } else {
         STATE.batteryRemaining = rawPct;
     }
-    STATE.linkQuality = 100 - data.dropRateComm / 100; // percent
+    if (Number.isFinite(data.dropRateComm)) {
+        STATE.linkQuality = Math.max(0, Math.min(100, 100 - data.dropRateComm / 100)); // percent
+    }
 }
 
 // Tracks the last time GLOBAL_POSITION_INT (msg 33) was received. GPS_RAW_INT
@@ -183,25 +196,25 @@ let _lastGlobalPosTs = 0;
 const GLOBAL_POS_STALE_MS = 2000;
 
 function mapGpsRawInt(data) {
-    STATE.gpsFix = data.fixType;
-    STATE.gpsNumSat = data.satellitesVisible;
-    STATE.gpsHdop = data.eph / 100; // cm -> m (HDOP * 100)
+    if (Number.isFinite(data.fixType)) STATE.gpsFix = data.fixType;
+    if (Number.isFinite(data.satellitesVisible)) STATE.gpsNumSat = data.satellitesVisible;
+    // eph is uint16 HDOP*100; 65535 = unknown
+    if (Number.isFinite(data.eph) && data.eph !== 65535) STATE.gpsHdop = data.eph / 100;
 
     // Fallback path: only use raw GPS for position/velocity when no
     // GLOBAL_POSITION_INT has arrived recently (otherwise EKF data wins).
     if (Date.now() - _lastGlobalPosTs <= GLOBAL_POS_STALE_MS) return;
 
-    if (data.lat !== undefined && data.lon !== undefined) {
-        const lat = data.lat / 1e7;
-        const lon = data.lon / 1e7;
-        // Reject (0,0) AND partial nulls like (0,X) or (X,0) that the autopilot
-        // emits at boot before the GPS has a fix — both axes must be non-null.
-        if (Math.abs(lat) > 0.1 && Math.abs(lon) > 0.1) {
-            STATE.lat = lat;
-            STATE.lon = lon;
-        }
+    // Reject boot-time nulls: the autopilot emits exact-zero raw integers
+    // ((0,0), (0,X), (X,0)) before the GPS has a fix. Checking the raw int for
+    // exact 0 (instead of a ±0.1° band) keeps real fixes near the equator or
+    // the Greenwich meridian working.
+    if (Number.isFinite(data.lat) && Number.isFinite(data.lon)
+        && data.lat !== 0 && data.lon !== 0) {
+        STATE.lat = data.lat / 1e7;
+        STATE.lon = data.lon / 1e7;
     }
-    if (data.alt !== undefined) STATE.rawAlt = data.alt / 1000; // mm -> m AMSL
+    if (Number.isFinite(data.alt)) STATE.rawAlt = data.alt / 1000; // mm -> m AMSL
     // GPS_RAW_INT.vel is uint16 cm/s; 65535 = unknown
     if (data.vel !== undefined && data.vel !== 65535) {
         STATE.gs = data.vel / 100;
@@ -218,6 +231,8 @@ let imuPrimaryActive = false;
 let imuPrimaryLastTime = 0;
 
 function mapScaledImu(data, isPrimary) {
+    // Malformed payload → don't poison STATE.az (feeds G-history/HUD graph)
+    if (!Number.isFinite(data.xacc) || !Number.isFinite(data.yacc) || !Number.isFinite(data.zacc)) return;
     const now = Date.now();
     if (isPrimary) {
         imuPrimaryActive = true;
@@ -232,6 +247,7 @@ function mapScaledImu(data, isPrimary) {
 }
 
 function mapAttitude(data) {
+    if (!Number.isFinite(data.roll) || !Number.isFinite(data.pitch) || !Number.isFinite(data.yaw)) return;
     STATE.roll = data.roll;   // already radians
     STATE.pitch = data.pitch;
     STATE.yaw = data.yaw;
@@ -242,23 +258,26 @@ function mapAttitude(data) {
 }
 
 function mapGlobalPositionInt(data) {
+    // Malformed/empty payloads (the parse-error fallback sends {}) must not
+    // mark the EKF source fresh nor write NaN into STATE.
+    if (!Number.isFinite(data.lat) || !Number.isFinite(data.lon)) return;
     _lastGlobalPosTs = Date.now();
 
-    const lat = data.lat / 1e7;
-    const lon = data.lon / 1e7;
-    // Reject (0,0) AND partial nulls like (0,X) or (X,0) that the autopilot
-    // emits at boot before the GPS has a fix — both axes must be non-null.
-    if (Math.abs(lat) > 0.1 && Math.abs(lon) > 0.1) {
-        STATE.lat = lat;
-        STATE.lon = lon;
+    // Reject boot-time nulls: exact-zero raw integers ((0,0), (0,X), (X,0))
+    // before the GPS has a fix. Exact-int check keeps real fixes near the
+    // equator / Greenwich meridian working (a ±0.1° band would reject them).
+    if (data.lat !== 0 && data.lon !== 0) {
+        STATE.lat = data.lat / 1e7;
+        STATE.lon = data.lon / 1e7;
     }
-    STATE.rawAlt = data.alt / 1000; // mm -> m
-    STATE.vs = -data.vz / 100;      // cm/s -> m/s, NED to Up
+    if (Number.isFinite(data.alt)) STATE.rawAlt = data.alt / 1000; // mm -> m
+    const vz = Number.isFinite(data.vz) ? data.vz : 0;
+    STATE.vs = -vz / 100;           // cm/s -> m/s, NED to Up
 
     // Store NED velocity for AoA/SSA computation
-    STATE.vn = (data.vx || 0) / 100; // cm/s -> m/s
-    STATE.ve = (data.vy || 0) / 100;
-    STATE.vd = (data.vz || 0) / 100;
+    STATE.vn = (Number.isFinite(data.vx) ? data.vx : 0) / 100; // cm/s -> m/s
+    STATE.ve = (Number.isFinite(data.vy) ? data.vy : 0) / 100;
+    STATE.vd = vz / 100;
 
     // Ground speed comes from the EKF horizontal velocity vector — this is the
     // authoritative source. VFR_HUD.groundspeed can lag or be GPS-only on some
@@ -342,14 +361,14 @@ function mapRcChannels(data) {
 function mapVfrHud(data) {
     // VFR_HUD is the only source of airspeed (no equivalent in
     // GLOBAL_POSITION_INT), so always take it from here.
-    STATE.as = data.airspeed;
+    if (Number.isFinite(data.airspeed)) STATE.as = data.airspeed;
 
     // Ground speed / vertical speed must come from GLOBAL_POSITION_INT (EKF NED
     // velocity) when available — VFR_HUD.groundspeed can be GPS-only on some
     // firmwares and is what was producing the wrong velocity in the HUD.
     if (Date.now() - _lastGlobalPosTs > GLOBAL_POS_STALE_MS) {
-        if (data.groundspeed !== undefined) STATE.gs = data.groundspeed;
-        if (data.climb !== undefined) STATE.vs = data.climb;
+        if (Number.isFinite(data.groundspeed)) STATE.gs = data.groundspeed;
+        if (Number.isFinite(data.climb)) STATE.vs = data.climb;
     }
 }
 
@@ -406,6 +425,7 @@ function mapTerrainReport(data) {
 
 function mapDistanceSensor(data) {
     // DISTANCE_SENSOR (132): currentDistance in cm, orientation 25 = downward-facing
+    if (!Number.isFinite(data.currentDistance)) return;
     if (data.orientation === undefined || data.orientation === 25) {
         STATE.rangefinderDist = data.currentDistance / 100; // cm -> m
     }

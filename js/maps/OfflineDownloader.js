@@ -194,24 +194,52 @@ export function initOfflinePanel() {
 
     let abortController = null;
 
+    // Hard caps: beyond these the download would take hours and can fill the
+    // disk (IndexedDB tiles / ~25 MB per SRTM cell).
+    const MAX_SAT_TILES = 300000;   // ~4-6 GB of imagery
+    const MAX_SRTM_TILES = 200;     // ~5 GB of elevation data
+
+    /**
+     * Read and validate the user-entered rectangle + zoom.
+     * Returns null (with a reason string) on invalid input — NaN would
+     * otherwise slip through `n <= s` checks (NaN comparisons are false).
+     */
+    function readBounds() {
+        const n = parseFloat(northEl.value);
+        const s = parseFloat(southEl.value);
+        const w = parseFloat(westEl.value);
+        const e = parseFloat(eastEl.value);
+        let z = parseInt(zoomEl.value, 10);
+        if (![n, s, w, e].every(Number.isFinite)) {
+            return { error: 'Invalid bounds (numbers required)' };
+        }
+        if (n <= s || e <= w) {
+            return { error: 'Invalid bounds (North > South, East > West)' };
+        }
+        if (n > 85 || s < -85 || w < -180 || e > 180) {
+            return { error: 'Bounds out of range (lat ±85, lon ±180)' };
+        }
+        if (!Number.isFinite(z)) z = 16;
+        z = Math.max(SAT_MIN_ZOOM, Math.min(17, z));
+        return { n, s, w, e, z };
+    }
+
     function updateEstimate() {
-        const n = parseFloat(northEl.value) || 0;
-        const s = parseFloat(southEl.value) || 0;
-        const w = parseFloat(westEl.value) || 0;
-        const e = parseFloat(eastEl.value) || 0;
-        const z = parseInt(zoomEl.value) || 16;
+        const b = readBounds();
+        if (b.error) {
+            estimateEl.textContent = b.error;
+            return;
+        }
         const dlSat = satChk.checked;
         const dlSrtm = srtmChk.checked;
 
-        if (n <= s || e <= w) {
-            estimateEl.textContent = 'Invalid bounds (North > South, East > West)';
-            return;
-        }
-
-        const est = estimateOfflineDownload(s, n, w, e, z, dlSat, dlSrtm);
+        const est = estimateOfflineDownload(b.s, b.n, b.w, b.e, b.z, dlSat, dlSrtm);
         const parts = [];
         if (est.satTiles > 0) parts.push(`~${est.satTiles.toLocaleString()} sat tiles`);
         if (est.srtmTiles > 0) parts.push(`${est.srtmTiles} SRTM tiles (~${(est.srtmTiles * 25).toLocaleString()} MB)`);
+        if (est.satTiles > MAX_SAT_TILES || est.srtmTiles > MAX_SRTM_TILES) {
+            parts.push('— AREA TOO LARGE, reduce bounds or zoom');
+        }
         estimateEl.textContent = parts.join(' + ') || 'Nothing selected';
     }
 
@@ -219,12 +247,16 @@ export function initOfflinePanel() {
     [satChk, srtmChk].forEach(el => el.addEventListener('change', updateEstimate));
 
     startBtn.addEventListener('click', async () => {
-        const n = parseFloat(northEl.value);
-        const s = parseFloat(southEl.value);
-        const w = parseFloat(westEl.value);
-        const e = parseFloat(eastEl.value);
-        const z = parseInt(zoomEl.value);
-        if (n <= s || e <= w) { statusEl.textContent = 'Invalid bounds'; return; }
+        const b = readBounds();
+        if (b.error) { statusEl.textContent = b.error; return; }
+        const { n, s, w, e, z } = b;
+
+        // Refuse pathological areas before starting (disk/network protection)
+        const est = estimateOfflineDownload(s, n, w, e, z, satChk.checked, srtmChk.checked);
+        if (est.satTiles > MAX_SAT_TILES || est.srtmTiles > MAX_SRTM_TILES) {
+            statusEl.textContent = 'Area too large — reduce bounds or zoom level';
+            return;
+        }
 
         abortController = new AbortController();
         startBtn.style.display = 'none';

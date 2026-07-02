@@ -385,6 +385,12 @@ function initMAVLinkHandlers(win) {
             port.on('data', (chunk) => {
                 if (!mainWindow || mainWindow.isDestroyed()) return;
 
+                // Oversized burst: keep only the newest bytes that fit the
+                // parse buffer — otherwise corvLen would exceed the buffer and
+                // corrupt the parser state.
+                if (chunk.length > corvBuf.length) {
+                    chunk = chunk.subarray(chunk.length - corvBuf.length);
+                }
                 // Append chunk to parser buffer
                 if (corvLen + chunk.length > corvBuf.length) corvLen = 0;
                 chunk.copy(corvBuf, corvLen);
@@ -780,10 +786,15 @@ async function sendToConnection(msg) {
     if (!activeConnection) throw new Error('No active connection');
 
     if (activeConnection.type === 'serial') {
-        // Serialize for TLOG recording, then send
-        const outBuf = protocol.serialize(msg, sequenceNumber);
+        // Serialize once and write the same bytes to both the TLOG and the
+        // wire — going through send() would re-serialize with a different
+        // sequence number, so the recording wouldn't match what was sent.
+        const outBuf = protocol.serialize(msg, sequenceNumber++);
+        sequenceNumber = sequenceNumber & 0xFF;
         writeTlogPacket(outBuf);
-        await send(activeConnection.port, msg, protocol);
+        await new Promise((resolve, reject) => {
+            activeConnection.port.write(outBuf, (err) => err ? reject(err) : resolve());
+        });
     } else if (activeConnection.type === 'udp') {
         const { socket, getRemote, hasRemote } = activeConnection;
         if (!hasRemote()) {
@@ -999,6 +1010,9 @@ function corvSendMsg(msgId, data) {
  * Parse CORV Navigation packet (0x01, 104-byte payload) and emit as MAVLink messages
  */
 function corvEmitNavigation(p) {
+    // Payload must cover all fixed offsets (up to 102-103); a short packet with
+    // a valid CRC would otherwise throw out-of-bounds in the main process.
+    if (p.length < 104) return;
     // Attitude (offsets 4-9: int16 scaled /1000 → radians)
     const roll  = p.readInt16LE(4) / 1000.0;
     const pitch = p.readInt16LE(6) / 1000.0;

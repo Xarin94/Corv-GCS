@@ -30,6 +30,7 @@ let splitSatelliteEnabled = true;
 let splitHgtBoundsLayer = null;
 let lastHgtBoundsKey = '';
 let lastHgtBoundsRefreshAt = 0;
+let lastSplitMapUpdateAt = 0;
 let livePathPoints = [];
 let lastLiveLatLng = null;
 const MAX_SPLIT_PATH_POINTS = 5000;
@@ -365,16 +366,26 @@ export function updateSplitMap() {
     // Skip if 2D map is not visible
     if (!is2DMapVisible()) return;
 
+    // Leaflet pan/marker/polyline updates are too expensive for render cadence
+    const now = performance.now();
+    if (now - lastSplitMapUpdateAt < 100) return;
+    lastSplitMapUpdateAt = now;
+
     refreshHgtBoundsOverlay(false);
 
     const newLatLng = new L.LatLng(STATE.lat, STATE.lon);
     splitMapMarker.setLatLng(newLatLng);
     splitMap.panTo(newLatLng);
 
-    // Update path line
+    // Update path line — rebuilding the polyline is expensive, only do it when
+    // the point list actually changed (append or trim-reassignment).
     if (splitPathLine) {
+        const prevRef = livePathPoints;
+        const prevLen = livePathPoints.length;
         recordLivePathPoint();
-        splitPathLine.setLatLngs(livePathPoints);
+        if (livePathPoints !== prevRef || livePathPoints.length !== prevLen) {
+            splitPathLine.setLatLngs(livePathPoints);
+        }
     }
 
     const iconElement = splitMapMarker.getElement();

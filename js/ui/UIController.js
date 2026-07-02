@@ -201,7 +201,7 @@ export function updateUI() {
 
     // Telemetry Panel Update (only if visible)
     if (dom.telemetryPanel && dom.telemetryPanel.classList.contains('visible')) {
-        updateTelemetryPanel(alt, dom);
+        updateTelemetryPanel(STATE.rawAlt + STATE.offsetAlt, dom);
     }
 }
 

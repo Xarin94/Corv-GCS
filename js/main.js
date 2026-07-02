@@ -942,6 +942,7 @@ let demoTargetChangeTime = 0;
 let lastSunPositionUpdate = 0;     // solar almanac + hillshade check: 1 Hz
 let lastUiBarUpdate = 0;           // command bar / sidebar DOM writes: 10 Hz
 let lastTrafficMarkersUpdate = 0;  // ADS-B 3D markers (data refreshes every ~10 s): 2 Hz
+let lastTelemetryUiUpdate = 0;     // HUD cells / telemetry panel text: 20 Hz
 
 
 // Demo speed smoothing (m/s)
@@ -1105,7 +1106,12 @@ function animate() {
         pushGHistory();
     }
 
-    updateUI();
+    // Telemetry text (40+ DOM writes) is unreadable above ~20 Hz — no need to
+    // run it at monitor refresh rate (60-144 Hz).
+    if (now - lastTelemetryUiUpdate >= 50) {
+        lastTelemetryUiUpdate = now;
+        updateUI();
+    }
     sampleDataPoint();
     recordLivePathPoint();
 
@@ -1720,8 +1726,12 @@ window.toggleADSB = (function(orig) {
 // Battery voltage-based percentage calculation
 window._batVMin = 9.6; window._batVMax = 12.6;
 window.updateBatteryVoltageRange = function() {
-    const vmin = parseFloat(document.getElementById('syscfg-bat-vmin')?.value) || 9.6;
-    const vmax = parseFloat(document.getElementById('syscfg-bat-vmax')?.value) || 12.6;
+    let vmin = parseFloat(document.getElementById('syscfg-bat-vmin')?.value);
+    let vmax = parseFloat(document.getElementById('syscfg-bat-vmax')?.value);
+    if (!Number.isFinite(vmin) || vmin <= 0) vmin = 9.6;
+    if (!Number.isFinite(vmax) || vmax <= 0) vmax = 12.6;
+    // vmax <= vmin would divide by zero / invert the % estimate downstream
+    if (vmax <= vmin) { vmin = 9.6; vmax = 12.6; }
     window._batVMin = vmin;
     window._batVMax = vmax;
     const cells = Math.round(vmax / 4.2);
