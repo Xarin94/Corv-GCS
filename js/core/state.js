@@ -32,6 +32,10 @@ export const STATE = {
     ax: 0,
     ay: 0,
     az: 0,
+    // Body angular rates (rad/s) from ATTITUDE
+    rollRate: 0,
+    pitchRate: 0,
+    yawRate: 0,
     // NED velocity (m/s) for AoA/SSA computation
     vn: 0, ve: 0, vd: 0,
     terrainHeight: null,
@@ -78,6 +82,23 @@ export const STATE = {
 
     // Rangefinder / LiDAR
     rangefinderDist: null, // meters, null = no data
+
+    // Autopilot guidance (NAV_CONTROLLER_OUTPUT, msg 62)
+    navRoll: 0,         // deg, commanded roll from nav controller
+    navPitch: 0,        // deg, commanded pitch from nav controller
+    navBearing: 0,      // deg, commanded course from nav controller
+    targetBearing: 0,   // deg, bearing to active waypoint
+    wpDist: 0,          // m, distance to active waypoint
+    altError: 0,        // m, altitude error (target - current)
+    aspdError: 0,       // m/s, airspeed error (target - current)
+    xtrackError: 0,     // m, crosstrack error
+    navDataTime: 0,     // ms timestamp of last msg 62 (0 = never)
+
+    // Wind estimate (WIND, msg 168 - ArduPilot)
+    windDir: 0,         // deg, direction the wind is coming FROM
+    windSpeed: 0,       // m/s horizontal
+    windSpeedZ: 0,      // m/s vertical
+    windDataTime: 0,    // ms timestamp of last msg 168 (0 = never)
 
     // RTK base station
     rtkBaseConnected: false,
@@ -263,6 +284,7 @@ export function resetReplayState() {
     STATE.rawAlt = 0; STATE.offsetAlt = 0;
     STATE.as = 0; STATE.gs = 0; STATE.vs = 0;
     STATE.ax = 0; STATE.ay = 0; STATE.az = 0;
+    STATE.rollRate = 0; STATE.pitchRate = 0; STATE.yawRate = 0;
     STATE.vn = 0; STATE.ve = 0; STATE.vd = 0;
     STATE.terrainHeight = null;
     STATE.gHistory.fill(1.0);
@@ -298,6 +320,13 @@ export function resetReplayState() {
     STATE.statusSeverity = 0;
 
     STATE.rangefinderDist = null;
+
+    STATE.navRoll = 0; STATE.navPitch = 0;
+    STATE.navBearing = 0; STATE.targetBearing = 0; STATE.wpDist = 0;
+    STATE.altError = 0; STATE.aspdError = 0; STATE.xtrackError = 0;
+    STATE.navDataTime = 0;
+    STATE.windDir = 0; STATE.windSpeed = 0; STATE.windSpeedZ = 0;
+    STATE.windDataTime = 0;
 
     STATE.rtkIar = 0;
     STATE.rtkBaseline = 0;

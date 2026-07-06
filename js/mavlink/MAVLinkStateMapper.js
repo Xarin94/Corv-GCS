@@ -128,6 +128,7 @@ export function mapMessageToState(msgId, data) {
         case 30: mapAttitude(data); break;
         case 33: mapGlobalPositionInt(data); break;
         case 42: mapMissionCurrent(data); break;
+        case 62: mapNavControllerOutput(data); break;
         case 35: mapRcChannelsRaw(data); break;
         case 36: mapServoOutputRaw(data); break;
         case 65: mapRcChannels(data); break;
@@ -137,6 +138,7 @@ export function mapMessageToState(msgId, data) {
         case 127: mapGpsRtk(data); break;
         case 132: mapDistanceSensor(data); break;
         case 136: mapTerrainReport(data); break;
+        case 168: mapWind(data); break;
         case 241: mapVibration(data); break;
         case 242: mapHomePosition(data); break;
         case 246: mapAdsbVehicle(data); break;
@@ -251,6 +253,10 @@ function mapAttitude(data) {
     STATE.roll = data.roll;   // already radians
     STATE.pitch = data.pitch;
     STATE.yaw = data.yaw;
+    // Body angular rates (rad/s) — feed the trajectory predictor's bank model
+    if (Number.isFinite(data.rollspeed)) STATE.rollRate = data.rollspeed;
+    if (Number.isFinite(data.pitchspeed)) STATE.pitchRate = data.pitchspeed;
+    if (Number.isFinite(data.yawspeed)) STATE.yawRate = data.yawspeed;
     // ATTITUDE arrives at ~25 Hz, faster than GLOBAL_POSITION_INT on many
     // setups, so refresh AoA/SSA here too — otherwise the HUD flight-path
     // marker only moves at the slower of the two streams.
@@ -322,6 +328,30 @@ function computeAeroAngles() {
 function mapMissionCurrent(data) {
     STATE.missionCurrentSeq = data.seq;
     if (data.total !== undefined) STATE.missionCount = data.total;
+}
+
+function mapNavControllerOutput(data) {
+    // NAV_CONTROLLER_OUTPUT (62): autopilot guidance targets, feeds the HUD
+    // nav bug, FMA waypoint line and speed-error worm.
+    if (Number.isFinite(data.navRoll)) STATE.navRoll = data.navRoll;
+    if (Number.isFinite(data.navPitch)) STATE.navPitch = data.navPitch;
+    if (Number.isFinite(data.navBearing)) STATE.navBearing = data.navBearing;
+    if (Number.isFinite(data.targetBearing)) STATE.targetBearing = data.targetBearing;
+    if (Number.isFinite(data.wpDist)) STATE.wpDist = data.wpDist;
+    if (Number.isFinite(data.altError)) STATE.altError = data.altError;
+    // ArduPilot sends airspeed_error * 100 in this field (historical quirk,
+    // kept for GCS compatibility) — convert back to m/s.
+    if (Number.isFinite(data.aspdError)) STATE.aspdError = data.aspdError / 100;
+    if (Number.isFinite(data.xtrackError)) STATE.xtrackError = data.xtrackError;
+    STATE.navDataTime = Date.now();
+}
+
+function mapWind(data) {
+    // WIND (168, ArduPilot dialect): direction is where the wind comes FROM
+    if (Number.isFinite(data.direction)) STATE.windDir = data.direction;
+    if (Number.isFinite(data.speed)) STATE.windSpeed = data.speed;
+    if (Number.isFinite(data.speedZ)) STATE.windSpeedZ = data.speedZ;
+    STATE.windDataTime = Date.now();
 }
 
 function mapRcChannelsRaw(data) {

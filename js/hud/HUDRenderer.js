@@ -63,7 +63,6 @@ const settings = {
     get pixelPerDeg() { return this._pixelPerDeg; },
     get pixelPerRad() { return this._pixelPerRad; },
     uncagedMode: false,
-    rollRadius: 'none',
     timezone: undefined,
     scale: 1,
 };
@@ -264,7 +263,7 @@ export function drawGLoadWidget() {
         gCtx.stroke();
         gCtx.restore();
 
-        const cur = hist[n - 1];
+        const cur = gHistoryBuffer.get(n - 1);
         const curTxt = Number.isFinite(cur) ? `${cur.toFixed(2)}g` : '--';
         gCtx.save();
         gCtx.font = `${Math.max(10, Math.floor(Math.min(w, h) * 0.11))}px ${getCssVar('--font-data', 'monospace')}`;
@@ -324,33 +323,47 @@ export function resizeHUD() {
 }
 
 /**
- * Draw flight path marker (diamond shape) - shows where aircraft is going
+ * Draw flight path marker - shows where aircraft is going.
+ * Standard HUD symbology (MIL-STD-1787 / HGS): circle with wings and fin.
  */
 function drawFlightPath(x, y) {
     ctx.translate(x, y);
 
-    const r = 12;
+    const r = 8;      // ring radius
+    const wing = 12;  // wing stub length
+    const fin = 8;    // vertical fin length
 
-    // Diamond shape
     ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.moveTo(r, 0);
-    ctx.lineTo(0, r);
-    ctx.lineTo(-r, 0);
-    ctx.lineTo(0, -r);
-    ctx.closePath();
-
-    // Wing lines
-    const line = 9;
-    ctx.moveTo(r, 0);
-    ctx.lineTo(r + line, 0);
-    ctx.moveTo(0, -r);
-    ctx.lineTo(0, -r - line);
+    ctx.lineTo(r + wing, 0);
     ctx.moveTo(-r, 0);
-    ctx.lineTo(-r - line, 0);
-
+    ctx.lineTo(-r - wing, 0);
+    ctx.moveTo(0, -r);
+    ctx.lineTo(0, -r - fin);
     ctx.stroke();
 
     ctx.translate(-x, -y);
+}
+
+/**
+ * Draw HGS-style speed error worm on the FPM left wing.
+ * Bar grows upward = faster than commanded airspeed, downward = slower.
+ * Only drawn while the nav controller is providing guidance.
+ */
+function drawSpeedError(x, y) {
+    const err = -STATE.aspdError; // aspd_error = target - current → + means fast
+    const len = Math.max(-40, Math.min(40, err * 6));
+    if (Math.abs(len) < 4) return;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.lineWidth = style.lineWidth + 2;
+    ctx.beginPath();
+    ctx.moveTo(-20, 0);
+    ctx.lineTo(-20, -len);
+    ctx.stroke();
+    ctx.restore();
 }
 
 /**
@@ -417,6 +430,9 @@ function drawPitchLadder(x, y, value) {
     const space = 80;
     const q = 12;
 
+    // Below-horizon rungs are dashed (standard PFD/HUD convention)
+    if (value < 0) ctx.setLineDash([10, 7]);
+
     ctx.beginPath();
 
     // Right ladder
@@ -430,6 +446,7 @@ function drawPitchLadder(x, y, value) {
     ctx.lineTo(-length / 2, value > 0 ? q : -q);
 
     ctx.stroke();
+    ctx.setLineDash([]);
 
     // Labels
     setFontScale(16, 'px');
@@ -587,6 +604,44 @@ function drawHeading(x, y, stepRange, bottom) {
     );
     ctx.clip();
 
+    // Ground-track marker: hollow diamond on the tape showing drift/crab
+    {
+        const trackDeg = STATE.track * (180 / Math.PI);
+        let tDelta = trackDeg - value;
+        while (tDelta > 180) tDelta -= 360;
+        while (tDelta < -180) tDelta += 360;
+        const tx = tDelta * style.stepWidth;
+        const ty = mf * 8;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(tx, ty - 6);
+        ctx.lineTo(tx + 5, ty);
+        ctx.lineTo(tx, ty + 6);
+        ctx.lineTo(tx - 5, ty);
+        ctx.closePath();
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // Nav-bearing bug: filled caret at the autopilot commanded course
+    // (accent-cyan, like a Garmin heading bug) while guidance is active
+    const navFresh = STATE.navDataTime > 0 && Date.now() - STATE.navDataTime < 3000;
+    if (navFresh && STATE.wpDist > 0) {
+        let delta = STATE.navBearing - value;
+        while (delta > 180) delta -= 360;
+        while (delta < -180) delta += 360;
+        const bx = delta * style.stepWidth;
+        ctx.save();
+        ctx.fillStyle = getCssVar('--accent-cyan', '#00d2ff');
+        ctx.beginPath();
+        ctx.moveTo(bx, mf * 2);
+        ctx.lineTo(bx - 6, mf * 13);
+        ctx.lineTo(bx + 6, mf * 13);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+    }
+
     const stepMargin = 5;
     const stepZeroOffset = Math.ceil(stepRange / 2) + stepMargin;
     const stepValueOffset = Math.floor(value);
@@ -639,107 +694,181 @@ function drawHeading(x, y, stepRange, bottom) {
 }
 
 /**
- * Draw roll indicator arc
+ * Draw bank angle indicator (Garmin/Boeing PFD style):
+ * fixed tick scale at ±10/20/30/45/60° around the boresight, a fixed
+ * zero-reference triangle, a sky pointer that rotates with the horizon,
+ * and a slip/skid trapezoid beneath it driven by lateral acceleration.
  */
-function drawRoll(x, y, stepRange, radius, bottom) {
+function drawBankArc() {
+    const DEG = Math.PI / 180;
+    const radius = Math.min(180, size.height * 0.28);
+
     ctx.save();
-    ctx.translate(x, y);
+    ctx.translate(size.width / 2, size.height / 2);
 
-    const mf = bottom ? -1 : 1;
-    const value = STATE.roll * (180 / Math.PI);
-
-    // Value indicator
-    const fontSize = 20 * style.font.scale;
-    setFont(fontSize, 'px');
-
-    const textSideBorder = 5;
-    const textTopBorder = 4;
-    const textWidth = ctx.measureText('180').width;
-
-    const length = textSideBorder * 2 + textWidth;
-    const height = textTopBorder * 1.5 + fontSize + length / 4;
-
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-
+    // Fixed scale ticks
     ctx.beginPath();
-    ctx.moveTo(-length / 2, 0);
-    ctx.lineTo(length / 2, 0);
-    ctx.lineTo(length / 2, mf * (textTopBorder * 1.5 + fontSize));
-    ctx.lineTo(0, mf * height);
-    ctx.lineTo(-length / 2, mf * (textTopBorder * 1.5 + fontSize));
-    ctx.closePath();
-    ctx.stroke();
-
-    ctx.fillText(Math.round(value), textWidth / 2, (mf * (2 * textTopBorder + fontSize)) / 2);
-
-    // Arc scale
-    const scaleFontSize = 16 * style.font.scale;
-    setFont(scaleFontSize, 'px');
-    const textBorder = 2;
-    const border = 4;
-    const stepLength = [16, 11, 7];
-
-    ctx.textAlign = 'center';
-    ctx.translate(0, mf * (height + border));
-
-    if (settings.rollRadius === 'exact') {
-        radius = (style.stepWidth * 180) / Math.PI;
-    } else if (settings.rollRadius === 'center') {
-        radius = size.height / 2 - (bottom ? size.height - y : y) - (height + border);
-    }
-
-    if (radius < 0) {
+    const ticks = [-60, -45, -30, -20, -10, 10, 20, 30, 45, 60];
+    for (const t of ticks) {
+        const len = (Math.abs(t) % 30 === 0) ? 14 : (Math.abs(t) === 45 ? 10 : 7);
+        ctx.save();
+        ctx.rotate(t * DEG);
+        ctx.moveTo(0, -radius);
+        ctx.lineTo(0, -radius - len);
         ctx.restore();
-        return;
-    }
-
-    ctx.translate(0, mf * radius);
-
-    // Clip arc
-    const angle = (stepRange * style.stepWidth) / radius;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.arc(0, 0, radius, (bottom ? 0.5 : 1.5) * Math.PI - angle / 2, (bottom ? 0.5 : 1.5) * Math.PI + angle / 2);
-    ctx.closePath();
-    ctx.clip();
-
-    const stepMargin = 5;
-    const stepZeroOffset = Math.ceil(stepRange / 2) + stepMargin;
-    const stepValueOffset = Math.floor(value);
-    const stepOffset = value - stepValueOffset;
-
-    ctx.beginPath();
-    for (let i = -stepZeroOffset + stepValueOffset; i < stepZeroOffset + stepValueOffset; i++) {
-        // Sign chosen so the moving scale rotates with the same convention as
-        // the horizon/pitch ladder (bank right -> scale rotates counterclockwise).
-        ctx.rotate((mf * (stepValueOffset - i + stepOffset) * style.stepWidth) / radius);
-        ctx.translate(0, mf * -radius);
-
-        ctx.moveTo(0, 0);
-        switch (Math.abs(i) % 10) {
-            case 0:
-                ctx.lineTo(0, mf * stepLength[0]);
-                let val = i % 360;
-                if (val > 180 || val <= -180) {
-                    val = val - Math.sign(i) * 360;
-                }
-                ctx.fillText(val, 0, mf * (stepLength[0] + textBorder + scaleFontSize / 2));
-                break;
-            case 5:
-                ctx.lineTo(0, mf * stepLength[1]);
-                break;
-            default:
-                ctx.lineTo(0, mf * stepLength[2]);
-                break;
-        }
-
-        ctx.translate(0, mf * radius);
-        ctx.rotate((mf * -(stepValueOffset - i + stepOffset) * style.stepWidth) / radius);
     }
     ctx.stroke();
+
+    // Fixed zero-reference triangle (apex down, outside the arc)
+    ctx.beginPath();
+    ctx.moveTo(0, -radius - 2);
+    ctx.lineTo(-7, -radius - 15);
+    ctx.lineTo(7, -radius - 15);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Sky pointer: rotates with the horizon (same convention as pitch ladder)
+    ctx.rotate(-STATE.roll);
+    ctx.beginPath();
+    ctx.moveTo(0, -radius + 3);
+    ctx.lineTo(-7, -radius + 16);
+    ctx.lineTo(7, -radius + 16);
+    ctx.closePath();
+    ctx.fill();
+
+    // Slip/skid trapezoid: deflects laterally with body lateral acceleration
+    // (centered under the pointer in coordinated flight)
+    const skid = Math.max(-1, Math.min(1, -STATE.ay / 9.81 * 2)) * 16;
+    ctx.translate(skid, 0);
+    ctx.beginPath();
+    ctx.moveTo(-8, -radius + 20);
+    ctx.lineTo(8, -radius + 20);
+    ctx.lineTo(10, -radius + 27);
+    ctx.lineTo(-10, -radius + 27);
+    ctx.closePath();
+    ctx.fill();
 
     ctx.restore();
+}
+
+/**
+ * Draw vertical speed indicator: compact non-linear tape right of the
+ * pitch ladder with a pointer and digital readout (Garmin-style).
+ * ±5 m/s occupies most of the scale, 5-10 m/s is compressed.
+ */
+function drawVSI() {
+    const cx = size.width / 2;
+    const cy = size.height / 2;
+    const x = Math.min(cx + 320, size.width - 150);
+    const H = Math.min(110, size.height * 0.16);
+    const maxV = 10;
+
+    const mapY = (v) => {
+        const a = Math.min(Math.abs(v), maxV);
+        const frac = a <= 5 ? (a / 5) * 0.72 : 0.72 + ((a - 5) / 5) * 0.28;
+        return -Math.sign(v) * frac * H;
+    };
+
+    ctx.save();
+    ctx.translate(x, cy);
+
+    // Baseline and ticks (ticks to the left of the line)
+    ctx.beginPath();
+    ctx.moveTo(0, -H);
+    ctx.lineTo(0, H);
+    for (const v of [-10, -5, -2, -1, 1, 2, 5, 10]) {
+        const len = (Math.abs(v) >= 5) ? 10 : 6;
+        ctx.moveTo(0, mapY(v));
+        ctx.lineTo(-len, mapY(v));
+    }
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-12, 0);
+    ctx.stroke();
+
+    // Tick labels
+    setFontScale(12, 'px');
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('5', -14, mapY(5));
+    ctx.fillText('5', -14, mapY(-5));
+
+    // Pointer + digital value
+    const vs = Number.isFinite(STATE.vs) ? STATE.vs : 0;
+    const vy = mapY(vs);
+    ctx.beginPath();
+    ctx.moveTo(0, vy);
+    ctx.lineTo(9, vy - 5);
+    ctx.lineTo(9, vy + 5);
+    ctx.closePath();
+    ctx.fill();
+
+    setFontScale(14, 'px');
+    ctx.textAlign = 'left';
+    ctx.fillText(vs.toFixed(1), 13, vy);
+
+    setFontScale(10, 'px');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('M/S', 0, H + 6);
+
+    ctx.restore();
+}
+
+/**
+ * Draw flight mode annunciator (persistent, top-center under the heading
+ * tape — Airbus/Boeing FMA position) plus active-waypoint guidance line.
+ */
+function drawFMA() {
+    const cx = size.width / 2;
+    const y = 96;
+
+    ctx.save();
+    setFontScale(15, 'px');
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(STATE.flightMode || '---', cx, y);
+
+    const navFresh = STATE.navDataTime > 0 && Date.now() - STATE.navDataTime < 3000;
+    if (navFresh && STATE.wpDist > 0) {
+        setFontScale(12, 'px');
+        ctx.globalAlpha = 0.85;
+        const xtk = STATE.xtrackError;
+        ctx.fillText(`WP ${Math.round(STATE.wpDist)}m   XTK ${xtk >= 0 ? '+' : ''}${xtk.toFixed(0)}m`, cx, y + 20);
+    }
+    ctx.restore();
+}
+
+/**
+ * Draw wind vector (Garmin-style): arrow showing where the wind blows
+ * relative to the nose, with horizontal speed readout. Left of the FMA.
+ */
+function drawWind() {
+    if (STATE.windDataTime === 0 || Date.now() - STATE.windDataTime > 5000) return;
+    if (!Number.isFinite(STATE.windSpeed) || STATE.windSpeed < 0.5) return;
+
+    const DEG = Math.PI / 180;
+    const x = Math.max(20, size.width / 2 - 290);
+    const y = 104;
+    const headingDeg = STATE.yaw * (180 / Math.PI);
+    // WIND.direction is where the wind comes FROM; arrow points where it goes
+    const rot = (STATE.windDir + 180 - headingDeg) * DEG;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.beginPath();
+    ctx.moveTo(0, 10);
+    ctx.lineTo(0, -10);
+    ctx.moveTo(-4, -5);
+    ctx.lineTo(0, -10);
+    ctx.lineTo(4, -5);
+    ctx.stroke();
+    ctx.restore();
+
+    setFontScale(12, 'px');
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${STATE.windSpeed.toFixed(1)} M/S`, x + 12, y);
 }
 
 /**
@@ -904,12 +1033,18 @@ export function drawHUD() {
     // Flight path marker
     // AoA (alpha) = pitch - gamma, so FPM should be at -AoA relative to boresight
     // When alpha increases (nose up relative to flight path), FPM moves DOWN
+    const fpmX = flightHeading * settings._pixelPerRad;
+    const fpmY = STATE.aoa * settings._pixelPerRad; // positive AoA = FPM below boresight
     drawWithShadow(() => {
-        drawFlightPath(
-            flightHeading * settings._pixelPerRad,
-            STATE.aoa * settings._pixelPerRad  // positive AoA = FPM below boresight
-        );
+        drawFlightPath(fpmX, fpmY);
     });
+
+    // Speed error worm on FPM left wing (only with active nav guidance)
+    if (STATE.navDataTime > 0 && Date.now() - STATE.navDataTime < 3000) {
+        drawWithShadow(() => {
+            drawSpeedError(fpmX, fpmY);
+        });
+    }
 
     // Pitch ladders (rotated and translated)
     // Note: roll is negated to match aircraft visual frame (bank right = horizon rotates left)
@@ -946,9 +1081,24 @@ export function drawHUD() {
         drawHeading(size.width / 2, border, 61, false);
     });
 
-    // Roll (bottom)
+    // Bank angle scale + sky pointer + slip/skid (replaces bottom roll arc)
     drawWithShadow(() => {
-        drawRoll(size.width / 2, size.height - border, 51, 260, true);
+        drawBankArc();
+    });
+
+    // Vertical speed indicator (right of pitch ladder)
+    drawWithShadow(() => {
+        drawVSI();
+    });
+
+    // Flight mode annunciator + waypoint guidance (top-center)
+    drawWithShadow(() => {
+        drawFMA();
+    });
+
+    // Wind vector (left of FMA)
+    drawWithShadow(() => {
+        drawWind();
     });
 
     // HUD messages and ARM/DISARM state

@@ -440,11 +440,29 @@ function initTerrainWorker() {
                 // LOD rebuild: swap the old mesh only now that the new one is
                 // ready, so the chunk never disappears for a few frames.
                 if (item.lodRebuild && activeChunks[data.chunkKey]) {
-                    disposeChunk(data.chunkKey, activeChunks[data.chunkKey]);
+                    const oldMesh = activeChunks[data.chunkKey];
+                    // Hand the satellite texture over to the rebuilt mesh —
+                    // same geographic area and UV layout, so it's still valid.
+                    // Re-compositing it from tiles made the chunk visibly
+                    // "reload" (texture → green → texture) on every LOD change.
+                    if (oldMesh.material && oldMesh.material.map &&
+                        oldMesh.userData && oldMesh.userData.textureLoaded) {
+                        item.inheritedMap = oldMesh.material.map;
+                        item.inheritedZoom = oldMesh.userData.textureZoom;
+                        item.inheritedIsHD = oldMesh.userData.textureIsHD;
+                        oldMesh.material.map = null; // detach so dispose doesn't kill it
+                    }
+                    disposeChunk(data.chunkKey, oldMesh);
                 }
 
                 if (!activeChunks[data.chunkKey] && isChunkInRange(item)) {
                     createSingleChunkFromBuffers(item, data.positions, data.uvs, data.colors, data.normals);
+                }
+                // Rebuilt mesh never got created (chunk left range between
+                // dispose and rebuild) — don't orphan the detached texture.
+                if (item.inheritedMap) {
+                    try { item.inheritedMap.dispose(); texturesDisposed++; } catch (e) {}
+                    item.inheritedMap = null;
                 }
                 return;
             }
@@ -545,8 +563,15 @@ function initHillshadeWorker() {
             if (data.type !== 'hillshadeComputed') return;
 
             const mesh = hillshadePending.get(data.meshId);
+            if (!mesh) return;
+            // Stale response: a newer request for this mesh is in flight —
+            // keep the pending entry (it belongs to the newer request) and
+            // drop this result, otherwise old colors overwrite fresh ones
+            // and the fresh response gets discarded.
+            if (data.seq !== undefined && mesh.userData &&
+                mesh.userData.hillshadeSeq !== data.seq) return;
             hillshadePending.delete(data.meshId);
-            if (!mesh || !mesh.geometry || !mesh.geometry.attributes || !mesh.geometry.attributes.color) return;
+            if (!mesh.geometry || !mesh.geometry.attributes || !mesh.geometry.attributes.color) return;
 
             const colorAttr = mesh.geometry.attributes.color;
             if (data.colors && data.colors.length === colorAttr.count * 3) {
@@ -1067,6 +1092,7 @@ function createSingleChunk(item) {
     chunksCreated++;
     markChunkActivity();
 
+    applyInheritedTexture(item, mesh);
     applyHillshadeToMesh(mesh);
     requeueTextureAfterLodRebuild(item, mesh);
 
@@ -1075,8 +1101,32 @@ function createSingleChunk(item) {
 }
 
 /**
+ * Attach the satellite texture inherited from the pre-LOD-rebuild mesh (see
+ * the terrain worker chunkReady handler). Vertex colors are flattened to a
+ * neutral light map right away — the height-tinted greens they start with
+ * would tint the satellite texture until the async hillshade result lands.
+ */
+function applyInheritedTexture(item, mesh) {
+    if (!item.inheritedMap) return;
+    mesh.material.map = item.inheritedMap;
+    mesh.material.needsUpdate = true;
+    mesh.userData.textureLoaded = true;
+    mesh.userData.textureZoom = item.inheritedZoom || 0;
+    mesh.userData.textureIsHD = !!item.inheritedIsHD;
+    item.inheritedMap = null;
+
+    const colorAttr = mesh.geometry.attributes.color;
+    if (colorAttr) {
+        const neutral = (window.sunlightEnabled !== false) ? 0.85 : mapBrightness;
+        colorAttr.array.fill(neutral);
+        colorAttr.needsUpdate = true;
+    }
+}
+
+/**
  * After a LOD rebuild, the fresh mesh lost its satellite texture — re-enqueue
  * it right away instead of waiting for the next movement-based refresh.
+ * (No-op when the texture was inherited: textureLoaded is already true.)
  */
 function requeueTextureAfterLodRebuild(item, mesh) {
     if (!item.lodRebuild || !initialTexturesLoaded || !window.satelliteEnabled) return;
@@ -1127,6 +1177,7 @@ function createSingleChunkFromBuffers(item, positions, uvs, colors, normals) {
     chunksCreated++;
     markChunkActivity();
 
+    applyInheritedTexture(item, mesh);
     applyHillshadeToMesh(mesh);
     requeueTextureAfterLodRebuild(item, mesh);
 }
@@ -1366,9 +1417,11 @@ function processChunkTextureQueue() {
         const dz = centerWorld.z - playerPos.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
         if (dist <= SATELLITE_RADIUS) {
-            // Unload existing texture if this is a LOD swap
+            // LOD swap: keep the current texture visible until the new one is
+            // ready (applyCompositeTexture disposes it on swap). Unloading
+            // first left the chunk white for the whole tile download.
             if (ud.textureLoaded) {
-                unloadChunkTexture(mesh);
+                abortChunkJob(mesh);
             }
             createChunkTexture(mesh, ud.chunkLatTop, ud.chunkLatBottom, ud.chunkLonLeft, ud.chunkLonRight);
         }
@@ -1572,6 +1625,18 @@ function applyCompositeTexture(mesh, canvas) {
     }
 
     if (mesh && mesh.material) {
+        // First texture on a green (height-tinted) chunk: flatten the vertex
+        // colors to a neutral light map right away, otherwise the satellite
+        // imagery shows green-tinted until the async hillshade result lands.
+        // On re-texture (LOD swap) the colors are already a valid light map.
+        if (!mesh.userData.textureLoaded && mesh.geometry &&
+            mesh.geometry.attributes && mesh.geometry.attributes.color) {
+            const colorAttr = mesh.geometry.attributes.color;
+            const neutral = (window.sunlightEnabled !== false) ? 0.85 : mapBrightness;
+            colorAttr.array.fill(neutral);
+            colorAttr.needsUpdate = true;
+        }
+
         const prevMaterial = mesh.material;
         if (prevMaterial.map) {
             try { prevMaterial.map.dispose(); texturesDisposed++; } catch (e) {}
@@ -1589,24 +1654,32 @@ function applyCompositeTexture(mesh, canvas) {
     }
 }
 
+/**
+ * Abort the in-flight texture composition job for a mesh (if any) without
+ * touching the material's current map — used by LOD swaps to keep the old
+ * texture visible until the replacement is ready.
+ */
+function abortChunkJob(mesh) {
+    const job = activeChunkJobs.get(mesh.uuid);
+    if (!job) return;
+    job.aborted = true;
+    // Release canvas memory
+    if (job.canvas) {
+        job.canvas.width = 1;
+        job.canvas.height = 1;
+        job.canvas = null;
+        canvasesReleased++;
+    }
+    job.ctx = null;
+    activeChunkJobs.delete(mesh.uuid);
+}
+
 function unloadChunkTexture(mesh) {
     if (!mesh || !mesh.material) return;
-    
-    // Abort any pending job for this mesh
-    const job = activeChunkJobs.get(mesh.uuid);
-    if (job) {
-        job.aborted = true;
-        // Release canvas memory
-        if (job.canvas) {
-            job.canvas.width = 1;
-            job.canvas.height = 1;
-            job.canvas = null;
-            canvasesReleased++;
-        }
-        job.ctx = null;
-        activeChunkJobs.delete(mesh.uuid);
-    }
-    
+
+    abortChunkJob(mesh);
+
+    const hadTexture = !!mesh.material.map;
     if (mesh.material.map) {
         // The texture's backing canvas is released along with it
         if (mesh.material.map.image) canvasesReleased++;
@@ -1619,6 +1692,14 @@ function unloadChunkTexture(mesh) {
         mesh.userData.textureQueued = false;
         mesh.userData.textureZoom = 0;
         mesh.userData.textureIsHD = false;
+    }
+
+    // The vertex colors are still the grayscale "light map" computed for the
+    // textured state — without re-shading, the naked chunk renders white
+    // (visible as white far chunks after the texture cull at high altitude).
+    // Re-apply hillshade so it goes back to the green height-tinted look.
+    if (hadTexture && !(mesh.userData && mesh.userData.disposed)) {
+        applyHillshadeToMesh(mesh);
     }
 }
 
@@ -1712,10 +1793,15 @@ function applyHillshadeToMesh(mesh) {
 
     if (hillshadeWorkerAvailable && hillshadeWorker) {
         const normalsCopy = new Float32Array(normalAttr.array);
+        // Monotonic per-mesh sequence: lets the response handler drop stale
+        // results when a newer request superseded this one (e.g. texture
+        // applied/unloaded while the previous compute was in flight).
+        const seq = (mesh.userData.hillshadeSeq = (mesh.userData.hillshadeSeq || 0) + 1);
         hillshadePending.set(mesh.uuid, mesh);
         hillshadeWorker.postMessage({
             type: 'computeHillshade',
             meshId: mesh.uuid,
+            seq,
             normals: normalsCopy,
             sunDir: { x: sunDir.x, y: sunDir.y, z: sunDir.z },
             sunlightEnabled,

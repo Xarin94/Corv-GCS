@@ -1,12 +1,14 @@
 /**
  * TrajectoryCorridor3D.js - Corridor outline for predicted trajectory (DJI RTH style)
  * Two green border lines + translucent green fill, slightly behind the aircraft.
+ * The ribbon cross-section rolls with the predicted bank angle, so the two
+ * border lines trace the predicted wingtip paths (twisting through turns).
  * Length scales with speed.
  */
 
 const MAX_POINTS = 50;
 const CORRIDOR_HALF_WIDTH = 0.6; // metres – half-width (~1.2m total, drone wingspan +20%)
-const ALT_DROP = 3;              // metres – slight drop below aircraft altitude
+const ALT_DROP = 1.2;            // metres – slight drop below aircraft altitude (near wing plane)
 const START_OFFSET = -8;         // metres – push corridor start well behind the aircraft
 
 // Speed-based prediction time: faster → longer corridor
@@ -163,7 +165,8 @@ export function updateCorridor(points) {
             dz = p.z - points[i - 1].z;
         }
 
-        // Perpendicular on XZ plane
+        // Perpendicular on XZ plane. World frame is x=east, z=south, y=up,
+        // so (-dz, dx) points to the STARBOARD side of the direction of travel.
         const len = Math.sqrt(dx * dx + dz * dz) || 1;
         const px = -dz / len;
         const pz = dx / len;
@@ -173,15 +176,25 @@ export function updateCorridor(points) {
         const cx = p.x + backDx;
         const cz = p.z + backDz;
 
-        const lx = cx + px * CORRIDOR_HALF_WIDTH;
-        const lz = cz + pz * CORRIDOR_HALF_WIDTH;
-        const rx = cx - px * CORRIDOR_HALF_WIDTH;
-        const rz = cz - pz * CORRIDOR_HALF_WIDTH;
+        // Roll the cross-section by the predicted bank angle: the ribbon
+        // twists like wingtip trails (right bank → starboard edge drops).
+        const bank = p.bank || 0;
+        const cb = Math.cos(bank);
+        const sb = Math.sin(bank);
+        const wH = CORRIDOR_HALF_WIDTH * cb; // horizontal component
+        const wV = CORRIDOR_HALF_WIDTH * sb; // vertical component
+
+        const lx = cx + px * wH;             // starboard edge
+        const lz = cz + pz * wH;
+        const ly = y - wV;
+        const rx = cx - px * wH;             // port edge
+        const rz = cz - pz * wH;
+        const ry = y + wV;
 
         // ── Border lines ──
         const vi = i * 3;
-        lPos[vi] = lx; lPos[vi + 1] = y; lPos[vi + 2] = lz;
-        rPos[vi] = rx; rPos[vi + 1] = y; rPos[vi + 2] = rz;
+        lPos[vi] = lx; lPos[vi + 1] = ly; lPos[vi + 2] = lz;
+        rPos[vi] = rx; rPos[vi + 1] = ry; rPos[vi + 2] = rz;
 
         // Fade-out toward tail + fade-in from start (masks origin behind aircraft)
         const fadeOut = 1 - (i / (n - 1));
@@ -192,11 +205,11 @@ export function updateCorridor(points) {
         lCol[ci] = 0.1; lCol[ci + 1] = 1.0; lCol[ci + 2] = 0.2; lCol[ci + 3] = borderAlpha;
         rCol[ci] = 0.1; rCol[ci + 1] = 1.0; rCol[ci + 2] = 0.2; rCol[ci + 3] = borderAlpha;
 
-        // ── Fill mesh (left vertex, right vertex) ──
+        // ── Fill mesh (starboard vertex, port vertex) ──
         const fli = (i * 2) * 3;
-        fPos[fli] = lx; fPos[fli + 1] = y; fPos[fli + 2] = lz;
+        fPos[fli] = lx; fPos[fli + 1] = ly; fPos[fli + 2] = lz;
         const fri = (i * 2 + 1) * 3;
-        fPos[fri] = rx; fPos[fri + 1] = y; fPos[fri + 2] = rz;
+        fPos[fri] = rx; fPos[fri + 1] = ry; fPos[fri + 2] = rz;
 
         const fillAlpha = 0.18 * fadeOut * fadeIn;
         const fci = (i * 2) * 4;

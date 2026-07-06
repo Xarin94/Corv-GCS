@@ -8,7 +8,7 @@ self.onmessage = (e) => {
 
     const normals = data.normals;
     if (!normals || normals.length % 3 !== 0) {
-        self.postMessage({ type: 'hillshadeComputed', meshId: data.meshId, colors: null });
+        self.postMessage({ type: 'hillshadeComputed', meshId: data.meshId, seq: data.seq, colors: null });
         return;
     }
 
@@ -33,5 +33,5 @@ self.onmessage = (e) => {
         colors[i + 2] = intensity;
     }
 
-    self.postMessage({ type: 'hillshadeComputed', meshId: data.meshId, colors }, [colors.buffer]);
+    self.postMessage({ type: 'hillshadeComputed', meshId: data.meshId, seq: data.seq, colors }, [colors.buffer]);
 };
