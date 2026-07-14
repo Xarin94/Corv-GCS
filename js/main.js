@@ -7,11 +7,9 @@
 import {
     ORIGIN, CAMERA_FOV, VISIBILITY_RADIUS, RELOAD_DISTANCE, RAD,
     DEMO_TARGET_INTERVAL, DEMO_SMOOTHING, DEMO_BASE_SPEED, DEMO_SPEED_VARIANCE,
-    DEMO_ALT_AGL, DEMO_PITCH_RANGE, DEMO_ROLL_RANGE, DEMO_LEG_LENGTH, DEMO_LEG_SPACING,
-    TRACE_CONFIG
+    DEMO_ALT_AGL, DEMO_PITCH_RANGE, DEMO_ROLL_RANGE, DEMO_LEG_LENGTH, DEMO_LEG_SPACING
 } from './core/constants.js';
-import { STATE, demoAttitude, demoSurveyState, pushGHistory, dataBuffer, activeTraces } from './core/state.js';
-import { ndConfig } from './ui/NDView.js';
+import { STATE, demoAttitude, demoSurveyState, pushGHistory } from './core/state.js';
 import { latLonToMeters, calculateDistance, lerpColor, getHeightColor } from './core/utils.js';
 import { fetchADSBData, downloadTrafficCSV, getNearestTraffic } from './adsb/ADSBManager.js';
 
@@ -48,7 +46,7 @@ import {
 } from './terrain/TerrainManager.js';
 
 // HUD imports
-import { initHUD, drawHUD, resizeHUD, setViewMode as setHUDViewMode, pushHudMessage } from './hud/HUDRenderer.js';
+import { initHUD, drawHUD, resizeHUD, pushHudMessage } from './hud/HUDRenderer.js';
 
 // Map imports
 import { initMap, updateMap, invalidateSize as invalidateMapSize, updateMissionOverlay, updateTrafficOverlay, resetMapTrail } from './maps/MapEngine.js';
@@ -63,13 +61,6 @@ import { TlogLogger } from './logging/TlogLogger.js';
 import { updateUI, toggleConfig, toggleTelemetry, updateOffset, updateAGLDisplay, setStatusMessage, updateFPSDisplay, initMoreMenu, initConfigAutoClose, initHudCells } from './ui/UIController.js';
 
 // Split view imports
-import {
-    toggleViewMode, getViewMode, sampleDataPoint, updateSplitMap,
-    updatePlotly, resizeSplitView, isPlotlyInitialized, setSplitMapSatelliteEnabled,
-    updateND,
-    recordLivePathPoint,
-    is3DVisible, is2DMapVisible, isNDVisible
-} from './ui/SplitView.js';
 
 // MAVLink imports
 import { initMAVLink, onMessage } from './mavlink/MAVLinkManager.js';
@@ -87,7 +78,7 @@ import { setTerrainSatelliteEnabled } from './terrain/TerrainManager.js';
 import { initOfflinePanel } from './maps/OfflineDownloader.js';
 
 // FPV imports
-import { initFPV, onFPVButtonClick, saveFPVSettings, resizeFPV, isFPVActive, isFPVARMode, stopFPVStream } from './ui/FPVController.js';
+import { initFPV, onFPVButtonClick, saveFPVSettings, resizeFPV, isFPVARMode, stopFPVStream } from './ui/FPVController.js';
 
 // Loading overlay imports
 import {
@@ -663,13 +654,26 @@ function updateChunkVisibility() {
     }
 }
 
+// Terrain elevation under home, resolved once per home position. getTerrainElevationCached()
+// keeps a single-entry cache shared with the vehicle query, so we memoize here instead of
+// re-querying it every frame. Stays null (and keeps retrying) until the HGT tile is loaded.
+let homeTerrainElev = null;
+let homeTerrainKey = null;
+
+function getHomeTerrainElevation() {
+    if (STATE.homeLat === null || STATE.homeLon === null) return null;
+    const key = `${STATE.homeLat},${STATE.homeLon}`;
+    if (key !== homeTerrainKey || homeTerrainElev === null) {
+        homeTerrainKey = key;
+        homeTerrainElev = getTerrainElevationCached(STATE.homeLat, STATE.homeLon);
+    }
+    return homeTerrainElev;
+}
+
 // ============== 3D WORLD UPDATE ==============
 function update3DWorld() {
     const camera = getCamera();
     if (!camera) return;
-    
-    // Check if 3D view is visible - skip expensive rendering if not
-    const visible3D = is3DVisible();
     
     const planePos = latLonToMeters(STATE.lat, STATE.lon);
     let totalAlt = STATE.rawAlt + STATE.offsetAlt;
@@ -724,7 +728,7 @@ function update3DWorld() {
     }
 
     // Update predicted trajectory corridor (throttled to every 3rd frame)
-    if (trajectoryEnabled && visible3D) {
+    if (trajectoryEnabled) {
         if (!update3DWorld._trajFc) update3DWorld._trajFc = 0;
         if (++update3DWorld._trajFc % 3 === 0) {
             const predTime = getPredictionTime(STATE.gs || 0);
@@ -753,17 +757,14 @@ function update3DWorld() {
         (planePos.z - STATE.lastUpdatePos.z) ** 2
     );
     
-    // Update terrain and render if 3D is visible or AR overlay is active
-    if (visible3D || isFPVARMode()) {
-        if (visible3D && getHGTFileCount() > 0 && (Object.keys(getActiveChunks()).length === 0 || dist > 2000)) {
-            STATE.lastUpdatePos = { x: planePos.x, z: planePos.z };
-            updateTerrainChunks();
-        }
-
-        updateChunkVisibility();
-        updateWireframeProximity();
-        render();
+    if (getHGTFileCount() > 0 && (Object.keys(getActiveChunks()).length === 0 || dist > 2000)) {
+        STATE.lastUpdatePos = { x: planePos.x, z: planePos.z };
+        updateTerrainChunks();
     }
+
+    updateChunkVisibility();
+    updateWireframeProximity();
+    render();
 }
 
 // ============== RELOAD MAP AND RUNWAYS ==============
@@ -908,8 +909,6 @@ function initMinimapSwap() {
 
 // ============== RESIZE HANDLER ==============
 function handleResize() {
-    const viewMode = getViewMode();
-    setHUDViewMode(viewMode);
     updateMinimapHoverSize();
 
     const { width, height } = resizeHUD();
@@ -925,7 +924,6 @@ function handleResize() {
     }
 
     invalidateMapSize();
-    resizeSplitView();
     resizeFPV();
 }
 
@@ -983,61 +981,51 @@ function animate() {
     // Demo mode - fixed-wing survey drone
     if (STATE.mode === 'LIVE' && !STATE.connected) {
         const metersPerLat = 111320;
-        const headingSelected = ndConfig && ndConfig.selectedHdg !== null;
-        const selectedHdgRad = headingSelected ? ((ndConfig.selectedHdg % 360) / RAD) : null;
         const sv = demoSurveyState;
 
-        // HDG SEL override: steer toward selected heading
-        if (headingSelected && selectedHdgRad !== null) {
-            demoAttitude.yaw.target = selectedHdgRad;
-            demoAttitude.roll.target = 0;
-            demoAttitude.pitch.target = 0;
-            sv.turning = false;
-        } else {
-            // Survey pattern state machine
-            const dist = Math.max(10, demoSpeed) * deltaTime;
+        // Survey pattern state machine
+        const dist = Math.max(10, demoSpeed) * deltaTime;
 
-            if (sv.turning) {
-                // Smooth 180-degree turn between survey legs
-                sv.turnProgress += deltaTime / 10; // ~10s per turn
-                if (sv.turnProgress >= 1.0) {
-                    // Turn complete
-                    sv.turning = false;
-                    sv.turnProgress = 0;
-                    sv.distOnLeg = 0;
-                    sv.legIndex++;
-                    sv.direction *= -1; // alternate turn direction
-                    sv.legHeading = (sv.legHeading + Math.PI) % (Math.PI * 2);
-                    demoAttitude.yaw.target = sv.legHeading;
-                    demoAttitude.roll.target = 0;
-                    demoAttitude.pitch.target = (Math.random() - 0.5) * DEMO_PITCH_RANGE * 0.5;
-                } else {
-                    // During turn: interpolate heading, apply bank
-                    const turnAngle = Math.PI * sv.turnProgress; // 0 -> PI
-                    demoAttitude.yaw.target = sv.legHeading + turnAngle * sv.direction;
-                    demoAttitude.roll.target = sv.direction * DEMO_ROLL_RANGE * 0.5 *
-                        Math.sin(sv.turnProgress * Math.PI); // smooth bank envelope
-                    demoAttitude.pitch.target = DEMO_PITCH_RANGE * 0.3; // slight nose-up in turn
-                }
-            } else {
-                // Straight survey leg
-                sv.distOnLeg += dist;
-                demoAttitude.roll.target = (Math.random() - 0.5) * 0.02; // near-level wings
-                demoAttitude.pitch.target = (Math.random() - 0.5) * DEMO_PITCH_RANGE * 0.3;
+        if (sv.turning) {
+            // Smooth 180-degree turn between survey legs
+            sv.turnProgress += deltaTime / 10; // ~10s per turn
+            if (sv.turnProgress >= 1.0) {
+                // Turn complete
+                sv.turning = false;
+                sv.turnProgress = 0;
+                sv.distOnLeg = 0;
+                sv.legIndex++;
+                sv.direction *= -1; // alternate turn direction
+                sv.legHeading = (sv.legHeading + Math.PI) % (Math.PI * 2);
                 demoAttitude.yaw.target = sv.legHeading;
-
-                if (sv.distOnLeg >= DEMO_LEG_LENGTH) {
-                    // Start turn
-                    sv.turning = true;
-                    sv.turnProgress = 0;
-                }
+                demoAttitude.roll.target = 0;
+                demoAttitude.pitch.target = (Math.random() - 0.5) * DEMO_PITCH_RANGE * 0.5;
+            } else {
+                // During turn: interpolate heading, apply bank
+                const turnAngle = Math.PI * sv.turnProgress; // 0 -> PI
+                demoAttitude.yaw.target = sv.legHeading + turnAngle * sv.direction;
+                demoAttitude.roll.target = sv.direction * DEMO_ROLL_RANGE * 0.5 *
+                    Math.sin(sv.turnProgress * Math.PI); // smooth bank envelope
+                demoAttitude.pitch.target = DEMO_PITCH_RANGE * 0.3; // slight nose-up in turn
             }
+        } else {
+            // Straight survey leg
+            sv.distOnLeg += dist;
+            demoAttitude.roll.target = (Math.random() - 0.5) * 0.02; // near-level wings
+            demoAttitude.pitch.target = (Math.random() - 0.5) * DEMO_PITCH_RANGE * 0.3;
+            demoAttitude.yaw.target = sv.legHeading;
 
-            // Vary speed slightly during legs
-            if (now - demoTargetChangeTime > DEMO_TARGET_INTERVAL) {
-                demoTargetChangeTime = now;
-                demoSpeedTarget = DEMO_BASE_SPEED + (Math.random() - 0.5) * DEMO_SPEED_VARIANCE * 2;
+            if (sv.distOnLeg >= DEMO_LEG_LENGTH) {
+                // Start turn
+                sv.turning = true;
+                sv.turnProgress = 0;
             }
+        }
+
+        // Vary speed slightly during legs
+        if (now - demoTargetChangeTime > DEMO_TARGET_INTERVAL) {
+            demoTargetChangeTime = now;
+            demoSpeedTarget = DEMO_BASE_SPEED + (Math.random() - 0.5) * DEMO_SPEED_VARIANCE * 2;
         }
 
         const smoothFactor = DEMO_SMOOTHING;
@@ -1112,9 +1100,6 @@ function animate() {
         lastTelemetryUiUpdate = now;
         updateUI();
     }
-    sampleDataPoint();
-    recordLivePathPoint();
-
     // Throttle heavy 3D rendering to 30fps max.
     // The animation loop runs at monitor refresh rate (60-144Hz) but heavy GPU work
     // (3D render, terrain, frustum culling) is capped to free the main thread
@@ -1124,22 +1109,16 @@ function animate() {
 
     if (onFlightDataTab && renderDue) {
         lastRenderTime = now;
-        // Draw HUD when 3D view is visible (first-person) or FPV is active
-        if (cameraMode !== 'THIRD' && (is3DVisible() || isFPVActive())) {
+        // Draw HUD in first-person 3D or when FPV is active
+        if (cameraMode !== 'THIRD') {
             drawHUD();
         }
         update3DWorld();
-        updateHomeMarker3D();
+        updateHomeMarker3D(getHomeTerrainElevation());
 
         // Check if nearby chunks need high-res textures (skip in AR mode — terrain is hidden)
-        if (is3DVisible() && !isFPVARMode()) {
+        if (!isFPVARMode()) {
             refreshNearbyChunkTextures();
-        }
-
-        if (getViewMode() === 'SPLIT') {
-            updateSplitMap();
-            updatePlotly();
-            updateND();
         }
     }
 
@@ -1162,7 +1141,7 @@ function animate() {
         updateTrafficMarkers3D(getNearestTraffic(4));
     }
 
-    if (getViewMode() !== 'SPLIT') updateMap();
+    updateMap();
 
     checkInitialLoadComplete(
         getActiveChunks(), 
@@ -1214,7 +1193,6 @@ function setSatelliteEnabled(enabled) {
     
     // Apply across terrain + maps
     try { setTerrainSatelliteEnabled(window.satelliteEnabled); } catch (e) {}
-    try { setSplitMapSatelliteEnabled(window.satelliteEnabled); } catch (e) {}
 
     setHillshadeNeedsUpdate();
     updateTerrainHillshading(true);
@@ -1277,7 +1255,6 @@ function toggleTrajectory() {
     trajectoryEnabled = !trajectoryEnabled;
     document.getElementById('btn-traj')?.classList.toggle('active', trajectoryEnabled);
     setCorridorVisible(trajectoryEnabled);
-    ndConfig.showPredictedPath = trajectoryEnabled;
 }
 
 // ============== HGT FILE INPUT ==============
@@ -1640,11 +1617,6 @@ window.toggleSatellite = toggleSatellite;
 window.toggleSunlight = toggleSunlight;
 window.toggleTheme = toggleTheme;
 window.toggleTrajectory = toggleTrajectory;
-window.toggleViewMode = () => {
-    const mode = toggleViewMode();
-    handleResize();
-    return mode;
-};
 window.onFPVButtonClick = onFPVButtonClick;
 window.saveFPVSettings = saveFPVSettings;
 

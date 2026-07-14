@@ -3,12 +3,8 @@
  * Central state object and state-related utilities
  */
 
-import { ORIGIN, BUFFER_SIZE as CONST_BUFFER_SIZE, SAMPLE_INTERVAL as CONST_SAMPLE_INTERVAL } from './constants.js';
+import { ORIGIN } from './constants.js';
 import { RingBuffer } from './RingBuffer.js';
-
-// Re-export constants for convenience
-export const BUFFER_SIZE = CONST_BUFFER_SIZE;
-export const SAMPLE_INTERVAL = CONST_SAMPLE_INTERVAL;
 
 /**
  * Global application state
@@ -170,82 +166,6 @@ export const demoSurveyState = {
     legHeading: 0       // current leg heading in radians (north)
 };
 
-/**
- * View mode state
- */
-export let viewMode = 'FULLSCREEN';
-export function setViewMode(mode) {
-    viewMode = mode;
-}
-
-/**
- * Plotly state
- */
-export let plotlyInitialized = false;
-export function setPlotlyInitialized(value) {
-    plotlyInitialized = value;
-}
-
-export let activeTraces = ['as', 'rawAlt', 'az'];
-export function setActiveTraces(traces) {
-    activeTraces = traces;
-}
-
-// Ring buffer based legacy data buffer for O(1) push operations
-const _timestampsBuffer = new RingBuffer(BUFFER_SIZE, true);
-const _asBuffer = new RingBuffer(BUFFER_SIZE, true);
-const _gsBuffer = new RingBuffer(BUFFER_SIZE, true);
-const _vsBuffer = new RingBuffer(BUFFER_SIZE, true);
-const _rawAltBuffer = new RingBuffer(BUFFER_SIZE, true);
-const _rollBuffer = new RingBuffer(BUFFER_SIZE, true);
-const _pitchBuffer = new RingBuffer(BUFFER_SIZE, true);
-const _azBuffer = new RingBuffer(BUFFER_SIZE, true);
-
-// Proxy object that exposes array-like interface for backwards compatibility
-export const dataBuffer = {
-    get timestamps() { return _timestampsBuffer.toArray(); },
-    set timestamps(v) { _timestampsBuffer.clear(); v.forEach(x => _timestampsBuffer.push(x)); },
-    get as() { return _asBuffer.toArray(); },
-    set as(v) { _asBuffer.clear(); v.forEach(x => _asBuffer.push(x)); },
-    get gs() { return _gsBuffer.toArray(); },
-    set gs(v) { _gsBuffer.clear(); v.forEach(x => _gsBuffer.push(x)); },
-    get vs() { return _vsBuffer.toArray(); },
-    set vs(v) { _vsBuffer.clear(); v.forEach(x => _vsBuffer.push(x)); },
-    get rawAlt() { return _rawAltBuffer.toArray(); },
-    set rawAlt(v) { _rawAltBuffer.clear(); v.forEach(x => _rawAltBuffer.push(x)); },
-    get roll() { return _rollBuffer.toArray(); },
-    set roll(v) { _rollBuffer.clear(); v.forEach(x => _rollBuffer.push(x)); },
-    get pitch() { return _pitchBuffer.toArray(); },
-    set pitch(v) { _pitchBuffer.clear(); v.forEach(x => _pitchBuffer.push(x)); },
-    get az() { return _azBuffer.toArray(); },
-    set az(v) { _azBuffer.clear(); v.forEach(x => _azBuffer.push(x)); },
-    // Direct push methods for efficient O(1) insertion
-    pushTimestamp(v) { _timestampsBuffer.push(v); },
-    pushAs(v) { _asBuffer.push(v); },
-    pushGs(v) { _gsBuffer.push(v); },
-    pushVs(v) { _vsBuffer.push(v); },
-    pushRawAlt(v) { _rawAltBuffer.push(v); },
-    pushRoll(v) { _rollBuffer.push(v); },
-    pushPitch(v) { _pitchBuffer.push(v); },
-    pushAz(v) { _azBuffer.push(v); },
-    // Clear all buffers
-    clear() {
-        _timestampsBuffer.clear();
-        _asBuffer.clear();
-        _gsBuffer.clear();
-        _vsBuffer.clear();
-        _rawAltBuffer.clear();
-        _rollBuffer.clear();
-        _pitchBuffer.clear();
-        _azBuffer.clear();
-    }
-};
-
-export let lastSampleTime = 0;
-export function setLastSampleTime(time) {
-    lastSampleTime = time;
-}
-
 // Ring buffer for G history
 const _gHistoryBuffer = new RingBuffer(300, true);
 // Initialize with 1.0 values
@@ -262,14 +182,6 @@ export function pushGHistory() {
 
 /** Expose ring buffer for direct read access (avoids toArray() allocation) */
 export const gHistoryBuffer = _gHistoryBuffer;
-
-/**
- * Reset data buffer
- */
-export function resetDataBuffer() {
-    dataBuffer.clear();
-    lastSampleTime = 0;
-}
 
 /**
  * Reset all live-telemetry state. Called by the Log Replay controller before
@@ -347,6 +259,4 @@ export function resetReplayState() {
 
     STATE.traffic = [];
 
-    dataBuffer.clear();
-    lastSampleTime = 0;
 }

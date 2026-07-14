@@ -1,7 +1,6 @@
 /**
  * GCSSidebarController.js - GCS Sidebar Controller
  * Handles sidebar toggle, section collapse, and action button bindings
- * Pattern based on NDController.js
  */
 
 import { STATE } from '../core/state.js';
@@ -53,7 +52,18 @@ export function initGCSSidebar() {
 
     // ACTIONS section (ARM removed - now only in command bar; CAL buttons moved to Initial Setup tab)
     bindAction('gcs-set-home', async () => {
-        if (await confirm('Set HOME to current position?')) await setHomeCurrent();
+        if (!(await confirm('Set HOME to current position?'))) return;
+        try {
+            const ack = await setHomeCurrent();
+            if (ack.result === 0) {
+                alert('HOME set to current position.');
+            } else {
+                alert(`Set HOME rejected by the autopilot: ${ack.resultName}.\n`
+                    + 'A 3D GPS fix and a healthy EKF are required to set home.');
+            }
+        } catch (e) {
+            alert('Set HOME failed: ' + e.message);
+        }
     });
 
     bindAction('gcs-reboot', async () => {

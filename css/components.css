@@ -41,25 +41,6 @@
     gap: 10px;
 }
 
-/* Split view: tighter buttons */
-body.mode-split #global-header .controls {
-    gap: 8px;
-}
-
-body.mode-split .controls-group {
-    gap: 8px;
-}
-
-body.mode-split button.ui-btn {
-    padding: 6px 10px;
-    font-size: 10px;
-}
-
-body.mode-split button.ui-btn.square {
-    width: 34px;
-    height: 34px;
-}
-
 /* BUTTONS */
 button.ui-btn {
     background: var(--bg-solid);
@@ -269,15 +250,6 @@ button.ui-btn.recording {
     gap: 8px;
 }
 
-/* Split/full icon swap for the mode button */
-#btn-mode .icon-fullscreen { display: none; }
-body.mode-split #btn-mode .icon-split { display: none; }
-body.mode-split #btn-mode .icon-fullscreen { display: inline; }
-
-body.mode-split .more-menu {
-    top: calc(100% + 6px);
-}
-
 .data-cell {
     width: 100%;
     text-align: center;
@@ -344,16 +316,6 @@ body.mode-split .more-menu {
     box-sizing: border-box;
     border-radius: 4px;
     min-width: 180px;
-}
-
-/* Split view: move coordinates box onto the right map */
-body.mode-split #split-map-container .bottom-bar-group,
-body.mode-split #split-map-container .bottom-bar {
-    position: absolute;
-    right: 12px;
-    bottom: 12px;
-    z-index: var(--z-leaflet-over); /* above Leaflet panes */
-    pointer-events: none;
 }
 
 .bottom-bar .stat-item {
@@ -463,11 +425,6 @@ body.mode-split #split-map-container .bottom-bar {
     width: 100%;
     height: 100%;
     background: var(--bg-scene);
-}
-
-/* Hide mini-map in split mode (split has its own full map) */
-body.mode-split #mini-map-container {
-    display: none;
 }
 
 /* ── Swapped state: 2D map becomes main, 3D shrinks to corner ── */

@@ -10,7 +10,6 @@ import { STATE, gHistoryBuffer } from '../core/state.js';
 let canvas = null;
 let ctx = null;
 let hudDPR = 1;
-let viewModeRef = 'FULLSCREEN';
 
 // HUD message queue (Mission Planner style)
 const hudMessages = [];
@@ -285,13 +284,6 @@ export function drawGLoadWidget() {
         gCtx.fillText('-3g', x, y + gh + Math.max(0, pad - 4));
         gCtx.restore();
     }
-}
-
-/**
- * Set view mode reference
- */
-export function setViewMode(mode) {
-    viewModeRef = mode;
 }
 
 /**

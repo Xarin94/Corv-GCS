@@ -60,34 +60,3 @@ body.mode-fullscreen #hud-wrapper {
     bottom: 48px; /* Space for GCS command bar */
 }
 
-body.mode-fullscreen #split-map-container,
-body.mode-fullscreen #nd-container,
-body.mode-fullscreen #plotly-container {
-    display: none;
-}
-
-/* Modalita SPLIT (fullscreen charts) */
-body.mode-split {
-    overflow: hidden;
-}
-
-/* Hide 3D, 2D map, ND, mini-map in chart mode */
-body.mode-split #hud-wrapper,
-body.mode-split #split-map-container,
-body.mode-split #nd-container,
-body.mode-split #mini-map-container,
-body.mode-split #ui-layer {
-    display: none !important;
-}
-
-/* Fullscreen Plotly charts */
-body.mode-split #plotly-container {
-    display: flex;
-    flex-direction: column;
-    position: absolute;
-    top: 60px; /* Space for global header */
-    left: 0;
-    right: 0;
-    bottom: 48px; /* Space for GCS command bar */
-    background: rgba(0, 20, 0, 0.95);
-}

@@ -485,13 +485,17 @@ function mapCommandAck(data) {
 }
 
 function mapHomePosition(data) {
+    // HOME_POSITION (242): latitude/longitude in degE7, altitude in mm AMSL
+    if (!Number.isFinite(data.latitude) || !Number.isFinite(data.longitude)) return;
     const lat = data.latitude / 1e7;
     const lon = data.longitude / 1e7;
-    if (Math.abs(lat) > 0.01 || Math.abs(lon) > 0.01) {
-        STATE.homeLat = lat;
-        STATE.homeLon = lon;
-        STATE.homeAlt = data.altitude / 1000; // mm -> m
-    }
+    if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
+    // (0,0) means "home not set yet" — don't plant a marker in the Atlantic
+    if (Math.abs(lat) < 0.01 && Math.abs(lon) < 0.01) return;
+
+    STATE.homeLat = lat;
+    STATE.homeLon = lon;
+    STATE.homeAlt = Number.isFinite(data.altitude) ? data.altitude / 1000 : null; // mm -> m
 }
 
 function mapStatusText(data) {

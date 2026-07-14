@@ -628,6 +628,30 @@ async function sendMAVLinkCommand(cmd) {
 }
 
 /**
+ * Send a COMMAND_INT message.
+ * Preferred over COMMAND_LONG for any command carrying a position: x/y are int32
+ * degE7 (no float precision loss) and the frame is explicit. ArduPilot handles
+ * DO_SET_HOME as a COMMAND_INT internally.
+ */
+async function sendMAVLinkCommandInt(cmd) {
+    const msg = new common.CommandInt();
+    msg.targetSystem = cmd.targetSystem || 1;
+    msg.targetComponent = cmd.targetComponent || 1;
+    msg.frame = cmd.frame !== undefined ? cmd.frame : 0; // MAV_FRAME_GLOBAL
+    msg.command = cmd.command;
+    msg.current = cmd.current || 0;
+    msg.autocontinue = cmd.autocontinue || 0;
+    msg._param1 = cmd.param1 || 0;
+    msg._param2 = cmd.param2 || 0;
+    msg._param3 = cmd.param3 || 0;
+    msg._param4 = cmd.param4 || 0;
+    msg._param5 = Math.round(cmd.x || 0); // int32 (degE7 for global frames)
+    msg._param6 = Math.round(cmd.y || 0); // int32
+    msg._param7 = cmd.z || 0;             // float (metres)
+    await sendToConnection(msg);
+}
+
+/**
  * Send a generic MAVLink message
  */
 async function sendMAVLinkMessage(msg) {
@@ -769,6 +793,10 @@ async function sendMAVLinkMessage(msg) {
         }
         case 'COMMAND_LONG': {
             await sendMAVLinkCommand(msg);
+            return;
+        }
+        case 'COMMAND_INT': {
+            await sendMAVLinkCommandInt(msg);
             return;
         }
         default:

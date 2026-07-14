@@ -81,6 +81,92 @@ function showInputDialog(message, defaultValue = '') {
     });
 }
 
+/**
+ * Confirm dialog with an optional third "force" button.
+ * @param {object} opts
+ * @param {string} opts.title    - main question
+ * @param {string} opts.detail   - explanation of what the normal command does
+ * @param {string} opts.forceDetail - explanation of what the force variant does
+ * @param {string} opts.confirmLabel
+ * @param {string} opts.forceLabel
+ * @returns {Promise<'confirm'|'force'|null>}
+ */
+function showConfirmDialog({ title, detail, forceDetail, confirmLabel = 'OK', forceLabel = null }) {
+    return new Promise((resolve) => {
+        let closed = false;
+
+        const cs = getComputedStyle(document.documentElement);
+        const bgDialog = cs.getPropertyValue('--bg-dialog').trim() || '#1a1f2e';
+        const textMain = cs.getPropertyValue('--text-main').trim() || '#fff';
+        const textDim = cs.getPropertyValue('--text-dim').trim() || '#ccc';
+        const bgSlider = cs.getPropertyValue('--bg-slider-track').trim() || '#333';
+        const overlayBg = cs.getPropertyValue('--bg-overlay-light').trim() || 'rgba(0,0,0,0.6)';
+
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `position:fixed;inset:0;z-index:99999;background:${overlayBg};display:flex;align-items:center;justify-content:center;`;
+
+        const box = document.createElement('div');
+        box.style.cssText = `background:${bgDialog};border:1px solid #00d2ff;border-radius:6px;padding:16px 20px;max-width:420px;`;
+
+        const head = document.createElement('div');
+        head.style.cssText = `color:${textMain};font-size:14px;font-weight:600;margin-bottom:8px;`;
+        head.textContent = title;
+
+        const body = document.createElement('div');
+        body.style.cssText = `color:${textDim};font-size:12px;line-height:1.45;`;
+        body.textContent = detail || '';
+
+        const forceBody = document.createElement('div');
+        if (forceLabel) {
+            forceBody.style.cssText = 'color:#ff9f43;font-size:11px;line-height:1.45;margin-top:8px;';
+            forceBody.textContent = forceDetail || '';
+        }
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:8px;margin-top:14px;justify-content:flex-end;flex-wrap:wrap;';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'CANCEL';
+        cancelBtn.style.cssText = `background:${bgSlider};color:${textDim};border:none;padding:6px 14px;border-radius:3px;cursor:pointer;font-size:11px;`;
+
+        const okBtn = document.createElement('button');
+        okBtn.textContent = confirmLabel;
+        okBtn.style.cssText = 'background:#00d2ff;color:#000;border:none;padding:6px 14px;border-radius:3px;cursor:pointer;font-weight:600;font-size:11px;';
+
+        btnRow.append(cancelBtn, okBtn);
+
+        let forceBtn = null;
+        if (forceLabel) {
+            forceBtn = document.createElement('button');
+            forceBtn.textContent = forceLabel;
+            forceBtn.style.cssText = 'background:#c0392b;color:#fff;border:none;padding:6px 14px;border-radius:3px;cursor:pointer;font-weight:600;font-size:11px;';
+            btnRow.appendChild(forceBtn);
+        }
+
+        box.append(head, body);
+        if (forceLabel) box.appendChild(forceBody);
+        box.appendChild(btnRow);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        requestAnimationFrame(() => okBtn.focus());
+
+        const close = (val) => {
+            if (closed) return;
+            closed = true;
+            overlay.remove();
+            document.removeEventListener('keydown', onKey);
+            resolve(val);
+        };
+        const onKey = (e) => { if (e.key === 'Escape') close(null); };
+        document.addEventListener('keydown', onKey);
+
+        okBtn.addEventListener('click', (e) => { e.stopPropagation(); close('confirm'); });
+        cancelBtn.addEventListener('click', (e) => { e.stopPropagation(); close(null); });
+        if (forceBtn) forceBtn.addEventListener('click', (e) => { e.stopPropagation(); close('force'); });
+        overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(null); });
+    });
+}
+
 // DOM element cache
 let els = {};
 let prearmOk = false;
@@ -136,13 +222,31 @@ export function initCommandBar() {
         if (STATE.connectionType === 'none' || STATE.connectionType === 'corv-binary') return;
 
         if (STATE.armed) {
-            if (await confirm('DISARM the vehicle?')) {
-                try { await disarmVehicle(); } catch (e) { alert('Disarm failed: ' + e.message); }
-            }
+            const aglAlt = Number.isFinite(STATE.homeAlt) ? (STATE.rawAlt - STATE.homeAlt) : 0;
+            const flying = aglAlt > 2 || STATE.gs > 1.5 || STATE.as > 1.5;
+            const choice = await showConfirmDialog({
+                title: 'DISARM the vehicle?',
+                detail: 'Sends MAV_CMD_COMPONENT_ARM_DISARM (400) with param1=0. The autopilot refuses a normal disarm while the vehicle is flying or not landed.'
+                    + (flying ? ' The vehicle currently looks airborne — a normal disarm will most likely be rejected.' : ''),
+                forceDetail: 'FORCE DISARM sends param2=21196: it bypasses the disarm checks and cuts the motors immediately, in flight too. The vehicle will fall.',
+                confirmLabel: 'DISARM',
+                forceLabel: 'FORCE DISARM'
+            });
+            if (!choice) return;
+            try { await disarmVehicle(choice === 'force'); }
+            catch (e) { alert('Disarm failed: ' + e.message); }
         } else {
-            if (await confirm('ARM the vehicle? Ensure area is clear.')) {
-                try { await armVehicle(); } catch (e) { alert('Arm failed: ' + e.message); }
-            }
+            const choice = await showConfirmDialog({
+                title: 'ARM the vehicle?',
+                detail: 'Ensure the area is clear. Sends MAV_CMD_COMPONENT_ARM_DISARM (400) with param1=1. The autopilot runs all pre-arm checks (GPS, EKF, compass, battery, safety switch) and refuses if any fails.'
+                    + (prearmOk ? '' : ' Pre-arm checks are currently NOT passing.'),
+                forceDetail: 'FORCE ARM sends param2=21196: it skips every pre-arm check. The props can spin with a bad EKF, no GPS fix or a failing sensor. Use only if you know exactly which check is failing and why.',
+                confirmLabel: 'ARM',
+                forceLabel: 'FORCE ARM'
+            });
+            if (!choice) return;
+            try { await armVehicle(choice === 'force'); }
+            catch (e) { alert('Arm failed: ' + e.message); }
         }
     });
 

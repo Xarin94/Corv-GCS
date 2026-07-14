@@ -20,10 +20,6 @@ export const SHADOW_CHUNK_SIZE = 5000;
 // Tile system - zoom levels defined in TerrainManager.js (dual-zoom LOD)
 export const MAX_CONCURRENT_LOADS = 6;
 
-// Plotly
-export const BUFFER_SIZE = 1200;
-export const SAMPLE_INTERVAL = 100; // ms
-
 // Demo mode - fixed-wing survey drone
 export const DEMO_TARGET_INTERVAL = 12000;
 export const DEMO_SMOOTHING = 0.005;
@@ -39,13 +35,3 @@ export const DEMO_LEG_SPACING = 60;      // meters between survey legs
 export const INITIAL_MIN_VISIBLE_MS = 600;
 export const POST_COMPLETE_MS = 3000;
 
-// Plotly trace configuration
-export const TRACE_CONFIG = {
-    as:     { name: 'IAS (m/s)', color: '#00FF00', yaxis: 'y' },
-    gs:     { name: 'GS (m/s)', color: '#00CC00', yaxis: 'y' },
-    vs:     { name: 'VS (m/s)', color: '#00FFFF', yaxis: 'y' },
-    rawAlt: { name: 'Alt (m)', color: '#FFFF00', yaxis: 'y2' },
-    roll:   { name: 'Roll (°)', color: '#FF00FF', yaxis: 'y3' },
-    pitch:  { name: 'Pitch (°)', color: '#FF66FF', yaxis: 'y3' },
-    az:     { name: 'G-Load', color: '#FF3300', yaxis: 'y' }
-};

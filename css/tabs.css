@@ -115,10 +115,6 @@ body.has-tabs #ui-layer {
     padding-top: 102px; /* 92px + original 10px padding */
 }
 
-body.has-tabs.mode-split {
-    padding-top: 92px;
-}
-
 /* ============= SUB-TAB BAR ============= */
 .sub-tab-bar {
     display: flex;

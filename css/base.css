@@ -45,8 +45,6 @@ input, textarea, select {
 /* ============= SHARED SCROLLBAR ============= */
 .custom-scroll,
 .gcs-sidebar,
-.nd-sidebar-content,
-.fplan-list,
 .gcs-param-list,
 .gcs-mission-list,
 .gcs-rally-list,
@@ -60,8 +58,6 @@ input, textarea, select {
 
 .custom-scroll::-webkit-scrollbar,
 .gcs-sidebar::-webkit-scrollbar,
-.nd-sidebar-content::-webkit-scrollbar,
-.fplan-list::-webkit-scrollbar,
 .gcs-param-list::-webkit-scrollbar,
 .gcs-mission-list::-webkit-scrollbar,
 .gcs-rally-list::-webkit-scrollbar,
@@ -74,8 +70,6 @@ input, textarea, select {
 
 .custom-scroll::-webkit-scrollbar-track,
 .gcs-sidebar::-webkit-scrollbar-track,
-.nd-sidebar-content::-webkit-scrollbar-track,
-.fplan-list::-webkit-scrollbar-track,
 .gcs-param-list::-webkit-scrollbar-track,
 .gcs-mission-list::-webkit-scrollbar-track,
 .gcs-rally-list::-webkit-scrollbar-track,
@@ -88,8 +82,6 @@ input, textarea, select {
 
 .custom-scroll::-webkit-scrollbar-thumb,
 .gcs-sidebar::-webkit-scrollbar-thumb,
-.nd-sidebar-content::-webkit-scrollbar-thumb,
-.fplan-list::-webkit-scrollbar-thumb,
 .gcs-param-list::-webkit-scrollbar-thumb,
 .gcs-mission-list::-webkit-scrollbar-thumb,
 .gcs-rally-list::-webkit-scrollbar-thumb,
@@ -103,8 +95,6 @@ input, textarea, select {
 
 .custom-scroll::-webkit-scrollbar-thumb:hover,
 .gcs-sidebar::-webkit-scrollbar-thumb:hover,
-.nd-sidebar-content::-webkit-scrollbar-thumb:hover,
-.fplan-list::-webkit-scrollbar-thumb:hover,
 .gcs-param-list::-webkit-scrollbar-thumb:hover,
 .gcs-mission-list::-webkit-scrollbar-thumb:hover,
 .gcs-rally-list::-webkit-scrollbar-thumb:hover,

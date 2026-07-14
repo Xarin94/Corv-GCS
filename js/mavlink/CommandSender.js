@@ -25,15 +25,16 @@ async function sendMessage(msg) {
 
 /**
  * ARM the vehicle
+ * @param {boolean} force - bypass arming checks (param2 = 21196)
  */
-export async function armVehicle() {
+export async function armVehicle(force = false) {
     return sendCommand({
         type: 'COMMAND_LONG',
         targetSystem: STATE.systemId,
         targetComponent: STATE.componentId,
         command: 400, // MAV_CMD_COMPONENT_ARM_DISARM
         param1: 1,    // 1 = arm
-        param2: 0
+        param2: force ? 21196 : 0 // 21196 = force arm (skip pre-arm checks)
     });
 }
 
@@ -143,19 +144,93 @@ export async function setMissionSpeed(speed, speedType = 1) {
     });
 }
 
+// MAV_RESULT names, for reporting a rejected command back to the user
+const MAV_RESULT_NAMES = {
+    0: 'ACCEPTED', 1: 'TEMPORARILY_REJECTED', 2: 'DENIED',
+    3: 'UNSUPPORTED', 4: 'FAILED', 5: 'IN_PROGRESS', 6: 'CANCELLED'
+};
+
 /**
- * Set home position to current location
+ * Wait for the COMMAND_ACK of a given command.
+ * @param {number} command - MAV_CMD id to match
+ * @param {number} timeoutMs
+ * @returns {Promise<{result:number, resultName:string}>}
  */
-export async function setHomeCurrent() {
-    return sendCommand({
-        type: 'COMMAND_LONG',
+function waitForCommandAck(command, timeoutMs = 3000) {
+    return new Promise((resolve, reject) => {
+        let done = false;
+        const finish = (fn, arg) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            offMessage(77, onAck);
+            fn(arg);
+        };
+        const onAck = (data) => {
+            if (data.command !== command) return;
+            // IN_PROGRESS is a progress update, not the final answer — keep waiting
+            if (data.result === 5) return;
+            finish(resolve, { result: data.result, resultName: MAV_RESULT_NAMES[data.result] || `RESULT_${data.result}` });
+        };
+        const timer = setTimeout(() => finish(reject, new Error(`No COMMAND_ACK for command ${command} (timeout)`)), timeoutMs);
+        onMessage(77, onAck); // COMMAND_ACK
+    });
+}
+
+/**
+ * Set the home position.
+ *
+ * Sent as COMMAND_INT (not COMMAND_LONG): DO_SET_HOME carries a position, and in a
+ * COMMAND_LONG the lat/lon travel as float32 params, which loses several metres of
+ * precision. COMMAND_INT passes them as int32 degE7 with an explicit frame.
+ *
+ * The ACK is awaited and the autopilot is asked for a fresh HOME_POSITION on success,
+ * otherwise the GCS would keep showing the previous home and the command would look
+ * like it was ignored.
+ *
+ * @param {object} [loc] - omit to use the vehicle's current position
+ * @param {number} loc.lat - degrees
+ * @param {number} loc.lon - degrees
+ * @param {number} [loc.alt] - metres AMSL (0 = let the autopilot use terrain/current alt)
+ * @returns {Promise<{result:number, resultName:string}>}
+ */
+export async function setHome(loc = null) {
+    const useCurrent = !loc;
+    if (!useCurrent && (!Number.isFinite(loc.lat) || !Number.isFinite(loc.lon))) {
+        throw new Error('Invalid home coordinates');
+    }
+
+    await sendMessage({
+        type: 'COMMAND_INT',
         targetSystem: STATE.systemId,
         targetComponent: STATE.componentId,
+        frame: 0,     // MAV_FRAME_GLOBAL (alt = AMSL)
         command: 179, // MAV_CMD_DO_SET_HOME
-        param1: 1,    // 1 = use current position
+        param1: useCurrent ? 1 : 0, // 1 = use current position
         param2: 0, param3: 0, param4: 0,
-        param5: 0, param6: 0, param7: 0
+        x: useCurrent ? 0 : Math.round(loc.lat * 1e7),
+        y: useCurrent ? 0 : Math.round(loc.lon * 1e7),
+        z: useCurrent ? 0 : (Number.isFinite(loc.alt) ? loc.alt : 0)
     });
+
+    const ack = await waitForCommandAck(179);
+    if (ack.result === 0) {
+        // Drop the stale home so the marker/map can't keep showing the old one,
+        // then pull the new one from the autopilot.
+        STATE.homeLat = null;
+        STATE.homeLon = null;
+        STATE.homeAlt = null;
+        setTimeout(() => requestHomePosition().catch(() => {}), 300);
+    }
+    return ack;
+}
+
+/**
+ * Set home position to current location
+ * @returns {Promise<{result:number, resultName:string}>}
+ */
+export async function setHomeCurrent() {
+    return setHome(null);
 }
 
 /**

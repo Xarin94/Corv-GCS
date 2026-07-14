@@ -396,8 +396,7 @@ export function resize(width, height) {
 
 // Home position 3D marker
 let homeMarker3D = null;
-let homeMarkerLastLat = null;
-let homeMarkerLastLon = null;
+let homeMarkerLastKey = null;
 
 // Target marker 3D
 let targetMarker3D = null;
@@ -407,46 +406,60 @@ let trafficMarkers3D = [];
 
 /**
  * Update or create a 3D home position marker
+ *
+ * The terrain mesh Y axis is MSL elevation from the HGT data, while HOME_POSITION
+ * reports the vehicle's own AMSL altitude — the two can disagree by tens of metres
+ * (geoid model, baro/GPS bias), which sinks the 80 m pole below the terrain surface.
+ * Anchor the marker to the terrain elevation at home whenever it is available, the
+ * same way mission waypoints are placed, and fall back to the reported AMSL only
+ * while the HGT tile is still loading.
+ *
+ * @param {number|null} terrainElevation - MSL terrain elevation at home, or null
  */
-export function updateHomeMarker3D() {
+export function updateHomeMarker3D(terrainElevation = null) {
     if (!scene) return;
-    if (STATE.homeLat === null || STATE.homeLon === null) return;
 
-    // Skip if position hasn't changed
-    if (homeMarkerLastLat === STATE.homeLat && homeMarkerLastLon === STATE.homeLon) return;
-    homeMarkerLastLat = STATE.homeLat;
-    homeMarkerLastLon = STATE.homeLon;
+    if (STATE.homeLat === null || STATE.homeLon === null) {
+        if (homeMarker3D) { scene.remove(homeMarker3D); homeMarker3D = null; }
+        homeMarkerLastKey = null;
+        return;
+    }
 
-    // Remove old marker (geometry/materials are pooled — just remove from scene)
-    if (homeMarker3D) {
-        scene.remove(homeMarker3D);
+    const base = Number.isFinite(terrainElevation)
+        ? terrainElevation
+        : (Number.isFinite(STATE.homeAlt) ? STATE.homeAlt : 0);
+    const alt = base + (STATE.offsetAlt || 0);
+
+    // Rebuild only when position or resolved ground altitude actually changed
+    const key = `${STATE.homeLat.toFixed(7)},${STATE.homeLon.toFixed(7)},${alt.toFixed(1)}`;
+    if (key === homeMarkerLastKey && homeMarker3D && homeMarker3D.parent === scene) return;
+    homeMarkerLastKey = key;
+
+    if (!homeMarker3D) {
+        const group = new THREE.Group();
+
+        // Vertical pole (pooled geometry/material)
+        const pole = new THREE.Mesh(pooledGeo.homePole, pooledMat.homeOrange);
+        pole.position.y = 40;
+        group.add(pole);
+
+        // "H" marker sphere on top
+        const sphere = new THREE.Mesh(pooledGeo.homeSphere, pooledMat.homeOrange);
+        sphere.position.y = 85;
+        group.add(sphere);
+
+        // Ring around sphere
+        const ring = new THREE.Mesh(pooledGeo.homeRing, pooledMat.homeWhite);
+        ring.position.y = 85;
+        ring.rotation.x = Math.PI / 2;
+        group.add(ring);
+
+        homeMarker3D = group;
     }
 
     const pos = latLonToMeters(STATE.homeLat, STATE.homeLon);
-    // Home marker at MSL altitude of home + any user offset correction
-    const alt = (STATE.homeAlt || 0) + (STATE.offsetAlt || 0);
-
-    const group = new THREE.Group();
-
-    // Vertical pole (pooled geometry/material)
-    const pole = new THREE.Mesh(pooledGeo.homePole, pooledMat.homeOrange);
-    pole.position.y = 40;
-    group.add(pole);
-
-    // "H" marker sphere on top
-    const sphere = new THREE.Mesh(pooledGeo.homeSphere, pooledMat.homeOrange);
-    sphere.position.y = 85;
-    group.add(sphere);
-
-    // Ring around sphere
-    const ring = new THREE.Mesh(pooledGeo.homeRing, pooledMat.homeWhite);
-    ring.position.y = 85;
-    ring.rotation.x = Math.PI / 2;
-    group.add(ring);
-
-    group.position.set(pos.x, alt, pos.z);
-    scene.add(group);
-    homeMarker3D = group;
+    homeMarker3D.position.set(pos.x, alt, pos.z);
+    if (homeMarker3D.parent !== scene) scene.add(homeMarker3D);
 }
 
 /**
