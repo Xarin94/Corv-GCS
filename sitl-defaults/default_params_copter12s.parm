@@ -56,20 +56,22 @@ COMPASS_OFS3_Y  13
 COMPASS_OFS3_Z  -18
 
 # --- battery: 12S (4.2 V/cell full, 3.3 V/cell empty) ---
+# Failsafe thresholds sit low (3.4 / 3.3 V/cell): at ~10x hover power the
+# pack sags hard and higher thresholds would trip RTL during a speed run.
 BATT_MONITOR     4
 SIM_BATT_VOLTAGE 50.4
-BATT_CAPACITY    6000
+BATT_CAPACITY    8000
 MOT_BAT_VOLT_MAX 50.4
 MOT_BAT_VOLT_MIN 39.6
 BATT_ARM_VOLT    45.6
-BATT_LOW_VOLT    43.2
-BATT_CRT_VOLT    42.0
+BATT_LOW_VOLT    40.8
+BATT_CRT_VOLT    39.6
 
 # --- motors ---
 MOT_PWM_MIN      1000
 MOT_PWM_MAX      2000
 MOT_THST_EXPO    0.70
-MOT_THST_HOVER   0.12
+MOT_THST_HOVER   0.125   # firmware floor; the frame actually hovers at 0.08
 MOT_HOVER_LEARN  2
 MOT_SPIN_ARM     0.03
 MOT_SPIN_MIN     0.03
@@ -104,34 +106,34 @@ ATC_ACCEL_P_MAX  160000
 ATC_ACCEL_Y_MAX  40000
 ATC_THR_MIX_MAN  0.5
 
-# --- speed envelope: high-speed cruise ---
-ANGLE_MAX        6500    # centideg (<=4.6) — 65 deg lean
-ATC_ANGLE_MAX    65      # deg (4.7+)
-PILOT_SPEED_UP   500     # cm/s (<=4.6)
-PILOT_SPD_UP     5       # m/s (4.7+)
-PILOT_SPEED_DN   300
-PILOT_SPD_DN     3
+# --- speed envelope: 400 km/h (111 m/s) at the 85° lean limit ---
+ANGLE_MAX        8500    # centideg (<=4.6) — 85 deg lean
+ATC_ANGLE_MAX    85      # deg (4.7+)
+PILOT_SPEED_UP   800     # cm/s (<=4.6)
+PILOT_SPD_UP     8       # m/s (4.7+)
+PILOT_SPEED_DN   500
+PILOT_SPD_DN     5
 PILOT_Y_RATE     200
-WPNAV_SPEED      2500    # cm/s (<=4.6) — 25 m/s in AUTO
-WP_SPD           25      # m/s (4.7+)
-WPNAV_ACCEL      800
-WP_ACC           8
-WPNAV_SPEED_UP   500
-WP_SPD_UP        5
-WPNAV_SPEED_DN   300
-WP_SPD_DN        3
-WPNAV_JERK       5
-WP_JERK          5
-LOIT_SPEED       2500
-LOIT_SPEED_MS    25
-LOIT_ACC_MAX     800
-LOIT_ACC_MAX_M   8
-LOIT_BRK_ACCEL   600
-LOIT_BRK_ACC_M   6
-LOIT_BRK_JERK    800
-LOIT_BRK_JRK_M   8
-RTL_SPEED        1000
-RTL_SPEED_MS     10
+WPNAV_SPEED      11100   # cm/s (<=4.6) — 111 m/s = 400 km/h
+WP_SPD           111     # m/s (4.7+)
+WPNAV_ACCEL      1500
+WP_ACC           15
+WPNAV_SPEED_UP   800
+WP_SPD_UP        8
+WPNAV_SPEED_DN   500
+WP_SPD_DN        5
+WPNAV_JERK       10
+WP_JERK          10
+LOIT_SPEED       11100
+LOIT_SPEED_MS    111
+LOIT_ACC_MAX     1500
+LOIT_ACC_MAX_M   15
+LOIT_BRK_ACCEL   1000
+LOIT_BRK_ACC_M   10
+LOIT_BRK_JERK    1500
+LOIT_BRK_JRK_M   15
+RTL_SPEED        1500
+RTL_SPEED_MS     15
 RTL_ALT          3000
 RTL_ALT_M        30
 

@@ -1,6 +1,8 @@
 # CORV GCS — 12S high-speed quadcopter SITL frame model
 # Loaded with --model X:quad12s.json (file must sit in the SITL working dir).
-# Physics: ~2 kg 8" rig, thrust/weight ≈ 5, ~38 m/s at 45° bank → ~50 m/s at 65°.
+# Physics: ~2 kg rig, thrust/weight ≈ 12.5. Terminal speed scales with
+# sqrt(tan(lean)): 33 m/s at 45° → ~111 m/s (400 km/h) at the 85° limit,
+# where holding altitude needs T/W = 1/cos(85°) ≈ 11.5 — i.e. full power.
 
 {
     # total vehicle mass in kg
@@ -10,19 +12,19 @@
     "diagonal_size" : 0.40,
 
     # reference test: constant-speed flight in zero wind, used to fit drag
-    "refSpd" : 38.0,     # m/s
+    "refSpd" : 33.0,     # m/s at 45° → ~111 m/s at 85°
     "refAngle" : 45.0,   # degrees
     "refVoltage" : 46.0, # volts (12S under load)
     "refCurrent" : 28.0, # amps
     "refAlt" : 600,      # metres AMSL
     "refTempC" : 25,     # degrees C
-    "refBatRes" : 0.03,  # ohms (12S pack)
+    "refBatRes" : 0.005, # ohms — low-IR race pack, limits sag at ~10x hover power
 
     # full battery voltage: 12S x 4.2 V
     "maxVoltage" : 50.4,
 
     # full battery capacity, Ah (0 = unlimited)
-    "battCapacityAh" : 6.0,
+    "battCapacityAh" : 8.0,
 
     # MOT_THST_EXPO
     "propExpo" : 0.7,
@@ -30,8 +32,8 @@
     # approximate maximum yaw rate in deg/sec
     "refRotRate" : 400,
 
-    # hover throttle 0..1 — overpowered frame, T/W ~ 5
-    "hoverThrOut" : 0.12,
+    # hover throttle 0..1 — T/W ~ 12.5, needed to hold level flight at 85°
+    "hoverThrOut" : 0.08,
 
     # MOT_PWM_MIN / MOT_PWM_MAX
     "pwmMin" : 1000,
