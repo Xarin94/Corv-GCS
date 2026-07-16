@@ -1,0 +1,55 @@
+# CORV GCS — 12S high-speed quadcopter SITL frame model
+# Loaded with --model X:quad12s.json (file must sit in the SITL working dir).
+# Physics: ~2 kg 8" rig, thrust/weight ≈ 5, ~38 m/s at 45° bank → ~50 m/s at 65°.
+
+{
+    # total vehicle mass in kg
+    "mass" : 2.0,
+
+    # vehicle diameter in metres (motor-to-motor diagonal)
+    "diagonal_size" : 0.40,
+
+    # reference test: constant-speed flight in zero wind, used to fit drag
+    "refSpd" : 38.0,     # m/s
+    "refAngle" : 45.0,   # degrees
+    "refVoltage" : 46.0, # volts (12S under load)
+    "refCurrent" : 28.0, # amps
+    "refAlt" : 600,      # metres AMSL
+    "refTempC" : 25,     # degrees C
+    "refBatRes" : 0.03,  # ohms (12S pack)
+
+    # full battery voltage: 12S x 4.2 V
+    "maxVoltage" : 50.4,
+
+    # full battery capacity, Ah (0 = unlimited)
+    "battCapacityAh" : 6.0,
+
+    # MOT_THST_EXPO
+    "propExpo" : 0.7,
+
+    # approximate maximum yaw rate in deg/sec
+    "refRotRate" : 400,
+
+    # hover throttle 0..1 — overpowered frame, T/W ~ 5
+    "hoverThrOut" : 0.12,
+
+    # MOT_PWM_MIN / MOT_PWM_MAX
+    "pwmMin" : 1000,
+    "pwmMax" : 2000,
+
+    # MOT_SPIN_MIN / MOT_SPIN_MAX
+    "spin_min" : 0.03,
+    "spin_max" : 0.95,
+
+    # maximum motor slew rate, 0 = disabled
+    "slew_max" : 0,
+
+    # total effective disc area, sq m (4 x 8" rotors)
+    "disc_area" : 0.32,
+
+    # momentum drag coefficient (ratio vs ducted rotor of same disc area)
+    "mdrag_coef" : 0.10,
+
+    # number of motors
+    "num_motors" : 4
+}

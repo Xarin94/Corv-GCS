@@ -11,8 +11,11 @@ const https = require('https');
 const http = require('http');
 
 // SITL binary info per vehicle type
+// copter12s reuses the arducopter binary with a custom JSON frame model
+// (X:quad12s.json — high-speed 12S quad, shipped in sitl-defaults/)
 const VEHICLE_MAP = {
     copter:  { binary: 'arducopter',  model: 'quad' },
+    copter12s: { binary: 'arducopter', model: 'X:quad12s.json' },
     plane:   { binary: 'arduplane',   model: 'plane' },
     rover:   { binary: 'ardurover',   model: 'rover' },
     sub:     { binary: 'ardusub',     model: 'vectored' },
@@ -28,8 +31,8 @@ function getFirmwareUrl(vehicle, version) {
     const info = VEHICLE_MAP[vehicle];
     if (!info) return null;
     const pathMap = {
-        copter: 'Copter', plane: 'Plane', rover: 'Rover', sub: 'Sub',
-        heli: 'Copter', quadplane: 'Plane'
+        copter: 'Copter', copter12s: 'Copter', plane: 'Plane', rover: 'Rover',
+        sub: 'Sub', heli: 'Copter', quadplane: 'Plane'
     };
     const fwPath = pathMap[vehicle] || 'Copter';
     // ArduPilot only provides Linux x86_64 SITL binaries
@@ -49,6 +52,28 @@ function getBinaryPath(vehicle, version) {
     if (!info) return null;
     // Always Linux binary (no .exe), even on Windows (runs via WSL)
     return path.join(getSitlDir(), `${info.binary}_${version}`);
+}
+
+/**
+ * Copy bundled SITL assets (frame model JSONs, default_params_*.parm) from
+ * the app's sitl-defaults/ folder into the SITL working directory. Existing
+ * copies are refreshed only when the bundled file is newer, so hand edits
+ * in userData survive until the app ships an update.
+ */
+function syncSitlAssets() {
+    const srcDir = path.join(__dirname, 'sitl-defaults');
+    if (!fs.existsSync(srcDir)) return;
+    for (const name of fs.readdirSync(srcDir)) {
+        try {
+            const src = path.join(srcDir, name);
+            const dst = path.join(getSitlDir(), name);
+            if (!fs.existsSync(dst) || fs.statSync(src).mtimeMs > fs.statSync(dst).mtimeMs) {
+                fs.copyFileSync(src, dst);
+            }
+        } catch (e) {
+            console.log(`[sitl] Could not sync asset ${name}: ${e.message}`);
+        }
+    }
 }
 
 // State
@@ -164,6 +189,9 @@ function initSITLHandlers(win) {
             throw new Error('SITL binary not found. Download it first.');
         }
 
+        // Refresh bundled frame models / default params in the SITL dir
+        syncSitlAssets();
+
         const model = options.model || info.model;
         const homeLat = options.homeLat || 47.2603;
         const homeLon = options.homeLon || 11.3439;
@@ -178,10 +206,13 @@ function initSITLHandlers(win) {
             '-I0'
         ];
 
-        // Add default params file if it exists
-        const defaultParams = path.join(getSitlDir(), `default_params_${vehicle}.parm`);
-        if (fs.existsSync(defaultParams)) {
-            args.push('--defaults', defaultParams);
+        // Add default params file if it exists. Passed as a bare filename:
+        // SITL runs with cwd = getSitlDir() on Linux, and on Windows the
+        // assets are copied next to the binary in the WSL run dir — an
+        // absolute Windows path would be meaningless inside WSL.
+        const defaultsName = `default_params_${vehicle}.parm`;
+        if (fs.existsSync(path.join(getSitlDir(), defaultsName))) {
+            args.push('--defaults', defaultsName);
         }
 
         sendSitlStatus('LAUNCHING', `Starting ${vehicle} SITL...`);
@@ -216,6 +247,9 @@ function initSITLHandlers(win) {
             const bashScript = [
                 `mkdir -p ${wslRunDir}`,
                 `cp "${wslBin}" ${wslRunDir}/sitl_bin`,
+                // frame model JSONs + default params must sit in the run dir
+                // (SITL resolves them relative to its cwd)
+                `(cp "${wslCwd}"/*.parm "${wslCwd}"/*.json ${wslRunDir}/ 2>/dev/null || true)`,
                 `chmod +x ${wslRunDir}/sitl_bin`,
                 `cd ${wslRunDir}`,
                 `./sitl_bin ${allArgs.join(' ')} 2>&1`

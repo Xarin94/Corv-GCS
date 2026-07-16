@@ -20,16 +20,18 @@ export const SHADOW_CHUNK_SIZE = 5000;
 // Tile system - zoom levels defined in TerrainManager.js (dual-zoom LOD)
 export const MAX_CONCURRENT_LOADS = 6;
 
-// Demo mode - fixed-wing survey drone
-export const DEMO_TARGET_INTERVAL = 12000;
-export const DEMO_SMOOTHING = 0.005;
-export const DEMO_BASE_SPEED = 25;       // m/s typical mapping drone
-export const DEMO_SPEED_VARIANCE = 3;    // m/s
-export const DEMO_ALT_AGL = 120;         // meters above ground level
-export const DEMO_PITCH_RANGE = 0.07;    // ~4 degrees
-export const DEMO_ROLL_RANGE = 0.26;     // ~15 degrees
-export const DEMO_LEG_LENGTH = 800;      // meters before turning
-export const DEMO_LEG_SPACING = 60;      // meters between survey legs
+// Demo mode - realistic fixed-wing patrol circuit (coordinated turns)
+export const DEMO_CRUISE_SPEED = 28;              // m/s cruise airspeed
+export const DEMO_SPEED_VARIANCE = 4;             // m/s gentle airspeed variation
+export const DEMO_CRUISE_AGL = 150;               // m cruise height above circuit-centre terrain
+export const DEMO_MIN_CLEARANCE = 90;             // m minimum terrain clearance (climb trigger)
+export const DEMO_MAX_VS = 3.5;                   // m/s climb/descent limit — gentle terrain follow
+export const DEMO_MAX_BANK = 28 * Math.PI / 180;  // rad, max bank in a coordinated turn
+export const DEMO_ROLL_RATE = 22 * Math.PI / 180; // rad/s, max roll rate (aileron authority)
+export const DEMO_HDG_GAIN = 2.2;                 // commanded bank per rad of heading error
+export const DEMO_STRAIGHT = 1100;                // m straight-leg length of the racetrack
+export const DEMO_TURN_RADIUS = 340;              // m radius of the racetrack turns
+export const DEMO_CAPTURE_R = 130;                // m waypoint capture radius
 
 // Loading overlay
 export const INITIAL_MIN_VISIBLE_MS = 600;

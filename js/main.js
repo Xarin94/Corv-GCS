@@ -6,10 +6,11 @@
 // Core imports
 import {
     ORIGIN, CAMERA_FOV, VISIBILITY_RADIUS, RELOAD_DISTANCE, RAD,
-    DEMO_TARGET_INTERVAL, DEMO_SMOOTHING, DEMO_BASE_SPEED, DEMO_SPEED_VARIANCE,
-    DEMO_ALT_AGL, DEMO_PITCH_RANGE, DEMO_ROLL_RANGE, DEMO_LEG_LENGTH, DEMO_LEG_SPACING
+    DEMO_CRUISE_SPEED, DEMO_SPEED_VARIANCE, DEMO_CRUISE_AGL, DEMO_MIN_CLEARANCE,
+    DEMO_MAX_VS, DEMO_MAX_BANK, DEMO_ROLL_RATE, DEMO_HDG_GAIN,
+    DEMO_STRAIGHT, DEMO_TURN_RADIUS, DEMO_CAPTURE_R
 } from './core/constants.js';
-import { STATE, demoAttitude, demoSurveyState, pushGHistory } from './core/state.js';
+import { STATE, demoFlightState, pushGHistory } from './core/state.js';
 import { latLonToMeters, calculateDistance, lerpColor, getHeightColor } from './core/utils.js';
 import { fetchADSBData, downloadTrafficCSV, getNearestTraffic } from './adsb/ADSBManager.js';
 
@@ -89,6 +90,10 @@ import {
 
 // ============== CAMERA / MODEL (1P / 3P) ==============
 let cameraMode = 'FIRST'; // 'FIRST' | 'THIRD'
+// First-person camera up-tilt (rad). Like an FPV camera mounted tilted up:
+// a high-power copter leans hard forward at speed, so tilting the view up
+// keeps the flight direction in frame instead of the ground.
+let cameraUpTilt = 0;
 let vehicle = null;
 let vehicleLoadStarted = false;
 let vehicleLoadFailed = false;
@@ -432,6 +437,12 @@ function toggleCameraMode() {
     setCameraMode(cameraMode === 'FIRST' ? 'THIRD' : 'FIRST');
 }
 
+function toggleCameraTilt() {
+    cameraUpTilt = cameraUpTilt === 0 ? Math.PI / 2 : 0;
+    const btn = document.getElementById('btn-tilt');
+    if (btn) btn.classList.toggle('active', cameraUpTilt !== 0);
+}
+
 function initThirdPersonControls() {
     const renderer = getRenderer();
     if (!renderer) return;
@@ -484,6 +495,7 @@ function initThirdPersonControls() {
 
 // Expose for HTML onclick
 window.toggleCameraMode = toggleCameraMode;
+window.toggleCameraTilt = toggleCameraTilt;
 
 // ============== SUN POSITION CALCULATOR ==============
 function calculateSunPosition(date, lat, lon) {
@@ -722,7 +734,7 @@ function update3DWorld() {
         // First-person camera (existing behavior)
         camera.position.set(planePos.x, Math.max(totalAlt, 1), planePos.z);
         camera.rotation.order = 'YXZ';
-        camera.rotation.x = smoothAtt.pitch;
+        camera.rotation.x = smoothAtt.pitch + cameraUpTilt;
         camera.rotation.z = -smoothAtt.roll;
         camera.rotation.y = -smoothAtt.yaw;
     }
@@ -934,7 +946,6 @@ let lastFrameTime = performance.now();
 let lastRenderTime = 0; // Throttle heavy 3D render to TARGET_RENDER_FPS
 const TARGET_RENDER_FPS = 60; // caps render work on >60Hz monitors
 const RENDER_INTERVAL = 1000 / TARGET_RENDER_FPS; // ~16.6ms
-let demoTargetChangeTime = 0;
 
 // Slow-path update throttles (these don't need to run at monitor refresh rate)
 let lastSunPositionUpdate = 0;     // solar almanac + hillshade check: 1 Hz
@@ -942,11 +953,6 @@ let lastUiBarUpdate = 0;           // command bar / sidebar DOM writes: 10 Hz
 let lastTrafficMarkersUpdate = 0;  // ADS-B 3D markers (data refreshes every ~10 s): 2 Hz
 let lastTelemetryUiUpdate = 0;     // HUD cells / telemetry panel text: 20 Hz
 
-
-// Demo speed smoothing (m/s)
-let demoSpeed = DEMO_BASE_SPEED;
-let demoSpeedTarget = DEMO_BASE_SPEED;
-let demoSpeedVel = 0;
 
 // Map reload throttling
 let lastMapReloadAt = 0;
@@ -959,6 +965,57 @@ function updateFPS() {
         fpsFrameCount = 0;
         fpsLastTime = now;
     }
+}
+
+/**
+ * Build the demo patrol circuit: a closed racetrack (two straight legs joined
+ * by 180° turns) around the current aircraft position. Waypoints are geographic
+ * fixes, so the guidance re-captures them every lap → a stable, periodic flight.
+ * The aircraft starts on the first waypoint heading north up the right leg.
+ */
+function initDemoCircuit(st, metersPerLat) {
+    st.centerLat = STATE.lat;
+    st.centerLon = STATE.lon;
+    const mLon = Math.max(1, metersPerLat * Math.cos(st.centerLat * Math.PI / 180));
+    const R = DEMO_TURN_RADIUS;
+    const H = DEMO_STRAIGHT / 2;
+    const arcSteps = 6;
+    const pts = [];
+    // n = metres north, e = metres east relative to the circuit centre
+    const push = (n, e) => pts.push({
+        lat: st.centerLat + n / metersPerLat,
+        lon: st.centerLon + e / mLon
+    });
+    // Right straight, north-bound (east side of the track)
+    push(-H, R); push(0, R); push(H, R);
+    // Top 180° turn: θ 0→π gives (R·cosθ, H + R·sinθ)
+    for (let i = 1; i < arcSteps; i++) {
+        const th = Math.PI * i / arcSteps;
+        push(H + R * Math.sin(th), R * Math.cos(th));
+    }
+    // Left straight, south-bound (west side of the track)
+    push(H, -R); push(0, -R); push(-H, -R);
+    // Bottom 180° turn: θ π→2π gives (R·cosθ, -H + R·sinθ)
+    for (let i = 1; i < arcSteps; i++) {
+        const th = Math.PI + Math.PI * i / arcSteps;
+        push(-H + R * Math.sin(th), R * Math.cos(th));
+    }
+    st.waypoints = pts;
+    // Start parked on the first fix, wings level, pointing up the right leg
+    STATE.lat = pts[0].lat;
+    STATE.lon = pts[0].lon;
+    STATE.yaw = 0; // north
+    st.wpIndex = 1;
+    st.prevWpDist = null;
+    st.bank = 0;
+    st.speed = DEMO_CRUISE_SPEED;
+    st.speedTarget = DEMO_CRUISE_SPEED;
+    const terrain = STATE.terrainHeight !== null ? STATE.terrainHeight : 600;
+    st.baseAlt = terrain + DEMO_CRUISE_AGL;
+    st.baseAltLocked = STATE.terrainHeight !== null;
+    STATE.rawAlt = st.baseAlt;
+    st.windChangeTime = 0; // pick an initial gust on the first frame
+    st.initialized = true;
 }
 
 // ============== ANIMATION LOOP ==============
@@ -978,105 +1035,121 @@ function animate() {
         updateSunPosition();
     }
 
-    // Demo mode - fixed-wing survey drone
+    // Demo mode - realistic fixed-wing patrol circuit with coordinated turns
     if (STATE.mode === 'LIVE' && !STATE.connected) {
         const metersPerLat = 111320;
-        const sv = demoSurveyState;
+        const st = demoFlightState;
+        const dt = Math.min(0.1, Math.max(1e-3, deltaTime)); // clamp against frame hitches
 
-        // Survey pattern state machine
-        const dist = Math.max(10, demoSpeed) * deltaTime;
+        if (!st.initialized) initDemoCircuit(st, metersPerLat);
 
-        if (sv.turning) {
-            // Smooth 180-degree turn between survey legs
-            sv.turnProgress += deltaTime / 10; // ~10s per turn
-            if (sv.turnProgress >= 1.0) {
-                // Turn complete
-                sv.turning = false;
-                sv.turnProgress = 0;
-                sv.distOnLeg = 0;
-                sv.legIndex++;
-                sv.direction *= -1; // alternate turn direction
-                sv.legHeading = (sv.legHeading + Math.PI) % (Math.PI * 2);
-                demoAttitude.yaw.target = sv.legHeading;
-                demoAttitude.roll.target = 0;
-                demoAttitude.pitch.target = (Math.random() - 0.5) * DEMO_PITCH_RANGE * 0.5;
-            } else {
-                // During turn: interpolate heading, apply bank
-                const turnAngle = Math.PI * sv.turnProgress; // 0 -> PI
-                demoAttitude.yaw.target = sv.legHeading + turnAngle * sv.direction;
-                demoAttitude.roll.target = sv.direction * DEMO_ROLL_RANGE * 0.5 *
-                    Math.sin(sv.turnProgress * Math.PI); // smooth bank envelope
-                demoAttitude.pitch.target = DEMO_PITCH_RANGE * 0.3; // slight nose-up in turn
-            }
+        // Lock cruise altitude to the real centre-terrain height once it loads
+        if (STATE.terrainHeight !== null && !st.baseAltLocked) {
+            st.baseAlt = STATE.terrainHeight + DEMO_CRUISE_AGL;
+            STATE.rawAlt = st.baseAlt;
+            st.baseAltLocked = true;
+        }
+
+        const metersPerLon = Math.max(1, metersPerLat * Math.cos(st.centerLat * Math.PI / 180));
+
+        // ── Waypoint guidance ─────────────────────────────────────────
+        const wp = st.waypoints[st.wpIndex];
+        const dN = (wp.lat - STATE.lat) * metersPerLat;
+        const dE = (wp.lon - STATE.lon) * metersPerLon;
+        const distWp = Math.hypot(dN, dE);
+        // Advance on capture, or once we've flown past the fix (distance growing)
+        if (distWp < DEMO_CAPTURE_R ||
+            (st.prevWpDist !== null && distWp > st.prevWpDist && distWp < DEMO_CAPTURE_R * 2.5)) {
+            st.wpIndex = (st.wpIndex + 1) % st.waypoints.length;
+            st.prevWpDist = null;
         } else {
-            // Straight survey leg
-            sv.distOnLeg += dist;
-            demoAttitude.roll.target = (Math.random() - 0.5) * 0.02; // near-level wings
-            demoAttitude.pitch.target = (Math.random() - 0.5) * DEMO_PITCH_RANGE * 0.3;
-            demoAttitude.yaw.target = sv.legHeading;
-
-            if (sv.distOnLeg >= DEMO_LEG_LENGTH) {
-                // Start turn
-                sv.turning = true;
-                sv.turnProgress = 0;
-            }
+            st.prevWpDist = distWp;
         }
+        const desiredHeading = Math.atan2(dE, dN); // 0 = north, +CW toward east
 
-        // Vary speed slightly during legs
-        if (now - demoTargetChangeTime > DEMO_TARGET_INTERVAL) {
-            demoTargetChangeTime = now;
-            demoSpeedTarget = DEMO_BASE_SPEED + (Math.random() - 0.5) * DEMO_SPEED_VARIANCE * 2;
-        }
+        // ── Coordinated turn: bank commands the yaw rate ──────────────
+        let hdgErr = desiredHeading - STATE.yaw;
+        hdgErr = Math.atan2(Math.sin(hdgErr), Math.cos(hdgErr)); // wrap to [-π, π]
+        const bankCmd = Math.max(-DEMO_MAX_BANK,
+            Math.min(DEMO_MAX_BANK, DEMO_HDG_GAIN * hdgErr));
+        // Roll toward the commanded bank: first-order (τ≈0.7s), rate-limited
+        let rollRate = (bankCmd - st.bank) / 0.7;
+        rollRate = Math.max(-DEMO_ROLL_RATE, Math.min(DEMO_ROLL_RATE, rollRate));
+        st.bank += rollRate * dt;
+        STATE.roll = st.bank;
+        STATE.rollRate = rollRate;
 
-        const smoothFactor = DEMO_SMOOTHING;
-        const dampFactor = 0.92;
+        // ── Airspeed: gentle drift, a little slower in steep banks ────
+        const bankFrac = Math.abs(st.bank) / DEMO_MAX_BANK;
+        st.speedTarget = DEMO_CRUISE_SPEED - 3 * bankFrac +
+            Math.sin(now * 0.0003) * DEMO_SPEED_VARIANCE * 0.5;
+        st.speed += (st.speedTarget - st.speed) * Math.min(1, dt / 3); // τ≈3s
+        const V = Math.max(12, st.speed);
 
-        demoAttitude.pitch.velocity = demoAttitude.pitch.velocity * dampFactor +
-            (demoAttitude.pitch.target - demoAttitude.pitch.current) * smoothFactor;
-        demoAttitude.pitch.current += demoAttitude.pitch.velocity;
-
-        demoAttitude.roll.velocity = demoAttitude.roll.velocity * dampFactor +
-            (demoAttitude.roll.target - demoAttitude.roll.current) * smoothFactor;
-        demoAttitude.roll.current += demoAttitude.roll.velocity;
-
-        demoAttitude.yaw.velocity = demoAttitude.yaw.velocity * dampFactor +
-            (demoAttitude.yaw.target - demoAttitude.yaw.current) * smoothFactor;
-        demoAttitude.yaw.current += demoAttitude.yaw.velocity;
-
-        // Smooth speed changes
-        demoSpeedVel = demoSpeedVel * dampFactor + (demoSpeedTarget - demoSpeed) * smoothFactor;
-        demoSpeed += demoSpeedVel;
-        const speed = Math.max(10, demoSpeed);
-
-        STATE.pitch = demoAttitude.pitch.current;
-        STATE.roll = demoAttitude.roll.current;
-
+        // Coordinated-turn yaw rate: ω = g·tan(φ) / V
+        const omega = 9.81 * Math.tan(st.bank) / V;
         const twoPi = Math.PI * 2;
-        STATE.yaw = ((demoAttitude.yaw.current % twoPi) + twoPi) % twoPi;
+        STATE.yaw = ((STATE.yaw + omega * dt) % twoPi + twoPi) % twoPi;
+        STATE.yawRate = omega;
 
-        // Move according to yaw + pitch
-        const moveDist = speed * deltaTime;
+        // ── Wind: slowly-varying air-mass velocity (NED) ─────────────
+        if (now > st.windChangeTime) {
+            st.windChangeTime = now + 20000 + Math.random() * 20000; // new gust 20-40 s
+            const wSpeed = 3 + Math.random() * 3;   // 3-6 m/s (well below airspeed)
+            const wFrom = Math.random() * twoPi;     // direction wind comes FROM
+            st.windTargetN = -Math.cos(wFrom) * wSpeed; // air-velocity vector (blows toward)
+            st.windTargetE = -Math.sin(wFrom) * wSpeed;
+        }
+        st.windN += (st.windTargetN - st.windN) * Math.min(1, dt / 8); // τ≈8s
+        st.windE += (st.windTargetE - st.windE) * Math.min(1, dt / 8);
+        STATE.windSpeed = Math.hypot(st.windN, st.windE);
+        STATE.windDir = (Math.atan2(-st.windE, -st.windN) * 180 / Math.PI + 360) % 360; // FROM
+        STATE.windDataTime = now;
+
+        // ── Altitude: fixed cruise MSL, gentle rate-limited terrain follow
+        const terrainElev = STATE.terrainHeight !== null
+            ? STATE.terrainHeight : (st.baseAlt - DEMO_CRUISE_AGL);
+        let targetAlt = st.baseAlt;
+        const clearanceFloor = terrainElev + DEMO_MIN_CLEARANCE;
+        if (targetAlt < clearanceFloor) targetAlt = clearanceFloor; // climb over rising ground
+        if (!Number.isFinite(STATE.rawAlt) || STATE.rawAlt <= 0) STATE.rawAlt = targetAlt;
+        let vsCmd = (targetAlt - STATE.rawAlt) * 0.15; // low gain — no bump-hugging
+        vsCmd = Math.max(-DEMO_MAX_VS, Math.min(DEMO_MAX_VS, vsCmd));
+        STATE.vs += (vsCmd - STATE.vs) * Math.min(1, dt / 1.5); // smooth VS (τ≈1.5s)
+        STATE.rawAlt += STATE.vs * dt;
+
+        // ── Pitch: air-mass climb angle + load-factor pull in the turn ─
+        const climbAngle = Math.asin(Math.max(-0.5, Math.min(0.5, STATE.vs / V)));
+        const loadComp = (1 / Math.cos(st.bank) - 1) * 0.06; // nose-up to hold alt in bank
+        const pitchCmd = climbAngle + loadComp;
+        const prevPitch = STATE.pitch;
+        STATE.pitch += (pitchCmd - STATE.pitch) * Math.min(1, dt / 0.6);
+        STATE.pitchRate = (STATE.pitch - prevPitch) / dt;
+
+        // ── Integrate GROUND position = airspeed-along-nose + wind ────
         const cosPitch = Math.cos(STATE.pitch);
-        const sinPitch = Math.sin(STATE.pitch);
-        const northMeters = Math.cos(STATE.yaw) * (moveDist * cosPitch);
-        const eastMeters = Math.sin(STATE.yaw) * (moveDist * cosPitch);
-
-        const metersPerLon = Math.max(1, metersPerLat * Math.cos(STATE.lat * Math.PI / 180));
+        const airHoriz = V * dt * cosPitch;                 // horizontal air distance
+        const northMeters = Math.cos(STATE.yaw) * airHoriz + st.windN * dt;
+        const eastMeters = Math.sin(STATE.yaw) * airHoriz + st.windE * dt;
         STATE.lat += northMeters / metersPerLat;
         STATE.lon += eastMeters / metersPerLon;
 
-        // Terrain-following altitude: maintain AGL over terrain
-        const terrainElev = STATE.terrainHeight !== null ? STATE.terrainHeight : 600;
-        const targetAlt = terrainElev + DEMO_ALT_AGL;
-        if (!Number.isFinite(STATE.rawAlt) || STATE.rawAlt <= 0) STATE.rawAlt = targetAlt;
-        // Smooth altitude tracking toward target AGL
-        STATE.rawAlt += (targetAlt - STATE.rawAlt) * 0.02;
-        const upMeters = (targetAlt - STATE.rawAlt) * deltaTime;
-        STATE.vs = deltaTime > 0 ? (upMeters / deltaTime) : 0;
-
-        // Airspeed / groundspeed
-        STATE.as = speed;
-        STATE.gs = Math.abs(speed * cosPitch);
+        // Ground velocity (NED) and the inertial velocity vector for the HUD
+        STATE.vn = northMeters / dt;
+        STATE.ve = eastMeters / dt;
+        STATE.vd = -STATE.vs;
+        const groundHoriz = Math.hypot(STATE.vn, STATE.ve);
+        STATE.as = V;
+        STATE.gs = groundHoriz;
+        const inertialTrack = Math.atan2(STATE.ve, STATE.vn);
+        const inertialGamma = Math.atan2(STATE.vs, Math.max(1, groundHoriz));
+        STATE.track = ((inertialTrack % twoPi) + twoPi) % twoPi;
+        STATE.gamma = inertialGamma;
+        // Flight-path marker offsets from the nose: crab (wind) + climb vs pitch
+        let crab = inertialTrack - STATE.yaw;
+        crab = Math.atan2(Math.sin(crab), Math.cos(crab)); // wrap
+        STATE.ssa = crab;                       // horizontal FPM offset
+        STATE.aoa = STATE.pitch - inertialGamma; // vertical FPM offset
 
         // Simulate LiDAR rangefinder (downward-facing)
         if (STATE.terrainHeight !== null) {
@@ -1087,10 +1160,11 @@ function animate() {
             STATE.rangefinderDist = null;
         }
 
-        // G-load: NED body frame → az negative at rest (-1G), more negative in turns
+        // G-load: coordinated-turn load factor n = 1/cos(φ) (az negative at rest)
+        const loadFactor = Math.min(3, 1 / Math.cos(st.bank));
         STATE.ax = 0;
         STATE.ay = 0;
-        STATE.az = -9.81 * (1 + Math.min(0.15, Math.abs(STATE.roll) * 0.5));
+        STATE.az = -9.81 * loadFactor;
         pushGHistory();
     }
 

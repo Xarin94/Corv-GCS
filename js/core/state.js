@@ -155,15 +155,30 @@ export function setDemoTargetChangeTime(time) {
 }
 
 /**
- * Survey pattern state machine for drone demo
+ * Realistic patrol-circuit state machine for the demo flight.
+ * The aircraft flies a closed racetrack, banking into coordinated turns
+ * (yaw rate ω = g·tan φ / V) and cruising at a fixed altitude with only
+ * gentle, rate-limited climbs when terrain rises into its clearance floor.
  */
-export const demoSurveyState = {
-    legIndex: 0,
-    distOnLeg: 0,
-    turning: false,
-    turnProgress: 0,
-    direction: 1,       // +1 = turn right, -1 = turn left
-    legHeading: 0       // current leg heading in radians (north)
+export const demoFlightState = {
+    initialized: false,
+    baseAltLocked: false,
+    centerLat: 0,
+    centerLon: 0,
+    baseAlt: 0,          // cruise altitude AMSL (m)
+    waypoints: [],       // [{lat, lon}] closed loop
+    wpIndex: 0,
+    prevWpDist: null,    // for the "passed abeam" advance test
+    bank: 0,             // current roll (rad)
+    speed: 0,            // current airspeed (m/s)
+    speedTarget: 0,
+    // Slowly-varying wind (air-velocity vector, m/s NED) — makes the HUD
+    // velocity vector crab away from the nose.
+    windN: 0,
+    windE: 0,
+    windTargetN: 0,
+    windTargetE: 0,
+    windChangeTime: 0
 };
 
 // Ring buffer for G history
