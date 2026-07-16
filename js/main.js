@@ -1331,6 +1331,30 @@ function toggleTrajectory() {
     setCorridorVisible(trajectoryEnabled);
 }
 
+// ============== VIEW TOGGLE KEYBOARD SHORTCUTS ==============
+// Single-key quick toggles for the 3D view. Active only on the Flight Data
+// tab and ignored while typing in a field or with a modifier held.
+//   T = tilt first-person view +90° up      P = predicted trajectory corridor
+//   M = satellite map overlay               L = realistic sunlight
+function initViewShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey || e.altKey || e.metaKey) return;
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        const flightTab = document.getElementById('tab-flight-data');
+        if (!flightTab || !flightTab.classList.contains('active')) return;
+
+        switch (e.key.toLowerCase()) {
+            case 't': toggleCameraTilt(); break;
+            case 'p': toggleTrajectory(); break;
+            case 'm': toggleSatellite(); break;
+            case 'l': toggleSunlight(); break;
+            default: return;
+        }
+        e.preventDefault();
+    });
+}
+
 // ============== HGT FILE INPUT ==============
 function setupHGTInput() {
     document.getElementById('hgt-input').onchange = (e) => {
@@ -1546,6 +1570,7 @@ function init() {
     // Setup event listeners
     window.onresize = handleResize;
     setupHGTInput();
+    initViewShortcuts();
     setupTimeSlider();
     setupMapBrightnessSlider();
     setupAttSmoothSlider();
