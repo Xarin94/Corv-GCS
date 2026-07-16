@@ -60,7 +60,7 @@ COMPASS_OFS3_Z  -18
 # pack sags hard and higher thresholds would trip RTL during a speed run.
 BATT_MONITOR     4
 SIM_BATT_VOLTAGE 50.4
-BATT_CAPACITY    8000
+BATT_CAPACITY    16000
 MOT_BAT_VOLT_MAX 50.4
 MOT_BAT_VOLT_MIN 39.6
 BATT_ARM_VOLT    45.6
@@ -72,6 +72,11 @@ MOT_PWM_MIN      1000
 MOT_PWM_MAX      2000
 MOT_THST_EXPO    0.70
 MOT_THST_HOVER   0.125   # firmware floor; the frame actually hovers at 0.08
+# vertical (throttle) loop softened for T/W ~12.5: the firmware default
+# PSC_ACCZ gains (0.5/1.0) hunt on such a steep thrust curve and the
+# resulting throttle dither reads as Z-axis "motor vibration" in the sim
+PSC_ACCZ_P       0.125
+PSC_ACCZ_I       0.25
 MOT_HOVER_LEARN  2
 MOT_SPIN_ARM     0.03
 MOT_SPIN_MIN     0.03
@@ -137,16 +142,15 @@ RTL_SPEED_MS     15
 RTL_ALT          3000
 RTL_ALT_M        30
 
-# --- simulated vibration / sensor noise: LOW ---
-# Motor vibration off, just a whisper of sensor noise so the HUD looks alive.
-# Set the RND values to 0 for perfectly clean gyros/accels.
+# --- simulated vibration / sensor noise: ZERO ---
+# Motor vibration and sensor noise fully off: perfectly clean gyros/accels.
 SIM_VIB_MOT_MAX  0
 SIM_VIB_MOT_MASK 0
 SIM_VIB_FREQ_X   0
 SIM_VIB_FREQ_Y   0
 SIM_VIB_FREQ_Z   0
-SIM_GYR1_RND     0.05    # deg/s
-SIM_GYR2_RND     0.05
-SIM_ACC1_RND     0.2     # m/s^2
-SIM_ACC2_RND     0.2
+SIM_GYR1_RND     0
+SIM_GYR2_RND     0
+SIM_ACC1_RND     0
+SIM_ACC2_RND     0
 SIM_BARO_RND     0

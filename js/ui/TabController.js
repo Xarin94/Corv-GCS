@@ -140,7 +140,7 @@ function initSubTabs() {
 }
 
 /**
- * Initialize setup vertical nav switching
+ * Initialize setup vertical nav switching (collapsible macro-category groups)
  */
 function initSetupVerticalNav() {
     const nav = document.querySelector('.setup-vertical-nav');
@@ -151,6 +151,23 @@ function initSetupVerticalNav() {
     if (!contentArea) return;
 
     const panels = contentArea.querySelectorAll('.sub-tab-content');
+
+    // Collapsible group headers (state persisted across sessions)
+    const COLLAPSE_KEY = 'setup-nav-collapsed';
+    let collapsedState = {};
+    try { collapsedState = JSON.parse(localStorage.getItem(COLLAPSE_KEY)) || {}; } catch (e) { /* ignore */ }
+
+    nav.querySelectorAll('.setup-nav-group').forEach(group => {
+        const name = group.dataset.group;
+        if (collapsedState[name]) group.classList.add('collapsed');
+        const header = group.querySelector('.setup-nav-group-header');
+        if (!header) return;
+        header.addEventListener('click', () => {
+            group.classList.toggle('collapsed');
+            collapsedState[name] = group.classList.contains('collapsed');
+            try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsedState)); } catch (e) { /* ignore */ }
+        });
+    });
 
     buttons.forEach(btn => {
         btn.addEventListener('click', () => {
@@ -164,8 +181,35 @@ function initSetupVerticalNav() {
             btn.classList.add('active');
             const panel = contentArea.querySelector(`#subtab-${section}`);
             if (panel) panel.classList.add('active');
+
+            // Make sure the group containing the active section is expanded
+            // (matters when sections are activated programmatically)
+            const group = btn.closest('.setup-nav-group');
+            if (group && group.classList.contains('collapsed')) {
+                group.classList.remove('collapsed');
+                collapsedState[group.dataset.group] = false;
+                try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsedState)); } catch (e) { /* ignore */ }
+            }
         });
     });
+}
+
+/**
+ * Set the status dot on a setup-nav section button (and its group header,
+ * so activity is visible while the group is collapsed)
+ */
+function setNavDot(section, on) {
+    const btn = document.querySelector(`.setup-nav-btn[data-section="${section}"]`);
+    if (!btn) return;
+    const dot = btn.querySelector('.nav-status-dot');
+    if (dot) dot.classList.toggle('on', !!on);
+
+    const group = btn.closest('.setup-nav-group');
+    if (group) {
+        const anyOn = [...group.querySelectorAll('.nav-status-dot')].some(d => d.classList.contains('on'));
+        const groupDot = group.querySelector('.nav-group-dot');
+        if (groupDot) groupDot.classList.toggle('on', anyOn);
+    }
 }
 
 /**
@@ -2079,7 +2123,24 @@ function initSimulationTab() {
 function initRTKTab() {
     if (!window.rtk) return;
 
+    const NTRIP_STORAGE_KEY = 'ntrip-settings';
     const statusEl = document.getElementById('rtk-conn-status');
+    const sourceSelect = document.getElementById('rtk-source');
+    const ntripPanel = document.getElementById('rtk-ntrip-panel');
+    const serialPanel = document.getElementById('rtk-serial-panel');
+    let ntripConnected = false;
+    let ggaFeedInterval = null;
+
+    // Source selector: show only the relevant source panel
+    function updateSourcePanels() {
+        const src = sourceSelect ? sourceSelect.value : 'ntrip';
+        if (ntripPanel) ntripPanel.style.display = src === 'ntrip' ? '' : 'none';
+        if (serialPanel) serialPanel.style.display = src === 'serial' ? '' : 'none';
+    }
+    if (sourceSelect) {
+        sourceSelect.addEventListener('change', updateSourcePanels);
+        updateSourcePanels();
+    }
 
     // Scan ports
     const scanBtn = document.getElementById('rtk-scan-ports');
@@ -2098,7 +2159,7 @@ function initRTKTab() {
         doScan();
     }
 
-    // Connect
+    // Connect (serial base station)
     const connectBtn = document.getElementById('rtk-connect-btn');
     if (connectBtn) {
         connectBtn.addEventListener('click', async () => {
@@ -2114,13 +2175,168 @@ function initRTKTab() {
         });
     }
 
-    // Disconnect
+    // Disconnect (serial base station)
     const disconnectBtn = document.getElementById('rtk-disconnect-btn');
     if (disconnectBtn) {
         disconnectBtn.addEventListener('click', async () => {
             await window.rtk.disconnect();
             if (statusEl) statusEl.textContent = 'Disconnected';
         });
+    }
+
+    // ── NTRIP ────────────────────────────────────────────────────────
+
+    // Restore saved NTRIP settings
+    try {
+        const saved = JSON.parse(localStorage.getItem(NTRIP_STORAGE_KEY));
+        if (saved) {
+            const set = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
+            set('ntrip-host', saved.host);
+            set('ntrip-port', saved.port);
+            set('ntrip-mount', saved.mountpoint);
+            set('ntrip-user', saved.username);
+            set('ntrip-gga-mode', saved.ggaMode);
+            set('ntrip-gga-interval', saved.ggaInterval);
+            set('ntrip-gga-lat', saved.lat);
+            set('ntrip-gga-lon', saved.lon);
+            set('ntrip-gga-alt', saved.alt);
+            const tlsEl = document.getElementById('ntrip-tls');
+            if (tlsEl) tlsEl.checked = !!saved.tls;
+            if (saved.source && sourceSelect) { sourceSelect.value = saved.source; updateSourcePanels(); }
+        }
+    } catch (e) { /* ignore */ }
+
+    // GGA manual position fields visibility
+    const ggaModeSelect = document.getElementById('ntrip-gga-mode');
+    function updateGgaFields() {
+        const manual = ggaModeSelect && ggaModeSelect.value === 'manual';
+        document.querySelectorAll('.ntrip-gga-manual').forEach(el => {
+            el.style.display = manual ? '' : 'none';
+        });
+    }
+    if (ggaModeSelect) {
+        ggaModeSelect.addEventListener('change', updateGgaFields);
+        updateGgaFields();
+    }
+
+    function readNtripConfig() {
+        return {
+            host: document.getElementById('ntrip-host')?.value.trim() || '',
+            port: parseInt(document.getElementById('ntrip-port')?.value) || 2101,
+            mountpoint: document.getElementById('ntrip-mount')?.value.trim() || '',
+            username: document.getElementById('ntrip-user')?.value || '',
+            password: document.getElementById('ntrip-pass')?.value || '',
+            tls: document.getElementById('ntrip-tls')?.checked || false,
+            ggaMode: document.getElementById('ntrip-gga-mode')?.value || 'off',
+            lat: parseFloat(document.getElementById('ntrip-gga-lat')?.value),
+            lon: parseFloat(document.getElementById('ntrip-gga-lon')?.value),
+            alt: parseFloat(document.getElementById('ntrip-gga-alt')?.value) || 0,
+            ggaInterval: parseInt(document.getElementById('ntrip-gga-interval')?.value) || 10
+        };
+    }
+
+    function saveNtripConfig(cfg) {
+        try {
+            localStorage.setItem(NTRIP_STORAGE_KEY, JSON.stringify({
+                host: cfg.host, port: cfg.port, mountpoint: cfg.mountpoint,
+                username: cfg.username, tls: cfg.tls,
+                ggaMode: cfg.ggaMode, ggaInterval: cfg.ggaInterval,
+                lat: cfg.lat, lon: cfg.lon, alt: cfg.alt,
+                source: sourceSelect ? sourceSelect.value : 'ntrip'
+            }));
+        } catch (e) { /* ignore */ }
+    }
+
+    // Fetch sourcetable and populate the mountpoint list
+    const srcTableBtn = document.getElementById('ntrip-sourcetable-btn');
+    if (srcTableBtn) {
+        srcTableBtn.addEventListener('click', async () => {
+            const cfg = readNtripConfig();
+            if (!cfg.host) { alert('Enter the caster host first'); return; }
+            srcTableBtn.disabled = true;
+            srcTableBtn.textContent = '...';
+            try {
+                const entries = await window.rtk.ntripGetSourcetable(cfg);
+                const listRow = document.getElementById('ntrip-mount-list-row');
+                const listSelect = document.getElementById('ntrip-mount-list');
+                if (listSelect) {
+                    listSelect.innerHTML = '';
+                    const placeholder = document.createElement('option');
+                    placeholder.value = '';
+                    placeholder.textContent = `-- ${entries.length} mountpoints --`;
+                    listSelect.appendChild(placeholder);
+                    for (const e of entries) {
+                        const opt = document.createElement('option');
+                        opt.value = e.mountpoint;
+                        const details = [e.format, e.navSystem, e.country].filter(Boolean).join(' · ');
+                        opt.textContent = e.mountpoint + (details ? ` (${details})` : '');
+                        listSelect.appendChild(opt);
+                    }
+                }
+                if (listRow) listRow.style.display = entries.length ? '' : 'none';
+                if (!entries.length) alert('Caster returned an empty sourcetable');
+            } catch (e) {
+                alert('Sourcetable fetch failed: ' + e.message);
+            } finally {
+                srcTableBtn.disabled = false;
+                srcTableBtn.textContent = 'LIST';
+            }
+        });
+    }
+
+    // Picking from the sourcetable fills the mountpoint field
+    const mountListSelect = document.getElementById('ntrip-mount-list');
+    if (mountListSelect) {
+        mountListSelect.addEventListener('change', () => {
+            if (mountListSelect.value) {
+                const mountInput = document.getElementById('ntrip-mount');
+                if (mountInput) mountInput.value = mountListSelect.value;
+            }
+        });
+    }
+
+    // NTRIP connect
+    const ntripConnectBtn = document.getElementById('ntrip-connect-btn');
+    if (ntripConnectBtn) {
+        ntripConnectBtn.addEventListener('click', async () => {
+            const cfg = readNtripConfig();
+            if (!cfg.host || !cfg.mountpoint) { alert('Caster host and mountpoint are required'); return; }
+            ntripConnectBtn.disabled = true;
+            if (statusEl) statusEl.textContent = 'Connecting to caster...';
+            try {
+                await window.rtk.ntripConnect(cfg);
+                saveNtripConfig(cfg);
+            } catch (e) {
+                if (statusEl) statusEl.textContent = 'Error: ' + e.message;
+                alert('NTRIP connect failed: ' + e.message);
+            } finally {
+                ntripConnectBtn.disabled = false;
+            }
+        });
+    }
+
+    // NTRIP disconnect
+    const ntripDisconnectBtn = document.getElementById('ntrip-disconnect-btn');
+    if (ntripDisconnectBtn) {
+        ntripDisconnectBtn.addEventListener('click', async () => {
+            await window.rtk.ntripDisconnect();
+            if (statusEl) statusEl.textContent = 'Disconnected';
+        });
+    }
+
+    // Feed the vehicle position to the main process for GGA upload (1 Hz,
+    // only while an NTRIP session is up)
+    function startGgaFeed() {
+        if (ggaFeedInterval) return;
+        ggaFeedInterval = setInterval(() => {
+            if (!ntripConnected) return;
+            if (isFinite(STATE.lat) && isFinite(STATE.lon) && (STATE.lat !== 0 || STATE.lon !== 0)) {
+                window.rtk.feedPosition({ lat: STATE.lat, lon: STATE.lon, alt: STATE.rawAlt || 0 });
+            }
+        }, 1000);
+    }
+    function stopGgaFeed() {
+        if (ggaFeedInterval) { clearInterval(ggaFeedInterval); ggaFeedInterval = null; }
     }
 
     // RTCM injection is handled directly in the main process (rtk-manager.js)
@@ -2132,9 +2348,22 @@ function initRTKTab() {
             STATE.rtkBaseConnected = data.connected;
             STATE.rtkBaseMsgPerSec = data.rtcmMsgPerSec || 0;
 
+            ntripConnected = data.connected && data.source === 'ntrip';
+            if (ntripConnected) startGgaFeed(); else stopGgaFeed();
+            setNavDot('rtk-gps', data.connected);
+
             // Connection status
             if (statusEl) {
-                statusEl.textContent = data.connected ? `Connected — ${data.portPath}` : 'Not connected';
+                if (!data.connected) {
+                    statusEl.textContent = 'Not connected';
+                    statusEl.style.color = '';
+                } else if (data.source === 'ntrip' && data.ntrip) {
+                    statusEl.textContent = `NTRIP — ${data.ntrip.host}:${data.ntrip.port}/${data.ntrip.mountpoint}`;
+                    statusEl.style.color = 'var(--accent-cyan)';
+                } else {
+                    statusEl.textContent = `Serial — ${data.portPath}`;
+                    statusEl.style.color = 'var(--accent-cyan)';
+                }
             }
 
             // Stream info
@@ -2144,6 +2373,13 @@ function initRTKTab() {
                     ? (data.rtcmMsgPerSec > 0 ? 'Streaming RTCM3' : 'Connected, waiting for data...')
                     : 'No data';
                 streamEl.style.color = data.rtcmMsgPerSec > 0 ? '#00ff7f' : '';
+            }
+
+            const srcEl = document.getElementById('rtk-active-source');
+            if (srcEl) {
+                srcEl.textContent = data.connected
+                    ? (data.source === 'ntrip' ? 'NTRIP Caster' : 'Serial Base')
+                    : '---';
             }
 
             const rateEl = document.getElementById('rtk-msg-rate');
@@ -2161,6 +2397,12 @@ function initRTKTab() {
                         ? (bytes / 1024).toFixed(1) + ' KB'
                         : bytes + ' B';
             }
+
+            const ggaEl = document.getElementById('rtk-gga-sent');
+            if (ggaEl) ggaEl.textContent = data.ntrip ? String(data.ntrip.ggaSent || 0) : '---';
+
+            const reconnEl = document.getElementById('rtk-reconnects');
+            if (reconnEl) reconnEl.textContent = data.ntrip ? String(data.ntrip.reconnects || 0) : '---';
 
             // Message types list
             const typesEl = document.getElementById('rtk-msg-types');
@@ -2222,36 +2464,55 @@ function initTelForwardTab() {
     const STORAGE_KEY = 'telfwd-settings';
     let feedInterval = null;
     let displayInterval = null;
-    let isConnected = false;
 
     // DOM elements
+    const typeSelect = document.getElementById('telfwd-type');
     const portSelect = document.getElementById('telfwd-serial-port');
     const baudSelect = document.getElementById('telfwd-baud');
     const protoSelect = document.getElementById('telfwd-protocol');
-    const connectBtn = document.getElementById('telfwd-connect-btn');
-    const disconnectBtn = document.getElementById('telfwd-disconnect-btn');
-    const connStatus = document.getElementById('telfwd-conn-status');
-    const streamStatus = document.getElementById('telfwd-stream-status');
-    const msgRate = document.getElementById('telfwd-msg-rate');
-    const msgTotal = document.getElementById('telfwd-msg-total');
-    const bytesTx = document.getElementById('telfwd-bytes-tx');
-    const activeProto = document.getElementById('telfwd-active-protocol');
+    const udpHostInput = document.getElementById('telfwd-udp-host');
+    const udpPortInput = document.getElementById('telfwd-udp-port');
+    const listenPortInput = document.getElementById('telfwd-listen-port');
+    const writeAccessCheck = document.getElementById('telfwd-write-access');
+    const writeAccessRow = document.getElementById('telfwd-write-access-row');
+    const addBtn = document.getElementById('telfwd-add-btn');
+    const addStatus = document.getElementById('telfwd-add-status');
+    const outputsList = document.getElementById('telfwd-outputs-list');
     const dispLat = document.getElementById('telfwd-lat');
     const dispLon = document.getElementById('telfwd-lon');
     const dispAlt = document.getElementById('telfwd-alt');
     const dispHdg = document.getElementById('telfwd-heading');
     const dispGs = document.getElementById('telfwd-gs');
 
-    // Restore saved settings
+    // Restore saved form settings
     try {
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
         if (saved) {
+            if (saved.type && typeSelect) typeSelect.value = saved.type;
             if (saved.baudRate && baudSelect) baudSelect.value = String(saved.baudRate);
             if (saved.protocol && protoSelect) protoSelect.value = saved.protocol;
+            if (saved.host && udpHostInput) udpHostInput.value = saved.host;
+            if (saved.port && udpPortInput) udpPortInput.value = String(saved.port);
+            if (saved.listenPort && listenPortInput) listenPortInput.value = String(saved.listenPort);
         }
     } catch (e) { /* ignore */ }
 
-    // Scan ports
+    // Show only the fields relevant to the selected output type / protocol
+    function updateFormFields() {
+        const type = typeSelect ? typeSelect.value : 'udp-client';
+        document.querySelectorAll('#subtab-tel-forward .telfwd-field').forEach(el => {
+            el.style.display = el.classList.contains(`telfwd-field-${type}`) ? '' : 'none';
+        });
+        // Write access only makes sense for MAVLink passthrough
+        const isMavlink = !protoSelect || protoSelect.value === 'mavlink';
+        if (writeAccessRow) writeAccessRow.style.display = isMavlink ? '' : 'none';
+        if (type === 'serial' && portSelect && portSelect.options.length <= 1) scanPorts();
+    }
+    if (typeSelect) typeSelect.addEventListener('change', updateFormFields);
+    if (protoSelect) protoSelect.addEventListener('change', updateFormFields);
+    updateFormFields();
+
+    // Scan serial ports
     async function scanPorts() {
         if (!portSelect) return;
         const ports = await window.telForward.listPorts();
@@ -2263,88 +2524,130 @@ function initTelForwardTab() {
             opt.textContent = portLabel(p);
             portSelect.appendChild(opt);
         }
-        // Restore previous selection or saved port
-        try {
-            const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-            if (prev) portSelect.value = prev;
-            else if (saved && saved.port) portSelect.value = saved.port;
-        } catch (e) { /* ignore */ }
+        if (prev) portSelect.value = prev;
     }
 
     const scanBtn = document.getElementById('telfwd-scan-ports');
-    if (scanBtn) {
-        scanBtn.addEventListener('click', scanPorts);
-        // Auto-scan on first load
-        scanPorts();
-    }
+    if (scanBtn) scanBtn.addEventListener('click', scanPorts);
 
-    // Connect
-    if (connectBtn) {
-        connectBtn.addEventListener('click', async () => {
-            const port = portSelect ? portSelect.value : '';
-            const baud = baudSelect ? parseInt(baudSelect.value) : 9600;
-            const proto = protoSelect ? protoSelect.value : 'ltm';
+    // Add output
+    if (addBtn) {
+        addBtn.addEventListener('click', async () => {
+            const type = typeSelect ? typeSelect.value : 'udp-client';
+            const cfg = {
+                type,
+                protocol: protoSelect ? protoSelect.value : 'mavlink',
+                writeAccess: writeAccessCheck ? writeAccessCheck.checked : false,
+                portPath: portSelect ? portSelect.value : '',
+                baudRate: baudSelect ? parseInt(baudSelect.value) : 57600,
+                host: udpHostInput ? udpHostInput.value.trim() : '',
+                port: udpPortInput ? parseInt(udpPortInput.value) : 0,
+                listenPort: listenPortInput ? parseInt(listenPortInput.value) : 0
+            };
 
-            if (!port) {
-                if (connStatus) connStatus.textContent = 'Select a port first';
+            if (type === 'serial' && !cfg.portPath) {
+                if (addStatus) addStatus.textContent = 'Select a serial port first';
+                return;
+            }
+            if (type === 'udp-client' && (!cfg.host || !cfg.port)) {
+                if (addStatus) addStatus.textContent = 'Enter UDP host and port';
+                return;
+            }
+            if (type === 'udp-server' && !cfg.listenPort) {
+                if (addStatus) addStatus.textContent = 'Enter a listen port';
                 return;
             }
 
             try {
-                connectBtn.disabled = true;
-                if (connStatus) connStatus.textContent = 'Connecting...';
-                await window.telForward.connect(port, baud, proto);
-
-                // Save settings
-                localStorage.setItem(STORAGE_KEY, JSON.stringify({ port, baudRate: baud, protocol: proto }));
-
-                isConnected = true;
-                setUIConnected(true);
-
-                // Start feeding state for LTM mode
-                if (proto === 'ltm') {
-                    startStateFeed();
-                }
-                // Start display update
-                startDisplayUpdate();
+                addBtn.disabled = true;
+                await window.telForward.addOutput(cfg);
+                if (addStatus) { addStatus.textContent = 'Output started'; addStatus.style.color = 'var(--accent-cyan)'; }
+                localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                    type, protocol: cfg.protocol, baudRate: cfg.baudRate,
+                    host: cfg.host, port: cfg.port, listenPort: cfg.listenPort
+                }));
             } catch (e) {
-                if (connStatus) connStatus.textContent = 'Error: ' + e.message;
-                connectBtn.disabled = false;
+                if (addStatus) { addStatus.textContent = 'Error: ' + e.message; addStatus.style.color = '#ff3333'; }
+            } finally {
+                addBtn.disabled = false;
             }
         });
     }
 
-    // Disconnect
-    if (disconnectBtn) {
-        disconnectBtn.addEventListener('click', async () => {
-            try {
-                await window.telForward.disconnect();
-            } catch (e) { /* ignore */ }
-            isConnected = false;
-            setUIConnected(false);
-            stopStateFeed();
-            stopDisplayUpdate();
+    // Remove buttons (event delegation on the outputs list)
+    if (outputsList) {
+        outputsList.addEventListener('click', async (ev) => {
+            const btn = ev.target.closest('.telfwd-remove-btn');
+            if (!btn) return;
+            const id = parseInt(btn.dataset.id);
+            if (isFinite(id)) {
+                try { await window.telForward.removeOutput(id); } catch (e) { /* ignore */ }
+            }
         });
     }
 
-    // UI state toggle
-    function setUIConnected(connected) {
-        if (connectBtn) connectBtn.disabled = connected;
-        if (disconnectBtn) disconnectBtn.disabled = !connected;
-        if (portSelect) portSelect.disabled = connected;
-        if (baudSelect) baudSelect.disabled = connected;
-        if (protoSelect) protoSelect.disabled = connected;
-        if (connStatus) {
-            connStatus.textContent = connected ? 'Connected' : 'Not connected';
-            connStatus.style.color = connected ? 'var(--clr-cyan)' : 'var(--clr-txt-dim)';
+    // Render the active outputs list (built with createElement \u2014 labels may
+    // contain user-entered host strings)
+    function renderOutputs(list) {
+        if (!outputsList) return;
+        outputsList.innerHTML = '';
+        if (!list || list.length === 0) {
+            const empty = document.createElement('span');
+            empty.className = 'telfwd-empty';
+            empty.style.cssText = 'opacity:0.5; font-size:11px;';
+            empty.textContent = 'No outputs configured';
+            outputsList.appendChild(empty);
+            return;
+        }
+        for (const o of list) {
+            const row = document.createElement('div');
+            row.className = 'telfwd-output-row' + (o.connected ? '' : ' disconnected');
+
+            const head = document.createElement('div');
+            head.className = 'telfwd-output-head';
+
+            const title = document.createElement('span');
+            title.className = 'telfwd-output-title';
+            title.textContent = o.label;
+            head.appendChild(title);
+
+            if (o.writeAccess) {
+                const badge = document.createElement('span');
+                badge.className = 'telfwd-badge';
+                badge.title = 'Write access: packets from this endpoint are injected into the vehicle link';
+                badge.textContent = 'RW';
+                head.appendChild(badge);
+            }
+
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'gcs-btn telfwd-remove-btn';
+            removeBtn.dataset.id = String(o.id);
+            removeBtn.textContent = 'REMOVE';
+            head.appendChild(removeBtn);
+
+            const stats = document.createElement('div');
+            stats.className = 'telfwd-output-stats';
+            const parts = [
+                o.protocol === 'mavlink' ? 'MAVLink' : 'LTM',
+                `${o.msgPerSec || 0} msg/s`,
+                formatBytes(o.bytesSent || 0) + ' TX'
+            ];
+            if (o.bytesRx > 0) parts.push(formatBytes(o.bytesRx) + ' RX');
+            if (o.clientCount != null) parts.push(`${o.clientCount} peer${o.clientCount === 1 ? '' : 's'}`);
+            if (!o.connected) parts.push('DISCONNECTED');
+            if (o.error) parts.push('ERR: ' + o.error);
+            stats.textContent = parts.join(' \u00B7 ');
+
+            row.appendChild(head);
+            row.appendChild(stats);
+            outputsList.appendChild(row);
         }
     }
 
     // Feed STATE to main process for LTM encoding
     function startStateFeed() {
-        stopStateFeed();
+        if (feedInterval) return;
         feedInterval = setInterval(() => {
-            if (!isConnected) return;
             window.telForward.feedState({
                 lat: STATE.lat,
                 lon: STATE.lon,
@@ -2376,9 +2679,8 @@ function initTelForwardTab() {
 
     // Update CURRENT DATA display
     function startDisplayUpdate() {
-        stopDisplayUpdate();
+        if (displayInterval) return;
         displayInterval = setInterval(() => {
-            if (!isConnected) return;
             if (dispLat) dispLat.textContent = STATE.lat ? STATE.lat.toFixed(7) : '---';
             if (dispLon) dispLon.textContent = STATE.lon ? STATE.lon.toFixed(7) : '---';
             if (dispAlt) dispAlt.textContent = STATE.rawAlt != null ? STATE.rawAlt.toFixed(1) + ' m' : '---';
@@ -2395,22 +2697,25 @@ function initTelForwardTab() {
         if (displayInterval) { clearInterval(displayInterval); displayInterval = null; }
     }
 
-    // Listen for status updates from main process
-    window.telForward.onStatusUpdate((data) => {
-        if (streamStatus) streamStatus.textContent = data.connected ? 'Streaming' : 'Idle';
-        if (msgRate) msgRate.textContent = data.msgPerSec + ' msg/s';
-        if (msgTotal) msgTotal.textContent = data.msgCount.toLocaleString();
-        if (bytesTx) bytesTx.textContent = formatBytes(data.bytesSent);
-        if (activeProto) activeProto.textContent = data.protocol === 'mavlink' ? 'MAVLink' : 'LTM';
+    // Apply an outputs snapshot to the UI and timers
+    function applyOutputs(list) {
+        renderOutputs(list);
+        setNavDot('tel-forward', list.some(o => o.connected));
+        if (list.some(o => o.protocol === 'ltm' && o.connected)) startStateFeed();
+        else stopStateFeed();
+        if (list.length > 0) startDisplayUpdate();
+        else stopDisplayUpdate();
+    }
 
-        // Detect disconnect from main process side
-        if (!data.connected && isConnected) {
-            isConnected = false;
-            setUIConnected(false);
-            stopStateFeed();
-            stopDisplayUpdate();
-        }
+    // Status updates from main process: { outputs: [...] }
+    window.telForward.onStatusUpdate((data) => {
+        applyOutputs((data && data.outputs) || []);
     });
+
+    // Restore the list if outputs already exist (e.g. after a renderer reload)
+    window.telForward.getOutputs()
+        .then(list => { if (list && list.length) applyOutputs(list); })
+        .catch(() => {});
 
     function formatBytes(bytes) {
         if (bytes < 1024) return bytes + ' B';

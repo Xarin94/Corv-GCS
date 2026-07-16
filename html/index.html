@@ -316,23 +316,117 @@
     <!-- ==================== TAB CONTENT: SETUP (unified) ==================== -->
     <div id="tab-setup" class="tab-content">
         <nav class="setup-vertical-nav">
-            <div class="setup-nav-group-label">VEHICLE</div>
-            <button class="setup-nav-btn active" data-section="connection">CONNECTION</button>
-            <button class="setup-nav-btn" data-section="joystick">JOYSTICK / RC</button>
-            <button class="setup-nav-btn" data-section="radio-cal">RADIO CAL</button>
-            <button class="setup-nav-btn" data-section="flight-modes">FLIGHT MODES</button>
-            <button class="setup-nav-btn" data-section="failsafe">FAILSAFE</button>
-            <div class="setup-nav-group-label">TUNING</div>
-            <button class="setup-nav-btn" data-section="pid-tuning">PID TUNING</button>
-            <button class="setup-nav-btn" data-section="parameters">PARAMETERS</button>
-            <button class="setup-nav-btn" data-section="ext-tuning">EXT TUNING</button>
-            <button class="setup-nav-btn" data-section="vibration">VIBRATIONS</button>
-            <button class="setup-nav-btn" data-section="servo-relay">SERVO / RELAY</button>
-            <div class="setup-nav-group-label">TOOLS</div>
-            <button class="setup-nav-btn" data-section="simulation">SIMULATION</button>
-            <button class="setup-nav-btn" data-section="rtk-gps">RTK / GPS</button>
-            <button class="setup-nav-btn" data-section="tel-forward">TEL FORWARD</button>
-            <button class="setup-nav-btn" data-section="corv-setup">CORV SETUP</button>
+            <div class="setup-nav-group" data-group="comms">
+                <button class="setup-nav-group-header" type="button">
+                    <span class="nav-group-chevron">&#9662;</span>
+                    <span>COMMS</span>
+                    <span class="nav-group-dot"></span>
+                </button>
+                <div class="setup-nav-group-items">
+                    <button class="setup-nav-btn active" data-section="connection">
+                        <span class="nav-btn-title">CONNECTION</span>
+                        <span class="nav-btn-desc">Vehicle link &middot; Serial / UDP / TCP</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                    <button class="setup-nav-btn" data-section="tel-forward">
+                        <span class="nav-btn-title">TELEMETRY FORWARD</span>
+                        <span class="nav-btn-desc">MAVLink mirror &middot; UDP / Serial / LTM</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                    <button class="setup-nav-btn" data-section="rtk-gps">
+                        <span class="nav-btn-title">RTK / GPS INJECT</span>
+                        <span class="nav-btn-desc">NTRIP caster &middot; Serial base</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                </div>
+            </div>
+            <div class="setup-nav-group" data-group="vehicle">
+                <button class="setup-nav-group-header" type="button">
+                    <span class="nav-group-chevron">&#9662;</span>
+                    <span>VEHICLE SETUP</span>
+                    <span class="nav-group-dot"></span>
+                </button>
+                <div class="setup-nav-group-items">
+                    <button class="setup-nav-btn" data-section="calibration">
+                        <span class="nav-btn-title">CALIBRATION</span>
+                        <span class="nav-btn-desc">Accel &middot; Compass &middot; Gyro</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                    <button class="setup-nav-btn" data-section="radio-cal">
+                        <span class="nav-btn-title">RADIO CAL</span>
+                        <span class="nav-btn-desc">RC input range</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                    <button class="setup-nav-btn" data-section="joystick">
+                        <span class="nav-btn-title">JOYSTICK / RC</span>
+                        <span class="nav-btn-desc">Gamepad override</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                    <button class="setup-nav-btn" data-section="flight-modes">
+                        <span class="nav-btn-title">FLIGHT MODES</span>
+                        <span class="nav-btn-desc">Mode switch mapping</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                    <button class="setup-nav-btn" data-section="failsafe">
+                        <span class="nav-btn-title">FAILSAFE</span>
+                        <span class="nav-btn-desc">Battery &middot; RC &middot; GCS</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                    <button class="setup-nav-btn" data-section="servo-relay">
+                        <span class="nav-btn-title">SERVO / RELAY</span>
+                        <span class="nav-btn-desc">Output functions</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                </div>
+            </div>
+            <div class="setup-nav-group" data-group="tuning">
+                <button class="setup-nav-group-header" type="button">
+                    <span class="nav-group-chevron">&#9662;</span>
+                    <span>TUNING</span>
+                    <span class="nav-group-dot"></span>
+                </button>
+                <div class="setup-nav-group-items">
+                    <button class="setup-nav-btn" data-section="pid-tuning">
+                        <span class="nav-btn-title">PID TUNING</span>
+                        <span class="nav-btn-desc">Rate &amp; attitude gains</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                    <button class="setup-nav-btn" data-section="ext-tuning">
+                        <span class="nav-btn-title">EXT TUNING</span>
+                        <span class="nav-btn-desc">Extended tuning</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                    <button class="setup-nav-btn" data-section="vibration">
+                        <span class="nav-btn-title">VIBRATIONS</span>
+                        <span class="nav-btn-desc">IMU vibration &amp; clipping</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                    <button class="setup-nav-btn" data-section="parameters">
+                        <span class="nav-btn-title">PARAMETERS</span>
+                        <span class="nav-btn-desc">Full parameter list</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                </div>
+            </div>
+            <div class="setup-nav-group" data-group="tools">
+                <button class="setup-nav-group-header" type="button">
+                    <span class="nav-group-chevron">&#9662;</span>
+                    <span>TOOLS</span>
+                    <span class="nav-group-dot"></span>
+                </button>
+                <div class="setup-nav-group-items">
+                    <button class="setup-nav-btn" data-section="simulation">
+                        <span class="nav-btn-title">SIMULATION</span>
+                        <span class="nav-btn-desc">SITL launcher</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                    <button class="setup-nav-btn" data-section="corv-setup">
+                        <span class="nav-btn-title">CORV SETUP</span>
+                        <span class="nav-btn-desc">CORV binary config</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                </div>
+            </div>
         </nav>
         <div class="setup-content-area">
 
@@ -405,6 +499,10 @@
                         <span class="cfg-val" id="setup-sysid">--</span>
                     </div>
                 </div>
+            </div>
+
+            <!-- Sub-tab: Calibration -->
+            <div class="sub-tab-content" id="subtab-calibration">
                 <div class="setup-panel">
                     <div class="panel-header">CALIBRATION WIZARD</div>
                     <div class="cal-wizard-row">
@@ -897,7 +995,91 @@
             <!-- Section: RTK / GPS -->
             <div class="sub-tab-content" id="subtab-rtk-gps">
                 <div class="setup-panel">
-                    <div class="panel-header">RTK BASE STATION</div>
+                    <div class="panel-header">CORRECTION SOURCE</div>
+                    <div class="cfg-row">
+                        <label>SOURCE</label>
+                        <select id="rtk-source" class="cfg-select">
+                            <option value="ntrip">NTRIP Caster (Internet)</option>
+                            <option value="serial">Serial Base Station</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <span class="cfg-val" id="rtk-conn-status">Not connected</span>
+                    </div>
+                </div>
+
+                <!-- NTRIP source panel -->
+                <div class="setup-panel" id="rtk-ntrip-panel">
+                    <div class="panel-header">NTRIP CASTER</div>
+                    <div class="cfg-row">
+                        <label>HOST</label>
+                        <input type="text" id="ntrip-host" class="gcs-input" placeholder="caster.example.com">
+                    </div>
+                    <div class="cfg-row">
+                        <label>PORT</label>
+                        <input type="number" id="ntrip-port" class="gcs-input input-narrow" value="2101">
+                    </div>
+                    <div class="cfg-row">
+                        <label>MOUNTPOINT</label>
+                        <input type="text" id="ntrip-mount" class="gcs-input" placeholder="MOUNTPOINT">
+                        <button class="gcs-btn gcs-btn-sm" id="ntrip-sourcetable-btn" title="Fetch caster sourcetable">LIST</button>
+                    </div>
+                    <div class="cfg-row" id="ntrip-mount-list-row" style="display:none;">
+                        <label>SOURCETABLE</label>
+                        <select id="ntrip-mount-list" class="cfg-select"></select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>USERNAME</label>
+                        <input type="text" id="ntrip-user" class="gcs-input" autocomplete="off">
+                    </div>
+                    <div class="cfg-row">
+                        <label>PASSWORD</label>
+                        <input type="password" id="ntrip-pass" class="gcs-input" autocomplete="off">
+                    </div>
+                    <div class="cfg-row">
+                        <label class="gcs-checkbox">
+                            <input type="checkbox" id="ntrip-tls">
+                            USE TLS
+                        </label>
+                    </div>
+                    <div class="cfg-row">
+                        <label>GGA UPLOAD (VRS)</label>
+                        <select id="ntrip-gga-mode" class="cfg-select">
+                            <option value="off">Off</option>
+                            <option value="vehicle" selected>Vehicle position</option>
+                            <option value="manual">Manual position</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row ntrip-gga-manual" style="display:none;">
+                        <label>LAT</label>
+                        <input type="number" id="ntrip-gga-lat" class="gcs-input" step="0.0000001" placeholder="45.0000000">
+                    </div>
+                    <div class="cfg-row ntrip-gga-manual" style="display:none;">
+                        <label>LON</label>
+                        <input type="number" id="ntrip-gga-lon" class="gcs-input" step="0.0000001" placeholder="9.0000000">
+                    </div>
+                    <div class="cfg-row ntrip-gga-manual" style="display:none;">
+                        <label>ALT (M)</label>
+                        <input type="number" id="ntrip-gga-alt" class="gcs-input input-narrow" value="0" step="0.1">
+                    </div>
+                    <div class="cfg-row">
+                        <label>GGA INTERVAL (S)</label>
+                        <select id="ntrip-gga-interval" class="cfg-select">
+                            <option value="1">1</option>
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="30">30</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row" style="gap:6px;">
+                        <button class="gcs-btn gcs-btn-connect" id="ntrip-connect-btn">CONNECT</button>
+                        <button class="gcs-btn gcs-btn-disconnect" id="ntrip-disconnect-btn">DISCONNECT</button>
+                    </div>
+                </div>
+
+                <!-- Serial base station source panel -->
+                <div class="setup-panel" id="rtk-serial-panel" style="display:none;">
+                    <div class="panel-header">SERIAL BASE STATION</div>
                     <div class="cfg-row">
                     <label>SERIAL PORT</label>
                     <select id="rtk-serial-port" class="cfg-select">
@@ -920,9 +1102,6 @@
                     <button class="gcs-btn gcs-btn-connect" id="rtk-connect-btn">CONNECT</button>
                     <button class="gcs-btn gcs-btn-disconnect" id="rtk-disconnect-btn">DISCONNECT</button>
                 </div>
-                <div class="cfg-row">
-                    <span class="cfg-val" id="rtk-conn-status">Not connected</span>
-                </div>
             </div>
 
                 <div class="setup-panel">
@@ -930,6 +1109,10 @@
                     <div class="cfg-row">
                         <label>STATUS</label>
                         <span class="cfg-val" id="rtk-stream-status">No data</span>
+                    </div>
+                    <div class="cfg-row">
+                        <label>SOURCE</label>
+                        <span class="cfg-val" id="rtk-active-source">---</span>
                     </div>
                     <div class="cfg-row">
                         <label>MSG RATE</label>
@@ -942,6 +1125,14 @@
                     <div class="cfg-row">
                         <label>BYTES RX</label>
                         <span class="cfg-val" id="rtk-bytes-rx">0</span>
+                    </div>
+                    <div class="cfg-row">
+                        <label>GGA SENT</label>
+                        <span class="cfg-val" id="rtk-gga-sent">---</span>
+                    </div>
+                    <div class="cfg-row">
+                        <label>RECONNECTS</label>
+                        <span class="cfg-val" id="rtk-reconnects">---</span>
                     </div>
                     <div class="panel-header" style="margin-top:8px;">RTCM MESSAGE TYPES</div>
                     <div id="rtk-msg-types" class="rtk-msg-types-list" style="max-height:180px; overflow-y:auto; font-size:11px; font-family:var(--font-data); color:var(--text-dim); padding:4px 0;">
@@ -982,66 +1173,74 @@
             <!-- Sub-tab: Telemetry Forward -->
             <div class="sub-tab-content" id="subtab-tel-forward">
 
-                    <!-- Connection Panel -->
+                    <!-- Add Output Panel -->
                     <div class="setup-panel">
-                        <div class="panel-header">TELEMETRY OUTPUT</div>
+                        <div class="panel-header">ADD OUTPUT</div>
                         <div class="cfg-row">
+                            <label>OUTPUT TYPE</label>
+                            <select id="telfwd-type" class="cfg-select">
+                                <option value="udp-client" selected>UDP Client (send to host)</option>
+                                <option value="udp-server">UDP Server (listen)</option>
+                                <option value="serial">Serial Port</option>
+                            </select>
+                        </div>
+                        <div class="cfg-row telfwd-field telfwd-field-serial" style="display:none;">
                             <label>SERIAL PORT</label>
                             <select id="telfwd-serial-port" class="cfg-select">
                                 <option value="">Select port...</option>
                             </select>
                             <button class="gcs-btn gcs-btn-sm" id="telfwd-scan-ports" title="Scan ports">&#8634;</button>
                         </div>
-                        <div class="cfg-row">
+                        <div class="cfg-row telfwd-field telfwd-field-serial" style="display:none;">
                             <label>BAUD RATE</label>
                             <select id="telfwd-baud" class="cfg-select">
                                 <option value="2400">2400</option>
                                 <option value="4800">4800</option>
-                                <option value="9600" selected>9600</option>
+                                <option value="9600">9600</option>
                                 <option value="19200">19200</option>
                                 <option value="38400">38400</option>
-                                <option value="57600">57600</option>
+                                <option value="57600" selected>57600</option>
                                 <option value="115200">115200</option>
                             </select>
+                        </div>
+                        <div class="cfg-row telfwd-field telfwd-field-udp-client">
+                            <label>HOST</label>
+                            <input type="text" id="telfwd-udp-host" class="gcs-input" value="127.0.0.1">
+                        </div>
+                        <div class="cfg-row telfwd-field telfwd-field-udp-client">
+                            <label>PORT</label>
+                            <input type="number" id="telfwd-udp-port" class="gcs-input input-narrow" value="14550">
+                        </div>
+                        <div class="cfg-row telfwd-field telfwd-field-udp-server" style="display:none;">
+                            <label>LISTEN PORT</label>
+                            <input type="number" id="telfwd-listen-port" class="gcs-input input-narrow" value="14551">
                         </div>
                         <div class="cfg-row">
                             <label>PROTOCOL</label>
                             <select id="telfwd-protocol" class="cfg-select">
+                                <option value="mavlink" selected>MAVLink Passthrough</option>
                                 <option value="ltm">LTM (Lightweight Telemetry)</option>
-                                <option value="mavlink">MAVLink Passthrough</option>
                             </select>
                         </div>
-                        <div class="cfg-row" style="gap:6px;">
-                            <button class="gcs-btn gcs-btn-connect" id="telfwd-connect-btn">START</button>
-                            <button class="gcs-btn gcs-btn-disconnect" id="telfwd-disconnect-btn" disabled>STOP</button>
+                        <div class="cfg-row" id="telfwd-write-access-row">
+                            <label class="gcs-checkbox" title="Packets received from this endpoint are injected into the vehicle link (a secondary GCS can send commands)">
+                                <input type="checkbox" id="telfwd-write-access">
+                                WRITE ACCESS (BIDIRECTIONAL)
+                            </label>
                         </div>
                         <div class="cfg-row">
-                            <span class="cfg-val" id="telfwd-conn-status" style="color:var(--clr-txt-dim);">Not connected</span>
+                            <button class="gcs-btn gcs-btn-connect" id="telfwd-add-btn">ADD OUTPUT</button>
+                        </div>
+                        <div class="cfg-row">
+                            <span class="cfg-val" id="telfwd-add-status" style="color:var(--clr-txt-dim);"></span>
                         </div>
                     </div>
 
-                    <!-- Stats Panel -->
+                    <!-- Active Outputs Panel -->
                     <div class="setup-panel">
-                        <div class="panel-header">FORWARD STATUS</div>
-                        <div class="cfg-row">
-                            <label>STATUS</label>
-                            <span class="cfg-val" id="telfwd-stream-status">Idle</span>
-                        </div>
-                        <div class="cfg-row">
-                            <label>MSG RATE</label>
-                            <span class="cfg-val" id="telfwd-msg-rate">0 msg/s</span>
-                        </div>
-                        <div class="cfg-row">
-                            <label>TOTAL MSGS</label>
-                            <span class="cfg-val" id="telfwd-msg-total">0</span>
-                        </div>
-                        <div class="cfg-row">
-                            <label>BYTES TX</label>
-                            <span class="cfg-val" id="telfwd-bytes-tx">0</span>
-                        </div>
-                        <div class="cfg-row">
-                            <label>PROTOCOL</label>
-                            <span class="cfg-val" id="telfwd-active-protocol">---</span>
+                        <div class="panel-header">ACTIVE OUTPUTS</div>
+                        <div id="telfwd-outputs-list">
+                            <span class="telfwd-empty" style="opacity:0.5; font-size:11px;">No outputs configured</span>
                         </div>
                     </div>
 

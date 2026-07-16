@@ -24,7 +24,7 @@
     "maxVoltage" : 50.4,
 
     # full battery capacity, Ah (0 = unlimited)
-    "battCapacityAh" : 8.0,
+    "battCapacityAh" : 16.0,
 
     # MOT_THST_EXPO
     "propExpo" : 0.7,

@@ -63,6 +63,38 @@ let heartbeatInterval = null;
 let mainWindow = null;
 let sequenceNumber = 0;
 
+// ── Link statistics (RX rate for status display) ──────────────────────────────
+// Byte counting happens in the existing data handlers (a single counter
+// increment — no extra parsing), and a 1 Hz timer converts the delta to kbps.
+let linkBytesRx = 0;
+let linkStatsInterval = null;
+let linkStatsLastBytes = 0;
+
+function startLinkStats(type) {
+    stopLinkStats();
+    linkBytesRx = 0;
+    linkStatsLastBytes = 0;
+    linkStatsInterval = setInterval(() => {
+        const delta = linkBytesRx - linkStatsLastBytes;
+        linkStatsLastBytes = linkBytesRx;
+        const kbps = (delta * 8) / 1000; // kilobits per second
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('mavlink-link-stats', {
+                type,
+                kbps: Math.round(kbps * 10) / 10,
+                bytesRx: linkBytesRx
+            });
+        }
+    }, 1000);
+}
+
+function stopLinkStats() {
+    if (linkStatsInterval) {
+        clearInterval(linkStatsInterval);
+        linkStatsInterval = null;
+    }
+}
+
 // MAVLink protocol instance for sending (initialized lazily)
 let protocol = null;
 
@@ -199,6 +231,10 @@ function initMAVLinkHandlers(win) {
 
             port.pipe(splitter).pipe(tlogTap).pipe(parser);
 
+            port.on('data', (data) => {
+                linkBytesRx += data.length;
+            });
+
             parser.on('data', (packet) => {
                 handlePacket(packet);
             });
@@ -210,11 +246,13 @@ function initMAVLinkHandlers(win) {
 
             port.on('close', () => {
                 console.log('[mavlink] Serial port closed');
+                stopLinkStats();
                 sendConnectionState('DISCONNECTED');
             });
 
             activeConnection = { type: 'serial', port, splitter, parser };
             startHeartbeat();
+            startLinkStats('SERIAL');
             sendConnectionState('CONNECTED');
             console.log(`[mavlink] Connected to ${portPath} at ${baudRate} baud`);
             return { success: true };
@@ -257,6 +295,7 @@ function initMAVLinkHandlers(win) {
                     remotePort = rinfo.port;
                     hasRemote = true;
                 }
+                linkBytesRx += msg.length;
                 passthrough.write(msg);
             });
 
@@ -278,6 +317,7 @@ function initMAVLinkHandlers(win) {
                 hasRemote: () => hasRemote
             };
             startHeartbeat();
+            startLinkStats('UDP');
             sendConnectionState('CONNECTED');
             console.log(`[mavlink] UDP connected to ${host}:${port}`);
             return { success: true };
@@ -325,6 +365,7 @@ function initMAVLinkHandlers(win) {
             }
 
             socket.on('data', (data) => {
+                linkBytesRx += data.length;
                 passthrough.write(data);
             });
 
@@ -338,6 +379,7 @@ function initMAVLinkHandlers(win) {
 
             socket.on('close', () => {
                 console.log('[mavlink] TCP connection closed');
+                stopLinkStats();
                 sendConnectionState('DISCONNECTED');
             });
 
@@ -350,6 +392,7 @@ function initMAVLinkHandlers(win) {
                 getRemote: () => ({ address: tcpHost, port: tcpPort }),
                 hasRemote: () => true
             };
+            startLinkStats('TCP');
             sendConnectionState('CONNECTED');
             // Delay heartbeat start for TCP - give SITL time to finish initialization
             setTimeout(() => startHeartbeat(), 2000);
@@ -384,6 +427,7 @@ function initMAVLinkHandlers(win) {
 
             port.on('data', (chunk) => {
                 if (!mainWindow || mainWindow.isDestroyed()) return;
+                linkBytesRx += chunk.length;
 
                 // Oversized burst: keep only the newest bytes that fit the
                 // parse buffer — otherwise corvLen would exceed the buffer and
@@ -443,10 +487,12 @@ function initMAVLinkHandlers(win) {
 
             port.on('close', () => {
                 console.log('[corv] Serial port closed');
+                stopLinkStats();
                 sendConnectionState('DISCONNECTED');
             });
 
             activeConnection = { type: 'serial', port };
+            startLinkStats('CORV');
             sendConnectionState('CONNECTED');
             console.log(`[corv] Connected to ${portPath} at ${baudRate} baud`);
             return { success: true };
@@ -880,6 +926,7 @@ function stopHeartbeat() {
  */
 async function disconnectCurrent() {
     stopHeartbeat();
+    stopLinkStats();
     if (!activeConnection) return;
 
     try {
@@ -927,6 +974,7 @@ function sendConnectionState(state) {
 function cleanup() {
     stopTlogRecording();
     stopHeartbeat();
+    stopLinkStats();
     if (activeConnection) {
         try {
             if (activeConnection.type === 'serial' && activeConnection.port.isOpen) {

@@ -32,6 +32,15 @@ export function initMAVLink() {
         STATE.connectionType = state === 'DISCONNECTED' ? 'none' : STATE.connectionType;
         window.dispatchEvent(new CustomEvent('mavlinkConnectionState', { detail: { state } }));
     });
+
+    // Listen for link statistics (RX rate, 1 Hz from main process)
+    if (window.mavlink.onLinkStats) {
+        window.mavlink.onLinkStats((stats) => {
+            STATE.linkType = stats.type || '';
+            STATE.linkKbps = stats.kbps || 0;
+            STATE.lastLinkStatsTime = Date.now();
+        });
+    }
 }
 
 /**

@@ -107,23 +107,27 @@ contextBridge.exposeInMainWorld('models', {
   }
 });
 
-// RTK Base Station API bridge
+// RTK / GPS Inject API bridge (serial base station + NTRIP caster)
 contextBridge.exposeInMainWorld('rtk', {
   listPorts: () => ipcRenderer.invoke('rtk-list-ports'),
   connect: (portPath, baudRate) => ipcRenderer.invoke('rtk-connect', portPath, baudRate),
   disconnect: () => ipcRenderer.invoke('rtk-disconnect'),
   getStats: () => ipcRenderer.invoke('rtk-get-stats'),
   getTypeNames: () => ipcRenderer.invoke('rtk-get-type-names'),
+  ntripConnect: (cfg) => ipcRenderer.invoke('ntrip-connect', cfg),
+  ntripDisconnect: () => ipcRenderer.invoke('ntrip-disconnect'),
+  ntripGetSourcetable: (cfg) => ipcRenderer.invoke('ntrip-get-sourcetable', cfg),
+  feedPosition: (pos) => ipcRenderer.send('rtk-feed-position', pos),
   onStatusUpdate: (callback) => ipcRenderer.on('rtk-status-update', (event, data) => callback(data)),
   onInjectRTCM: (callback) => ipcRenderer.on('rtk-inject-rtcm', (event, data) => callback(data))
 });
 
-// Telemetry Forward API bridge
+// Telemetry Forward API bridge (multi-output MAVLink mirror)
 contextBridge.exposeInMainWorld('telForward', {
   listPorts: () => ipcRenderer.invoke('telfwd-list-ports'),
-  connect: (portPath, baudRate, protocol) => ipcRenderer.invoke('telfwd-connect', portPath, baudRate, protocol),
-  disconnect: () => ipcRenderer.invoke('telfwd-disconnect'),
-  getStats: () => ipcRenderer.invoke('telfwd-get-stats'),
+  addOutput: (cfg) => ipcRenderer.invoke('telfwd-add-output', cfg),
+  removeOutput: (id) => ipcRenderer.invoke('telfwd-remove-output', id),
+  getOutputs: () => ipcRenderer.invoke('telfwd-get-outputs'),
   feedState: (snapshot) => ipcRenderer.invoke('telfwd-feed-state', snapshot),
   onStatusUpdate: (cb) => ipcRenderer.on('telfwd-status-update', (e, d) => cb(d))
 });
@@ -160,6 +164,7 @@ contextBridge.exposeInMainWorld('mavlink', {
   setGcsMuted: (muted) => ipcRenderer.invoke('mavlink-set-gcs-muted', muted),
   onMessage: (callback) => ipcRenderer.on('mavlink-message', (event, msg) => callback(msg)),
   onConnectionState: (callback) => ipcRenderer.on('mavlink-connection-state', (event, state) => callback(state)),
+  onLinkStats: (callback) => ipcRenderer.on('mavlink-link-stats', (event, stats) => callback(stats)),
   listPorts: () => ipcRenderer.invoke('serial-list-ports')
 });
 

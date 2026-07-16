@@ -419,19 +419,21 @@ export function updateCommandBar() {
     const alive = isHeartbeatAlive();
     els.heartbeat.classList.toggle('alive', alive);
 
-    // Connection status
+    // Connection status: show link type + live RX rate instead of a generic CONNECTED
     if (STATE.connectionType === 'none') {
         els.connStatus.textContent = 'DISCONNECTED';
         els.connStatus.className = 'cmd-status';
-    } else if (STATE.connectionType === 'corv-binary') {
-        els.connStatus.textContent = 'CORV BINARY';
-        els.connStatus.className = 'cmd-status connected';
-    } else if (alive) {
-        els.connStatus.textContent = 'ACTIVE';
-        els.connStatus.className = 'cmd-status active';
-    } else if (STATE.connected) {
-        els.connStatus.textContent = 'CONNECTED';
-        els.connStatus.className = 'cmd-status connected';
+    } else {
+        const typeLabel = STATE.linkType || (
+            STATE.connectionType === 'corv-binary' ? 'CORV' :
+            STATE.connectionType === 'mavlink-udp' ? 'UDP' :
+            STATE.connectionType === 'mavlink-tcp' ? 'TCP' : 'SERIAL');
+        // Stats arrive at 1 Hz — treat them as stale after 3 s
+        const statsFresh = Date.now() - STATE.lastLinkStatsTime < 3000;
+        const kbps = statsFresh ? STATE.linkKbps : 0;
+        const rateStr = kbps >= 100 ? String(Math.round(kbps)) : kbps.toFixed(1);
+        els.connStatus.textContent = `${typeLabel} ${rateStr} kbps`;
+        els.connStatus.className = 'cmd-status' + (alive ? ' active' : ' connected');
     }
 
     // Battery

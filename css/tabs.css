@@ -961,17 +961,59 @@ body.has-tabs #ui-layer {
     background: var(--bg-color);
 }
 
-.setup-nav-group-label {
+/* Collapsible macro-category group header */
+.setup-nav-group-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    background: none;
+    border: none;
+    cursor: pointer;
     font-family: var(--font-ui);
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 2px;
     color: #ffbf00;
     padding: 12px 16px 4px;
-    opacity: 1;
+    text-align: left;
+}
+
+.setup-nav-group-header:hover {
+    color: #ffd76a;
+}
+
+.nav-group-chevron {
+    font-size: 9px;
+    line-height: 1;
+    transition: transform 0.15s;
+}
+
+.setup-nav-group.collapsed .nav-group-chevron {
+    transform: rotate(-90deg);
+}
+
+.setup-nav-group.collapsed .setup-nav-group-items {
+    display: none;
+}
+
+/* Group-level activity dot (visible even when collapsed) */
+.nav-group-dot {
+    display: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #00ff7f;
+    box-shadow: 0 0 4px #00ff7f;
+    margin-left: auto;
+}
+
+.nav-group-dot.on {
+    display: inline-block;
 }
 
 .setup-nav-btn {
+    position: relative;
     display: block;
     width: 100%;
     text-align: left;
@@ -983,9 +1025,42 @@ body.has-tabs #ui-layer {
     font-size: 10px;
     font-weight: 600;
     letter-spacing: 1px;
-    padding: 8px 16px;
+    padding: 7px 16px;
     cursor: pointer;
     transition: all 0.2s;
+}
+
+.setup-nav-btn .nav-btn-title {
+    display: block;
+}
+
+.setup-nav-btn .nav-btn-desc {
+    display: block;
+    font-size: 8px;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    opacity: 0.55;
+    margin-top: 1px;
+    text-transform: none;
+}
+
+/* Per-section activity dot */
+.nav-status-dot {
+    display: none;
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #00ff7f;
+    box-shadow: 0 0 4px #00ff7f;
+}
+
+.nav-status-dot.on {
+    display: inline-block;
 }
 
 .setup-nav-btn:hover {
@@ -997,6 +1072,68 @@ body.has-tabs #ui-layer {
     color: var(--accent-cyan);
     border-left-color: var(--accent-cyan);
     background: rgba(0, 210, 255, 0.06);
+}
+
+.setup-nav-btn.active .nav-btn-desc {
+    opacity: 0.75;
+}
+
+/* ============= TELEMETRY FORWARD OUTPUTS ============= */
+.telfwd-output-row {
+    border: 1px solid var(--border-accent);
+    border-left: 3px solid #00ff7f;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.telfwd-output-row.disconnected {
+    border-left-color: #ff3333;
+    opacity: 0.7;
+}
+
+.telfwd-output-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.telfwd-output-title {
+    flex: 1;
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--accent-cyan);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.telfwd-badge {
+    font-family: var(--font-ui);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #ffbf00;
+    border: 1px solid #ffbf00;
+    border-radius: 2px;
+    padding: 0 4px;
+    flex-shrink: 0;
+}
+
+.telfwd-remove-btn {
+    flex-shrink: 0;
+    font-size: 8px;
+    padding: 2px 8px;
+}
+
+.telfwd-output-stats {
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-dim);
 }
 
 .setup-content-area {
