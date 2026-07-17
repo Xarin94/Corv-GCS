@@ -1,8 +1,12 @@
 # CORV GCS — 12S high-speed quadcopter SITL frame model
 # Loaded with --model X:quad12s.json (file must sit in the SITL working dir).
 # Physics: ~2 kg rig, thrust/weight ≈ 12.5. Terminal speed scales with
-# sqrt(tan(lean)): 33 m/s at 45° → ~111 m/s (400 km/h) at the 85° limit,
-# where holding altitude needs T/W = 1/cos(85°) ≈ 11.5 — i.e. full power.
+# sqrt(tan(lean)): 40 m/s at 45° → ~111 m/s (400 km/h) at ~83°, where only
+# ~7.8x hover thrust is needed vs 12.5 available. That headroom matters:
+# with the previous 33 m/s fit the throttle saturated near 82° (voltage sag
+# + momentum drag), capping speed at ~320 km/h and making the altitude and
+# attitude loops chatter — the "vibration" seen at high speed. Top speed in
+# Loiter/Guided/Auto is capped at 111 m/s by LOIT_SPEED/WPNAV_SPEED.
 
 {
     # total vehicle mass in kg
@@ -12,7 +16,7 @@
     "diagonal_size" : 0.40,
 
     # reference test: constant-speed flight in zero wind, used to fit drag
-    "refSpd" : 33.0,     # m/s at 45° → ~111 m/s at 85°
+    "refSpd" : 40.0,     # m/s at 45° → ~111 m/s at ~83°
     "refAngle" : 45.0,   # degrees
     "refVoltage" : 46.0, # volts (12S under load)
     "refCurrent" : 28.0, # amps

@@ -314,6 +314,12 @@ export function resizeHUD() {
     return { width: w, height: h };
 }
 
+// First-person camera up-tilt (rad), set from main.js when the ↑90 view is
+// active. The HUD is conformal: FPM and pitch ladder shift down by the tilt
+// so they keep pointing at the real flight direction and horizon.
+let hudCameraTilt = 0;
+export function setHudCameraTilt(rad) { hudCameraTilt = rad; }
+
 /**
  * Draw flight path marker - shows where aircraft is going.
  * Standard HUD symbology (MIL-STD-1787 / HGS): circle with wings and fin.
@@ -1025,10 +1031,23 @@ export function drawHUD() {
     // Flight path marker
     // AoA (alpha) = pitch - gamma, so FPM should be at -AoA relative to boresight
     // When alpha increases (nose up relative to flight path), FPM moves DOWN
-    const fpmX = flightHeading * settings._pixelPerRad;
-    const fpmY = STATE.aoa * settings._pixelPerRad; // positive AoA = FPM below boresight
+    // With the camera tilted up (↑90 view) the view axis sits hudCameraTilt
+    // above the nose, so the world-referenced FPM shifts down by the tilt.
+    let fpmX = flightHeading * settings._pixelPerRad;
+    let fpmY = (STATE.aoa + hudCameraTilt) * settings._pixelPerRad;
+    // Cage the FPM at the edge of the field of view (HGS style): clamp to
+    // the visible area and draw it dashed while caged.
+    const cageX = size.width * 0.35;
+    const cageY = size.height * 0.35;
+    const fpmCaged = Math.abs(fpmX) > cageX || Math.abs(fpmY) > cageY;
+    if (fpmCaged) {
+        fpmX = Math.max(-cageX, Math.min(cageX, fpmX));
+        fpmY = Math.max(-cageY, Math.min(cageY, fpmY));
+    }
     drawWithShadow(() => {
+        if (fpmCaged) ctx.setLineDash([4, 4]);
         drawFlightPath(fpmX, fpmY);
+        if (fpmCaged) ctx.setLineDash([]);
     });
 
     // Speed error worm on FPM left wing (only with active nav guidance)
@@ -1040,9 +1059,10 @@ export function drawHUD() {
 
     // Pitch ladders (rotated and translated)
     // Note: roll is negated to match aircraft visual frame (bank right = horizon rotates left)
+    // Camera up-tilt shifts the ladder down with the rest of the world.
     drawWithShadow(() => {
         ctx.rotate(-roll);
-        ctx.translate(0, pitch * settings._pixelPerRad);
+        ctx.translate(0, (pitch + hudCameraTilt) * settings._pixelPerRad);
 
         drawHorizonLadder(0, 0);
 

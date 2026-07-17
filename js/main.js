@@ -47,7 +47,7 @@ import {
 } from './terrain/TerrainManager.js';
 
 // HUD imports
-import { initHUD, drawHUD, resizeHUD, pushHudMessage } from './hud/HUDRenderer.js';
+import { initHUD, drawHUD, resizeHUD, pushHudMessage, setHudCameraTilt } from './hud/HUDRenderer.js';
 
 // Map imports
 import { initMap, updateMap, invalidateSize as invalidateMapSize, updateMissionOverlay, updateTrafficOverlay, resetMapTrail } from './maps/MapEngine.js';
@@ -439,6 +439,7 @@ function toggleCameraMode() {
 
 function toggleCameraTilt() {
     cameraUpTilt = cameraUpTilt === 0 ? Math.PI / 2 : 0;
+    setHudCameraTilt(cameraUpTilt); // keep HUD symbology conformal to the view
     const btn = document.getElementById('btn-tilt');
     if (btn) btn.classList.toggle('active', cameraUpTilt !== 0);
 }
