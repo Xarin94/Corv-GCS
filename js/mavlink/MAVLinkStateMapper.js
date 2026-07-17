@@ -3,7 +3,7 @@
  * Translates MAVLink message data into the application's STATE format
  */
 
-import { STATE } from '../core/state.js';
+import { STATE, pushGHistory } from '../core/state.js';
 import { purgeStaleTraffic } from '../adsb/ADSBManager.js';
 
 let vibHistoryIdx = 0; // circular index for vibHistory
@@ -123,6 +123,9 @@ export function mapMessageToState(msgId, data) {
         case 1: mapSysStatus(data); break;
         case 24: mapGpsRawInt(data); break;
         case 26: mapScaledImu(data, true); break;
+        case 27: mapScaledImu(data, true); break;   // RAW_IMU — ArduPilot's primary
+                                                     // IMU (it never sends msg 26);
+                                                     // accel scaled to mG like SCALED_IMU
         case 116: mapScaledImu(data, false); break;  // SCALED_IMU2
         case 129: mapScaledImu(data, false); break;  // SCALED_IMU3
         case 30: mapAttitude(data); break;
@@ -228,7 +231,7 @@ function mapGpsRawInt(data) {
     }
 }
 
-// Track whether primary IMU (msg 26) is active; if so, ignore IMU2/3
+// Track whether a primary IMU (msg 26/27) is active; if so, ignore IMU2/3
 let imuPrimaryActive = false;
 let imuPrimaryLastTime = 0;
 
@@ -242,10 +245,13 @@ function mapScaledImu(data, isPrimary) {
     } else if (imuPrimaryActive && (now - imuPrimaryLastTime < 3000)) {
         return; // primary is active, skip IMU2/3
     }
-    // SCALED_IMU fields: xacc/yacc/zacc in mG → m/s²
+    // SCALED_IMU/RAW_IMU fields: xacc/yacc/zacc in mG → m/s²
     STATE.ax = data.xacc / 1000 * 9.81;
     STATE.ay = data.yacc / 1000 * 9.81;
     STATE.az = data.zacc / 1000 * 9.81;
+    // Feed the G-load history graph; in live/SITL mode nothing else pushes it
+    // (the demo flight loop is the only other writer).
+    pushGHistory();
 }
 
 function mapAttitude(data) {

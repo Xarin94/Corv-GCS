@@ -378,6 +378,9 @@ export async function requestAllDataStreams() {
         { id: 30,  rate: 25 }, // ATTITUDE   (EXTRA1) — artificial horizon
         { id: 74,  rate: 10 }, // VFR_HUD    (EXTRA2) — airspeed/altitude/climb
         { id: 31,  rate: 10 }, // ATTITUDE_QUATERNION (fallback attitude source)
+        { id: 27,  rate: 10 }, // RAW_IMU    (RAW_SENSORS) — accelerometers for
+                               //   the G-load indicator; the 4 Hz stream request
+                               //   above is ignored when SR*_RAW_SENS is 0
         { id: 241, rate: 2 },  // VIBRATION  (EXTRA3)
     ];
     for (const m of messages) {

@@ -190,12 +190,20 @@ const _gHistoryBuffer = new RingBuffer(300, true);
 for (let i = 0; i < 300; i++) _gHistoryBuffer.push(1.0);
 
 /**
+ * Total G-load: magnitude of the body-frame accelerometer vector (all three
+ * axes, so slips/braking count too), signed by the normal axis so pushovers
+ * and inverted flight still read negative (NED: az = -9.81 at rest → +1G).
+ */
+export function currentGLoad() {
+    const mag = Math.hypot(STATE.ax, STATE.ay, STATE.az) / 9.81;
+    return STATE.az > 0 ? -mag : mag;
+}
+
+/**
  * Push G history for G-load graph
  */
 export function pushGHistory() {
-    // Normal load factor: negate body-frame Z (NED: -1G at rest → +1G load)
-    const g = -STATE.az / 9.81;
-    _gHistoryBuffer.push(g);
+    _gHistoryBuffer.push(currentGLoad());
 }
 
 /** Expose ring buffer for direct read access (avoids toArray() allocation) */

@@ -3,7 +3,7 @@
  * Handles UI elements, telemetry display, configuration panels
  */
 
-import { STATE } from '../core/state.js';
+import { STATE, currentGLoad } from '../core/state.js';
 import { RAD } from '../core/constants.js';
 import { getNearestTraffic } from '../adsb/ADSBManager.js';
 
@@ -20,7 +20,7 @@ const HUD_FIELD_DEFS = {
     as:          { label: 'Airspeed',    getter: () => STATE.as,                           fmt: v => v.toFixed(1),                              unit: 'M/S' },
     gs:          { label: 'Ground Spd',  getter: () => STATE.gs,                           fmt: v => v.toFixed(1),                              unit: 'M/S' },
     vs:          { label: 'Vert Speed',  getter: () => STATE.vs,                           fmt: v => v.toFixed(1),                              unit: 'M/S' },
-    gload:       { label: 'G-Load',      getter: () => -STATE.az / 9.81,                   fmt: v => v.toFixed(1),                              unit: 'G',     special: 'gload' },
+    gload:       { label: 'G-Load',      getter: () => currentGLoad(),                     fmt: v => v.toFixed(1),                              unit: 'G',     special: 'gload' },
     alt:         { label: 'Altitude',    getter: () => STATE.rawAlt + STATE.offsetAlt,      fmt: v => Math.round(v).toString(),                   unit: 'MSL' },
     agl:         { label: 'Terr Alt',    getter: () => null,                                fmt: v => Math.round(v).toString(),                   unit: 'AGL',   special: 'agl' },
     lidar:       { label: 'LiDAR',       getter: () => STATE.rangefinderDist,               fmt: v => v.toFixed(2),                              unit: 'm AGL', special: 'lidar' },
@@ -218,9 +218,10 @@ function updateTelemetryPanel(alt, dom) {
     if (dom.tAs) dom.tAs.textContent = STATE.as.toFixed(1) + " m/s";
     if (dom.tGs) dom.tGs.textContent = STATE.gs.toFixed(1) + " m/s";
     if (dom.tVs) dom.tVs.textContent = STATE.vs.toFixed(1) + " m/s";
-    if (dom.tAx) dom.tAx.textContent = STATE.ax.toFixed(2) + " g";
-    if (dom.tAy) dom.tAy.textContent = STATE.ay.toFixed(2) + " g";
-    if (dom.tAz) dom.tAz.textContent = STATE.az.toFixed(2) + " g";
+    // STATE.ax/ay/az are m/s² — convert to g for the labeled unit
+    if (dom.tAx) dom.tAx.textContent = (STATE.ax / 9.81).toFixed(2) + " g";
+    if (dom.tAy) dom.tAy.textContent = (STATE.ay / 9.81).toFixed(2) + " g";
+    if (dom.tAz) dom.tAz.textContent = (STATE.az / 9.81).toFixed(2) + " g";
 }
 
 /**
