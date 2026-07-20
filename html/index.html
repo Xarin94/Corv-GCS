@@ -80,7 +80,12 @@
             </svg>
         </button>
         <button id="btn-cam" class="ui-btn square" onclick="toggleCameraMode()" title="Toggle 1st/3rd person camera">1P</button>
-        <button id="btn-tilt" class="ui-btn square" onclick="toggleCameraTilt()" title="Tilt first-person view 90° up (T)">&#8593;90</button>
+        <button id="btn-tilt" class="ui-btn square" onclick="toggleHorizonLock()" title="Horizon-lock view — pitch always level (T)">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="18" height="18">
+                <line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="2"/>
+                <path d="M9 12l3-4 3 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
         <button id="btn-traj" class="ui-btn square" onclick="toggleTrajectory()" title="Predicted trajectory corridor (P)">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="18" height="18">
                 <path d="M12 3v6M8 5l4-2 4 2M7 21c1-6 4-9 5-12M17 21c-1-6-4-9-5-12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>

@@ -314,11 +314,24 @@ export function resizeHUD() {
     return { width: w, height: h };
 }
 
-// First-person camera up-tilt (rad), set from main.js when the ↑90 view is
-// active. The HUD is conformal: FPM and pitch ladder shift down by the tilt
-// so they keep pointing at the real flight direction and horizon.
-let hudCameraTilt = 0;
-export function setHudCameraTilt(rad) { hudCameraTilt = rad; }
+// Horizon-lock mode, set from main.js: the first-person camera pitch is
+// held at zero so the horizon is always in frame regardless of attitude.
+// The ladder no longer shifts with pitch (the camera already stays level),
+// so the boresight/aircraft-reference symbol moves instead — it becomes the
+// mobile element that shows true pitch against the fixed horizon.
+let pitchLocked = false;
+export function setHudPitchLocked(locked) { pitchLocked = !!locked; }
+
+// Conformal angle→screen projection. The 3D scene behind the HUD is rendered
+// with a perspective camera (CAMERA_FOV vertical), so a symbol at angular
+// offset θ from the boresight lands on the world at focal·tan(θ), not the
+// linear focal·θ. _pixelPerRad is the focal length (px per rad at boresight),
+// tuned to the FOV; the linear form only holds near center and drifts off the
+// real world at large offsets — e.g. the ground-track marker under a big
+// wind-crab angle, or the boresight at high pitch in horizon-lock.
+function projectAngle(rad) {
+    return Math.tan(rad) * settings._pixelPerRad;
+}
 
 /**
  * Draw flight path marker - shows where aircraft is going.
@@ -339,6 +352,28 @@ function drawFlightPath(x, y) {
     ctx.lineTo(-r - wing, 0);
     ctx.moveTo(0, -r);
     ctx.lineTo(0, -r - fin);
+    ctx.stroke();
+
+    ctx.translate(-x, -y);
+}
+
+/**
+ * Draw inertial/ground-track marker - shows the GPS-only trajectory
+ * (track vs heading, flight-path angle vs pitch), independent of the
+ * body-frame AoA/SSA rotation used for the main FPM. HGS-style diamond,
+ * open (no wings/fin) so it reads as distinct from the primary FPM.
+ */
+function drawGroundTrackMarker(x, y) {
+    ctx.translate(x, y);
+
+    const d = 7; // half-diagonal
+
+    ctx.beginPath();
+    ctx.moveTo(0, -d);
+    ctx.lineTo(d, 0);
+    ctx.lineTo(0, d);
+    ctx.lineTo(-d, 0);
+    ctx.closePath();
     ctx.stroke();
 
     ctx.translate(-x, -y);
@@ -1027,14 +1062,23 @@ export function drawHUD() {
     const roll = STATE.roll;
     const flightPitch = STATE.gamma;  // flight path angle
     const flightHeading = STATE.ssa;  // sideslip angle
+    // Ladder shift for the current pitch reference: normally the camera
+    // (and thus the world horizon) tracks true pitch, so the ladder shifts
+    // to stay conformal. Locked, the camera never tilts, so the ladder
+    // stays put and the boresight moves instead (see below).
+    const pitchShift = pitchLocked ? 0 : pitch;
 
     // Flight path marker
     // AoA (alpha) = pitch - gamma, so FPM should be at -AoA relative to boresight
     // When alpha increases (nose up relative to flight path), FPM moves DOWN
-    // With the camera tilted up (↑90 view) the view axis sits hudCameraTilt
-    // above the nose, so the world-referenced FPM shifts down by the tilt.
-    let fpmX = flightHeading * settings._pixelPerRad;
-    let fpmY = (STATE.aoa + hudCameraTilt) * settings._pixelPerRad;
+    // FPM is air-relative in both modes (AoA/SSA, wind subtracted upstream).
+    // Position relative to the horizon must stay (aoa - pitch); since the
+    // horizon sits at pitchShift, the offset from center is aoa - pitch +
+    // pitchShift — which reduces to aoa unlocked and aoa - pitch when locked.
+    // Using flightPitch (ground gamma) here would drop wind from the vertical
+    // and overlap the ground-track diamond in horizon-lock.
+    let fpmX = projectAngle(flightHeading);
+    let fpmY = projectAngle(STATE.aoa - pitch + pitchShift);
     // Cage the FPM at the edge of the field of view (HGS style): clamp to
     // the visible area and draw it dashed while caged.
     const cageX = size.width * 0.35;
@@ -1050,6 +1094,26 @@ export function drawHUD() {
         if (fpmCaged) ctx.setLineDash([]);
     });
 
+    // Ground-track marker (inertial/GPS-only trajectory): track vs heading
+    // for the horizontal offset, flight-path angle vs pitch for the
+    // vertical one — no body-frame AoA/SSA rotation, so it reads the same
+    // in a bank regardless of roll coupling. Diamond, open, to read as
+    // distinct from the AoA/SSA-based FPM above.
+    let trackDiff = STATE.track - STATE.yaw;
+    trackDiff = Math.atan2(Math.sin(trackDiff), Math.cos(trackDiff)); // wrap
+    let gtmX = projectAngle(trackDiff);
+    let gtmY = projectAngle(pitchShift - flightPitch);
+    const gtmCaged = Math.abs(gtmX) > cageX || Math.abs(gtmY) > cageY;
+    if (gtmCaged) {
+        gtmX = Math.max(-cageX, Math.min(cageX, gtmX));
+        gtmY = Math.max(-cageY, Math.min(cageY, gtmY));
+    }
+    drawWithShadow(() => {
+        if (gtmCaged) ctx.setLineDash([4, 4]);
+        drawGroundTrackMarker(gtmX, gtmY);
+        if (gtmCaged) ctx.setLineDash([]);
+    });
+
     // Speed error worm on FPM left wing (only with active nav guidance)
     if (STATE.navDataTime > 0 && Date.now() - STATE.navDataTime < 3000) {
         drawWithShadow(() => {
@@ -1059,10 +1123,11 @@ export function drawHUD() {
 
     // Pitch ladders (rotated and translated)
     // Note: roll is negated to match aircraft visual frame (bank right = horizon rotates left)
-    // Camera up-tilt shifts the ladder down with the rest of the world.
+    // Locked, the ladder doesn't shift with pitch — the camera stays level so
+    // the horizon is always in frame, and the boresight moves instead.
     drawWithShadow(() => {
         ctx.rotate(-roll);
-        ctx.translate(0, (pitch + hudCameraTilt) * settings._pixelPerRad);
+        ctx.translate(0, pitchShift * settings._pixelPerRad);
 
         drawHorizonLadder(0, 0);
 
@@ -1079,10 +1144,20 @@ export function drawHUD() {
 
     // === FIXED UI ===
 
-    // Boresight marker (fixed at center - shows aircraft nose direction)
-    ctx.translate(size.width / 2, size.height / 2);
+    // Boresight marker - shows aircraft nose direction. Fixed at center
+    // normally; in horizon-lock mode the camera stays level so the marker
+    // itself moves vertically to show true pitch against the fixed horizon.
+    // Caged at the edge of the frame like the FPV markers, dashed while caged.
+    let boresightYOffset = pitchLocked ? -projectAngle(pitch) : 0;
+    const boresightCaged = pitchLocked && Math.abs(boresightYOffset) > cageY;
+    if (boresightCaged) {
+        boresightYOffset = Math.max(-cageY, Math.min(cageY, boresightYOffset));
+    }
+    ctx.translate(size.width / 2, size.height / 2 + boresightYOffset);
     drawWithShadow(() => {
+        if (boresightCaged) ctx.setLineDash([4, 4]);
         drawBoresight();
+        if (boresightCaged) ctx.setLineDash([]);
     });
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
 

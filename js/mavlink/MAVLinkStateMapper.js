@@ -305,23 +305,40 @@ function mapGlobalPositionInt(data) {
 }
 
 /**
- * Rotate NED velocity to body frame and compute AoA (alpha) and SSA (beta)
+ * Rotate air-relative velocity to body frame and compute AoA (alpha) and
+ * SSA (beta) — the FPM must show where the aircraft is moving through the
+ * AIR, not just over the ground, so the wind estimate (WIND msg 168) is
+ * subtracted from GPS/EKF ground velocity first. Falls back to raw ground
+ * velocity when no wind estimate has arrived yet (STATE.windDataTime = 0)
+ * or it's gone stale, which is equivalent to assuming zero wind.
  * Body frame: X = forward, Y = right, Z = down
  */
-function computeAeroAngles() {
+export function computeAeroAngles() {
+    let vn = STATE.vn, ve = STATE.ve, vd = STATE.vd;
+
+    if (STATE.windDataTime > 0 && Date.now() - STATE.windDataTime < 5000) {
+        // windDir is where the wind comes FROM; the air-mass velocity
+        // vector (the direction the air itself is moving) points opposite.
+        const windFromRad = STATE.windDir * Math.PI / 180;
+        const windVn = -Math.cos(windFromRad) * STATE.windSpeed;
+        const windVe = -Math.sin(windFromRad) * STATE.windSpeed;
+        vn -= windVn;
+        ve -= windVe;
+        vd -= STATE.windSpeedZ; // NED, positive = down
+    }
+
     const cr = Math.cos(STATE.roll),  sr = Math.sin(STATE.roll);
     const cp = Math.cos(STATE.pitch), sp = Math.sin(STATE.pitch);
     const cy = Math.cos(STATE.yaw),   sy = Math.sin(STATE.yaw);
 
-    // NED to body rotation (ZYX Euler: yaw -> pitch -> roll)
-    const vn = STATE.vn, ve = STATE.ve, vd = STATE.vd;
-
+    // NED to body rotation (ZYX Euler: yaw -> pitch -> roll), applied to
+    // the air-relative velocity so the result is true aerodynamic AoA/SSA.
     // Body-frame velocity components
     const Vbx = cp * cy * vn + cp * sy * ve - sp * vd;
     const Vby = (sr * sp * cy - cr * sy) * vn + (sr * sp * sy + cr * cy) * ve + sr * cp * vd;
     const Vbz = (cr * sp * cy + sr * sy) * vn + (cr * sp * sy - sr * cy) * ve + cr * cp * vd;
 
-    // Only compute when there's meaningful forward speed
+    // Only compute when there's meaningful forward airspeed
     if (Math.abs(Vbx) > 0.5) {
         STATE.aoa = Math.atan2(Vbz, Vbx);  // alpha: positive = nose above flight path
         STATE.ssa = Math.atan2(Vby, Vbx);   // beta: positive = wind from right

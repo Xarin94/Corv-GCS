@@ -47,7 +47,7 @@ import {
 } from './terrain/TerrainManager.js';
 
 // HUD imports
-import { initHUD, drawHUD, resizeHUD, pushHudMessage, setHudCameraTilt } from './hud/HUDRenderer.js';
+import { initHUD, drawHUD, resizeHUD, pushHudMessage, setHudPitchLocked } from './hud/HUDRenderer.js';
 
 // Map imports
 import { initMap, updateMap, invalidateSize as invalidateMapSize, updateMissionOverlay, updateTrafficOverlay, resetMapTrail } from './maps/MapEngine.js';
@@ -67,6 +67,7 @@ import { updateUI, toggleConfig, toggleTelemetry, updateOffset, updateAGLDisplay
 import { initMAVLink, onMessage } from './mavlink/MAVLinkManager.js';
 import { setParameter, requestParameter } from './mavlink/CommandSender.js';
 import { initTerrainFeeder } from './mavlink/TerrainFeeder.js';
+import { computeAeroAngles } from './mavlink/MAVLinkStateMapper.js';
 
 // GCS imports
 import { initCommandBar, updateCommandBar } from './ui/CommandBarController.js';
@@ -90,10 +91,11 @@ import {
 
 // ============== CAMERA / MODEL (1P / 3P) ==============
 let cameraMode = 'FIRST'; // 'FIRST' | 'THIRD'
-// First-person camera up-tilt (rad). Like an FPV camera mounted tilted up:
-// a high-power copter leans hard forward at speed, so tilting the view up
-// keeps the flight direction in frame instead of the ground.
-let cameraUpTilt = 0;
+// Horizon-lock: holds the first-person camera pitch at zero so the horizon
+// stays in frame regardless of the drone's actual attitude. The HUD's
+// boresight/aircraft-reference symbol becomes the mobile element in this
+// mode (see setHudPitchLocked in HUDRenderer.js).
+let horizonLocked = false;
 let vehicle = null;
 let vehicleLoadStarted = false;
 let vehicleLoadFailed = false;
@@ -437,11 +439,11 @@ function toggleCameraMode() {
     setCameraMode(cameraMode === 'FIRST' ? 'THIRD' : 'FIRST');
 }
 
-function toggleCameraTilt() {
-    cameraUpTilt = cameraUpTilt === 0 ? Math.PI / 2 : 0;
-    setHudCameraTilt(cameraUpTilt); // keep HUD symbology conformal to the view
+function toggleHorizonLock() {
+    horizonLocked = !horizonLocked;
+    setHudPitchLocked(horizonLocked); // boresight becomes mobile, ladder stays put
     const btn = document.getElementById('btn-tilt');
-    if (btn) btn.classList.toggle('active', cameraUpTilt !== 0);
+    if (btn) btn.classList.toggle('active', horizonLocked);
 }
 
 function initThirdPersonControls() {
@@ -496,7 +498,7 @@ function initThirdPersonControls() {
 
 // Expose for HTML onclick
 window.toggleCameraMode = toggleCameraMode;
-window.toggleCameraTilt = toggleCameraTilt;
+window.toggleHorizonLock = toggleHorizonLock;
 
 // ============== SUN POSITION CALCULATOR ==============
 function calculateSunPosition(date, lat, lon) {
@@ -735,7 +737,7 @@ function update3DWorld() {
         // First-person camera (existing behavior)
         camera.position.set(planePos.x, Math.max(totalAlt, 1), planePos.z);
         camera.rotation.order = 'YXZ';
-        camera.rotation.x = smoothAtt.pitch + cameraUpTilt;
+        camera.rotation.x = horizonLocked ? 0 : smoothAtt.pitch;
         camera.rotation.z = -smoothAtt.roll;
         camera.rotation.y = -smoothAtt.yaw;
     }
@@ -1146,11 +1148,10 @@ function animate() {
         const inertialGamma = Math.atan2(STATE.vs, Math.max(1, groundHoriz));
         STATE.track = ((inertialTrack % twoPi) + twoPi) % twoPi;
         STATE.gamma = inertialGamma;
-        // Flight-path marker offsets from the nose: crab (wind) + climb vs pitch
-        let crab = inertialTrack - STATE.yaw;
-        crab = Math.atan2(Math.sin(crab), Math.cos(crab)); // wrap
-        STATE.ssa = crab;                       // horizontal FPM offset
-        STATE.aoa = STATE.pitch - inertialGamma; // vertical FPM offset
+        // AoA/SSA (air-relative, wind subtracted) for the primary FPM — same
+        // physics as real telemetry, so both paths agree. STATE.track/gamma
+        // above stay ground-referenced for the ground-track marker.
+        computeAeroAngles();
 
         // Simulate LiDAR rangefinder (downward-facing)
         if (STATE.terrainHeight !== null) {
@@ -1335,7 +1336,7 @@ function toggleTrajectory() {
 // ============== VIEW TOGGLE KEYBOARD SHORTCUTS ==============
 // Single-key quick toggles for the 3D view. Active only on the Flight Data
 // tab and ignored while typing in a field or with a modifier held.
-//   T = tilt first-person view +90° up      P = predicted trajectory corridor
+//   T = toggle horizon-lock view             P = predicted trajectory corridor
 //   M = satellite map overlay               L = realistic sunlight
 function initViewShortcuts() {
     document.addEventListener('keydown', (e) => {
@@ -1346,7 +1347,7 @@ function initViewShortcuts() {
         if (!flightTab || !flightTab.classList.contains('active')) return;
 
         switch (e.key.toLowerCase()) {
-            case 't': toggleCameraTilt(); break;
+            case 't': toggleHorizonLock(); break;
             case 'p': toggleTrajectory(); break;
             case 'm': toggleSatellite(); break;
             case 'l': toggleSunlight(); break;
