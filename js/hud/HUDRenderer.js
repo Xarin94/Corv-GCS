@@ -950,20 +950,6 @@ function drawHudMessages() {
         hudMessages.shift();
     }
 
-    // Detect arm state change
-    if (STATE.armed !== prevArmedState) {
-        if (STATE.armed) {
-            pushHudMessage('ARMED', 'warning');
-        }
-        prevArmedState = STATE.armed;
-    }
-
-    // Update disarmed label visibility (HTML element, not canvas)
-    if (!disarmedLabelEl) disarmedLabelEl = document.getElementById('disarmed-label');
-    if (disarmedLabelEl) {
-        disarmedLabelEl.classList.toggle('hidden', STATE.armed);
-    }
-
     // Draw message list (bottom-left, like Mission Planner)
     if (hudMessages.length > 0) {
         ctx.save();
@@ -999,6 +985,23 @@ function drawHudMessages() {
         }
         ctx.restore();
     }
+}
+
+/**
+ * Arm-state UI that lives outside the HUD canvas: the DISARMED banner (an HTML
+ * element) and the one-shot ARMED message.
+ *
+ * Kept separate from drawHUD() on purpose — the HUD canvas is not drawn in
+ * third-person view, and the banner must still track the vehicle there.
+ */
+export function updateArmStateUI() {
+    if (STATE.armed !== prevArmedState) {
+        if (STATE.armed) pushHudMessage('ARMED', 'warning');
+        prevArmedState = STATE.armed;
+    }
+
+    if (!disarmedLabelEl) disarmedLabelEl = document.getElementById('disarmed-label');
+    if (disarmedLabelEl) disarmedLabelEl.classList.toggle('hidden', STATE.armed);
 }
 
 /**

@@ -15,7 +15,7 @@ import { latLonToMeters } from '../core/utils.js';
 import { setTrailPoints, resetTrail, setTrailFrozen } from '../engine/Scene3D.js';
 import { setMapTrail, unfreezeMapTrail } from '../maps/MapEngine.js';
 
-const REPLAY_MODEL = 'foxx.glb';
+const REPLAY_MODEL = 'plane.glb';
 
 // Vertical offset (metres) applied to the full-flight trail. Drawing the red
 // line slightly below the recorded altitude keeps it from running straight
@@ -105,7 +105,7 @@ function setOpenBtnEnabled(enabled) {
 }
 
 /**
- * Switch the 3D model to the one we use for log replay (foxx.glb) if it exists
+ * Switch the 3D model to the one we use for log replay (plane.glb) if it exists
  * in the model list. Remembers the previous selection for later restoration.
  */
 function switchToReplayModel() {

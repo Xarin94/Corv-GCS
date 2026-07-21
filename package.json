@@ -1,11 +1,12 @@
 {
   "name": "corv-gcs",
-  "version": "1.3.12",
+  "version": "1.3.13",
   "description": "CORV SYSTEMS Ground Control Station",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "postinstall": "electron-builder install-app-deps",
+    "models": "node scripts/gen-models.js",
     "build": "electron-builder --win --linux",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux"

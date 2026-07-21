@@ -19,7 +19,7 @@ ipcMain.handle('models-list', async () => {
   const modelsDir = path.join(__dirname, 'models');
   try {
     const entries = await fs.promises.readdir(modelsDir);
-    const models = entries.filter(f => /\.(glb|gltf)$/i.test(f));
+    const models = entries.filter(f => /\.(glb|gltf)$/i.test(f)).sort();
     console.log(`models-list: found ${models.length} models`);
     return models;
   } catch (err) {

@@ -47,7 +47,7 @@ import {
 } from './terrain/TerrainManager.js';
 
 // HUD imports
-import { initHUD, drawHUD, resizeHUD, pushHudMessage, setHudPitchLocked } from './hud/HUDRenderer.js';
+import { initHUD, drawHUD, resizeHUD, pushHudMessage, setHudPitchLocked, updateArmStateUI } from './hud/HUDRenderer.js';
 
 // Map imports
 import { initMap, updateMap, invalidateSize as invalidateMapSize, updateMissionOverlay, updateTrafficOverlay, resetMapTrail } from './maps/MapEngine.js';
@@ -103,10 +103,41 @@ let currentModelName = '';
 let modelScale = 1.0;
 let loadedModel = null; // Reference to the currently loaded 3D model
 
-// The Log Replay aircraft is normalized to a fixed real-world width (wingspan),
-// independent of the model-scale slider — see loadModel() / updateModelScale().
-const REPLAY_MODEL_NAME = 'foxx.glb';
-const REPLAY_MODEL_WIDTH_M = 14;
+// Every model in models/ is generated at true real-world scale by
+// scripts/gen-models.js, so the scale slider is a pure preference and no model
+// needs a normalization pass. Fixed wing is what we show until told otherwise.
+const DEFAULT_MODEL_NAME = 'plane.glb';
+
+// MAV_TYPE (HEARTBEAT.type) → model file. The airframe you are actually flying
+// should be the one on screen, so the model follows the heartbeat instead of
+// whatever was picked last session. A manual pick from the dropdown sticks
+// until the vehicle type itself changes.
+const MODEL_BY_MAV_TYPE = {
+    1: 'plane.glb',             // FIXED_WING
+    2: 'quadcopter.glb',        // QUADROTOR
+    3: 'helicopter.glb',        // COAXIAL
+    4: 'helicopter.glb',        // HELICOPTER
+    5: 'antenna-tracker.glb',   // ANTENNA_TRACKER
+    7: 'airship.glb',           // AIRSHIP
+    8: 'airship.glb',           // FREE_BALLOON
+    10: 'rover.glb',            // GROUND_ROVER
+    11: 'boat.glb',             // SURFACE_BOAT
+    12: 'submarine.glb',        // SUBMARINE
+    13: 'hexacopter.glb',       // HEXAROTOR
+    14: 'octocopter.glb',       // OCTOROTOR
+    15: 'tricopter.glb',        // TRICOPTER
+    16: 'flying-wing.glb',      // FLAPPING_WING — the delta wings people fly
+    19: 'quadplane-vtol.glb',   // VTOL_TAILSITTER_DUOROTOR
+    20: 'quadplane-vtol.glb',   // VTOL_TAILSITTER_QUADROTOR
+    21: 'quadplane-vtol.glb',   // VTOL_TILTROTOR
+    22: 'quadplane-vtol.glb',   // VTOL_FIXEDROTOR
+    23: 'quadplane-vtol.glb',   // VTOL_TAILSITTER
+    24: 'quadplane-vtol.glb',   // VTOL_TILTWING
+    25: 'quadplane-vtol.glb',   // VTOL_RESERVED5
+    27: 'octocopter.glb',       // DECAROTOR
+    29: 'octocopter.glb',       // DODECAROTOR
+};
+let lastModelVehicleType = 0;
 
 const orbit = {
     yaw: 0,
@@ -237,12 +268,10 @@ async function loadModelList() {
             if (display) display.textContent = modelScale.toFixed(1);
         }
 
-        if (savedModel && models.includes(savedModel)) {
-            select.value = savedModel;
-            loadModel(savedModel);
-        } else {
-            loadModel(models[0]);
-        }
+        const initial = (savedModel && models.includes(savedModel)) ? savedModel
+            : (models.includes(DEFAULT_MODEL_NAME) ? DEFAULT_MODEL_NAME : models[0]);
+        select.value = initial;
+        loadModel(initial);
     } catch (e) {
         console.error('Failed to load model list:', e);
         select.innerHTML = '<option value="">Error loading models</option>';
@@ -301,23 +330,7 @@ async function loadModel(filename) {
             model.position.set(0, 0, 0);
             model.rotation.set(0, Math.PI / 2, 0);
 
-            // The replay aircraft is locked to a fixed real-world width
-            // (REPLAY_MODEL_WIDTH_M, measured across its widest horizontal
-            // extent). The model-scale slider does not affect it. Every other
-            // model honours the slider scale as before.
-            if (filename.toLowerCase() === REPLAY_MODEL_NAME) {
-                model.scale.set(1, 1, 1);
-                try {
-                    model.updateMatrixWorld(true);
-                    const nativeSize = new THREE.Vector3();
-                    new THREE.Box3().setFromObject(model).getSize(nativeSize);
-                    const nativeWidth = Math.max(nativeSize.x, nativeSize.z);
-                    const s = nativeWidth > 0 ? REPLAY_MODEL_WIDTH_M / nativeWidth : 1;
-                    model.scale.set(s, s, s);
-                } catch (e) {}
-            } else {
-                model.scale.set(modelScale, modelScale, modelScale);
-            }
+            model.scale.set(modelScale, modelScale, modelScale);
 
             // Recenter pivot
             try {
@@ -347,17 +360,35 @@ async function loadModel(filename) {
 }
 
 /**
+ * Follow the vehicle type announced by HEARTBEAT: swap the 3D model whenever
+ * the type changes to one we have an airframe for. Driven from the render loop
+ * — it is a couple of integer compares per frame and needs no extra plumbing
+ * through the MAVLink layer.
+ */
+function syncModelToVehicleType() {
+    const type = STATE.vehicleType;
+    if (!type || type === lastModelVehicleType) return;
+    lastModelVehicleType = type;
+
+    const wanted = MODEL_BY_MAV_TYPE[type];
+    if (!wanted || wanted === currentModelName) return;
+
+    const select = document.getElementById('model-select');
+    if (!select) return;
+    const opt = Array.from(select.options).find(o => o.value.toLowerCase() === wanted);
+    if (!opt) return;  // model file missing from models/
+
+    select.value = opt.value;
+    loadModel(opt.value);
+}
+
+/**
  * Update the scale of the current model
  */
 function updateModelScale(scale) {
     modelScale = scale;
     localStorage.setItem('modelScale', scale.toString());
-
-    // The replay aircraft has a fixed real-world width — the slider doesn't
-    // touch it; its scale is recomputed on load.
-    if (loadedModel && currentModelName.toLowerCase() !== REPLAY_MODEL_NAME) {
-        loadedModel.scale.set(scale, scale, scale);
-    }
+    if (loadedModel) loadedModel.scale.set(scale, scale, scale);
 }
 
 /**
@@ -1030,6 +1061,7 @@ function animate() {
     lastFrameTime = now;
     
     updateFPS();
+    syncModelToVehicleType();
 
     // The sun moves ~0.25°/min: recomputing the solar almanac (new Date() +
     // trig) every frame is wasted work — 1 Hz is more than enough.
@@ -1185,6 +1217,9 @@ function animate() {
 
     if (onFlightDataTab && renderDue) {
         lastRenderTime = now;
+        // The DISARMED banner is an HTML overlay shown in both camera modes, so
+        // it is refreshed outside the first-person-only HUD draw.
+        updateArmStateUI();
         // Draw HUD in first-person 3D or when FPV is active
         if (cameraMode !== 'THIRD') {
             drawHUD();
