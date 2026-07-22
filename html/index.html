@@ -185,6 +185,14 @@
 
             <!-- Bottom Status Bars (position + traffic side by side) -->
             <div class="bottom-bar-group">
+                <!-- Rotor schematic stacked above the position readout -->
+                <div class="bottom-bar-stack">
+
+                <!-- ROTOR LOAD: per-motor PWM gauges on the airframe layout -->
+                <div id="rotor-load-panel">
+                    <canvas id="rotor-load-canvas"></canvas>
+                </div>
+
                 <!-- Position / Nav data -->
                 <div class="bottom-bar">
                     <div class="stat-item">
@@ -200,6 +208,8 @@
                         <div class="stat-val" id="disp-ralt">---</div>
                     </div>
                 </div>
+
+                </div><!-- end .bottom-bar-stack -->
 
                 <!-- ADS-B Traffic Table -->
                 <div class="bottom-bar traffic-bar" id="traffic-bar">
@@ -1526,6 +1536,56 @@
                 <div class="cfg-row">
                     <label>CELLS (AUTO)</label>
                     <span class="cfg-val" id="syscfg-bat-cells">3S</span>
+                </div>
+            </div>
+            <div class="setup-panel">
+                <div class="panel-header">ROTOR LOAD</div>
+                <div class="cfg-row">
+                    <label>SCHEMATIC</label>
+                    <label style="display:flex;align-items:center;gap:6px;">
+                        <input type="checkbox" id="rotor-cfg-enable" checked>
+                        <span>Show rotor load schematic</span>
+                    </label>
+                </div>
+                <div class="cfg-row">
+                    <label>FRAME</label>
+                    <select id="rotor-cfg-frame" class="cfg-select">
+                        <option value="auto">AUTO (from MAV_TYPE)</option>
+                        <option value="1">SINGLE ROTOR (plane / heli)</option>
+                        <option value="3">TRICOPTER (3)</option>
+                        <option value="4">QUAD (4)</option>
+                        <option value="6">HEXA (6)</option>
+                        <option value="8">OCTO (8)</option>
+                        <option value="10">DECA (10)</option>
+                        <option value="12">DODECA (12)</option>
+                    </select>
+                </div>
+                <div class="cfg-row">
+                    <label>MOTORS OFF PWM (SCALE MIN)</label>
+                    <input type="number" id="rotor-cfg-pwmmin" class="failsafe-input" value="1000" step="10" min="500" max="2500">
+                </div>
+                <div class="cfg-row">
+                    <label>SCALE MAX PWM</label>
+                    <input type="number" id="rotor-cfg-pwmmax" class="failsafe-input" value="2000" step="10" min="500" max="2500">
+                </div>
+                <div class="cfg-row">
+                    <label>GREEN ABOVE PWM</label>
+                    <input type="number" id="rotor-cfg-green" class="failsafe-input" value="1100" step="10" min="500" max="2500">
+                </div>
+                <div class="cfg-row">
+                    <label>ORANGE ABOVE PWM</label>
+                    <input type="number" id="rotor-cfg-orange" class="failsafe-input" value="1500" step="10" min="500" max="2500">
+                </div>
+                <div class="cfg-row">
+                    <label>RED ABOVE PWM</label>
+                    <input type="number" id="rotor-cfg-red" class="failsafe-input" value="1700" step="10" min="500" max="2500">
+                </div>
+                <div class="cfg-row">
+                    <label>SINGLE ROTOR CHANNEL</label>
+                    <input type="number" id="rotor-cfg-channel" class="failsafe-input" value="3" step="1" min="1" max="16">
+                </div>
+                <div class="cfg-row" style="opacity:0.6;font-size:11px;line-height:1.4;">
+                    <span>Below the green threshold the gauges read blue (motors stopped). Plane and helicopter show only the main rotor, on the channel above (ArduPlane throttle = 3, heli RSC = 8).</span>
                 </div>
             </div>
             <div class="setup-panel">

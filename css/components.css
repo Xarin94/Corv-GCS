@@ -312,6 +312,32 @@ button.ui-btn.recording {
     pointer-events: auto;
 }
 
+/* Vertical stack: ROTOR LOAD schematic above the position readout */
+.bottom-bar-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+}
+
+/* ROTOR LOAD: borderless propulsion schematic, map-sized, above the coordinates box */
+#rotor-load-panel {
+    width: 220px;
+    height: 220px;
+    box-sizing: border-box;
+    display: flex;
+    background: none;
+    border: none;
+    pointer-events: none;
+}
+
+#rotor-load-canvas {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    display: block;
+}
+
 /* BOTTOM BAR */
 .bottom-bar {
     display: flex;

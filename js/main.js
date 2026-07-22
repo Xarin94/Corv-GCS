@@ -59,6 +59,7 @@ import { connectSerial } from './serial/SerialHandler.js';
 import { TlogLogger } from './logging/TlogLogger.js';
 
 // UI imports
+import { initRotorLoadPanel, updateRotorLoadPanel } from './ui/RotorLoadPanel.js';
 import { updateUI, toggleConfig, toggleTelemetry, updateOffset, updateAGLDisplay, setStatusMessage, updateFPSDisplay, initMoreMenu, initConfigAutoClose, initHudCells } from './ui/UIController.js';
 
 // Split view imports
@@ -1220,6 +1221,7 @@ function animate() {
         // The DISARMED banner is an HTML overlay shown in both camera modes, so
         // it is refreshed outside the first-person-only HUD draw.
         updateArmStateUI();
+        updateRotorLoadPanel();
         // Draw HUD in first-person 3D or when FPV is active
         if (cameraMode !== 'THIRD') {
             drawHUD();
@@ -1625,6 +1627,7 @@ function init() {
     initGCSSidebar();
     initLogReplay();
     initHudCells();
+    initRotorLoadPanel();
     initTabs();
     initOfflinePanel();
     initMap('mini-map');
