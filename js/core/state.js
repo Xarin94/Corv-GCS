@@ -144,6 +144,14 @@ export const STATE = {
 };
 
 /**
+ * The demo flight runs whenever we are in LIVE mode without a link — there is
+ * no explicit flag, so this is the single source of truth for "is this demo".
+ */
+export function isDemoMode() {
+    return STATE.mode === 'LIVE' && !STATE.connected;
+}
+
+/**
  * Demo mode attitude smoothing state
  */
 export const demoAttitude = {

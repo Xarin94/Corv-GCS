@@ -235,9 +235,16 @@ function wings(part, opts) {
 
 // ---------------------------------------------------------------- shared bits
 
-/** Spinner + two blades, pointing forward from x. */
-function propeller(parts, { x, y = 0, z = 0, r = 0.55, spinner = true }) {
+/**
+ * Spinner + two blades, pointing forward from x.
+ *
+ * Fixed-wing airframes pass blades:false — a stationary prop cross reads as
+ * clutter in the 3D view (and as a wrong attitude cue when seen edge-on), so
+ * they keep the spinner alone as a nose cap.
+ */
+function propeller(parts, { x, y = 0, z = 0, r = 0.55, spinner = true, blades = true }) {
     if (spinner) tube(parts.accent, { x0: x - 0.18, x1: x + 0.02, r0: 0.11, r1: 0.02, y, z, seg: 10 });
+    if (!blades) return;
     for (const s of [1, -1]) {
         box(parts.dark, [0, 0, s * (r / 2 + 0.06)], [0.09, 0.02, r], T({ pos: [x - 0.2, y, z] }));
     }
@@ -280,24 +287,11 @@ MODELS['plane'] = (P) => {
     for (const s of [1, -1]) {
         box(P.accent, [0.10, 0.42, s * 4.85], [0.85, 0.12, 0.34], ID);
     }
-    // Ailerons / flaps hinted on the trailing edge.
-    wings(P.dark, { x: -0.30, y: -0.03, z0: 0.40, span: 4.40, rootChord: 0.30, tipChord: 0.22, thick: 0.09, sweep: 0.45, dihedral: 0.40 });
-
-    // Tailplane + fin + rudder.
+    // Tailplane + fin, both as single clean panels — no split control surfaces.
     wings(P.body, { x: -3.05, y: 0.05, z0: 0.12, span: 1.60, rootChord: 0.85, tipChord: 0.50, thick: 0.12, sweep: 0.28 });
-    wings(P.dark, { x: -3.42, y: 0.05, z0: 0.14, span: 1.55, rootChord: 0.18, tipChord: 0.14, thick: 0.08, sweep: 0.28 });
     panel(P.body, { x: -3.10, y: 0.14, z0: 0.06, span: 1.10, rootChord: 0.95, tipChord: 0.48, thick: 0.12, sweep: 0.62 }, UP);
-    panel(P.accent, { x: -3.52, y: 0.14, z0: 0.10, span: 1.02, rootChord: 0.22, tipChord: 0.16, thick: 0.09, sweep: 0.60 }, UP);
 
-    propeller(P, { x: 3.34, r: 1.05 });
-
-    // Fixed tricycle gear, just enough to read on the ground.
-    for (const s of [1, -1]) {
-        box(P.dark, [0.35, -0.55, s * 0.95], [0.10, 0.55, 0.10]);
-        disc(P.dark, { r: 0.22, h: 0.10, seg: 10 }, T({ rot: [rad(90), 0, 0], pos: [0.35, -0.82, s * 0.95] }));
-    }
-    box(P.dark, [2.10, -0.50, 0], [0.09, 0.42, 0.09]);
-    disc(P.dark, { r: 0.17, h: 0.09, seg: 10 }, T({ rot: [rad(90), 0, 0], pos: [2.10, -0.72, 0] }));
+    propeller(P, { x: 3.34, r: 1.05, blades: false });
 };
 
 // --- Flying wing / delta (MAV_TYPE_FLAPPING_WING slot in MP's list is rare;
@@ -306,8 +300,6 @@ MODELS['flying-wing'] = (P) => {
     // Strongly swept centre body blending into the outer panels.
     wings(P.body, { x: 0.10, y: 0, z0: 0.0, span: 1.30, rootChord: 2.60, tipChord: 1.70, thick: 0.34, sweep: 0.80 });
     wings(P.body, { x: -0.70, y: 0.02, z0: 1.30, span: 2.40, rootChord: 1.70, tipChord: 0.55, thick: 0.20, sweep: 1.05, dihedral: 0.18 });
-    // Elevons.
-    wings(P.dark, { x: -1.62, y: 0.04, z0: 1.35, span: 2.25, rootChord: 0.34, tipChord: 0.20, thick: 0.09, sweep: 1.05, dihedral: 0.17 });
     // Winglets.
     for (const s of [1, -1]) {
         panel(P.accent, { x: -1.72, y: 0.20, z0: 0.02, span: 0.62, rootChord: 0.70, tipChord: 0.34, thick: 0.09, sweep: 0.30 },
@@ -316,7 +308,7 @@ MODELS['flying-wing'] = (P) => {
     ellipsoid(P.body, { rx: 1.20, ry: 0.26, rz: 0.42, seg: 12, rings: 6 }, T({ pos: [0.35, 0.22, 0] }));
     ellipsoid(P.glass, { rx: 0.45, ry: 0.17, rz: 0.26, seg: 10, rings: 5 }, T({ pos: [0.95, 0.34, 0] }));
     tube(P.accent, { x0: 1.35, x1: 1.72, r0: 0.22, r1: 0.03, seg: 12, y: 0.10 });
-    propeller(P, { x: -1.70, y: 0.10, r: 0.75, spinner: false });
+    // Pusher prop omitted: at this size the blade cross only added visual noise.
 };
 
 // --- Quadplane / VTOL (MAV_TYPE_VTOL_*)
@@ -327,8 +319,7 @@ MODELS['quadplane-vtol'] = (P) => {
     wings(P.body, { x: 0.30, y: -0.06, z0: 0.28, span: 3.90, rootChord: 1.30, tipChord: 0.70, thick: 0.18, sweep: 0.30, dihedral: 0.28 });
     wings(P.body, { x: -2.20, y: 0.02, z0: 0.10, span: 1.30, rootChord: 0.70, tipChord: 0.42, thick: 0.10, sweep: 0.22 });
     panel(P.body, { x: -2.25, y: 0.12, z0: 0.05, span: 0.90, rootChord: 0.80, tipChord: 0.40, thick: 0.10, sweep: 0.50 }, UP);
-    panel(P.accent, { x: -2.62, y: 0.12, z0: 0.08, span: 0.84, rootChord: 0.20, tipChord: 0.14, thick: 0.08, sweep: 0.48 }, UP);
-    propeller(P, { x: 2.68, r: 0.85 });
+    propeller(P, { x: 2.68, r: 0.85, blades: false });
 
     // Lift booms carrying four vertical rotors — the VTOL giveaway.
     for (const s of [1, -1]) {
@@ -352,12 +343,6 @@ function multirotor(P, { angles, radius = 1.30, rotorR = 0.62, body = 0.90 }) {
         arm(P, { x, z, y: 0.02 });
         rotor(P, { x, z, r: rotorR, y: 0.10 });
     }
-    // Skid landing gear.
-    for (const s of [1, -1]) {
-        box(P.dark, [0, -0.48, s * 0.42], [1.10, 0.07, 0.07]);
-        box(P.dark, [0.28, -0.33, s * 0.42], [0.07, 0.30, 0.07], T({ rot: [0, 0, rad(-12)] }));
-        box(P.dark, [-0.28, -0.33, s * 0.42], [0.07, 0.30, 0.07], T({ rot: [0, 0, rad(12)] }));
-    }
 }
 
 MODELS['quadcopter'] = (P) => multirotor(P, { angles: [45, 135, 225, 315], radius: 1.20, rotorR: 0.62 });
@@ -378,11 +363,6 @@ MODELS['tricopter'] = (P) => {
         T({ rot: [rad(18), 0, rad(90)], pos: [-1.65, 0.14, 0] }));
     disc(P.dark, { r: 0.58, h: 0.02, seg: 18 }, T({ rot: [rad(18), 0, 0], pos: [-1.65, 0.30, 0] }));
     disc(P.accent, { r: 0.16, h: 0.03, seg: 10 }, T({ rot: [rad(18), 0, 0], pos: [-1.65, 0.33, 0] }));
-    for (const s of [1, -1]) {
-        box(P.dark, [0, -0.42, s * 0.38], [0.95, 0.06, 0.06]);
-        box(P.dark, [0.24, -0.28, s * 0.38], [0.06, 0.28, 0.06], T({ rot: [0, 0, rad(-14)] }));
-        box(P.dark, [-0.24, -0.28, s * 0.38], [0.06, 0.28, 0.06], T({ rot: [0, 0, rad(14)] }));
-    }
 };
 
 // --- Helicopter (MAV_TYPE_HELICOPTER)
@@ -404,13 +384,6 @@ MODELS['helicopter'] = (P) => {
     disc(P.accent, { r: 0.14, h: 0.05, seg: 8 }, T({ rot: [0, 0, rad(90)], pos: [-3.30, 0.45, 0.20] }));
     panel(P.accent, { x: -3.35, y: 0.30, z0: 0.0, span: 0.70, rootChord: 0.75, tipChord: 0.42, thick: 0.09, sweep: 0.32 }, UP);
     wings(P.body, { x: -2.60, y: 0.26, z0: 0.08, span: 0.62, rootChord: 0.42, tipChord: 0.30, thick: 0.07 });
-
-    // Skids.
-    for (const s of [1, -1]) {
-        box(P.dark, [0.40, -0.75, s * 0.68], [2.30, 0.08, 0.08]);
-        box(P.dark, [1.10, -0.42, s * 0.60], [0.08, 0.62, 0.08], T({ rot: [0, 0, rad(-8)] }));
-        box(P.dark, [-0.25, -0.42, s * 0.60], [0.08, 0.62, 0.08], T({ rot: [0, 0, rad(8)] }));
-    }
 };
 
 // --- Ground rover (MAV_TYPE_GROUND_ROVER)

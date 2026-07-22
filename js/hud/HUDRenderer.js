@@ -4,7 +4,7 @@
  * Graphics style ported from origin/main HUD class
  */
 
-import { STATE, gHistoryBuffer } from '../core/state.js';
+import { STATE, gHistoryBuffer, isDemoMode } from '../core/state.js';
 
 // HUD state
 let canvas = null;
@@ -1001,7 +1001,14 @@ export function updateArmStateUI() {
     }
 
     if (!disarmedLabelEl) disarmedLabelEl = document.getElementById('disarmed-label');
-    if (disarmedLabelEl) disarmedLabelEl.classList.toggle('hidden', STATE.armed);
+    if (!disarmedLabelEl) return;
+
+    // In demo the aircraft is simulated in flight: show a blinking DEMO banner
+    // instead of the red DISARMED warning, which would read as a real fault.
+    const demo = isDemoMode();
+    disarmedLabelEl.classList.toggle('hidden', STATE.armed && !demo);
+    disarmedLabelEl.classList.toggle('demo-label', demo);
+    disarmedLabelEl.textContent = demo ? 'DEMO' : 'DISARMED';
 }
 
 /**
@@ -1041,9 +1048,10 @@ export function drawHUD() {
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
     ctx.clearRect(0, 0, size.width, size.height);
 
-    // Set default style — HUD color shifts red/orange when disarmed
+    // Set default style — HUD color shifts red/orange when disarmed.
+    // Demo flies a simulated airframe, so it keeps the normal armed green.
     ctx.lineWidth = style.lineWidth;
-    if (STATE.armed) {
+    if (STATE.armed || isDemoMode()) {
         ctx.strokeStyle = style.color;
         ctx.fillStyle = style.color;
     } else {

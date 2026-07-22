@@ -140,6 +140,17 @@ button.ui-btn.recording {
     display: none;
 }
 
+/* Demo banner — same slot, but HUD-green so it reads as a mode, not a fault */
+.disarmed-label.demo-label {
+    animation: demo-blink 1.4s steps(1, end) infinite;
+    text-shadow: 0 0 8px rgba(0, 255, 127, 0.6);
+}
+
+@keyframes demo-blink {
+    0%, 60%   { color: #00ff7f; opacity: 1; }
+    61%, 100% { color: #00ff7f; opacity: 0.15; }
+}
+
 @keyframes disarmed-pulse {
     0%   { color: #ff2020; opacity: 1; }
     25%  { color: #ff6600; opacity: 0.85; }
