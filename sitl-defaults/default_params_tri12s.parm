@@ -1,0 +1,137 @@
+# CORV GCS — 12S tricopter defaults (SITL model: tri:tri12s.json)
+# Symmetric tricopter, 3x Hobbywing X8 G2 (17.5 kg/axis, 12S), STOCK arducopter
+# firmware and classic AP_MotorsTri mixing (pitch shared front/rear, tail tilt
+# servo for yaw). ~8.5 kg AUW, T/W ~6.2. Where ArduPilot 4.7+ renamed a
+# parameter, both spellings are listed; the firmware ignores unknown names.
+
+FRAME_CLASS      7       # Tricopter (tail tilt-servo yaw)
+
+# --- tail servo: 60 deg in 0.13 s ---
+SIM_SERVO_SPEED  0.13    # seconds per 60 deg (SITL servo model)
+SERVO7_FUNCTION  39      # Motor7 = tricopter tail/yaw servo
+MOT_YAW_SV_ANGLE 35      # +/- deflection used for yaw
+MOT_YAW_SV_MIN   1000
+MOT_YAW_SV_MAX   2000
+MOT_YAW_SV_TRIM  1500
+
+# --- RC calibration (standard SITL) ---
+RC1_MIN 1000
+RC1_MAX 2000
+RC1_TRIM 1500
+RC2_MIN 1000
+RC2_MAX 2000
+RC2_TRIM 1500
+RC3_MIN 1000
+RC3_MAX 2000
+RC3_TRIM 1500
+RC4_MIN 1000
+RC4_MAX 2000
+RC4_TRIM 1500
+RC5_MIN 1000
+RC5_MAX 2000
+RC5_TRIM 1500
+RC6_MIN 1000
+RC6_MAX 2000
+RC6_TRIM 1500
+RC7_MIN 1000
+RC7_MAX 2000
+RC7_TRIM 1500
+RC8_MIN 1000
+RC8_MAX 2000
+RC8_TRIM 1500
+
+# --- small INS offsets so the IMU counts as calibrated ---
+INS_ACCOFFS_X   0.001
+INS_ACCOFFS_Y   0.001
+INS_ACCOFFS_Z   0.001
+INS_ACCSCAL_X   1.001
+INS_ACCSCAL_Y   1.001
+INS_ACCSCAL_Z   1.001
+INS_ACC2OFFS_X  0.001
+INS_ACC2OFFS_Y  0.001
+INS_ACC2OFFS_Z  0.001
+INS_ACC2SCAL_X  1.001
+INS_ACC2SCAL_Y  1.001
+INS_ACC2SCAL_Z  1.001
+COMPASS_OFS_X   5
+COMPASS_OFS_Y   13
+COMPASS_OFS_Z   -18
+COMPASS_OFS2_X  5
+COMPASS_OFS2_Y  13
+COMPASS_OFS2_Z  -18
+COMPASS_OFS3_X  5
+COMPASS_OFS3_Y  13
+COMPASS_OFS3_Z  -18
+
+# --- battery: 12S 9Ah (4.2 V/cell full, 3.3 V/cell empty) ---
+BATT_MONITOR     4
+SIM_BATT_VOLTAGE 50.4
+BATT_CAPACITY    9000
+MOT_BAT_VOLT_MAX 50.4
+MOT_BAT_VOLT_MIN 39.6
+BATT_ARM_VOLT    45.6
+BATT_LOW_VOLT    40.8
+BATT_CRT_VOLT    39.6
+
+# --- motors (T/W ~6.2; per-motor hover ~16% of the 17.5 kg X8 ceiling) ---
+MOT_PWM_MIN      1000
+MOT_PWM_MAX      2000
+MOT_THST_EXPO    0.70
+MOT_THST_HOVER   0.31    # matches JSON hoverThrOut -> X8 ceiling 17.5 kg, green
+MOT_HOVER_LEARN  2
+MOT_SPIN_ARM     0.08
+MOT_SPIN_MIN     0.08
+MOT_SPOOL_TIME   0.40    # large 30" props spool up gradually
+
+# --- flight envelope ---
+ATC_ANGLE_MAX    40      # deg (4.7+)
+ANGLE_MAX        4000    # centideg (<=4.6)
+PILOT_SPEED_UP   400
+PILOT_SPD_UP     4
+PILOT_SPEED_DN   250
+PILOT_SPD_DN     2.5
+WPNAV_SPEED      1500    # cm/s — 15 m/s cruise
+WP_SPD           15
+WPNAV_ACCEL      300
+WP_ACC           3
+LOIT_SPEED       1500
+LOIT_SPEED_MS    15
+
+# --- attitude tune: SAFE STARTING POINT ONLY, run AUTOTUNE in sim ---
+# Soft gains for a light, very overpowered tri (T/W ~6.2) with big 30" props
+# (low blade-pass frequency, high inertia). Refine with AUTOTUNE.
+INS_GYRO_FILTER  18      # 30" props = low blade-pass frequency
+INS_ACCEL_FILTER 20
+ATC_INPUT_TC     0.15
+ATC_ANG_RLL_P    5
+ATC_ANG_PIT_P    5
+ATC_ANG_YAW_P    4.5
+ATC_RAT_RLL_P    0.10
+ATC_RAT_RLL_I    0.10
+ATC_RAT_RLL_D    0.004
+ATC_RAT_RLL_FLTD 15
+ATC_RAT_RLL_FLTT 15
+ATC_RAT_PIT_P    0.10
+ATC_RAT_PIT_I    0.10
+ATC_RAT_PIT_D    0.004
+ATC_RAT_PIT_FLTD 15
+ATC_RAT_PIT_FLTT 15
+ATC_RAT_YAW_P    0.28    # yaw driven by tail servo: no D term
+ATC_RAT_YAW_I    0.03
+ATC_RAT_YAW_FLTE 2
+ATC_THR_MIX_MAN  0.5
+
+# --- clean flight: no simulated vibration / sensor noise / wind ---
+SIM_VIB_MOT_MAX  0
+SIM_VIB_MOT_MASK 0
+SIM_VIB_MOT_MULT 0
+SIM_VIB_FREQ_X   0
+SIM_VIB_FREQ_Y   0
+SIM_VIB_FREQ_Z   0
+SIM_GYR1_RND     0
+SIM_GYR2_RND     0
+SIM_ACC1_RND     0
+SIM_ACC2_RND     0
+SIM_BARO_RND     0
+SIM_WIND_SPD     0
+SIM_WIND_TURB    0

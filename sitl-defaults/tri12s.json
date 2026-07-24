@@ -1,0 +1,70 @@
+# CORV GCS — 12S tricopter SITL frame model
+# Loaded with --model tri:tri12s.json (file must sit in the SITL working dir).
+# Symmetric tricopter, 3x Hobbywing X8 G2 (30x11 3011S prop, 17.5 kg max/axis,
+# 12S), stock arducopter firmware / classic AP_MotorsTri mixing. No custom
+# geometry — the built-in "tri" Y layout and CG at the centroid are used.
+#
+# Mass budget (empty, no payload):
+#   3x X8 G2 propulsion  3 x 1.095 = 3.3 kg
+#   12S 9Ah battery                 ~2.4 kg
+#   frame / arms / tail servo / FC  ~2.8 kg
+#   -> AUW ~= 8.5 kg   (adjust "mass" to your real all-up weight)
+#
+# Thrust: 3 x 17.5 = 52.5 kg / 8.5 kg -> T/W ~6.2. Per-motor hover = 8.5/3 =
+# 2.83 kg = 16% of the 17.5 kg ceiling -> motors sit deep in the green. The
+# hoverThrOut below is what pins each motor's max thrust to the real X8 (17.5
+# kg); raising it lowers the ceiling and pushes the ROTOR LOAD arc toward red.
+
+{
+    # total vehicle mass in kg (empty AUW; set to your measured weight)
+    "mass" : 8.5,
+
+    # motor-to-motor span in metres (large 30" props, wide tri)
+    "diagonal_size" : 1.30,
+
+    # reference test: constant-speed flight in zero wind, used to fit drag
+    "refSpd" : 15.0,     # m/s cruise
+    "refAngle" : 20.0,   # degrees
+    "refVoltage" : 46.0, # volts (12S under load)
+    "refCurrent" : 40.0, # amps (hover, ~8.5 kg)
+    "refAlt" : 300,      # metres AMSL
+    "refTempC" : 25,     # degrees C
+    "refBatRes" : 0.010, # ohms — 12S 9Ah pack internal resistance
+
+    # full battery voltage: 12S x 4.2 V
+    "maxVoltage" : 50.4,
+
+    # full battery capacity, Ah (0 = unlimited)
+    "battCapacityAh" : 9.0,
+
+    # MOT_THST_EXPO — large props are more non-linear
+    "propExpo" : 0.70,
+
+    # approximate maximum yaw rate in deg/sec (servo-driven tail)
+    "refRotRate" : 130,
+
+    # hover throttle 0..1. Also sets each motor's max thrust:
+    # per_motor_max = (mass/num_motors) / [(1-expo)*h + expo*h^2].
+    # h=0.31 (expo 0.70) -> ~17.5 kgf/motor = real X8 G2 ceiling. T/W ~6.2.
+    "hoverThrOut" : 0.31,
+
+    # MOT_PWM_MIN / MOT_PWM_MAX
+    "pwmMin" : 1000,
+    "pwmMax" : 2000,
+
+    # MOT_SPIN_MIN / MOT_SPIN_MAX — big motors start a bit higher
+    "spin_min" : 0.08,
+    "spin_max" : 0.95,
+
+    # maximum motor slew rate, 0 = disabled
+    "slew_max" : 0,
+
+    # total effective disc area, sq m: 3 x 30" disc (0.456 each)
+    "disc_area" : 1.37,
+
+    # momentum drag coefficient (ratio vs ducted rotor of same disc area)
+    "mdrag_coef" : 0.10,
+
+    # number of motors
+    "num_motors" : 3
+}

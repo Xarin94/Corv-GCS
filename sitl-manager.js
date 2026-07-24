@@ -16,6 +16,9 @@ const http = require('http');
 const VEHICLE_MAP = {
     copter:  { binary: 'arducopter',  model: 'quad' },
     copter12s: { binary: 'arducopter', model: 'X:quad12s.json' },
+    // Symmetric 12S tricopter (3x Hobbywing X8 G2), stock arducopter firmware.
+    // Physics (mass, battery, thrust) come from tri12s.json.
+    tri12s: { binary: 'arducopter', model: 'tri:tri12s.json' },
     plane:   { binary: 'arduplane',   model: 'plane' },
     rover:   { binary: 'ardurover',   model: 'rover' },
     sub:     { binary: 'ardusub',     model: 'vectored' },
@@ -31,7 +34,8 @@ function getFirmwareUrl(vehicle, version) {
     const info = VEHICLE_MAP[vehicle];
     if (!info) return null;
     const pathMap = {
-        copter: 'Copter', copter12s: 'Copter', plane: 'Plane', rover: 'Rover',
+        copter: 'Copter', copter12s: 'Copter', tri12s: 'Copter',
+        plane: 'Plane', rover: 'Rover',
         sub: 'Sub', heli: 'Copter', quadplane: 'Plane'
     };
     const fwPath = pathMap[vehicle] || 'Copter';
