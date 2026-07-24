@@ -785,14 +785,14 @@ function drawBankArc() {
 }
 
 /**
- * Draw vertical speed indicator: compact non-linear tape right of the
- * pitch ladder with a pointer and digital readout (Garmin-style).
+ * Draw a compact non-linear vertical tape (Garmin-style): baseline with ticks
+ * to the left, a filled pointer + digital readout to the right, an optional
+ * top label and the 'M/S' unit at the bottom. Shared by the VSI and the
+ * total-energy variometer so both keep identical geometry and scale.
  * ±5 m/s occupies most of the scale, 5-10 m/s is compressed.
  */
-function drawVSI() {
-    const cx = size.width / 2;
+function drawVertTape(x, value, topLabel) {
     const cy = size.height / 2;
-    const x = Math.min(cx + 320, size.width - 150);
     const H = Math.min(110, size.height * 0.16);
     const maxV = 10;
 
@@ -826,8 +826,8 @@ function drawVSI() {
     ctx.fillText('5', -14, mapY(-5));
 
     // Pointer + digital value
-    const vs = Number.isFinite(STATE.vs) ? STATE.vs : 0;
-    const vy = mapY(vs);
+    const val = Number.isFinite(value) ? value : 0;
+    const vy = mapY(val);
     ctx.beginPath();
     ctx.moveTo(0, vy);
     ctx.lineTo(9, vy - 5);
@@ -837,14 +837,64 @@ function drawVSI() {
 
     setFontScale(14, 'px');
     ctx.textAlign = 'left';
-    ctx.fillText(vs.toFixed(1), 13, vy);
+    ctx.fillText(val.toFixed(1), 13, vy);
 
+    // Optional top label (e.g. 'TE') then the shared unit at the bottom
+    if (topLabel) {
+        setFontScale(10, 'px');
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(topLabel, 0, -H - 6);
+    }
     setFontScale(10, 'px');
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillText('M/S', 0, H + 6);
 
     ctx.restore();
+}
+
+// Total-energy (specific-energy) rate: dEs/dt = vs + V*(dV/dt)/g — a TE-
+// compensated variometer. It stays ~0 when altitude is merely traded for
+// speed and goes positive when the air adds energy (updraft/thermal). dV/dt
+// and the output are low-pass filtered (frame-rate independent) so airspeed
+// sample steps don't spike the reading.
+let _teVario = { v: null, t: 0, dvdt: 0, rate: 0 };
+function energyRate() {
+    const g = 9.80665;
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+    const vs = Number.isFinite(STATE.vs) ? STATE.vs : 0;
+    // prefer airspeed (air-mass energy); fall back to groundspeed if unavailable
+    const V = (Number.isFinite(STATE.as) && STATE.as > 1) ? STATE.as
+            : (Number.isFinite(STATE.gs) ? STATE.gs : 0);
+
+    if (_teVario.v === null) {
+        _teVario.v = V; _teVario.t = now; _teVario.rate = vs;
+        return vs;
+    }
+    const dt = now - _teVario.t;
+    if (dt > 0.001) {
+        const rawDvdt = (V - _teVario.v) / dt;
+        _teVario.dvdt += (rawDvdt - _teVario.dvdt) * Math.min(1, dt / 1.5); // tau 1.5s
+        _teVario.v = V;
+        _teVario.t = now;
+        const rawRate = vs + (V * _teVario.dvdt) / g;
+        _teVario.rate += (rawRate - _teVario.rate) * Math.min(1, dt / 0.6);  // tau 0.6s
+    }
+    return _teVario.rate;
+}
+
+/**
+ * Draw the vertical speed indicator plus the total-energy variometer as two
+ * identical non-linear tapes right of the pitch ladder. Left tape = VSI
+ * (STATE.vs); right tape (labelled TE) = specific-energy rate for spotting
+ * rising air independent of stick-induced climb/descent.
+ */
+function drawVSI() {
+    const cx = size.width / 2;
+    const x = Math.min(cx + 320, size.width - 150);
+    drawVertTape(x, Number.isFinite(STATE.vs) ? STATE.vs : 0, null);
+    drawVertTape(x + 82, energyRate(), 'TE');
 }
 
 /**
