@@ -10,15 +10,18 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.1-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.5.0-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"/>
   <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
+  <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey" alt="Platform"/>
 </p>
 
 ---
 
-**CORV GCS** is a desktop Ground Control Station designed for ArduPilot-based vehicles (Plane, Copter, Rover, VTOL). It features immersive 3D terrain visualization using real SRTM elevation data, full mission planning, real-time telemetry, and a modern UI — all in a lightweight Electron application.
+**CORV GCS** is a desktop Ground Control Station designed for ArduPilot-based vehicles (Plane, Copter, Rover, Sub, Heli, VTOL). It features immersive 3D terrain visualization using real SRTM elevation data, full mission planning, real-time telemetry, and a modern UI — all in a lightweight Electron application.
+
+It also speaks the **CORV binary protocol** for the onboard CORV autopilot and reads **MSP/MSP2 telemetry** from INAV and Betaflight flight controllers. Every protocol is decoded in the main process and normalised to MAVLink, so all three drive the same HUD, 3D view and instruments.
 
 > This project is under active development. Feedback, bug reports, and feature requests are welcome!
 
@@ -31,9 +34,10 @@
 - Chunk-based LOD system with satellite imagery overlay
 - Dynamic **hillshade** rendering with realistic sun positioning (time-of-day aware)
 - Wireframe overlay with proximity-based display
-- First-person (pilot) and third-person (observer) camera modes
-- 3D aircraft model rendering (GLB/GLTF)
+- First-person (pilot) and third-person (observer) camera modes, plus a **horizon-lock** view
+- **Per-airframe 3D models**, selected automatically from the vehicle's `MAV_TYPE`
 - Flight trail visualization (up to 50,000 points)
+- Keyboard view toggles: `T` tilt +90°, `P` trajectory, `M` satellite, `L` sunlight
 
 ### Mission Planning
 - Full mission editor with **40+ ArduPilot MAV_CMD commands** organized by category:
@@ -44,11 +48,17 @@
 - **Polygon survey tool** — draw an area and auto-generate survey grid waypoints
 - **Elevation profile** strip along the mission path
 - Terrain-relative altitude support (AGL)
-- Mission upload/download to vehicle
-- Save/load mission files (JSON)
+- Mission upload to vehicle
+- **Undo / redo** on every edit (`Ctrl+Z` / `Ctrl+Y`), 100 steps deep
+- **Local mission library** — save, recall, overwrite, rename and delete missions stored
+  next to the installation, with an `index.json` catalogue rebuilt from the folder contents
 
 ### Real-Time Telemetry
-- **HUD (Heads-Up Display)** — aviation-style primary flight display with artificial horizon, attitude, airspeed, altitude, vertical speed, and G-load graph
+- **HUD (Heads-Up Display)** — IFR-style primary flight display with artificial horizon, attitude, airspeed, altitude, vertical speed and G-load graph
+- **Perspective-conformal HUD markers** and an air-relative flight-path vector
+- **Total G-load** computed from all three axes, on live MAVLink and SITL alike
+- **Total-energy variometer** alongside the VSI
+- **ROTOR LOAD** schematic on the flight data screen
 - **Navigation Display (ND)** — 2D instrument panel with flight data
 - **Mini-Map** — Leaflet-based 2D satellite map with vehicle position
 - **Telemetry graphs** — real-time Plotly charts for airspeed, altitude, attitude, G-load
@@ -60,6 +70,10 @@
 - **UDP** connection (default `127.0.0.1:14550`)
 - **TCP** connection (for SITL via WSL: `127.0.0.1:5760`)
 - MAVLink 2.0 protocol (ardupilotmega dialect)
+- **MSP / MSP2** over serial or TCP for **INAV and Betaflight** — telemetry only
+  (attitude, GPS, altitude, battery, RC, flight mode from the active mode boxes),
+  with a normal and a slow-link poll profile
+- **CORV binary** protocol v7/v8 for the onboard CORV autopilot
 
 ### SITL Integration
 - Built-in **ArduPilot SITL launcher** — downloads and runs pre-built SITL binaries
@@ -70,6 +84,7 @@
 ### RTK GPS Support
 - **RTCM3 correction injection** via `GPS_RTCM_DATA` MAVLink messages
 - U-Blox F9P base station support (serial)
+- **NTRIP client** with sourcetable browsing
 - RTK fix status, accuracy, and baseline monitoring
 
 ### FPV Camera
@@ -78,20 +93,31 @@
 - Live video overlay in the main interface
 
 ### Telemetry Forwarding
-- Forward live telemetry to external serial devices
+- Forward live telemetry to external serial devices, or mirror it over UDP
 - MAVLink passthrough and **LTM (Lightweight Telemetry)** protocol output
 - Antenna tracker integration
 
 ### Flight Logging
+- **`.tlog` recording** of the live MAVLink stream, auto-started on connection
 - **CRV binary format** — compact flight logs (~930 bytes/sec, ~3.3 MB/hour)
-- Auto-start recording on vehicle connection
-- Log playback with adjustable speed
+- Replay of `.tlog` and ArduPilot `.bin` DataFlash logs with adjustable speed
 - CRC-16-CCITT data validation
 
+### Parameter Editor
+- Read, write and monitor vehicle parameters in real time
+- **On-demand single reads** — pick a parameter from the side catalogue and fetch just
+  that one, instead of downloading the full list. On a 19200-baud SiK or a LoRa link a
+  full `PARAM_REQUEST_LIST` is minutes of airtime; a single read is two packets
+- Catalogue of known parameter names per vehicle class, which **learns** every name seen
+  from a vehicle or a `.param` file and remembers it for later offline sessions
+- Starred parameters, group filter, per-request timeout for high-latency links
+- Save and load `.param` files
+
 ### Additional Features
-- Full **parameter editor** — read, write, and monitor vehicle parameters in real-time
 - **Joystick/gamepad** support with RC channel override and calibration
 - Predicted trajectory corridor visualization
+- ADS-B traffic awareness
+- Offline satellite tile and SRTM elevation downloader with on-disk cache
 - Cross-platform: Windows (NSIS installer) and Linux (AppImage, .deb)
 
 ---
@@ -110,8 +136,9 @@
 
 ### Download
 Pre-built installers are available on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
-- **Windows**: `CORV GCS Setup 1.2.1.exe`
-- **Linux**: `.AppImage` or `.deb`
+- **Windows**: `CORV GCS Setup 1.5.0.exe`
+
+Linux builds are not published at the moment — build from source with `npm run build:linux`.
 
 ### Build from Source
 
@@ -143,13 +170,16 @@ Build output goes to the `dist/` directory.
 
 ## Local Data Setup
 
-CORV GCS loads terrain data, 3D models, and flight logs from specific folders inside the **application installation directory**. After installing, navigate to the install location to find (or create) these folders:
+CORV GCS loads terrain data and 3D models from folders inside the **application installation directory**, and writes missions, logs and its catalogue into a `data/` folder in the same place:
 
 ```
 CORV GCS/                         <-- installation folder
-├── topography/   (or topo/)      <-- SRTM .hgt terrain files
-├── models/                       <-- 3D aircraft models (.glb/.gltf)
-└── ...
+├── topography/   (or topo/)      <-- SRTM .hgt terrain files       (you provide)
+├── models/                       <-- 3D aircraft models (.glb/.gltf) (you provide)
+└── data/                         <-- created on first run
+    ├── index.json                <-- catalogue of missions and logs
+    ├── missions/                 <-- saved missions (.json)
+    └── logs/                     <-- .tlog / .crv flight logs
 ```
 
 **Default installation paths:**
@@ -160,12 +190,16 @@ CORV GCS/                         <-- installation folder
 | **Linux (.deb)** | `/opt/CORV GCS/` |
 | **Linux (AppImage)** | Portable — same folder as the AppImage |
 
-Flight logs are saved separately in the **user data** folder:
+> **Installing under `Program Files`?** That folder is not writable without elevation, so
+> `data/` automatically falls back to the per-user data folder (`%APPDATA%\CORV GCS\data\`
+> on Windows, `~/.config/CORV GCS/data/` on Linux). The mission library shows the real
+> path in use, highlighted in amber when it is the fallback. To keep the installation
+> self-contained, install somewhere writable — the whole folder can then be copied to
+> another machine with missions and logs intact.
 
-| Platform | Logs Path |
-|----------|-----------|
-| **Windows** | `%APPDATA%\CORV GCS\logs\` |
-| **Linux** | `~/.config/CORV GCS/logs/` |
+`index.json` is a convenience catalogue for external tools: it is **rebuilt from the folder
+contents** every time the library is opened or a mission is saved, so deleting it or dropping
+a mission file in by hand are both safe.
 
 ### Terrain Data (SRTM HGT)
 
@@ -197,11 +231,18 @@ You can load custom aircraft models in **GLB/GLTF** format:
 
 ## Connection Guide
 
-| Method | Use Case | Default |
-|--------|----------|---------|
-| **Serial** | USB telemetry radio (SiK, RFD900, etc.) | 57600 baud |
-| **UDP** | MAVProxy, MAVLink router | `127.0.0.1:14550` |
-| **TCP** | SITL (especially via WSL) | `127.0.0.1:5760` |
+| Method | Protocol | Use Case | Default |
+|--------|----------|----------|---------|
+| **MAVLink Serial** | MAVLink 2 | USB telemetry radio (SiK, RFD900, etc.) | 57600 baud |
+| **MAVLink UDP** | MAVLink 2 | MAVProxy, MAVLink router | `127.0.0.1:14550` |
+| **MAVLink TCP** | MAVLink 2 | SITL (especially via WSL) | `127.0.0.1:5760` |
+| **CORV Binary** | CORV v7/v8 | Onboard CORV autopilot over USB | 460800 baud |
+| **MSP Serial** | MSP / MSP2 | INAV or Betaflight flight controller over USB | 115200 baud |
+| **MSP TCP** | MSP / MSP2 | INAV SITL | `127.0.0.1:5760` |
+
+MSP is request/response, not a stream: the GCS polls the flight controller, so the poll
+profile *is* the telemetry rate. Use **Normal** on USB and **Slow link** on a long-range
+radio, where a 25 Hz attitude poll would use the whole budget.
 
 ---
 
@@ -223,30 +264,36 @@ You can load custom aircraft models in **GLB/GLTF** format:
 ```
 corv-gcs/
 ├── main.js                 # Electron main process
-├── main-mavlink.js         # MAVLink serial/UDP/TCP handler
+├── main-mavlink.js         # MAVLink serial/UDP/TCP + CORV binary + .tlog recording
+├── msp-manager.js          # MSP/MSP2 adapter (INAV, Betaflight)
+├── mission-store.js        # Data root: missions/, logs/, index.json
 ├── preload.js              # IPC security bridge
 ├── sitl-manager.js         # SITL launcher
-├── rtk-manager.js          # RTK base station manager
+├── rtk-manager.js          # RTK base station + NTRIP client
 ├── fpv-manager.js          # RTSP video stream manager
-├── telforward-manager.js   # Telemetry forwarding
+├── telforward-manager.js   # Telemetry forwarding (LTM / MAVLink / UDP mirror)
+├── log-replay-manager.js   # .tlog / .bin replay engine
+├── log-replay-bin-parser.js# ArduPilot DataFlash .bin parser
 ├── js/
 │   ├── core/               # Constants, state, utilities
 │   ├── engine/             # 3D scene, trajectory, sun position
 │   ├── terrain/            # Terrain loading, chunks, hillshade
-│   ├── maps/               # Leaflet mini-map
-│   ├── mavlink/            # MAVLink message routing
-│   ├── mission/            # Mission command definitions
+│   ├── maps/               # Leaflet mini-map, tile cache, offline downloader
+│   ├── mavlink/            # MAVLink message routing & commands
+│   ├── mission/            # Command catalog, undo/redo history, mission library
 │   ├── ui/                 # UI controllers & panels
 │   ├── hud/                # HUD canvas rendering
+│   ├── adsb/               # ADS-B traffic
 │   ├── joystick/           # Gamepad input
-│   ├── playback/           # Flight log playback
-│   └── logging/            # CRV binary logger
+│   ├── serial/             # CORV binary link
+│   └── logging/            # tlog logger, replay controller
 ├── html/                   # HTML pages & components
 ├── css/                    # Stylesheets
 ├── assets/                 # Icons & logos
+├── docs/                   # Architecture & work tracker
 ├── topo/                   # SRTM .hgt terrain files
 ├── models/                 # 3D aircraft models (GLB)
-└── flightplans/            # Example mission files
+└── data/                   # Runtime: missions, logs, index.json (created on first run)
 ```
 
 ---

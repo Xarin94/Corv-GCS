@@ -61,9 +61,42 @@ export async function connect(type, options = {}) {
             setTimeout(() => requestHomePosition().catch(() => {}), 3000);
             break;
 
+        // MSP is request/response: the main process polls the flight controller and
+        // re-emits the replies as MAVLink, so there are no data streams to request.
+        case 'msp-serial':
+            if (!window.msp) throw new Error('MSP bridge not available');
+            await window.msp.connectSerial(
+                options.port || '',
+                options.baudRate || 115200,
+                options.profile || 'normal'
+            );
+            STATE.connected = true;
+            STATE.mode = 'LIVE';
+            STATE.connectionType = 'msp-serial';
+            currentConnection = { type, ...options };
+            break;
+
+        case 'msp-tcp':
+            if (!window.msp) throw new Error('MSP bridge not available');
+            await window.msp.connectTCP(
+                options.host || '127.0.0.1',
+                options.port || 5760,
+                options.profile || 'normal'
+            );
+            STATE.connected = true;
+            STATE.mode = 'LIVE';
+            STATE.connectionType = 'msp-tcp';
+            currentConnection = { type, ...options };
+            break;
+
         default:
             throw new Error(`Unknown connection type: ${type}`);
     }
+}
+
+/** True while the link speaks MSP rather than MAVLink (no params, no mission, no commands). */
+export function isMSPLink() {
+    return typeof STATE.connectionType === 'string' && STATE.connectionType.startsWith('msp');
 }
 
 /**
@@ -74,6 +107,10 @@ export async function disconnect() {
 
     if (currentConnection.type === 'corv-binary') {
         await window.corvSerial.disconnect();
+        STATE.connected = false;
+        STATE.connectionType = 'none';
+    } else if (currentConnection.type.startsWith('msp')) {
+        await window.msp.disconnect();
         STATE.connected = false;
         STATE.connectionType = 'none';
     } else {
@@ -130,6 +167,10 @@ function stopHomePolling() {
 }
 
 onMessage(0, () => { // heartbeat
+    // MSP has no HOME_POSITION message and no MAVLink command channel — polling for
+    // it would just push MAVLink bytes down a link that cannot parse them.
+    if (isMSPLink()) { stopHomePolling(); return; }
+
     if (STATE.armed && !_prevArmed) {
         // Just armed — reset stale home so polling doesn't exit early, then request new one
         STATE.homeLat = null;

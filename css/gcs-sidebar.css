@@ -550,10 +550,213 @@
     flex-direction: column;
     padding: 16px 24px;
     overflow: hidden;
-    max-width: 900px;
+    max-width: 1240px;
     margin: 0 auto;
     width: 100%;
     box-sizing: border-box;
+}
+
+/* Two columns: on-demand catalog on the left, downloaded parameters on the right */
+.params-layout {
+    flex: 1;
+    display: flex;
+    gap: 16px;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.params-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+}
+
+/* ── Single-parameter catalog (side list) ── */
+.params-catalog {
+    width: 290px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
+    padding: 10px;
+    box-sizing: border-box;
+}
+
+.params-catalog-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+
+.params-catalog-title {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    letter-spacing: 1.5px;
+}
+
+.params-catalog-count {
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-dim);
+}
+
+.params-catalog-search {
+    flex: none;
+    width: 100%;
+    text-transform: uppercase;
+}
+
+.params-catalog-filters {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.params-select {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg-gcs-input);
+    border: 1px solid var(--border-input);
+    color: var(--text-main);
+    font-family: var(--font-ui);
+    font-size: 10px;
+    padding: 5px 6px;
+    border-radius: 3px;
+    outline: none;
+}
+
+.params-select:focus {
+    border-color: var(--accent-cyan);
+}
+
+#params-catalog-timeout {
+    max-width: 74px;
+}
+
+.params-catalog-list {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.params-cat-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.params-cat-row:hover {
+    background: rgba(0, 210, 255, 0.06);
+}
+
+.params-cat-name {
+    flex: 1;
+    font-family: var(--font-data);
+    font-size: 10.5px;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.params-cat-row.is-loaded .params-cat-name {
+    color: var(--accent-cyan);
+}
+
+.params-cat-val {
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+    max-width: 74px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.params-cat-state {
+    width: 12px;
+    flex-shrink: 0;
+    text-align: center;
+    font-size: 10px;
+    line-height: 1;
+}
+
+.params-cat-state.pending { color: var(--accent-cyan); }
+.params-cat-state.ok      { color: #44ff44; }
+.params-cat-state.fail    { color: #ff4444; }
+
+.params-cat-fav {
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+    font-size: 11px;
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.18);
+}
+
+.params-cat-fav.on {
+    color: #ffb300;
+}
+
+.params-cat-row.is-custom {
+    background: rgba(0, 210, 255, 0.08);
+}
+
+.params-cat-empty {
+    padding: 12px 8px;
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: center;
+    line-height: 1.5;
+}
+
+.params-catalog-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.params-catalog-actions .gcs-btn {
+    flex: 1;
+    width: auto;
+    padding: 6px 4px;
+    font-size: 10px;
+}
+
+.params-queue {
+    flex-shrink: 0;
+    min-height: 13px;
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.3;
+}
+
+.params-queue.busy {
+    color: var(--accent-cyan);
+}
+
+.params-queue.error {
+    color: #ff6b6b;
+}
+
+@media (max-width: 900px) {
+    .params-catalog { width: 220px; }
 }
 
 .params-toolbar {
@@ -678,3 +881,203 @@
 }
 
 /* Scrollbar styles now unified in base.css */
+
+/* ==================== MISSION LIBRARY (reuses .params-page chrome) ==================== */
+.mission-lib-root {
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.mission-lib-root.is-fallback {
+    color: #ffb300;
+}
+
+.mission-lib-section-title {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    letter-spacing: 1.5px;
+    margin: 10px 0 6px;
+    flex-shrink: 0;
+}
+
+.mission-lib-list {
+    flex: 1 1 60%;
+    overflow-y: auto;
+    min-height: 80px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
+}
+
+.mission-lib-logs {
+    flex: 0 1 30%;
+    overflow-y: auto;
+    min-height: 60px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 4px;
+}
+
+.mission-lib-row,
+.mission-lib-logrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.mission-lib-row:hover {
+    background: rgba(0, 210, 255, 0.05);
+}
+
+.mission-lib-row.is-current {
+    background: rgba(0, 210, 255, 0.09);
+    border-left: 2px solid var(--accent-cyan);
+}
+
+.mission-lib-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.mission-lib-name {
+    font-family: var(--font-data);
+    font-size: 12px;
+    color: var(--text-main);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mission-lib-meta,
+.mission-lib-notes {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-dim);
+}
+
+.mission-lib-logrow {
+    justify-content: space-between;
+}
+
+.mission-lib-actions {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+}
+
+.mission-lib-actions .gcs-btn-sm {
+    background: var(--bg-gcs-input);
+    border: 1px solid var(--border-input);
+    color: var(--text-main);
+    font-family: var(--font-ui);
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.mission-lib-actions .gcs-btn-sm:hover {
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+}
+
+.mission-lib-actions .mission-lib-del:hover {
+    border-color: #ff4444;
+    color: #ff4444;
+}
+
+.mission-lib-empty {
+    padding: 16px;
+    text-align: center;
+    font-family: var(--font-ui);
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.6;
+}
+
+/* Current mission name in the flight-plan panel */
+#mission-current-name.is-unsaved {
+    color: var(--text-dim);
+    font-style: italic;
+}
+
+/* ==================== IN-PAGE TEXT PROMPT ==================== */
+.gcs-prompt-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 200000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gcs-prompt-box {
+    background: #1a1a2e;
+    color: #e0e0e0;
+    border: 1px solid #555;
+    border-radius: 8px;
+    padding: 20px 24px;
+    min-width: 320px;
+    max-width: 440px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+    font-family: var(--font-data, monospace);
+}
+
+.gcs-prompt-msg {
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+
+.gcs-prompt-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--bg-gcs-input, #10101c);
+    border: 1px solid var(--border-input, #444);
+    color: var(--text-main, #e0e0e0);
+    font-family: var(--font-data, monospace);
+    font-size: 13px;
+    padding: 7px 10px;
+    border-radius: 4px;
+    outline: none;
+    margin-bottom: 16px;
+}
+
+.gcs-prompt-input:focus {
+    border-color: var(--accent-cyan, #00d2ff);
+}
+
+.gcs-prompt-btns {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.gcs-prompt-btn {
+    padding: 6px 22px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    background: #2a2a3e;
+    color: #ccc;
+}
+
+.gcs-prompt-btn.is-accent {
+    border: none;
+    background: var(--accent-cyan, #00d2ff);
+    color: #000;
+    font-weight: 700;
+}

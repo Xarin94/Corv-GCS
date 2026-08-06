@@ -4,8 +4,13 @@
  */
 
 import { STATE } from '../core/state.js';
-import { requestAllParameters, setParameter } from '../mavlink/CommandSender.js';
+import { requestAllParameters, setParameter, fetchParameter } from '../mavlink/CommandSender.js';
 import { onMessage } from '../mavlink/MAVLinkManager.js';
+import { getVehicleTypeName } from '../mavlink/MAVLinkStateMapper.js';
+import {
+    getCatalog, getGroups, groupOf, learnNames,
+    isFavorite, toggleFavorite, getFavorites
+} from './ParamCatalog.js';
 
 // ArduPilot parameter descriptions (common subset)
 const PARAM_DESCRIPTIONS = {
@@ -143,6 +148,11 @@ let isOpen = false;
 let searchFilter = '';
 let initialized = false;
 
+// A full PARAM_REQUEST_LIST is running. Single reads must not drive the progress
+// bar (the autopilot reports the full paramCount in every PARAM_VALUE, so one
+// on-demand read would otherwise show "1/1300" and look like a stalled download).
+let fullReadActive = false;
+
 /**
  * Initialize parameters page
  */
@@ -156,8 +166,11 @@ export function initParamsPage() {
     bindAction('params-read-all', async () => {
         const progressEl = document.getElementById('params-progress');
         if (progressEl) progressEl.style.display = 'flex';
+        fullReadActive = true;
         await requestAllParameters();
     });
+
+    initCatalog();
 
     const searchInput = document.getElementById('params-search');
     let searchDebounceTimer = null;
@@ -180,8 +193,12 @@ export function initParamsPage() {
             type: data.paramType,
             index: data.paramIndex
         });
+        // Every name the vehicle reports is remembered, so the side catalog can offer
+        // it on a later (slow-link or offline) session without a full download.
+        learnNames([data.paramId]);
         STATE.parameterCount = data.paramCount;
         STATE.parametersReceived = STATE.parameters.size;
+        if (fullReadActive && STATE.parametersReceived >= STATE.parameterCount) fullReadActive = false;
         updateProgress();
         if (isOpen && !paramRenderPending) {
             paramRenderPending = true;
@@ -189,10 +206,12 @@ export function initParamsPage() {
                 paramRenderPending = false;
                 // Skip render if user is typing in search or editing a param value
                 const active = document.activeElement;
-                if (active && (active.id === 'params-search' || active.classList.contains('param-val-input'))) {
+                if (active && (active.id === 'params-search' || active.id === 'params-catalog-search'
+                               || active.classList.contains('param-val-input'))) {
                     return;
                 }
                 renderParamsTable();
+                renderCatalogList();
             }, 500);
         }
     });
@@ -215,6 +234,8 @@ export function toggleParamsPage() {
 
     if (isOpen) {
         renderParamsTable();
+        refreshCatalogGroups();
+        renderCatalogList();
     }
 }
 
@@ -232,6 +253,7 @@ function updateProgress() {
     const countEl = document.getElementById('params-count');
     const progressEl = document.getElementById('params-progress');
     if (!fillEl || !countEl) return;
+    if (!fullReadActive) return; // single reads don't own the progress bar
 
     if (STATE.parameterCount > 0) {
         if (progressEl) progressEl.style.display = 'flex';
@@ -381,6 +403,239 @@ function saveParameterFile() {
     URL.revokeObjectURL(url);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// On-demand catalog — read one parameter instead of the whole list
+//
+// READ ALL costs one PARAM_VALUE per parameter (1000-1500 on a typical ArduPlane).
+// On a 19200 baud SiK or a LoRa link that is minutes of airtime and it starves the
+// telemetry streams while it runs. The catalog lists parameter names that are known
+// *before* any download (built-in seed + names learned from previous sessions), so a
+// single PARAM_REQUEST_READ can pull just the one being tuned.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CATALOG_MAX_ROWS = 400;    // rows rendered before asking the user to refine
+const INTER_REQUEST_GAP_MS = 80; // breathing room between queued reads
+const BULK_CONFIRM_THRESHOLD = 40;
+
+let catalogFilter = '';
+let catalogGroup = '';
+let catalogNames = [];          // every name offered for the current vehicle
+let catalogVisible = [];        // names passing the current filters
+const fetchState = new Map();   // name -> 'pending' | 'ok' | 'fail'
+const fetchQueue = [];
+let queueBusy = false;
+let queueDone = 0;
+let queueFailed = 0;
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+}
+
+/** A parameter name as MAVLink allows it: A-Z, 0-9 and underscore, max 16 chars. */
+function sanitizeName(raw) {
+    return String(raw || '').toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 16);
+}
+
+function getFetchTimeout() {
+    const sel = document.getElementById('params-catalog-timeout');
+    return parseInt(sel?.value, 10) || 4000;
+}
+
+function initCatalog() {
+    const search = document.getElementById('params-catalog-search');
+    const groupSel = document.getElementById('params-catalog-group');
+    const list = document.getElementById('params-catalog-list');
+
+    if (search) {
+        let debounce = null;
+        search.addEventListener('input', (e) => {
+            catalogFilter = sanitizeName(e.target.value);
+            clearTimeout(debounce);
+            debounce = setTimeout(renderCatalogList, 120);
+        });
+        // Enter reads the typed name directly — no need to find it in the list first
+        search.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            const name = sanitizeName(search.value) || catalogVisible[0];
+            if (name) enqueueFetch([name]);
+        });
+    }
+
+    if (groupSel) {
+        groupSel.addEventListener('change', (e) => {
+            catalogGroup = e.target.value;
+            renderCatalogList();
+        });
+    }
+
+    if (list) {
+        list.addEventListener('click', (e) => {
+            const row = e.target.closest('.params-cat-row');
+            if (!row) return;
+            const name = row.dataset.name;
+            if (e.target.classList.contains('params-cat-fav')) {
+                toggleFavorite(name);
+                renderCatalogList();
+                return;
+            }
+            enqueueFetch([name]);
+        });
+    }
+
+    bindAction('params-fetch-group', () => {
+        if (!catalogVisible.length) return;
+        if (catalogVisible.length > BULK_CONFIRM_THRESHOLD &&
+            !confirm(`Read ${catalogVisible.length} parameters one by one? On a slow link this takes about ${Math.ceil(catalogVisible.length * 0.6)} s.`)) {
+            return;
+        }
+        enqueueFetch(catalogVisible);
+    });
+
+    bindAction('params-fetch-fav', () => {
+        const favs = getFavorites();
+        if (!favs.length) {
+            alert('No starred parameters yet — click the ☆ next to a name to star it.');
+            return;
+        }
+        enqueueFetch(favs);
+    });
+
+    refreshCatalogGroups();
+}
+
+/** Rebuild the name list and the group dropdown for the connected vehicle. */
+function refreshCatalogGroups() {
+    catalogNames = getCatalog(getVehicleTypeName(STATE.vehicleType), STATE.parameters);
+
+    const groupSel = document.getElementById('params-catalog-group');
+    if (!groupSel) return;
+    const previous = groupSel.value;
+    const groups = getGroups(catalogNames);
+    groupSel.innerHTML = '<option value="">All groups</option>'
+        + groups.map(g => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join('');
+    // Keep the operator's selection across a vehicle-type change when still valid
+    groupSel.value = groups.includes(previous) ? previous : '';
+    catalogGroup = groupSel.value;
+}
+
+function renderCatalogList() {
+    const list = document.getElementById('params-catalog-list');
+    const countEl = document.getElementById('params-catalog-count');
+    if (!list) return;
+
+    catalogVisible = catalogNames.filter(name =>
+        (!catalogGroup || groupOf(name) === catalogGroup) &&
+        (!catalogFilter || name.includes(catalogFilter))
+    );
+
+    // Typed a name the catalog has never seen? Offer it anyway — the autopilot is
+    // the authority on what exists, and a successful read adds it to the catalog.
+    const rows = [];
+    if (catalogFilter && !catalogNames.includes(catalogFilter)) {
+        rows.push(catalogRow(catalogFilter, true));
+    }
+    for (const name of catalogVisible.slice(0, CATALOG_MAX_ROWS)) {
+        rows.push(catalogRow(name, false));
+    }
+
+    if (!rows.length) {
+        list.innerHTML = '<div class="params-cat-empty">No matching parameter.<br>Type a full name to read it anyway.</div>';
+    } else {
+        if (catalogVisible.length > CATALOG_MAX_ROWS) {
+            rows.push(`<div class="params-cat-empty">… ${catalogVisible.length - CATALOG_MAX_ROWS} more — refine the search</div>`);
+        }
+        list.innerHTML = rows.join('');
+    }
+
+    if (countEl) countEl.textContent = `${catalogVisible.length}/${catalogNames.length}`;
+}
+
+function catalogRow(name, isCustom) {
+    const loaded = STATE.parameters.get(name);
+    const state = fetchState.get(name) || '';
+    const mark = state === 'pending' ? '◌' : state === 'ok' ? '●' : state === 'fail' ? '✕' : '';
+    const val = loaded ? formatParamValue(loaded.value, loaded.type) : '';
+    const fav = isFavorite(name);
+    const safe = escapeHtml(name);
+    return `<div class="params-cat-row${loaded ? ' is-loaded' : ''}${isCustom ? ' is-custom' : ''}"
+                 data-name="${safe}" title="Click to read ${safe} from the vehicle">
+        <span class="params-cat-fav${fav ? ' on' : ''}" title="Star for quick re-read">${fav ? '★' : '☆'}</span>
+        <span class="params-cat-name">${safe}</span>
+        <span class="params-cat-val">${escapeHtml(val)}</span>
+        <span class="params-cat-state ${state}">${mark}</span>
+    </div>`;
+}
+
+/**
+ * Queue single reads. Requests are serialized: two PARAM_REQUEST_READs in flight on
+ * a lossy low-rate link mostly produce collisions and retries.
+ */
+function enqueueFetch(names) {
+    let added = 0;
+    for (const raw of names) {
+        const name = sanitizeName(raw);
+        if (!name) continue;
+        if (fetchState.get(name) === 'pending' || fetchQueue.includes(name)) continue;
+        fetchQueue.push(name);
+        fetchState.set(name, 'pending');
+        added++;
+    }
+    if (!added) return;
+    renderCatalogList();
+    if (!queueBusy) drainFetchQueue();
+}
+
+async function drainFetchQueue() {
+    queueBusy = true;
+    queueDone = 0;
+    queueFailed = 0;
+
+    while (fetchQueue.length) {
+        const name = fetchQueue[0];
+        updateQueueStatus(name);
+        try {
+            await fetchParameter(name, { timeoutMs: getFetchTimeout(), retries: 2 });
+            fetchState.set(name, 'ok');
+            learnNames([name]);
+            queueDone++;
+        } catch (e) {
+            fetchState.set(name, 'fail');
+            queueFailed++;
+        }
+        fetchQueue.shift();
+        // A newly learned name has to enter the catalog before the row is redrawn
+        if (!catalogNames.includes(name) && fetchState.get(name) === 'ok') {
+            catalogNames = getCatalog(getVehicleTypeName(STATE.vehicleType), STATE.parameters);
+        }
+        renderCatalogList();
+        renderParamsTable();
+        if (fetchQueue.length) await new Promise(r => setTimeout(r, INTER_REQUEST_GAP_MS));
+    }
+
+    queueBusy = false;
+    updateQueueStatus(null);
+}
+
+function updateQueueStatus(current) {
+    const el = document.getElementById('params-queue');
+    if (!el) return;
+    el.classList.toggle('busy', !!current);
+    el.classList.toggle('error', !current && queueFailed > 0);
+    if (current) {
+        const queued = fetchQueue.length - 1;
+        el.textContent = `Reading ${current}${queued > 0 ? ` — ${queued} queued` : ''}`;
+    } else if (queueDone || queueFailed) {
+        el.textContent = queueFailed
+            ? `${queueDone} read, ${queueFailed} no reply (raise the timeout)`
+            : `${queueDone} read`;
+    } else {
+        el.textContent = '';
+    }
+}
+
 function loadParameterFile() {
     const input = document.createElement('input');
     input.type = 'file';
@@ -390,6 +645,9 @@ function loadParameterFile() {
         if (!file) return;
         const text = await file.text();
         const lines = text.split('\n').filter(l => l.trim() && !l.startsWith('#'));
+        // Learn the names even if a write fails — a .param dump from the same airframe
+        // is the cheapest way to seed the catalog before ever talking to the vehicle.
+        learnNames(lines.map(l => l.split(/[,\s]+/)[0]));
         let count = 0;
         for (const line of lines) {
             const parts = line.split(',');

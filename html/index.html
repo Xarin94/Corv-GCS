@@ -284,6 +284,15 @@
                 <div class="mission-wp-info">
                     <span id="mission-total-dist" class="mission-info-text">Dist: --</span>
                     <span id="mission-wp-count" class="mission-info-text">WP: 0</span>
+                    <span id="mission-current-name" class="mission-info-text is-unsaved" title="Currently loaded mission">unsaved</span>
+                </div>
+                <div class="mission-wp-controls">
+                    <button class="gcs-btn" id="mission-undo" title="Undo (Ctrl+Z)" disabled>&#8630; UNDO</button>
+                    <button class="gcs-btn" id="mission-redo" title="Redo (Ctrl+Y)" disabled>REDO &#8631;</button>
+                </div>
+                <div class="mission-wp-controls">
+                    <button class="gcs-btn" id="mission-save" title="Save to the local mission library">SAVE</button>
+                    <button class="gcs-btn" id="mission-library" title="Open the local mission library">LIBRARY</button>
                 </div>
                 <div class="mission-wp-controls">
                     <button class="gcs-btn" id="mission-upload">UPLOAD</button>
@@ -456,6 +465,15 @@
                             <option value="mavlink-udp">MAVLink UDP</option>
                             <option value="mavlink-tcp">MAVLink TCP</option>
                             <option value="corv-binary">CORV Binary (Legacy)</option>
+                            <option value="msp-serial">MSP Serial (INAV / Betaflight)</option>
+                            <option value="msp-tcp">MSP TCP (INAV SITL)</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row conn-field msp-field">
+                        <label>POLL RATE</label>
+                        <select id="setup-msp-profile" class="cfg-select" title="MSP is request/response — the poll rate is the telemetry rate">
+                            <option value="normal">Normal (USB / 115200)</option>
+                            <option value="slow">Slow link (long-range radio)</option>
                         </select>
                     </div>
                     <div class="cfg-row conn-field serial-field">
@@ -2075,6 +2093,25 @@
         <button class="lrt-btn lrt-btn-close" id="lrt-close" title="Unload log">&times;</button>
     </div>
 
+    <!-- ==================== MISSION LIBRARY (Full-screen overlay) ==================== -->
+    <div id="mission-library-page" class="params-page">
+        <div class="params-page-header">
+            <span class="params-page-title">MISSION LIBRARY</span>
+            <button class="params-page-close" id="mission-lib-close" title="Close">&times;</button>
+        </div>
+        <div class="params-page-body">
+            <div class="params-toolbar">
+                <button class="gcs-btn" id="mission-lib-save-as" title="Save the current plan as a new mission">SAVE AS NEW</button>
+                <button class="gcs-btn" id="mission-lib-reveal" title="Open the data folder">OPEN FOLDER</button>
+                <span class="mission-lib-root" id="mission-lib-root"></span>
+            </div>
+            <div class="mission-lib-section-title">SAVED MISSIONS</div>
+            <div class="mission-lib-list" id="mission-lib-list"></div>
+            <div class="mission-lib-section-title">FLIGHT LOGS</div>
+            <div class="mission-lib-logs" id="mission-lib-logs"></div>
+        </div>
+    </div>
+
     <!-- ==================== PARAMETERS PAGE (Full-screen overlay) ==================== -->
     <div id="params-page" class="params-page">
         <div class="params-page-header">
@@ -2082,27 +2119,59 @@
             <button class="params-page-close" id="params-page-close" title="Close">&times;</button>
         </div>
         <div class="params-page-body">
-            <div class="params-toolbar">
-                <button class="gcs-btn" id="params-read-all">READ ALL</button>
-                <div class="params-progress" id="params-progress" style="display:none;">
-                    <div class="gcs-progress-bar"><div class="gcs-progress-fill" id="params-fill"></div></div>
-                    <span class="gcs-progress-text" id="params-count">0/0</span>
+            <div class="params-layout">
+                <!-- Side catalog: pick a single parameter and read only that one.
+                     Keeps airtime near zero on high-latency / low-datarate links. -->
+                <aside class="params-catalog">
+                    <div class="params-catalog-head">
+                        <span class="params-catalog-title">PARAM LIST</span>
+                        <span class="params-catalog-count" id="params-catalog-count">0</span>
+                    </div>
+                    <input type="text" class="params-search params-catalog-search" id="params-catalog-search"
+                           placeholder="Type a parameter name..." spellcheck="false">
+                    <div class="params-catalog-filters">
+                        <select class="params-select" id="params-catalog-group" title="Filter by parameter group">
+                            <option value="">All groups</option>
+                        </select>
+                        <select class="params-select" id="params-catalog-timeout" title="Per-request timeout — raise it on high-latency links">
+                            <option value="2000">2 s</option>
+                            <option value="4000" selected>4 s</option>
+                            <option value="8000">8 s</option>
+                            <option value="15000">15 s</option>
+                        </select>
+                    </div>
+                    <div class="params-catalog-list" id="params-catalog-list"></div>
+                    <div class="params-catalog-actions">
+                        <button class="gcs-btn" id="params-fetch-group" title="Read every parameter currently listed">READ LISTED</button>
+                        <button class="gcs-btn" id="params-fetch-fav" title="Read all starred parameters">READ &#9733;</button>
+                    </div>
+                    <div class="params-queue" id="params-queue"></div>
+                </aside>
+
+                <div class="params-main">
+                    <div class="params-toolbar">
+                        <button class="gcs-btn" id="params-read-all">READ ALL</button>
+                        <div class="params-progress" id="params-progress" style="display:none;">
+                            <div class="gcs-progress-bar"><div class="gcs-progress-fill" id="params-fill"></div></div>
+                            <span class="gcs-progress-text" id="params-count">0/0</span>
+                        </div>
+                        <input type="text" class="params-search" id="params-search" placeholder="Filter loaded parameters...">
+                        <button class="gcs-btn" id="params-save">SAVE .PARAM</button>
+                        <button class="gcs-btn" id="params-load">LOAD .PARAM</button>
+                    </div>
+                    <div class="params-table-wrapper">
+                        <table class="params-table">
+                            <thead>
+                                <tr>
+                                    <th class="params-col-name">NAME</th>
+                                    <th class="params-col-value">VALUE</th>
+                                    <th class="params-col-desc">DESCRIPTION</th>
+                                </tr>
+                            </thead>
+                            <tbody id="params-table-body"></tbody>
+                        </table>
+                    </div>
                 </div>
-                <input type="text" class="params-search" id="params-search" placeholder="Search parameter name...">
-                <button class="gcs-btn" id="params-save">SAVE .PARAM</button>
-                <button class="gcs-btn" id="params-load">LOAD .PARAM</button>
-            </div>
-            <div class="params-table-wrapper">
-                <table class="params-table">
-                    <thead>
-                        <tr>
-                            <th class="params-col-name">NAME</th>
-                            <th class="params-col-value">VALUE</th>
-                            <th class="params-col-desc">DESCRIPTION</th>
-                        </tr>
-                    </thead>
-                    <tbody id="params-table-body"></tbody>
-                </table>
             </div>
         </div>
     </div>

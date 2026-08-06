@@ -45,6 +45,15 @@ const ARDUPILOT_SUB_MODES = {
     9: 'SURFACE', 16: 'POSHOLD', 19: 'MANUAL'
 };
 
+// INAV / Betaflight flight modes. These are not a firmware enum — the MSP adapter
+// resolves the active "box" set to a name and encodes it with these numbers
+// (INAV_MODE_NUMBERS in msp-manager.js). Keep the two tables in step.
+const INAV_MODES = {
+    0: 'MANUAL', 1: 'ACRO', 2: 'ANGLE', 3: 'HORIZON', 4: 'ALTHOLD',
+    5: 'POSHOLD', 6: 'COURSE HOLD', 7: 'CRUISE', 8: 'WAYPOINT',
+    9: 'RTH', 10: 'FAILSAFE'
+};
+
 // MAV_TYPE to vehicle category
 // 1=plane, 2=quad, 3=coaxial, 4=heli, 10=rover, 11=boat, 12=sub,
 // 13=hex, 14=octo, 15=tricopter, 20=quad(VTOL), 21=tiltrotor
@@ -81,6 +90,11 @@ export function getFlightModeNumber(modeName, vehicleType) {
  * Get mode map for a given vehicle type
  */
 function getModesForType(vehicleType) {
+    // The link protocol wins over MAV_TYPE: an INAV plane reports type 1 too, but its
+    // custom_mode numbering has nothing to do with ArduPlane's.
+    if (typeof STATE.connectionType === 'string' && STATE.connectionType.startsWith('msp')) {
+        return INAV_MODES;
+    }
     if (PLANE_TYPES.includes(vehicleType)) return ARDUPILOT_PLANE_MODES;
     if (ROVER_TYPES.includes(vehicleType)) return ARDUPILOT_ROVER_MODES;
     if (SUB_TYPES.includes(vehicleType)) return ARDUPILOT_SUB_MODES;

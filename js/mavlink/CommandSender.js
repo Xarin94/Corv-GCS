@@ -454,7 +454,7 @@ export async function requestAllParameters() {
 }
 
 /**
- * Request a single parameter by name
+ * Request a single parameter by name (fire and forget)
  */
 export async function requestParameter(paramId) {
     return sendMessage({
@@ -464,6 +464,68 @@ export async function requestParameter(paramId) {
         paramId: paramId,
         paramIndex: -1
     });
+}
+
+/**
+ * Read a single parameter and wait for its PARAM_VALUE.
+ *
+ * This is the cheap alternative to requestAllParameters() on a slow or lossy link:
+ * one 20-byte request and one 25-byte reply instead of the full list (1000+ params,
+ * minutes of airtime on a 19200 baud SiK or LoRa radio). PARAM_REQUEST_READ is not
+ * acknowledged and the reply can be dropped, so the request is repeated until a
+ * matching PARAM_VALUE arrives or the retries run out.
+ *
+ * @param {string} paramId - parameter name (max 16 chars, as per the MAVLink field)
+ * @param {object} [opts]
+ * @param {number} [opts.timeoutMs=4000] - per-attempt wait; raise it for high-latency links
+ * @param {number} [opts.retries=2] - extra attempts after the first one
+ * @returns {Promise<object>} the PARAM_VALUE message data
+ */
+export async function fetchParameter(paramId, opts = {}) {
+    const { timeoutMs = 4000, retries = 2 } = opts;
+    const target = String(paramId || '').trim().toUpperCase();
+    if (!target) throw new Error('Empty parameter name');
+    if (target.length > 16) throw new Error(`Parameter name too long (max 16 chars): ${target}`);
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        // Register the listener before sending — on a local UDP/SITL link the reply
+        // can come back before the await on sendMessage() resolves.
+        const reply = new Promise((resolve) => {
+            const timer = setTimeout(() => {
+                offMessage(22, handler);
+                resolve(null);
+            }, timeoutMs);
+            function handler(data) {
+                if ((data.paramId || '').trim().toUpperCase() !== target) return;
+                clearTimeout(timer);
+                offMessage(22, handler);
+                resolve(data);
+            }
+            onMessage(22, handler);
+        });
+
+        await sendMessage({
+            type: 'PARAM_REQUEST_READ',
+            targetSystem: STATE.systemId,
+            targetComponent: STATE.componentId,
+            paramId: target,
+            paramIndex: -1
+        });
+
+        const value = await reply;
+        if (value) {
+            // Key on the name as reported, so this never creates a second entry
+            // alongside the one the PARAM_VALUE listener in the params page stores.
+            STATE.parameters.set((value.paramId || '').trim() || target, {
+                value: value.paramValue,
+                type: value.paramType,
+                index: value.paramIndex
+            });
+            return value;
+        }
+    }
+
+    throw new Error(`No reply for ${target} after ${retries + 1} attempts`);
 }
 
 /**

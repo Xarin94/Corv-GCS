@@ -108,10 +108,10 @@ let tlogAutoStarted = false;  // track auto-start so we auto-stop on disconnect
 let replayActive = false;
 function setReplayActive(active) { replayActive = !!active; }
 
+// Logs live in the shared data root next to the mission library and index.json,
+// so an installation carries its flight history with it (see mission-store.js).
 function getTlogLogsDir() {
-    const dir = path.join(app.getPath('userData'), 'logs');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    return dir;
+    return require('./mission-store').getLogsDir();
 }
 
 function startTlogRecording() {

@@ -168,6 +168,26 @@ contextBridge.exposeInMainWorld('mavlink', {
   listPorts: () => ipcRenderer.invoke('serial-list-ports')
 });
 
+// MSP / MSP2 API bridge (INAV, Betaflight). Telemetry arrives on the same
+// 'mavlink-message' channel as everything else — see msp-manager.js.
+contextBridge.exposeInMainWorld('msp', {
+  connectSerial: (portPath, baudRate, profile) => ipcRenderer.invoke('msp-connect-serial', portPath, baudRate, profile),
+  connectTCP: (host, port, profile) => ipcRenderer.invoke('msp-connect-tcp', host, port, profile),
+  disconnect: () => ipcRenderer.invoke('msp-disconnect'),
+  status: () => ipcRenderer.invoke('msp-status')
+});
+
+// Mission library / data root API bridge
+contextBridge.exposeInMainWorld('missionStore', {
+  getRoot: () => ipcRenderer.invoke('store-get-root'),
+  reveal: (which) => ipcRenderer.invoke('store-reveal', which),
+  list: () => ipcRenderer.invoke('missions-list'),
+  load: (id) => ipcRenderer.invoke('missions-load', id),
+  save: (payload) => ipcRenderer.invoke('missions-save', payload),
+  remove: (id) => ipcRenderer.invoke('missions-delete', id),
+  rename: (id, name) => ipcRenderer.invoke('missions-rename', id, name)
+});
+
 // FPV camera stream API bridge (SIYI HM30 / generic RTSP)
 contextBridge.exposeInMainWorld('fpv', {
   start: (ip, port, path, options) => ipcRenderer.invoke('fpv-start', ip, port, path, options),

@@ -7,6 +7,8 @@ const { initRTKHandlers, cleanup: cleanupRTK } = require('./rtk-manager');
 const { initFPVHandlers, cleanupFPV } = require('./fpv-manager');
 const { initTelForwardHandlers, cleanup: cleanupTelFwd } = require('./telforward-manager');
 const { initLogReplayHandlers, cleanup: cleanupLogReplay } = require('./log-replay-manager');
+const { initMissionStoreHandlers } = require('./mission-store');
+const { initMSPHandlers, cleanup: cleanupMSP } = require('./msp-manager');
 
 // Hide the application menu (will be set when app is ready)
 
@@ -194,6 +196,12 @@ function createWindow() {
   // replay engine can reuse handlePacket() and mainWindow from main-mavlink)
   initLogReplayHandlers(win);
 
+  // Mission library / data root (creates data/, missions/, logs/ and index.json)
+  initMissionStoreHandlers();
+
+  // MSP (INAV / Betaflight) telemetry adapter
+  initMSPHandlers(win);
+
   // Forward renderer console.* messages to the terminal (PowerShell) so we can debug
   // without opening DevTools.
   win.webContents.on('console-message', (event) => {
@@ -249,6 +257,7 @@ app.on('window-all-closed', () => {
   cleanupRTK();
   cleanupFPV();
   cleanupTelFwd();
+  cleanupMSP();
   if (process.platform !== 'darwin') app.quit();
 });
 

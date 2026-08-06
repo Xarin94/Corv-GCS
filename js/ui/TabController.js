@@ -11,6 +11,8 @@ import { formatParamValue } from './ParametersPageController.js';
 import { initJoystick } from '../joystick/JoystickUI.js';
 import { getTerrainElevationFromHGT, getTerrainElevationAsync, resetAutoDownloadFailures } from '../terrain/TerrainManager.js';
 import { getCmdShortName, getCmdColor, getCmdParams, getCmdDefaults, isNavCmd, getGroupedCommands } from '../mission/MissionCommands.js';
+import { commitMission, undoMission, redoMission, resetMissionHistory, canUndo, canRedo } from '../mission/MissionHistory.js';
+import { initMissionLibrary, openMissionLibrary, saveCurrentMission, getCurrentMissionName } from '../mission/MissionLibrary.js';
 import { cachedTileLayer } from '../maps/CachedTileLayer.js';
 
 let currentTab = 'flight-data';
@@ -538,6 +540,7 @@ function addWaypointAtLocation(lat, lng) {
     };
 
     STATE.missionItems.push(item);
+    commitMission('Add WP');
     updateMissionDisplay();
 }
 
@@ -596,9 +599,21 @@ function renderParamFields(wpIdx) {
         inp.addEventListener('change', () => {
             if (wpIdx >= 0 && wpIdx < STATE.missionItems.length) {
                 STATE.missionItems[wpIdx][inp.dataset.param] = parseFloat(inp.value) || 0;
+                commitMission('Edit parameter');
             }
         });
     });
+}
+
+/**
+ * Show which saved mission is currently loaded (blank when the plan was never saved)
+ */
+function updateMissionTitle() {
+    const el = document.getElementById('mission-current-name');
+    if (!el) return;
+    const name = getCurrentMissionName();
+    el.textContent = name || 'unsaved';
+    el.classList.toggle('is-unsaved', !name);
 }
 
 /**
@@ -631,6 +646,7 @@ function initMissionControls() {
             if (!await confirm('Clear all waypoints?')) return;
             STATE.missionItems.length = 0;
             selectedWpIdx = -1;
+            commitMission('Clear mission');
             updateMissionDisplay();
         });
     }
@@ -648,6 +664,7 @@ function initMissionControls() {
                 } else {
                     STATE.missionItems.unshift(home);
                 }
+                commitMission('Set home');
                 updateMissionDisplay();
             } else {
                 alert('No vehicle position available');
@@ -745,6 +762,7 @@ function initMissionControls() {
                 STATE.missionItems[selectedWpIdx].param3 = defaults.param3;
                 STATE.missionItems[selectedWpIdx].param4 = defaults.param4;
                 renderParamFields(selectedWpIdx);
+                commitMission('Change command');
                 updateMissionDisplay();
             }
         });
@@ -756,10 +774,88 @@ function initMissionControls() {
         altInput.addEventListener('change', () => {
             if (selectedWpIdx >= 0 && selectedWpIdx < STATE.missionItems.length) {
                 STATE.missionItems[selectedWpIdx].alt = parseFloat(altInput.value) || 100;
+                commitMission('Change altitude');
                 updateMissionDisplay();
             }
         });
     }
+
+    // ── Undo / redo ──────────────────────────────────────────────────────────
+    const applyHistoryStep = (label, verb) => {
+        if (!label) return;
+        // The mission may have shrunk under the selection
+        if (selectedWpIdx >= STATE.missionItems.length) selectedWpIdx = -1;
+        renderParamFields(selectedWpIdx);
+        updateMissionDisplay();
+        const infoEl = document.getElementById('mission-total-dist');
+        if (infoEl) {
+            const prev = infoEl.textContent;
+            infoEl.textContent = `${verb}: ${label}`;
+            setTimeout(() => { if (infoEl.textContent.startsWith(verb)) infoEl.textContent = prev; }, 1500);
+        }
+    };
+
+    const undoBtn = document.getElementById('mission-undo');
+    if (undoBtn) undoBtn.addEventListener('click', () => applyHistoryStep(undoMission(), 'Undo'));
+    const redoBtn = document.getElementById('mission-redo');
+    if (redoBtn) redoBtn.addEventListener('click', () => applyHistoryStep(redoMission(), 'Redo'));
+
+    window.addEventListener('missionHistoryChanged', (e) => {
+        const { canUndo: cu, canRedo: cr, undoLabel, redoLabel } = e.detail;
+        if (undoBtn) {
+            undoBtn.disabled = !cu;
+            undoBtn.title = cu ? `Undo: ${undoLabel} (Ctrl+Z)` : 'Nothing to undo';
+        }
+        if (redoBtn) {
+            redoBtn.disabled = !cr;
+            redoBtn.title = cr ? `Redo: ${redoLabel} (Ctrl+Y)` : 'Nothing to redo';
+        }
+    });
+    if (undoBtn) undoBtn.disabled = !canUndo();
+    if (redoBtn) redoBtn.disabled = !canRedo();
+
+    // Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z, only on the flight-plan tab and never while typing
+    document.addEventListener('keydown', (e) => {
+        if (!e.ctrlKey && !e.metaKey) return;
+        if (currentTab !== 'flight-plan') return;
+        const tag = (document.activeElement?.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+        const key = e.key.toLowerCase();
+        if (key === 'z' && !e.shiftKey) {
+            e.preventDefault();
+            applyHistoryStep(undoMission(), 'Undo');
+        } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+            e.preventDefault();
+            applyHistoryStep(redoMission(), 'Redo');
+        }
+    });
+
+    // ── Mission library (save / recall from disk) ────────────────────────────
+    initMissionLibrary(() => {
+        // Called after a mission is loaded from the library
+        selectedWpIdx = -1;
+        resetMissionHistory();
+        renderParamFields(-1);
+        updateMissionDisplay();
+    });
+
+    const saveBtn = document.getElementById('mission-save');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+            try {
+                const saved = await saveCurrentMission();
+                if (!saved) return;
+                saveBtn.textContent = 'SAVED';
+                setTimeout(() => { saveBtn.textContent = 'SAVE'; }, 1500);
+                updateMissionTitle();
+            } catch (err) {
+                alert('Save failed: ' + err.message);
+            }
+        });
+    }
+
+    const libraryBtn = document.getElementById('mission-library');
+    if (libraryBtn) libraryBtn.addEventListener('click', () => openMissionLibrary());
 
     // Deselect button
     const deselectBtn = document.getElementById('mission-wp-deselect');
@@ -866,6 +962,7 @@ async function updateMissionDisplay() {
                     const pos = marker.getLatLng();
                     STATE.missionItems[i].lat = pos.lat;
                     STATE.missionItems[i].lng = pos.lng;
+                    commitMission('Move WP');
                     updateMissionDisplay();
                 });
             });
@@ -950,6 +1047,7 @@ async function updateMissionDisplay() {
                 STATE.missionItems.forEach((it, j) => it.seq = j);
                 if (selectedWpIdx === idx) selectedWpIdx = -1;
                 else if (selectedWpIdx > idx) selectedWpIdx--;
+                commitMission('Delete WP');
                 updateMissionDisplay();
             });
         });
@@ -988,6 +1086,7 @@ async function updateMissionDisplay() {
                     if (selectedWpIdx === dragSrcIdx) selectedWpIdx = dropIdx;
                     else if (selectedWpIdx > dragSrcIdx && selectedWpIdx <= dropIdx) selectedWpIdx--;
                     else if (selectedWpIdx < dragSrcIdx && selectedWpIdx >= dropIdx) selectedWpIdx++;
+                    commitMission('Reorder WP');
                     updateMissionDisplay();
                 }
                 dragSrcIdx = null;
@@ -1010,6 +1109,7 @@ async function updateMissionDisplay() {
     // Update info
     const countEl = document.getElementById('mission-wp-count');
     if (countEl) countEl.textContent = `WP: ${STATE.missionItems.length}`;
+    updateMissionTitle();
 
     const distEl = document.getElementById('mission-total-dist');
     if (distEl) {
@@ -1492,9 +1592,10 @@ function initSetupTab() {
         const type = connTypeSel?.value;
         // serial/baud for serial & legacy binary, udp host/port for UDP, tcp host/port for TCP
         const groups = {
-            'serial-field': type === 'mavlink-serial' || type === 'corv-binary',
+            'serial-field': type === 'mavlink-serial' || type === 'corv-binary' || type === 'msp-serial',
             'udp-field': type === 'mavlink-udp',
-            'tcp-field': type === 'mavlink-tcp'
+            'tcp-field': type === 'mavlink-tcp' || type === 'msp-tcp',
+            'msp-field': type === 'msp-serial' || type === 'msp-tcp'
         };
         for (const [cls, visible] of Object.entries(groups)) {
             document.querySelectorAll('.conn-field.' + cls).forEach(el => {
@@ -1541,6 +1642,17 @@ function initSetupTab() {
                     const baud = parseInt(document.getElementById('setup-baud')?.value) || 460800;
                     if (!port) { alert('Select a serial port first'); return; }
                     await connect('corv-binary', { port, baudRate: baud });
+                } else if (type === 'msp-serial') {
+                    const port = document.getElementById('setup-serial-port')?.value;
+                    const baud = parseInt(document.getElementById('setup-baud')?.value) || 115200;
+                    const profile = document.getElementById('setup-msp-profile')?.value || 'normal';
+                    if (!port) { alert('Select a serial port first'); return; }
+                    await connect('msp-serial', { port, baudRate: baud, profile });
+                } else if (type === 'msp-tcp') {
+                    const host = document.getElementById('setup-tcp-host')?.value || '127.0.0.1';
+                    const port = parseInt(document.getElementById('setup-tcp-port')?.value) || 5760;
+                    const profile = document.getElementById('setup-msp-profile')?.value || 'normal';
+                    await connect('msp-tcp', { host, port, profile });
                 }
             } catch (e) {
                 alert('Connection failed: ' + e.message);
@@ -3322,6 +3434,7 @@ export function initSurveyGrid() {
         } else {
             if (infoEl) infoEl.textContent = `Added ${added} survey WPs (total: ${STATE.missionItems.length})`;
         }
+        commitMission(`Survey grid (${added} WP)`);
         updateMissionDisplay();
     });
 
@@ -3329,6 +3442,7 @@ export function initSurveyGrid() {
         clearSurveyDraw();
         // Also clear generated waypoints
         STATE.missionItems.length = 0;
+        commitMission('Clear survey');
         updateMissionDisplay();
     });
 }
