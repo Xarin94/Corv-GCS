@@ -3,17 +3,39 @@
  * Handles HGT file loading, terrain chunk generation, and elevation queries
  */
 
-import { VISIBILITY_RADIUS, RELOAD_DISTANCE } from '../core/constants.js';
+import { VISIBILITY_RADIUS, RELOAD_DISTANCE, CAMERA_FOV } from '../core/constants.js';
 
-// Tile zoom levels
-const TILE_ZOOM = 15;       // ~5m/pixel - standard definition for all chunks
-const HD_TILE_ZOOM = 17;    // ~1.2m/pixel - high definition for nearby chunks
-const HD_RADIUS = 2000;     // 2km - radius for high-res satellite textures
-// Max texture dimension. 8192 lets nearby chunks render at zoom 16 (~2.4m/pixel,
-// 2x the standard zoom-15 detail). Clamped to the GPU's real maxTextureSize in
-// initTerrain() so weak GPUs (4096 limit) fall back gracefully instead of crashing.
-let MAX_CANVAS_DIM = 8192;
+// ============== SATELLITE TEXTURE RESOLUTION BANDS ==============
+// Texture detail follows distance instead of a single HD/standard split. Each band
+// pairs a tile zoom with the largest canvas that band is allowed to allocate, and
+// the two are chosen to match: a chunk spans ~1/CHUNKS_PER_TILE_AXIS of a degree,
+// so the pixels a band needs stay just under its cap and the fallback loop in
+// createChunkTexture() almost never has to step the zoom down.
+//
+// Why the cap matters more than the zoom: before this table every chunk could
+// allocate up to 8192², i.e. 256 MB of RGBA plus mips, and four of them were
+// enough to put ~284 MB of texture in VRAM. Now a chunk at 20 km costs 256².
+const ZOOM_BANDS = [
+    { maxDist: 3000,     zoom: 17, maxDim: 4096 }, // max practical detail, ~1.2 m/px
+    { maxDist: 6000,     zoom: 16, maxDim: 2048 },
+    { maxDist: 12000,    zoom: 15, maxDim: 1024 },
+    { maxDist: 22000,    zoom: 14, maxDim: 512 },
+    { maxDist: Infinity, zoom: 13, maxDim: 256 },
+];
+const BASE_BAND = 2;        // zoom used for the first pass, before the aircraft has a position
+const TILE_ZOOM = ZOOM_BANDS[BASE_BAND].zoom;
+// Absolute ceiling, clamped to the GPU's real maxTextureSize in initTerrain() so
+// weak GPUs (4096 limit) degrade instead of crashing.
+let MAX_CANVAS_DIM = 4096;
 const SATELLITE_RADIUS = 10000; // 10km - raggio della mappa satellitare (in metri)
+
+/** Band index for a distance in metres. */
+function bandForDistance(dist) {
+    for (let i = 0; i < ZOOM_BANDS.length; i++) {
+        if (dist <= ZOOM_BANDS[i].maxDist) return i;
+    }
+    return ZOOM_BANDS.length - 1;
+}
 import { STATE } from '../core/state.js';
 import { latLonToMeters, calculateDistance, getHeightColor, latLonToTile, tileToBounds } from '../core/utils.js';
 import { LRUCache } from '../core/LRUCache.js';
@@ -42,7 +64,10 @@ export function getMemoryStats() {
         tileDrawQueueLen: tileDrawQueue.length,
         textureApplyQueueLen: textureApplyQueue.length,
         activeChunkJobsCount: activeChunkJobs.size,
-        pendingTileCallbacksCount: pendingTileCallbacks.size
+        pendingTileCallbacksCount: pendingTileCallbacks.size,
+        compressedTextures: compressedTexturesBuilt,
+        compressedMB: +(compressedBytes / 1048576).toFixed(1),
+        compressionActive: compressAvailable
     };
 }
 
@@ -194,7 +219,9 @@ const TILE_DRAW_BUDGET_MS = 2;
 // Chunk texture creation queue (spread canvas + tile enqueue work)
 const chunkTextureQueue = [];
 let isProcessingChunkTextureQueue = false;
-const MAX_CHUNK_TEXTURES_PER_FRAME = 2;
+// Finer chunks mean more of them to texture; 3 per frame keeps the first pass
+// under ~8 s without making any single frame expensive.
+const MAX_CHUNK_TEXTURES_PER_FRAME = 3;
 
 // Track active chunk jobs for cleanup
 const activeChunkJobs = new Map(); // mesh.uuid -> job
@@ -213,23 +240,58 @@ const CHUNKS_PER_FRAME = 5; // Aumentato per velocizzare
 const chunkCreationQueue = [];
 let isProcessingChunks = false;
 
+// ============== CHUNK GRANULARITY ==============
+// Chunks per axis of a 1° HGT tile. Must divide (size - 1) = 3600 exactly.
+//
+// This was 10, giving ~11 x 7.5 km chunks. That is coarser than every decision
+// made about a chunk: a single distance is used to pick its geometry LOD and its
+// texture resolution, yet its near edge could be 11 km closer than its far edge.
+// The consequences were an over-detailed geometry band (a chunk touching the 12 km
+// ring rendered its whole 11 km at full SRTM1 density) and a texture that had to
+// cover 11 km in one image, which is what pushed single textures to 8192² / 256 MB.
+// At 30 a chunk is ~3.7 x 2.5 km: LOD and resolution decisions become ~3x sharper,
+// and a high-zoom texture for it fits in 4096².
+const CHUNKS_PER_TILE_AXIS = 30;
+
 // ============== GEOMETRY LOD ==============
-// Distance-based mesh decimation: distant chunks sample every Nth HGT cell.
-// At 12 km one screen pixel covers ~10 m of terrain, so halving the grid
-// (30→60 m for SRTM1) keeps seam cracks at sub-pixel size while cutting
-// vertex count by ~4x per band.
-const LOD_BANDS = [
-    { maxDist: 12000, step: 1 },
-    { maxDist: 22000, step: 2 },
-    { maxDist: Infinity, step: 4 }
-];
+// Screen-space error, not fixed distance rings. A chunk is decimated until the
+// spacing between its vertices projects to about LOD_TARGET_PIXELS on screen, so
+// triangle density follows apparent size instead of the source data grid.
+//
+// The near-field floor is set by the data: SRTM1 is a 30 m grid, so rendering it
+// undecimated over a 7 km radius is ~360 k triangles no matter how it is chunked.
+// Going below that needs a roughness-aware error bound (flat valleys need far fewer
+// vertices than ridges), which is the next step and is not implemented here.
+const LOD_TARGET_PIXELS = 6;     // allowed screen-space error, in pixels
+const SRTM1_SPACING_M = 30.9;    // ground distance between adjacent SRTM1 samples
 const LOD_REBUILDS_PER_PASS = 10; // max chunk rebuilds per cleanup pass (5s)
 
+// Updated from the camera on init/resize so the error metric follows the real
+// viewport instead of an assumed one.
+let lodPixelScale = 60 * Math.PI / 180 / 1080; // ≈ tan(fov/2)*2 / viewportHeight
+
+/**
+ * Feed the LOD metric the camera geometry it needs.
+ * @param {number} fovDeg vertical field of view
+ * @param {number} viewportHeight in device pixels
+ */
+export function setLodViewParams(fovDeg, viewportHeight) {
+    if (!(fovDeg > 0) || !(viewportHeight > 0)) return;
+    lodPixelScale = (2 * Math.tan(fovDeg * Math.PI / 360)) / viewportHeight;
+}
+
+/**
+ * Decimation step for a chunk at `dist` metres.
+ * Returns a power of two so it always divides the vertex count evenly.
+ */
 function lodStepForDistance(dist) {
-    for (const band of LOD_BANDS) {
-        if (dist <= band.maxDist) return band.step;
-    }
-    return LOD_BANDS[LOD_BANDS.length - 1].step;
+    // Ground size of one screen pixel at this distance
+    const metresPerPixel = Math.max(1e-3, dist) * lodPixelScale;
+    const ideal = (LOD_TARGET_PIXELS * metresPerPixel) / SRTM1_SPACING_M;
+    if (ideal <= 1) return 1;
+    // Round down to a power of two: never coarser than the error budget allows
+    const step = 1 << Math.floor(Math.log2(ideal));
+    return Math.min(8, step);
 }
 
 function sanitizeLodStep(step, vertsPerChunk) {
@@ -238,7 +300,10 @@ function sanitizeLodStep(step, vertsPerChunk) {
 
 // Cleanup settings (più aggressivi)
 const CLEANUP_RADIUS = VISIBILITY_RADIUS * 1.05; // poco oltre la visibilità
-const MAX_ACTIVE_CHUNKS = 240; // limite più basso per liberare memoria
+// Chunks resident at once. At 30 per tile axis a chunk is ~9 km², and the
+// 35 km visibility disc holds roughly 460 of them, so this is the disc plus
+// headroom for the cleanup hysteresis rather than an arbitrary cap.
+const MAX_ACTIVE_CHUNKS = 550;
 const HGT_CACHE_RADIUS = CLEANUP_RADIUS * 1.2; // raggio cache HGT
 const WORKER_STALE_MS = 10000;
 const BASE_READY_FORCE_MS = 10000;
@@ -292,7 +357,7 @@ function markChunkActivity() {
 }
 
 function getChunkDistanceToPlayer(item) {
-    const chunksPerAxis = 10;
+    const chunksPerAxis = CHUNKS_PER_TILE_AXIS;
     const centerLat = item.latBase + 1 - ((item.cy + 0.5) / chunksPerAxis);
     const centerLon = item.lonBase + ((item.cx + 0.5) / chunksPerAxis);
     const centerWorld = latLonToMeters(centerLat, centerLon);
@@ -415,7 +480,12 @@ export function initTerrain(scene, renderer, sunDirection) {
     initTileWorker();
     initHillshadeWorker();
     initTextureCullWorker();
-    
+    initCompressWorkers();
+
+    // Feed the LOD metric the real camera geometry (falls back to a 60° / 1080p
+    // assumption if either is missing).
+    setLodViewParams(CAMERA_FOV, renderer?.domElement?.height);
+
     // Start cleanup interval (store handle for potential cleanup)
     if (cleanupIntervalId) clearInterval(cleanupIntervalId);
     cleanupIntervalId = setInterval(cleanupDistantChunks, 5000);
@@ -449,7 +519,7 @@ function initTerrainWorker() {
                         oldMesh.userData && oldMesh.userData.textureLoaded) {
                         item.inheritedMap = oldMesh.material.map;
                         item.inheritedZoom = oldMesh.userData.textureZoom;
-                        item.inheritedIsHD = oldMesh.userData.textureIsHD;
+                        item.inheritedBand = oldMesh.userData.textureBand;
                         oldMesh.material.map = null; // detach so dispose doesn't kill it
                     }
                     disposeChunk(data.chunkKey, oldMesh);
@@ -638,6 +708,123 @@ function initTextureCullWorker() {
         textureCullWorkerAvailable = false;
         textureCullWorker = null;
     }
+}
+
+// ============== TEXTURE COMPRESSION (BC1) ==============
+// Satellite chunk textures are compressed to BC1 before they reach the GPU. An
+// RGBA8 chunk texture with mips costs 5.33 bytes per pixel; BC1 costs 0.67. With
+// ~460 chunks resident the uncompressed path would need several hundred MB of
+// VRAM, which is what the resolution bands alone could not fix.
+const COMPRESS_WORKER_COUNT = 2;
+const compressWorkers = [];
+let compressAvailable = false;
+let compressSeq = 0;
+let compressRoundRobin = 0;
+const compressPending = new Map(); // id -> { mesh, canvas }
+let compressedTexturesBuilt = 0;
+let compressedBytes = 0;
+
+function initCompressWorkers() {
+    if (typeof Worker === 'undefined' || !rendererRef) return;
+
+    // BC1 needs the S3TC extension. Everything desktop has it; if it is missing
+    // the RGBA path still works, just with the old memory cost.
+    let ext = null;
+    try {
+        ext = rendererRef.getContext().getExtension('WEBGL_compressed_texture_s3tc');
+    } catch (e) { /* fall through to the uncompressed path */ }
+    if (!ext) {
+        console.warn('[terrain] S3TC unavailable — terrain textures stay uncompressed');
+        return;
+    }
+
+    try {
+        for (let i = 0; i < COMPRESS_WORKER_COUNT; i++) {
+            const w = new Worker(new URL('./TextureCompressWorker.js', import.meta.url), { type: 'module' });
+            w.onmessage = (e) => onCompressedTexture(e.data || {});
+            w.onerror = () => { compressAvailable = false; };
+            compressWorkers.push(w);
+        }
+        compressAvailable = true;
+    } catch (err) {
+        compressAvailable = false;
+        console.warn('[terrain] Texture compression worker unavailable:', err.message);
+    }
+}
+
+/**
+ * Hand a finished chunk canvas to a compression worker.
+ * @returns {boolean} false if the caller should fall back to an RGBA texture
+ */
+function requestCompressedTexture(mesh, canvas) {
+    if (!compressAvailable || !compressWorkers.length) return false;
+    // Below one block per axis there is nothing to gain and the padding would
+    // dominate; those textures are negligible anyway.
+    if (canvas.width < 8 || canvas.height < 8) return false;
+
+    let imageData;
+    try {
+        imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    } catch (e) {
+        return false;
+    }
+
+    const id = ++compressSeq;
+    compressPending.set(id, { mesh, canvas });
+    const worker = compressWorkers[compressRoundRobin++ % compressWorkers.length];
+    worker.postMessage({
+        id,
+        rgba: imageData.data.buffer,
+        width: canvas.width,
+        height: canvas.height
+    }, [imageData.data.buffer]);
+    return true;
+}
+
+function onCompressedTexture(msg) {
+    const pending = compressPending.get(msg.id);
+    if (!pending) return;
+    compressPending.delete(msg.id);
+
+    const { mesh, canvas } = pending;
+    const width = msg.width, height = msg.height;
+
+    // The canvas has served its purpose: unlike a CanvasTexture, a compressed
+    // texture owns its pixels, so the backing canvas can be released immediately.
+    releaseCanvas(canvas);
+
+    if (!msg.ok || !mesh || (mesh.userData && mesh.userData.disposed) || !window.satelliteEnabled) {
+        if (!msg.ok) console.warn('[terrain] Texture compression failed:', msg.error);
+        if (mesh && mesh.userData && !msg.ok) mesh.userData.textureLoaded = false;
+        return;
+    }
+
+    const texture = new THREE.CompressedTexture(
+        msg.mips, msg.padWidth, msg.padHeight, THREE.RGB_S3TC_DXT1_Format
+    );
+    texture.wrapS = THREE.ClampToEdgeWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    if (rendererRef) texture.anisotropy = rendererRef.capabilities.getMaxAnisotropy();
+    // Level 0 was padded up to a multiple of 4; map UV 0..1 onto the real image.
+    // The worker flips vertically before padding, so the padding ends up at the
+    // top and right and a plain scale (no offset) is the exact correction.
+    texture.repeat.set(width / msg.padWidth, height / msg.padHeight);
+    texture.needsUpdate = true;
+
+    texturesCreated++;
+    compressedTexturesBuilt++;
+    for (const m of msg.mips) compressedBytes += m.data.length;
+
+    attachTextureToMesh(mesh, texture);
+}
+
+function releaseCanvas(canvas) {
+    if (!canvas) return;
+    canvas.width = 1;
+    canvas.height = 1;
+    canvasesReleased++;
 }
 
 /**
@@ -876,7 +1063,7 @@ function generateChunksFromBuffer(buffer, latBase, lonBase) {
         hgtElevationData[key] = { data: elevationArray, size: size };
     }
 
-    const chunksPerAxis = 10;
+    const chunksPerAxis = CHUNKS_PER_TILE_AXIS;
     const vertsPerChunk = Math.floor((size - 1) / chunksPerAxis);
     const playerPos = latLonToMeters(STATE.lat, STATE.lon);
 
@@ -1026,7 +1213,7 @@ function processChunkQueue() {
  */
 function createSingleChunk(item) {
     const { cx, cy, chunkKey, latBase, lonBase, size, vertsPerChunk, dataView, hgtKey } = item;
-    const chunksPerAxis = 10;
+    const chunksPerAxis = CHUNKS_PER_TILE_AXIS;
     const step = sanitizeLodStep(item.lodStep || 1, vertsPerChunk);
 
     const chunkLatTop = latBase + 1 - (cy / chunksPerAxis);
@@ -1112,7 +1299,7 @@ function applyInheritedTexture(item, mesh) {
     mesh.material.needsUpdate = true;
     mesh.userData.textureLoaded = true;
     mesh.userData.textureZoom = item.inheritedZoom || 0;
-    mesh.userData.textureIsHD = !!item.inheritedIsHD;
+    mesh.userData.textureBand = item.inheritedBand ?? BASE_BAND;
     item.inheritedMap = null;
 
     const colorAttr = mesh.geometry.attributes.color;
@@ -1138,7 +1325,7 @@ function requeueTextureAfterLodRebuild(item, mesh) {
 
 function createSingleChunkFromBuffers(item, positions, uvs, colors, normals) {
     const { cx, cy, chunkKey, latBase, lonBase, vertsPerChunk } = item;
-    const chunksPerAxis = 10;
+    const chunksPerAxis = CHUNKS_PER_TILE_AXIS;
     const step = sanitizeLodStep(item.lodStep || 1, vertsPerChunk);
 
     const chunkLatTop = latBase + 1 - (cy / chunksPerAxis);
@@ -1183,15 +1370,18 @@ function createSingleChunkFromBuffers(item, positions, uvs, colors, normals) {
 }
 
 /**
- * Get zoom level for chunk based on distance from aircraft
- * Returns TILE_ZOOM until initial base textures are loaded, then HD for nearby chunks
+ * Resolution band for a chunk, from its centre distance to the aircraft.
+ * Until the first pass of base textures has landed everything uses BASE_BAND, so
+ * the whole visible area gets covered quickly before any chunk spends time on a
+ * 4096² texture.
+ * @returns {number} index into ZOOM_BANDS
  */
-function getZoomForChunk(latTop, latBottom, lonLeft, lonRight) {
-    if (!initialTexturesLoaded) return TILE_ZOOM;
+function getBandForChunk(latTop, latBottom, lonLeft, lonRight) {
+    if (!initialTexturesLoaded) return BASE_BAND;
     const centerLat = (latTop + latBottom) / 2;
     const centerLon = (lonLeft + lonRight) / 2;
     const dist = calculateDistance(STATE.lat, STATE.lon, centerLat, centerLon);
-    return dist <= HD_RADIUS ? HD_TILE_ZOOM : TILE_ZOOM;
+    return bandForDistance(dist);
 }
 
 /**
@@ -1203,21 +1393,22 @@ function createChunkTexture(mesh, latTop, latBottom, lonLeft, lonRight) {
         return;
     }
 
-    // Use appropriate zoom level based on distance, with canvas size cap.
-    // requestedZoom is the LOD intent (HD vs standard) before the canvas cap
-    // possibly lowers it; the LOD swap logic keys off this, not the effective
-    // zoom, since the cap can reduce HD chunks below HD_TILE_ZOOM.
-    const requestedZoom = getZoomForChunk(latTop, latBottom, lonLeft, lonRight);
-    let zoomLevel = requestedZoom;
+    // Resolution follows distance. The band fixes both the zoom and the canvas it
+    // may allocate; the loop below is the safety net for geometry the table cannot
+    // predict — chunks are taller in latitude than wide in longitude at high
+    // latitude, so the same zoom needs more pixels the further north you fly.
+    const band = getBandForChunk(latTop, latBottom, lonLeft, lonRight);
+    const bandCap = Math.min(ZOOM_BANDS[band].maxDim, MAX_CANVAS_DIM);
+    let zoomLevel = ZOOM_BANDS[band].zoom;
 
-    // Reduce zoom if canvas would exceed GPU texture limits
     const TILE_SIZE = 256;
-    while (zoomLevel > TILE_ZOOM) {
+    const MIN_ZOOM = ZOOM_BANDS[ZOOM_BANDS.length - 1].zoom;
+    while (zoomLevel > MIN_ZOOM) {
         const tl = latLonToTile(latTop, lonLeft, zoomLevel);
         const br = latLonToTile(latBottom, lonRight, zoomLevel);
         const w = (br.x - tl.x + 1) * TILE_SIZE;
         const h = (br.y - tl.y + 1) * TILE_SIZE;
-        if (w <= MAX_CANVAS_DIM && h <= MAX_CANVAS_DIM) break;
+        if (w <= bandCap && h <= bandCap) break;
         zoomLevel--;
     }
 
@@ -1276,11 +1467,12 @@ function createChunkTexture(mesh, latTop, latBottom, lonLeft, lonRight) {
     // Aggiungi al contatore globale delle tile da caricare
     totalTilesToLoad += totalTilesForChunk;
 
-    // Store zoom level used for this texture, plus the HD intent. textureIsHD
-    // tracks whether this is an HD-LOD texture regardless of the cap-reduced
-    // effective zoom, so the LOD swap doesn't re-texture HD chunks forever.
+    // Record the band this texture was built for, not the effective zoom: the cap
+    // loop above may have stepped the zoom down, and keying the re-texture decision
+    // off the zoom would make such a chunk look permanently out of date and get
+    // rebuilt on every pass.
     mesh.userData.textureZoom = zoomLevel;
-    mesh.userData.textureIsHD = (requestedZoom === HD_TILE_ZOOM);
+    mesh.userData.textureBand = band;
 
     for (let ty = tileTopLeft.y; ty <= tileBottomRight.y; ty++) {
         for (let tx = tileTopLeft.x; tx <= tileBottomRight.x; tx++) {
@@ -1597,13 +1789,13 @@ function applyCompositeTexture(mesh, canvas) {
     }
 
     if (!mesh || (mesh.userData && mesh.userData.disposed)) {
-        if (canvas) {
-            canvas.width = 1;
-            canvas.height = 1;
-            canvasesReleased++;
-        }
+        releaseCanvas(canvas);
         return;
     }
+
+    // Preferred path: compress to BC1 off-thread. The texture is attached when
+    // the worker answers; until then the chunk keeps whatever it already had.
+    if (requestCompressedTexture(mesh, canvas)) return;
 
     const texture = new THREE.CanvasTexture(canvas);
     texturesCreated++;
@@ -1624,6 +1816,13 @@ function applyCompositeTexture(mesh, canvas) {
         texture.anisotropy = rendererRef.capabilities.getMaxAnisotropy();
     }
 
+    attachTextureToMesh(mesh, texture);
+}
+
+/**
+ * Put a finished texture (compressed or not) on a chunk.
+ */
+function attachTextureToMesh(mesh, texture) {
     if (mesh && mesh.material) {
         // First texture on a green (height-tinted) chunk: flatten the vertex
         // colors to a neutral light map right away, otherwise the satellite
@@ -1691,7 +1890,7 @@ function unloadChunkTexture(mesh) {
         mesh.userData.textureLoaded = false;
         mesh.userData.textureQueued = false;
         mesh.userData.textureZoom = 0;
-        mesh.userData.textureIsHD = false;
+        mesh.userData.textureBand = undefined;
     }
 
     // The vertex colors are still the grayscale "light map" computed for the
@@ -2231,8 +2430,11 @@ export function refreshNearbyChunkTextures() {
     let chunksToUpgrade = [];
     let chunksToDowngrade = [];
     let cullCandidates = [];
-    const hdUpgradeRadius = HD_RADIUS * 0.9;     // hysteresis: upgrade inside this
-    const hdDowngradeRadius = HD_RADIUS * 1.1;   // hysteresis: downgrade outside this
+    // Band hysteresis: a chunk must be 10% inside the next band before it is
+    // re-textured at higher resolution, and 10% outside before it drops back.
+    // Without it, a chunk parked on a band boundary re-composes its texture on
+    // every pass — which is the most expensive thing the terrain does.
+    const HYSTERESIS = 0.1;
 
     for (const [key, mesh] of Object.entries(activeChunks)) {
         if (!mesh || !mesh.userData) continue;
@@ -2262,12 +2464,15 @@ export function refreshNearbyChunkTextures() {
             // No texture yet — load at appropriate zoom
             chunksToLoad.push({ mesh, ud, dist });
         } else if (initialTexturesLoaded) {
-            // LOD swap only after initial base textures are loaded
-            if (dist <= hdUpgradeRadius && !ud.textureIsHD) {
-                // Close chunk with low-res texture — upgrade to HD
+            // Band swap only after initial base textures are loaded
+            const current = ud.textureBand ?? BASE_BAND;
+            const bandIfCloser = bandForDistance(dist * (1 + HYSTERESIS));
+            const bandIfFarther = bandForDistance(dist * (1 - HYSTERESIS));
+            if (bandIfCloser < current) {
+                // Closer than its texture assumes — re-texture at higher resolution
                 chunksToUpgrade.push({ mesh, ud, dist });
-            } else if (dist > hdDowngradeRadius && ud.textureIsHD) {
-                // Far chunk with HD texture — downgrade to save memory
+            } else if (bandIfFarther > current) {
+                // Further away than its texture assumes — drop resolution, free VRAM
                 chunksToDowngrade.push({ mesh, ud, dist });
             }
         }

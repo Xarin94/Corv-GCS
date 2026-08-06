@@ -10,9 +10,11 @@ import { addHGTFile } from '../terrain/TerrainManager.js';
 const SRTM_BASE = 'https://elevation-tiles-prod.s3.amazonaws.com/skadi';
 const MAX_CONCURRENT_SRTM = 4;
 
-// Min satellite zoom to download. The 2D map opens at zoom 13 and the 3D
-// terrain uses zoom 15-16; zoom < 11 is regional/world overview that loads
-// fast from network anyway, so caching it offline is wasted bandwidth.
+// Min satellite zoom to download. The 2D map opens at zoom 13 and the 3D terrain
+// samples zoom 13-17 through its distance bands (ZOOM_BANDS in TerrainManager) —
+// so a fully offline flight needs every level from 13 up to the one the near band
+// uses. Zoom < 11 is regional/world overview that loads fast from the network
+// anyway, so caching it offline is wasted bandwidth.
 const SAT_MIN_ZOOM = 11;
 
 // ============== SRTM1 Download ==============

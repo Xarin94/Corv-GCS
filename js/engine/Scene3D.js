@@ -6,6 +6,7 @@
 import { CAMERA_FOV, VISIBILITY_RADIUS } from '../core/constants.js';
 import { STATE, demoAttitude } from '../core/state.js';
 import { latLonToMeters } from '../core/utils.js';
+import { setLodViewParams } from '../terrain/TerrainManager.js';
 
 // Module-level references
 let scene, camera, renderer;
@@ -391,6 +392,9 @@ export function resize(width, height) {
     }
     if (renderer) {
         renderer.setSize(width, height);
+        // Terrain LOD is a screen-space error budget, so it has to follow the
+        // viewport: the same chunk needs more triangles in a taller window.
+        setLodViewParams(camera ? camera.fov : 60, renderer.domElement.height);
     }
 }
 
