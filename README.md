@@ -59,11 +59,9 @@ It also speaks the **CORV binary protocol** for the onboard CORV autopilot and r
 - **Total G-load** computed from all three axes, on live MAVLink and SITL alike
 - **Total-energy variometer** alongside the VSI
 - **ROTOR LOAD** schematic on the flight data screen
-- **Navigation Display (ND)** — 2D instrument panel with flight data
 - **Mini-Map** — Leaflet-based 2D satellite map with vehicle position
-- **Telemetry graphs** — real-time Plotly charts for airspeed, altitude, attitude, G-load
 - **Status panel** — GPS fix, battery voltage/current, link quality, flight mode
-- Split-view mode: 3D + 2D map + ND simultaneously
+- Split-view mode: 3D + 2D map simultaneously
 
 ### Connectivity
 - **Serial** telemetry (USB radio, SiK, etc.) — configurable baud rate
@@ -253,7 +251,6 @@ radio, where a 25 Hz attitude poll would use the whole budget.
 | Framework | Electron 39 |
 | 3D Engine | Three.js r128 |
 | 2D Maps | Leaflet 1.9.4 |
-| Charts | Plotly.js 2.27 |
 | Protocol | node-mavlink 2.3 |
 | Serial | serialport 13.0 |
 

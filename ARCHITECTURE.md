@@ -4,7 +4,7 @@
 
 **Version:** 1.5.0 | **License:** Apache-2.0 | **Repository:** [github.com/Xarin94/Corv-GCS](https://github.com/Xarin94/Corv-GCS)
 
-Corv-GCS is a frameless Electron desktop application providing 3D terrain visualization, 2D mapping, HUD flight instruments, an Airbus-style Navigation Display, telemetry charting, mission planning with undo/redo and a local mission library, FPV camera, RTK/NTRIP corrections, ADS-B traffic awareness, joystick RC override, `.tlog` flight recording, `.tlog` and ArduPilot `.bin` log replay, and offline map/elevation caching.
+Corv-GCS is a frameless Electron desktop application providing 3D terrain visualization, 2D mapping, HUD flight instruments, mission planning with undo/redo and a local mission library, FPV camera, RTK/NTRIP corrections, ADS-B traffic awareness, joystick RC override, `.tlog` flight recording, `.tlog` and ArduPilot `.bin` log replay, and offline map/elevation caching.
 
 Three link protocols are supported, all normalised to MAVLink before they reach the renderer:
 
@@ -56,10 +56,10 @@ Three link protocols are supported, all normalised to MAVLink before they reach 
 │     ├── hud/       HUDRenderer (Canvas 2D)                           │
 │     ├── maps/      MapEngine, CachedTileLayer, TileCache,            │
 │     │              OfflineDownloader                                  │
-│     ├── ui/        TabController, SplitView, NDView, NDController,   │
-│     │              UIController, CommandBarController,                │
+│     ├── ui/        TabController, UIController, CommandBarController, │
 │     │              GCSSidebarController, ParametersPageController,    │
-│     │              FPVController, TraceManager, LoadingOverlay        │
+│     │              ParamCatalog, FPVController, RotorLoadPanel,       │
+│     │              LoadingOverlay                                     │
 │     ├── adsb/      ADSBManager                                       │
 │     ├── joystick/  JoystickManager, JoystickUI                       │
 │     ├── logging/   TlogLogger, LogReplayController                   │
@@ -96,7 +96,7 @@ Corv-GCS/
 │   │   ├── utils.js            Math helpers (coordinates, colors, CRC)
 │   │   ├── RingBuffer.js       O(1) circular buffer (Float64Array)
 │   │   ├── LRUCache.js         Least-recently-used cache
-│   │   └── ExpressionParser.js Safe formula evaluator for custom traces
+│   │   └── ExpressionParser.js Safe formula evaluator (whitelist, no eval)
 │   ├── engine/                 3D rendering engine
 │   │   ├── Scene3D.js          Three.js scene, camera, lighting, trail
 │   │   ├── TrajectoryPredictor.js  Physics-based flight path prediction
@@ -123,15 +123,12 @@ Corv-GCS/
 │   ├── ui/                      UI controllers
 │   │   ├── UIController.js      Telemetry display, HUD cell config
 │   │   ├── TabController.js     Tab navigation, mission editor, survey
-│   │   ├── SplitView.js         Multi-pane layout + Plotly charts
-│   │   ├── NDView.js            Navigation Display (Airbus A350 style)
-│   │   ├── NDController.js      ND sidebar controls
 │   │   ├── CommandBarController.js Bottom bar (ARM/mode/status)
 │   │   ├── GCSSidebarController.js Right sidebar (connections, SITL, RTK)
 │   │   ├── ParametersPageController.js Full parameter editor
+│   │   ├── RotorLoadPanel.js    ROTOR LOAD schematic
 │   │   ├── ParamCatalog.js      Known-param name catalog (on-demand reads)
 │   │   ├── FPVController.js     FPV camera overlay & settings
-│   │   ├── TraceManager.js      Plotly trace config + custom formulas
 │   │   └── LoadingOverlay.js    Splash screen with loading progress
 │   ├── adsb/
 │   │   └── ADSBManager.js       OpenSky Network ADS-B traffic
@@ -160,7 +157,6 @@ Corv-GCS/
 │       ├── tape-right.html       Altitude / terrain cells
 │       ├── plotly-container.html Trace checkboxes + chart
 │       ├── loading-overlay.html  Animated splash screen
-│       └── storyline-player.html Log playback controls
 │
 ├── css/                         17 modular CSS files
 │   ├── style.css                Master import file
@@ -171,7 +167,6 @@ Corv-GCS/
 │   ├── panels.css               Floating panels (glass effect)
 │   ├── title-bar.css            Custom window title bar
 │   ├── tabs.css                 Tab navigation
-│   ├── nd-panel.css             Navigation Display + sidebar
 │   ├── command-bar.css          Bottom command bar
 │   ├── gcs-sidebar.css          Right sidebar
 │   ├── plotly.css               Chart controls & trace config
@@ -218,7 +213,7 @@ Corv-GCS/
 | `utils.js` | `latLonToMeters()`, `calculateDistance()`, `lerpColor()`, `getHeightColor()`, `calculateCRC16()`, `latLonToTile()`, `tileToBounds()` | Coordinate conversion (WGS84 → local meters), Haversine distance, color interpolation, terrain palette, CRC-16, tile math |
 | `RingBuffer.js` | `RingBuffer`, `MultiChannelRingBuffer` | O(1) circular buffer (Float64Array) with binary search (`lowerBound`), array export, clear. Used for telemetry time-series |
 | `LRUCache.js` | `LRUCache` | Least-recently-used eviction cache for terrain satellite textures. Prevents GPU memory exhaustion |
-| `ExpressionParser.js` | `compileExpression()`, `validateExpression()`, `getAvailableFields()`, `ExpressionError` | Safe math expression evaluator (whitelist-based, no eval) for custom Plotly trace formulas |
+| `ExpressionParser.js` | `compileExpression()`, `validateExpression()`, `getAvailableFields()`, `ExpressionError` | Safe math expression evaluator (whitelist-based, no eval) for user-supplied formulas |
 
 ### 3.3 MAVLink (`js/mavlink/`)
 
@@ -264,15 +259,11 @@ Corv-GCS/
 |------|-------------|---------|
 | `UIController.js` | `updateUI()`, `initHudCells()`, `toggleConfig()`, `toggleTelemetry()`, `updateOffset()`, `updateAGLDisplay()`, `setStatusMessage()`, `updateFPSDisplay()`, `initMoreMenu()`, `initConfigAutoClose()` | Telemetry display updates (40+ fields), configurable 2×3 HUD cell grid, config/telemetry panel toggles, FPS counter. Persists cell config to localStorage |
 | `TabController.js` | `initTabs()`, `getCurrentTab()`, `initSurveyGrid()` | Tab-based page navigation (Flight Data, Flight Plan, Setup, Sys Config), mission editor UI, survey grid planner |
-| `SplitView.js` | `toggleViewMode()`, `setViewMode()`, `getViewMode()`, `sampleDataPoint()`, `updatePlotly()`, `resizeSplitView()`, `updateND()`, `recordLivePathPoint()`, `is3DVisible()`, `is2DMapVisible()`, `isNDVisible()` | Multi-pane layout manager (3D / 2D / ND / Plotly). Handles pane selection, swap logic, Plotly real-time trace updates, view mode cycling (FULLSCREEN / SPLIT) |
-| `NDView.js` | `initND()`, `drawND()`, `resizeND()`, `setNDMode()`, `setNDRange()`, `setFlightPlan()`, `setWindData()`, `setVOR1/2()`, `setILS()`, `ndConfig`, `FLIGHT_PLANS` | Navigation Display rendering (Airbus A350 style): ARC/ROSE_NAV/ROSE_VOR/ROSE_ILS/PLAN modes, range 10–320 NM, terrain/weather/TCAS overlays, wind vector, waypoint tracking |
-| `NDController.js` | `initNDControls()`, `startWaypointTracking()`, `stopWaypointTracking()`, `loadSampleFlightPlan()` | ND sidebar controls: mode/range selectors, HDG/VOR/ILS inputs, flight plan loading |
 | `CommandBarController.js` | `initCommandBar()`, `updateCommandBar()` | Bottom command bar: ARM/DISARM button, flight mode dropdown (color-coded: yellow=manual, cyan=assisted, blue=auto, orange=RTL), battery/GPS/link indicators, flight timer |
 | `GCSSidebarController.js` | `initGCSSidebar()`, `updateGCSSidebar()`, `getTargetCoords()` | Right sidebar: connection panel (serial/UDP/TCP port selection), SITL launcher, RTK base station, telemetry forwarding config |
 | `ParametersPageController.js` | `initParamsPage()`, `toggleParamsPage()`, `formatParamValue()` | Full ArduPilot parameter editor with search, inline edit, save. Side catalog reads single parameters via `PARAM_REQUEST_READ` (serialized queue + retries) so a slow link never needs the full list |
 | `ParamCatalog.js` | `getCatalog()`, `getGroups()`, `groupOf()`, `learnNames()`, `toggleFavorite()` | Parameter-name catalog per vehicle class: built-in seed + names learned from vehicles/.param files, persisted in localStorage |
 | `FPVController.js` | `initFPV()`, `onFPVButtonClick()`, `setFPVActive()`, `stopFPVStream()`, `resizeFPV()`, `openFPVSettings()` | FPV camera overlay on 3D view. ffmpeg stream controls, SIYI HM30 / generic RTSP settings dialog |
-| `TraceManager.js` | `initTraceManager()`, `evaluateTraces()`, `sampleFormulaDataPoint()`, `getActiveTraceConfigs()`, `buildLiveEntry()`, `formulaDataBuffer` | Custom Plotly trace manager. Predefined traces (as, gs, vs, rawAlt, roll, pitch, az) + custom formula traces via ExpressionParser |
 | `LoadingOverlay.js` | `showLoadingOverlay()`, `hideLoadingOverlay()`, `checkInitialLoadComplete()`, `scheduleHideLoadingOverlaySoon()` | Animated splash screen with cloud parallax and plane animation, terrain loading progress bar |
 
 ### 3.8 Other Modules
@@ -321,8 +312,6 @@ js/main.js  (60 FPS animation loop)
     ├──→ Scene3D.render()              3D terrain + aircraft
     ├──→ HUDRenderer.drawHUD()         flight instruments
     ├──→ MapEngine.updateMap()         2D mini-map
-    ├──→ NDView.drawND()               navigation display
-    ├──→ SplitView.updatePlotly()      telemetry charts
     └──→ CommandBar.updateCommandBar() status indicators
 ```
 
@@ -622,7 +611,6 @@ UI preferences) stays in `localStorage`, not in `data/`.
 | `serialport` | ^13.0.0 | Native serial port access |
 | Three.js | r128 | 3D rendering (loaded via CDN in HTML) |
 | Leaflet | 1.9.4 | 2D map tiles (loaded via CDN in HTML) |
-| Plotly.js | 2.27.0 | Telemetry charting (loaded via CDN in HTML) |
 
 ---
 
