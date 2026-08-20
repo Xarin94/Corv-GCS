@@ -1259,6 +1259,12 @@ function createSingleChunk(item) {
     }
 
     geometry.computeVertexNormals();
+    // The PlaneGeometry was created as 1×1 but the vertices were just rewritten
+    // to world coordinates. Three.js keeps the original tiny bounding sphere
+    // unless we recompute it; otherwise manual frustum culling in main.js sees
+    // the chunk as outside the frustum and hides it, leaving holes in the terrain.
+    geometry.computeBoundingSphere();
+    geometry.computeBoundingBox();
 
     const material = new THREE.MeshLambertMaterial({
         vertexColors: true,
@@ -1271,7 +1277,8 @@ function createSingleChunk(item) {
     mesh.userData = {
         chunkLatTop, chunkLatBottom, chunkLonLeft, chunkLonRight,
         lodStep: step,
-        textureLoaded: false
+        textureLoaded: false,
+        boundsValid: false
     };
 
     sceneRef.add(mesh);
@@ -1344,6 +1351,11 @@ function createSingleChunkFromBuffers(item, positions, uvs, colors, normals) {
     } else {
         geometry.computeVertexNormals();
     }
+    // Recompute bounds after replacing the 1×1 PlaneGeometry vertices with real world
+    // positions; otherwise the inherited tiny bounding sphere makes the chunk get
+    // culled as soon as the aircraft moves away from the world origin.
+    geometry.computeBoundingSphere();
+    geometry.computeBoundingBox();
 
     const material = new THREE.MeshLambertMaterial({
         vertexColors: true,
@@ -1356,7 +1368,8 @@ function createSingleChunkFromBuffers(item, positions, uvs, colors, normals) {
     mesh.userData = {
         chunkLatTop, chunkLatBottom, chunkLonLeft, chunkLonRight,
         lodStep: step,
-        textureLoaded: false
+        textureLoaded: false,
+        boundsValid: false
     };
 
     sceneRef.add(mesh);
@@ -1446,6 +1459,10 @@ function createChunkTexture(mesh, latTop, latBottom, lonLeft, lonRight) {
     canvas.width = cropW;
     canvas.height = cropH;
     const ctx = canvas.getContext('2d');
+    // Fill with a neutral fallback so failed/missing satellite tiles show a solid
+    // patch instead of black holes in the texture.
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, cropW, cropH);
     canvasesCreated++;
 
     const totalTilesForChunk = tilesX * tilesY;

@@ -694,8 +694,13 @@ function updateChunkVisibility() {
 
     const activeChunks = getActiveChunks();
     for (const mesh of Object.values(activeChunks)) {
-        if (!mesh.geometry.boundingSphere) {
+        // Recompute bounds if they are missing or known to be stale. The terrain
+        // geometry is built from a 1×1 PlaneGeometry whose vertices are replaced by
+        // real world coordinates, so the original tiny bounding sphere must be
+        // refreshed before frustum culling decisions are made.
+        if (!mesh.geometry.boundingSphere || !mesh.userData || !mesh.userData.boundsValid) {
             mesh.geometry.computeBoundingSphere();
+            if (mesh.userData) mesh.userData.boundsValid = true;
         }
         mesh.visible = frustum.intersectsObject(mesh);
     }
