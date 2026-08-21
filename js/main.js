@@ -702,6 +702,10 @@ function updateChunkVisibility() {
             mesh.geometry.computeBoundingSphere();
             if (mesh.userData) mesh.userData.boundsValid = true;
         }
+        // Frustum.intersectsObject() uses mesh.matrixWorld; make sure it is current
+        // before testing, otherwise freshly created chunks can be culled with a
+        // stale transform and disappear.
+        mesh.updateMatrixWorld();
         mesh.visible = frustum.intersectsObject(mesh);
     }
 }
@@ -729,6 +733,17 @@ function update3DWorld() {
     
     const planePos = latLonToMeters(STATE.lat, STATE.lon);
     let totalAlt = STATE.rawAlt + STATE.offsetAlt;
+
+    // Periodic terrain refresh: HGT files can be lazy-loaded or the worker can
+    // be slow to answer. Re-calling updateTerrainChunks() keeps chunk creation
+    // moving even when the aircraft is not moving.
+    if (getHGTFileCount() > 0) {
+        const now = performance.now();
+        if (!update3DWorld._lastTerrainRefresh || now - update3DWorld._lastTerrainRefresh > 1000) {
+            update3DWorld._lastTerrainRefresh = now;
+            updateTerrainChunks();
+        }
+    }
 
     // Update smoothed attitude for jitter-free rendering
     updateSmoothedAttitude();

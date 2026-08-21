@@ -105,6 +105,13 @@ function buildChunk(data) {
     const startRow = cy * vertsPerChunk;
     const startCol = cx * vertsPerChunk;
 
+    // A chunk grid that disagrees with the caller's puts these past the tile, and the
+    // per-sample clamp below then collapses every vertex onto the tile edge — an
+    // invisible chunk rather than an error. Fail loudly instead.
+    if (startRow + vertsPerChunk > size - 1 || startCol + vertsPerChunk > size - 1) {
+        return { type: 'chunkFailed', chunkKey, reason: 'chunk-out-of-tile' };
+    }
+
     let p = 0;
     let u = 0;
     let c = 0;

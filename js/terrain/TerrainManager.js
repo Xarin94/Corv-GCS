@@ -215,6 +215,7 @@ const tileDrawQueue = [];
 let isProcessingTileDrawQueue = false;
 const MAX_TILE_DRAWS_PER_FRAME = 6;
 const TILE_DRAW_BUDGET_MS = 2;
+const MAX_TILE_DRAW_RETRIES = 2;
 
 // Chunk texture creation queue (spread canvas + tile enqueue work)
 const chunkTextureQueue = [];
@@ -305,7 +306,10 @@ const CLEANUP_RADIUS = VISIBILITY_RADIUS * 1.05; // poco oltre la visibilità
 // headroom for the cleanup hysteresis rather than an arbitrary cap.
 const MAX_ACTIVE_CHUNKS = 550;
 const HGT_CACHE_RADIUS = CLEANUP_RADIUS * 1.2; // raggio cache HGT
-const WORKER_STALE_MS = 10000;
+// Tiles whose buffer has been transferred to the terrain worker. The transfer
+// detaches the buffer, so re-sending one is both wasteful and impossible.
+const hgtRegisteredInWorker = new Set();
+const WORKER_STALE_MS = 30000; // 30s: worker can be slow on large HGT tiles
 const BASE_READY_FORCE_MS = 10000;
 let lastChunkActivityTime = performance.now();
 
@@ -497,6 +501,7 @@ function initTerrainWorker() {
     try {
         terrainWorker = new Worker(new URL('./TerrainWorker.js', import.meta.url), { type: 'module' });
         workerAvailable = true;
+        hgtRegisteredInWorker.clear(); // fresh worker holds no tiles
 
         terrainWorker.onmessage = (e) => {
             const data = e.data || {};
@@ -1010,23 +1015,48 @@ export async function updateTerrainChunks() {
     const currentLat = STATE.lat;
     const currentLon = STATE.lon;
 
+    let loaded = 0, lazy = 0, missing = 0;
+    const missingFiles = [];
     for (let la = Math.floor(currentLat - 2); la <= Math.floor(currentLat + 2); la++) {
         for (let lo = Math.floor(currentLon - 2); lo <= Math.floor(currentLon + 2); lo++) {
             const latStr = (la >= 0 ? 'N' : 'S') + Math.abs(la).toString().padStart(2, '0');
             const lonStr = (lo >= 0 ? 'E' : 'W') + Math.abs(lo).toString().padStart(3, '0');
             const filename = `${latStr}${lonStr}.HGT`;
             if (hgtFiles[filename]) {
+                loaded++;
                 processHGTFile(hgtFiles[filename], la, lo);
             } else if (availableHgtFiles.has(filename)) {
+                lazy++;
                 // Lazy-load from disk, then process
                 ensureHgtLoaded(filename).then(ok => {
                     if (ok && hgtFiles[filename]) {
                         processHGTFile(hgtFiles[filename], la, lo);
                     }
                 });
+            } else {
+                missing++;
+                missingFiles.push({ filename, latBase: la, lonBase: lo });
             }
         }
     }
+
+    // Auto-download missing HGT tiles that cover the visible area.
+    // Rate-limit to avoid saturating the network: max 2 downloads in flight.
+    const MAX_DOWNLOADS_PER_CALL = 2;
+    let started = 0;
+    for (const { filename, latBase, lonBase } of missingFiles) {
+        if (started >= MAX_DOWNLOADS_PER_CALL) break;
+        if (_autoDownloadInProgress.has(filename)) continue;
+        if (_autoDownloadFailed.has(filename)) continue; // already failed once this session
+        started++;
+        autoDownloadSRTM(filename, latBase, lonBase).then(file => {
+            if (file && hgtFiles[filename]) {
+                processHGTFile(hgtFiles[filename], latBase, lonBase);
+            }
+        }).catch(() => {});
+    }
+
+    console.debug(`[terrain] updateTerrainChunks: loaded=${loaded} lazy=${lazy} missing=${missing} downloadsStarted=${started} active=${Object.keys(activeChunks).length} queue=${chunkCreationQueue.length}`);
 }
 
 /**
@@ -1036,6 +1066,18 @@ export async function updateTerrainChunks() {
  * @param {number} lonBase 
  */
 function processHGTFile(file, latBase, lonBase) {
+    const key = `${latBase}_${lonBase}`;
+    const cached = hgtElevationData[key];
+
+    // Fast path. Once a tile is parsed and handed to the worker there is nothing
+    // left to extract from the file, only chunks left to enqueue. Re-reading a
+    // 25 MB HGT through FileReader — for all 25 resident tiles, every refresh —
+    // is what made the periodic pass hitch once a second.
+    if (cached && (!workerAvailable || hgtRegisteredInWorker.has(key))) {
+        enqueueChunksForTile(latBase, lonBase, cached.size);
+        return;
+    }
+
     const reader = new FileReader();
     reader.onload = (e) => generateChunksFromBuffer(e.target.result, latBase, lonBase);
     reader.readAsArrayBuffer(file);
@@ -1052,10 +1094,10 @@ function generateChunksFromBuffer(buffer, latBase, lonBase) {
     let size = (len === 1201 * 1201 * 2) ? 1201 : (len === 3601 * 3601 * 2 ? 3601 : 0);
     if (!size) return;
     
-    const dataView = new DataView(buffer);
     const key = `${latBase}_${lonBase}`;
-    
+
     if (!hgtElevationData[key]) {
+        const dataView = new DataView(buffer);
         const elevationArray = new Int16Array(size * size);
         for (let i = 0; i < size * size; i++) {
             elevationArray[i] = dataView.getInt16(i * 2, false);
@@ -1063,9 +1105,40 @@ function generateChunksFromBuffer(buffer, latBase, lonBase) {
         hgtElevationData[key] = { data: elevationArray, size: size };
     }
 
+    enqueueChunksForTile(latBase, lonBase, size);
+
+    // Transferring detaches the buffer, so this may only happen once per tile.
+    if (workerAvailable && terrainWorker && !hgtRegisteredInWorker.has(key)) {
+        try {
+            terrainWorker.postMessage({ type: 'registerHgt', key, size, buffer }, [buffer]);
+            hgtRegisteredInWorker.add(key);
+        } catch (err) {
+            workerAvailable = false;
+        }
+    }
+}
+
+/**
+ * Queue every not-yet-built chunk of one 1°x1° tile that falls inside the
+ * visibility disc. Safe to call repeatedly: it reads the cached elevation data
+ * and touches neither the file nor the worker registration.
+ * @param {number} latBase
+ * @param {number} lonBase
+ * @param {number} size samples per tile axis
+ */
+function enqueueChunksForTile(latBase, lonBase, size) {
+    const key = `${latBase}_${lonBase}`;
     const chunksPerAxis = CHUNKS_PER_TILE_AXIS;
     const vertsPerChunk = Math.floor((size - 1) / chunksPerAxis);
     const playerPos = latLonToMeters(STATE.lat, STATE.lon);
+
+    // The tile scan reaches +-2 degrees but the visibility disc is ~0.3 degrees, so
+    // most tiles cannot contribute a single chunk. Reject them on their nearest
+    // corner instead of testing 900 chunk centres each.
+    const nearLat = Math.min(Math.max(STATE.lat, latBase), latBase + 1);
+    const nearLon = Math.min(Math.max(STATE.lon, lonBase), lonBase + 1);
+    const nearWorld = latLonToMeters(nearLat, nearLon);
+    if (Math.hypot(nearWorld.x - playerPos.x, nearWorld.z - playerPos.z) > VISIBILITY_RADIUS) return;
 
     const chunksList = [];
     for (let cx = 0; cx < chunksPerAxis; cx++) {
@@ -1087,7 +1160,10 @@ function generateChunksFromBuffer(buffer, latBase, lonBase) {
                     latBase, lonBase, size, vertsPerChunk,
                     lodStep: sanitizeLodStep(lodStepForDistance(dist), vertsPerChunk),
                     hgtKey: key,
-                    dataView: workerAvailable ? null : new DataView(buffer.slice(0))
+                    // The worker reads its own registered copy and createSingleChunk()
+                    // falls back to hgtElevationData[hgtKey], which is populated before
+                    // we get here — so neither path needs a per-chunk buffer copy.
+                    dataView: null
                 });
             }
         }
@@ -1098,14 +1174,6 @@ function generateChunksFromBuffer(buffer, latBase, lonBase) {
     for (const chunkData of chunksList) {
         if (!chunkCreationQueue.some(q => q.chunkKey === chunkData.chunkKey)) {
             chunkCreationQueue.push(chunkData);
-        }
-    }
-
-    if (workerAvailable && terrainWorker) {
-        try {
-            terrainWorker.postMessage({ type: 'registerHgt', key, size, buffer }, [buffer]);
-        } catch (err) {
-            workerAvailable = false;
         }
     }
 
@@ -1123,6 +1191,7 @@ function processChunkQueue() {
         for (const [chunkKey, item] of workerPending) {
             const requestedAt = item.requestedAt || 0;
             if (requestedAt && now - requestedAt > WORKER_STALE_MS) {
+                console.warn(`[terrain] Worker stale for chunk ${chunkKey}, re-queueing`);
                 workerPending.delete(chunkKey);
                 workerInflight = Math.max(0, workerInflight - 1);
                 if ((!activeChunks[chunkKey] || item.lodRebuild) && isChunkInRange(item)) {
@@ -1149,6 +1218,7 @@ function processChunkQueue() {
         // Terreno base completato - ora carica satellite se abilitato
         if (!terrainBaseReady && Object.keys(activeChunks).length > 0) {
             terrainBaseReady = true;
+            console.log(`[terrain] Base terrain ready: ${Object.keys(activeChunks).length} chunks active`);
             
             // Avvia caricamento satellite dopo un breve delay
             if (window.satelliteEnabled) {
@@ -1277,6 +1347,7 @@ function createSingleChunk(item) {
     mesh.userData = {
         chunkLatTop, chunkLatBottom, chunkLonLeft, chunkLonRight,
         lodStep: step,
+        vertsPerChunk,
         textureLoaded: false,
         boundsValid: false
     };
@@ -1285,6 +1356,7 @@ function createSingleChunk(item) {
     activeChunks[chunkKey] = mesh;
     chunksCreated++;
     markChunkActivity();
+    console.debug(`[terrain] Chunk created: ${chunkKey} (total=${Object.keys(activeChunks).length})`);
 
     applyInheritedTexture(item, mesh);
     applyHillshadeToMesh(mesh);
@@ -1368,6 +1440,7 @@ function createSingleChunkFromBuffers(item, positions, uvs, colors, normals) {
     mesh.userData = {
         chunkLatTop, chunkLatBottom, chunkLonLeft, chunkLonRight,
         lodStep: step,
+        vertsPerChunk,
         textureLoaded: false,
         boundsValid: false
     };
@@ -1376,6 +1449,7 @@ function createSingleChunkFromBuffers(item, positions, uvs, colors, normals) {
     activeChunks[chunkKey] = mesh;
     chunksCreated++;
     markChunkActivity();
+    console.debug(`[terrain] Chunk created from worker: ${chunkKey} (total=${Object.keys(activeChunks).length})`);
 
     applyInheritedTexture(item, mesh);
     applyHillshadeToMesh(mesh);
@@ -1498,15 +1572,15 @@ function createChunkTexture(mesh, latTop, latBottom, lonLeft, lonRight) {
 
             loadTileImage(tx, ty, zoomLevel, (img) => {
                 tilesLoaded++; // Incrementa contatore globale (loading overlay)
-                enqueueTileDraw(chunkJob, img, localX, localY, TILE_SIZE);
+                enqueueTileDraw(chunkJob, img, localX, localY, TILE_SIZE, tx, ty, zoomLevel);
             });
         }
     }
 }
 
-function enqueueTileDraw(job, img, localX, localY, tileSize) {
+function enqueueTileDraw(job, img, localX, localY, tileSize, tileX, tileY, tileZ, retryCount = 0) {
     if (!window.satelliteEnabled || !job || !job.ctx || job.aborted) return;
-    tileDrawQueue.push({ job, img, localX, localY, tileSize });
+    tileDrawQueue.push({ job, img, localX, localY, tileSize, tileX, tileY, tileZ, retryCount });
     if (!isProcessingTileDrawQueue) {
         requestAnimationFrame(processTileDrawQueue);
     }
@@ -1523,7 +1597,7 @@ function processTileDrawQueue() {
     let processed = 0;
 
     while (tileDrawQueue.length > 0) {
-        const { job, img, localX, localY, tileSize } = tileDrawQueue.shift();
+        const { job, img, localX, localY, tileSize, tileX, tileY, tileZ, retryCount } = tileDrawQueue.shift();
 
         // Skip aborted jobs
         if (!job || job.aborted || !job.ctx) {
@@ -1534,17 +1608,28 @@ function processTileDrawQueue() {
         // queued (detached → width/height become 0). Drawing it throws an
         // uncaught InvalidStateError, which would kill the queue loop and
         // leave isProcessingTileDrawQueue stuck true, stalling all future
-        // tile draws. Guard against it and just skip the tile.
-        if (img && img.width > 0 && img.height > 0) {
+        // tile draws. Guard against it and retry once; after retries, the
+        // neutral canvas fill covers the gap instead of a black hole.
+        if (!img || img.width === 0 || img.height === 0) {
+            if (retryCount < MAX_TILE_DRAW_RETRIES) {
+                loadTileImage(tileX, tileY, tileZ, (img2) => {
+                    enqueueTileDraw(job, img2, localX, localY, tileSize, tileX, tileY, tileZ, retryCount + 1);
+                });
+            } else {
+                // No usable tile after retries — leave the fallback fill and move on.
+                job.tilesDrawn++;
+            }
+        } else {
             try {
                 // Draw in mosaic space shifted by the crop origin — out-of-bounds
                 // portions are clipped by the canvas for free.
                 job.ctx.drawImage(img, localX * tileSize - job.cropX, localY * tileSize - job.cropY, tileSize, tileSize);
             } catch (e) {
-                // Detached/invalid image source — skip; chunk re-textures on next refresh
+                // Detached/invalid image source — leave fallback fill.
             }
+            job.tilesDrawn++;
         }
-        job.tilesDrawn++;
+
         if (job.tilesDrawn >= job.totalTiles) {
             // Remove from active jobs tracking
             activeChunkJobs.delete(job.mesh.uuid);
@@ -1681,8 +1766,13 @@ function loadTileImage(tileX, tileY, tileZ, callback) {
     // Check in-memory LRU cache first
     const cached = imageLRU.get(key);
     if (cached) {
-        callback(cached);
-        return;
+        // An evicted+closed ImageBitmap reports zero size; using it leaves a hole.
+        if (cached.width > 0 && cached.height > 0) {
+            callback(cached);
+            return;
+        }
+        // Stale/closed bitmap — remove it and reload from persistent/network.
+        imageLRU.delete(key);
     }
 
     if (!enqueueTileCallback(key, callback)) return;
@@ -1968,6 +2058,8 @@ export function setTerrainSatelliteEnabled(enabled) {
     const on = !!enabled;
     if (!activeChunks) return;
 
+    console.log(`[terrain] Satellite ${on ? 'ENABLED' : 'DISABLED'} — activeChunks=${Object.keys(activeChunks).length}, queue=${chunkCreationQueue.length}, workerPending=${workerPending.size}`);
+
     for (const key in activeChunks) {
         const mesh = activeChunks[key];
         if (!mesh || !mesh.material) continue;
@@ -1991,6 +2083,13 @@ export function setTerrainSatelliteEnabled(enabled) {
         pendingTileCallbacks.clear();
         currentTileLoads = 0;
     }
+
+    // Force a terrain refresh: if chunks were never created (lazy HGT load,
+    // slow worker, or stale queue), this re-runs updateTerrainChunks() so the
+    // missing rectangular patches get rebuilt.
+    resetTextureRefreshPosition();
+    updateTerrainChunks();
+    refreshNearbyChunkTextures();
 }
 
 /**
@@ -2140,17 +2239,20 @@ function updateChunkLods(playerPos) {
             (centerWorld.z - playerPos.z) ** 2
         );
 
-        const desired = lodStepForDistance(dist);
+        // Compare against the step a rebuild would actually apply: an unsanitised
+        // target the chunk can never reach would requeue it on every pass forever.
+        const desired = sanitizeLodStep(lodStepForDistance(dist), ud.vertsPerChunk || 0);
         if (desired === ud.lodStep) continue;
 
+        const vpc = ud.vertsPerChunk || 0;
         if (desired < ud.lodStep) {
             // Upgrade only when firmly inside the finer band
-            if (lodStepForDistance(dist * 1.15) < ud.lodStep) {
+            if (sanitizeLodStep(lodStepForDistance(dist * 1.15), vpc) < ud.lodStep) {
                 rebuilds.push({ key, mesh, dist, upgrade: 1 });
             }
         } else {
             // Downgrade only when firmly outside the current band
-            if (lodStepForDistance(dist * 0.85) > ud.lodStep) {
+            if (sanitizeLodStep(lodStepForDistance(dist * 0.85), vpc) > ud.lodStep) {
                 rebuilds.push({ key, mesh, dist, upgrade: 0 });
             }
         }
@@ -2184,7 +2286,11 @@ function requeueChunkForLod(chunkKey, mesh, dist) {
     if (!hgt) return; // elevation data no longer in memory — skip
 
     const size = hgt.size;
-    const vertsPerChunk = Math.floor((size - 1) / 10);
+    // Must match the grid processHGTFile() used to create the chunk: cx/cy index
+    // a CHUNKS_PER_TILE_AXIS grid, so a different divisor here puts startRow/startCol
+    // outside the tile, the worker clamps every sample to the tile edge, and the
+    // rebuilt chunk collapses to a zero-area mesh — a hole in the terrain.
+    const vertsPerChunk = Math.floor((size - 1) / CHUNKS_PER_TILE_AXIS);
 
     mesh.userData.lodRebuildQueued = true;
     chunkCreationQueue.push({

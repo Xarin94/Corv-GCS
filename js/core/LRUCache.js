@@ -50,6 +50,17 @@ export class LRUCache {
     }
 
     /**
+     * Delete item from cache and run eviction callback
+     * @param {string} key - Cache key
+     */
+    delete(key) {
+        if (!this.cache.has(key)) return;
+        const value = this.cache.get(key);
+        this.cache.delete(key);
+        if (this.onEvict) this.onEvict(value);
+    }
+
+    /**
      * Check if key exists in cache
      * @param {string} key - Cache key
      * @returns {boolean}
