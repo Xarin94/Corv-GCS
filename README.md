@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.5.0-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.5.1-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"/>
   <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
   <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
@@ -134,7 +134,7 @@ It also speaks the **CORV binary protocol** for the onboard CORV autopilot and r
 
 ### Download
 Pre-built installers are available on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
-- **Windows**: `CORV GCS Setup 1.5.0.exe`
+- **Windows**: `CORV GCS Setup 1.5.1.exe`
 
 Linux builds are not published at the moment — build from source with `npm run build:linux`.
 
