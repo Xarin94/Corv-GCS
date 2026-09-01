@@ -7,7 +7,7 @@
     position: fixed;
     right: 0;
     top: 60px;
-    bottom: 48px;
+    bottom: var(--cmdbar-h);
     width: 240px;
     background: var(--glass-panel-toolbar);
     border-left: 1px solid var(--border-accent);

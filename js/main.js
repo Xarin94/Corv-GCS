@@ -1828,10 +1828,22 @@ function startADSBPolling() {
 
 // ADS-B enable/disable toggle
 let _adsbEnabled = true;
+
+/**
+ * Show/hide the traffic table. The bottom-right cluster also needs to know,
+ * because the ROTOR LOAD schematic stacks on top of whichever table is the
+ * rightmost — the traffic one when it is up, the position readout when not.
+ */
+function setTrafficBarVisible(visible) {
+    const bar = document.getElementById('traffic-bar');
+    if (bar) bar.style.display = visible ? '' : 'none';
+    const group = document.querySelector('.bottom-bar-group');
+    if (group) group.classList.toggle('no-traffic', !visible);
+}
+
 window.toggleADSB = function(enabled) {
     _adsbEnabled = enabled;
-    const bar = document.getElementById('traffic-bar');
-    if (bar) bar.style.display = enabled ? '' : 'none';
+    setTrafficBarVisible(enabled);
     if (enabled) {
         startADSBPolling();
     } else {
@@ -1853,6 +1865,17 @@ window.toggleADSB = (function(orig) {
         localStorage.setItem('adsb-enabled', enabled ? '1' : '0');
     };
 })(window.toggleADSB);
+
+// ROTOR LOAD panel enable/disable toggle.
+// Hiding the wrapper is enough to idle the widget: its draw loop bails out
+// as soon as the canvas reports a zero client width.
+window.toggleRotorLoad = function(enabled) {
+    const panel = document.querySelector('.bottom-bar-rotor');
+    if (panel) panel.style.display = enabled ? '' : 'none';
+    const chk = document.getElementById('chk-rotor-load');
+    if (chk) chk.checked = enabled;
+    localStorage.setItem('rotor-load-enabled', enabled ? '1' : '0');
+};
 
 // Battery voltage-based percentage calculation
 window._batVMin = 9.6; window._batVMax = 12.6;
@@ -1885,13 +1908,17 @@ window.updateBatteryVoltageRange = function() {
     const adsbSaved = localStorage.getItem('adsb-enabled');
     if (adsbSaved === '0') {
         _adsbEnabled = false;
-        const bar = document.getElementById('traffic-bar');
-        if (bar) bar.style.display = 'none';
+        setTrafficBarVisible(false);
         const sidebarChk = document.getElementById('chk-adsb-enable');
         const syscfgChk = document.getElementById('syscfg-adsb-enable');
         if (sidebarChk) sidebarChk.checked = false;
         if (syscfgChk) syscfgChk.checked = false;
         if (adsbPollTimer) { clearInterval(adsbPollTimer); adsbPollTimer = null; }
+    }
+
+    // ROTOR LOAD panel toggle
+    if (localStorage.getItem('rotor-load-enabled') === '0') {
+        window.toggleRotorLoad(false);
     }
 
     // GCS Mute

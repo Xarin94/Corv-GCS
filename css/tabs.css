@@ -67,7 +67,7 @@
     top: 92px; /* 60px header + 32px tab bar */
     left: 0;
     right: 240px; /* Space for GCS sidebar */
-    bottom: 48px; /* Space for command bar */
+    bottom: var(--cmdbar-h); /* Space for command bar */
     overflow-y: auto;
     background: var(--bg-color);
 }
@@ -76,7 +76,7 @@
     top: 92px;
     left: 0;
     right: 0; /* Full width — no sidebar reserve */
-    bottom: 48px;
+    bottom: var(--cmdbar-h);
     overflow-y: auto;
     background: var(--bg-color);
 }

@@ -18,6 +18,7 @@ const HUD_MSG_DURATION = 5000; // ms
 let prevArmedState = false;
 let armedFlashTimer = 0;
 let disarmedLabelEl = null;
+let minimapEl = null;
 
 // Optional dedicated G-load widget canvas (DOM widget)
 let gCanvas = null;
@@ -791,7 +792,7 @@ function drawBankArc() {
  * total-energy variometer so both keep identical geometry and scale.
  * ±5 m/s occupies most of the scale, 5-10 m/s is compressed.
  */
-function drawVertTape(x, value, topLabel) {
+function drawVertTape(x, value, topLabel, showUnit = true) {
     const cy = size.height / 2;
     const H = Math.min(110, size.height * 0.16);
     const maxV = 10;
@@ -839,17 +840,19 @@ function drawVertTape(x, value, topLabel) {
     ctx.textAlign = 'left';
     ctx.fillText(val.toFixed(1), 13, vy);
 
-    // Optional top label (e.g. 'TE') then the shared unit at the bottom
+    // Optional top label (e.g. 'TE') and, for the leading tape only, the unit
     if (topLabel) {
         setFontScale(10, 'px');
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
         ctx.fillText(topLabel, 0, -H - 6);
     }
-    setFontScale(10, 'px');
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('M/S', 0, H + 6);
+    if (showUnit) {
+        setFontScale(10, 'px');
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText('M/S', 0, H + 6);
+    }
 
     ctx.restore();
 }
@@ -894,7 +897,8 @@ function drawVSI() {
     const cx = size.width / 2;
     const x = Math.min(cx + 320, size.width - 150);
     drawVertTape(x, Number.isFinite(STATE.vs) ? STATE.vs : 0, null);
-    drawVertTape(x + 82, energyRate(), 'TE');
+    // TE is the same unit as the VSI beside it, so it does not repeat it
+    drawVertTape(x + 82, energyRate(), 'TE', false);
 }
 
 /**
@@ -1008,8 +1012,12 @@ function drawHudMessages() {
         ctx.textAlign = 'left';
         ctx.textBaseline = 'bottom';
 
+        // Stack upward from just above the mini-map, which shares this corner.
+        // A fixed -60px anchor put the list straight on top of the map.
         const x = 12;
-        let y = size.height - 60;
+        const mapEl = minimapEl || (minimapEl = document.getElementById('mini-map-container'));
+        const mapH = mapEl && mapEl.offsetParent !== null ? mapEl.offsetHeight : 0;
+        let y = size.height - (mapH > 0 ? mapH + 28 : 60);
 
         for (let i = hudMessages.length - 1; i >= 0; i--) {
             const msg = hudMessages[i];

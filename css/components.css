@@ -124,9 +124,11 @@ button.ui-btn.recording {
 /* DISARMED LABEL */
 .disarmed-label {
     font-family: var(--font-data);
-    font-size: clamp(14px, 1.5vw, 22px);
+    font-size: var(--fs-lg);
     font-weight: 700;
-    letter-spacing: 3px;
+    letter-spacing: 0.2em;
+    margin-top: clamp(6px, 1.6vh, 22px);
+    align-self: center;
     text-align: center;
     text-transform: uppercase;
     padding: 4px 12px;
@@ -160,22 +162,25 @@ button.ui-btn.recording {
 }
 
 /* MAVLink critical error overlay */
+/* Stacked directly above the mini-map in the same left gutter, and above it
+   in z-order — anchored at 25% of the viewport it used to land mid-screen
+   and get painted over by the map (z 100 vs 20). */
 #mav-msg-overlay {
     position: absolute;
-    left: 16px;
-    bottom: calc(25% + 18px);
+    left: var(--gutter);
+    bottom: calc(var(--minimap-h) + var(--gutter) * 2);
     display: flex;
     flex-direction: column;
     gap: 5px;
     pointer-events: none;
-    z-index: var(--z-ui-layer);
-    max-width: 480px;
+    z-index: var(--z-floating);
+    max-width: min(480px, 40vw);
     align-items: flex-start;
 }
 
 .mav-msg-item {
     font-family: var(--font-data);
-    font-size: clamp(12px, 1.2vw, 16px);
+    font-size: var(--fs-sm);
     font-weight: 700;
     letter-spacing: 2px;
     text-transform: uppercase;
@@ -186,7 +191,7 @@ button.ui-btn.recording {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 480px;
+    max-width: 100%;
     text-shadow: 0 0 8px rgba(255, 60, 60, 0.6);
     animation: mav-error-appear 0.15s ease-out, mav-error-blink 1.6s ease-in-out infinite;
     transition: opacity 0.6s ease;
@@ -214,9 +219,9 @@ button.ui-btn.recording {
 .tape-col {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    padding-top: 5%;
-    gap: 2vh;
+    align-items: stretch;
+    gap: clamp(6px, 1.4vh, 20px);
+    min-width: 0;
 }
 
 .tape-title {
@@ -261,12 +266,27 @@ button.ui-btn.recording {
     gap: 8px;
 }
 
+/* Label on its own row, value and unit sharing a baseline underneath —
+   the Garmin/HGS block: the unit reads as an annotation of the number
+   instead of a third stacked line competing with it. */
 .data-cell {
+    display: grid;
+    /* Value column takes the slack and right-aligns; the unit sits in a
+       reserved gutter beside it. That fixes the numbers' right edge, so
+       every value in a tape lines up on the same axis the way a PFD data
+       block does — centring the value+unit pair made the digits wander. */
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    column-gap: 0.4em;
     width: 100%;
-    text-align: center;
-    padding: 1vh 0;
+    padding: clamp(2px, 0.6vh, 8px) 0;
+    min-width: 0;
+}
+
+/* One hairline between cells, none around the block: the tape reads as a
+   single stack instead of a row of boxed-in fields. */
+.tape-col .data-cell + .data-cell {
     border-top: 1px solid var(--border-subtle);
-    border-bottom: 1px solid var(--border-subtle);
 }
 
 .data-cell.no-border {
@@ -274,56 +294,121 @@ button.ui-btn.recording {
 }
 
 .lbl {
-    font-size: clamp(8px, 0.8vw, 12px);
+    /* Sits over the value column, sharing its right edge — a label centred
+       across the unit gutter reads as offset from the number it names. */
+    grid-column: 1;
+    text-align: right;
+    font-size: var(--fs-sm);
+    font-weight: 600;
     text-transform: uppercase;
-    color: var(--text-dim);
-    letter-spacing: 2px;
-    text-shadow: 1px 1px 0 black;
+    color: var(--hud-text-lbl);
+    /* Wide tracking costs more than it buys at this size: it pulls the
+       letters apart faster than the eye can group them into a word. */
+    letter-spacing: 0.09em;
+    line-height: 1.2;
+    text-shadow: var(--text-outline);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .val {
+    grid-column: 1;
+    text-align: right;
     font-family: var(--font-data);
-    font-size: clamp(24px, 2.5vw, 48px);
-    color: var(--text-main);
-    text-shadow: 2px 2px 0 black;
+    font-size: var(--fs-2xl);
+    line-height: 1.05;
+    color: var(--hud-text);
+    text-shadow: var(--text-outline-strong);
+    font-variant-numeric: tabular-nums;
 }
 
+/* Hierarchy comes from position, not from the field the operator assigned:
+   the first cell of each tape is the primary readout, everything below it
+   is a supporting value. Keeps airspeed/altitude dominant no matter how the
+   cells are reconfigured. */
+.tape-col .data-cell + .data-cell .val,
 .val.val-secondary {
-    font-size: 24px;
-    color: #ccc;
+    font-size: var(--fs-xl);
+    color: var(--hud-text-sub);
 }
 
 .unit {
-    font-size: clamp(9px, 0.8vw, 13px);
-    color: var(--text-main);
-    text-shadow: 1px 1px 0 black;
+    grid-column: 2;
+    /* Fixed gutter: the unit never pushes the value column around when the
+       operator swaps a cell from "G" to "m AGL". */
+    min-width: 3.1em;
+    text-align: left;
+    font-size: var(--fs-sm);
+    letter-spacing: 0.06em;
+    /* No uppercasing: the field catalogue writes proper SI casing
+       ("m/s", "m MSL"), which forcing to caps would destroy. */
+    color: var(--hud-text-lbl);
+    font-weight: 600;
+    text-shadow: var(--text-outline);
+    white-space: nowrap;
 }
 
-/* BOTTOM BAR GROUP (wraps position bar + traffic bar side by side) */
+/* BOTTOM BAR GROUP — position + traffic side by side, rotor schematic
+   stacked on top of the right-hand one. Two rows: the schematic occupies
+   row 1 above whichever table is currently the rightmost, so it always
+   sits over the outer edge of the cluster and well clear of the HUD's
+   vertical-speed tapes. */
 .bottom-bar-group {
     grid-column: 3 / 4;
     grid-row: 3 / 4;
     align-self: end;
     justify-self: end;
-    display: flex;
-    flex-direction: row;
-    gap: 8px;
-    align-items: flex-end;
+    display: grid;
+    grid-template-columns: auto auto;
+    align-items: end;
+    justify-items: center;
+    column-gap: var(--gutter);
+    row-gap: clamp(2px, 0.5vh, 8px);
     pointer-events: auto;
+    max-width: 100vw;
 }
 
-/* Vertical stack: ROTOR LOAD schematic above the position readout */
-.bottom-bar-stack {
+.bottom-bar-group > .bottom-bar {
+    grid-row: 2;
+}
+
+.bottom-bar-group > #traffic-bar {
+    grid-column: 2;
+}
+
+/* Default: over the traffic table (the rightmost panel) */
+.bottom-bar-rotor {
+    grid-row: 1;
+    grid-column: 2;
+}
+
+/* Traffic overlay off: that column is gone, so the schematic moves over the
+   position readout, which is now the rightmost panel. */
+.bottom-bar-group.no-traffic {
+    grid-template-columns: auto;
+}
+
+.bottom-bar-group.no-traffic .bottom-bar-rotor {
+    grid-column: 1;
+}
+
+/* Rotor schematic + its caption */
+.bottom-bar-rotor {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    align-items: stretch;
+    gap: clamp(2px, 0.4vh, 6px);
+    align-items: center;
+    min-width: 0;
 }
 
-/* ROTOR LOAD: borderless propulsion schematic, map-sized, above the coordinates box */
+/* ROTOR LOAD: borderless propulsion schematic, above the coordinates box.
+   Sized off the viewport so it keeps its proportion to the panels beside it;
+   the canvas reads clientWidth, so it repaints at the new size by itself. */
 #rotor-load-panel {
-    width: 220px;
-    height: 220px;
+    width: clamp(110px, 9.5vw, 190px);
+    height: clamp(110px, 9.5vw, 190px);
+    align-self: center;
     box-sizing: border-box;
     display: flex;
     background: none;
@@ -338,30 +423,47 @@ button.ui-btn.recording {
     display: block;
 }
 
+/* Caption for the borderless schematic — without it the gauges float over
+   the terrain with nothing saying what they are. */
+.panel-caption {
+    font-family: var(--font-ui);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--hud-text-lbl);
+    text-align: center;
+    text-shadow: var(--text-outline);
+    pointer-events: none;
+}
+
 /* BOTTOM BAR */
 .bottom-bar {
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
     align-items: stretch;
-    gap: 4px;
-    padding: 8px;
+    gap: clamp(2px, 0.4vh, 5px);
+    padding: clamp(5px, 0.7vw, 11px) clamp(7px, 0.9vw, 14px);
     background: var(--glass-panel);
-    border: 2px solid var(--text-dim);
+    /* 1px accent hairline instead of a 2px grey slab: matches every other
+       framed surface in the app and stops the box out-shouting its data. */
+    border: 1px solid var(--border-accent-mid);
     backdrop-filter: blur(5px);
     height: auto;
     box-sizing: border-box;
     border-radius: 4px;
-    min-width: 180px;
+    min-width: clamp(150px, 13vw, 250px);
 }
 
 .bottom-bar .stat-item {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: baseline;
+    gap: 1em;
     text-align: right;
     border-bottom: 1px solid var(--border-subtle);
-    padding-bottom: 4px;
+    padding-bottom: clamp(2px, 0.35vh, 5px);
 }
 
 .bottom-bar .stat-item:last-child {
@@ -374,31 +476,52 @@ button.ui-btn.recording {
 }
 
 .stat-lbl {
-    font-size: 9px;
+    font-size: var(--fs-xs);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
     color: var(--text-dim);
-    margin-bottom: 2px;
-    text-shadow: 1px 1px 0 black;
+    white-space: nowrap;
 }
 
 .stat-val {
     font-family: var(--font-data);
-    font-size: 13px;
+    font-size: var(--fs-sm);
     color: var(--text-main);
-    text-shadow: 1px 1px 0 black;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Unit suffix rendered inside the value, one step dimmer and smaller */
+.stat-unit {
+    font-size: 0.78em;
+    color: var(--text-dim);
+    margin-left: 0.35em;
 }
 
 /* ADS-B TRAFFIC BAR */
 .traffic-bar {
-    min-width: 240px;
+    min-width: clamp(195px, 17vw, 330px);
 }
 
 .traffic-bar .traffic-header {
-    border-bottom: 1px solid var(--accent-cyan);
-    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-accent-mid);
+    padding-bottom: clamp(2px, 0.35vh, 5px);
 }
 
 .traffic-bar .stat-val {
-    font-size: 11px;
+    font-size: var(--fs-xs);
+    color: var(--text-muted-bright);
+}
+
+/* Nearest contact carries the full value colour — it is the one that matters */
+.traffic-bar .stat-item:nth-of-type(2) .stat-val {
+    color: var(--text-main);
+}
+
+/* Empty rows recede so a quiet sky doesn't look like four contacts */
+.traffic-bar .stat-item.tfc-empty .stat-val {
+    color: var(--text-dim);
+    opacity: 0.5;
 }
 
 /* GRAPH & MAP CONTAINERS */
@@ -438,10 +561,10 @@ button.ui-btn.recording {
 /* Mini-map: floating overlay in fullscreen, bottom-left */
 #mini-map-container {
     position: absolute;
-    left: 16px;
-    bottom: 16px;
-    width: 260px;
-    height: 180px;
+    left: var(--gutter);
+    bottom: var(--gutter);
+    width: var(--minimap-w);
+    height: var(--minimap-h);
     background: var(--bg-overlay-half);
     border: 1px solid var(--border-accent-mid);
     border-radius: 4px;
@@ -484,12 +607,12 @@ body.minimap-swapped #mini-map-container:hover {
 
 body.minimap-swapped #scene-container {
     position: absolute;
-    left: 16px;
-    bottom: 16px;
+    left: var(--gutter);
+    bottom: var(--gutter);
     top: auto;
     right: auto;
-    width: 260px;
-    height: 180px;
+    width: var(--minimap-w);
+    height: var(--minimap-h);
     z-index: var(--z-overlay);
     border: 1px solid var(--border-accent-mid);
     border-radius: 4px;

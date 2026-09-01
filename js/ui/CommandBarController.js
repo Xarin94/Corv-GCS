@@ -214,7 +214,10 @@ export function initCommandBar() {
         autoBtn: document.getElementById('cmd-auto'),
         fbwaBtn: document.getElementById('cmd-fbwa'),
         posholdBtn: document.getElementById('cmd-poshold'),
-        flightTime: document.getElementById('cmd-flight-time')
+        flightTime: document.getElementById('cmd-flight-time'),
+        bar: document.getElementById('gcs-command-bar'),
+        homeDist: document.getElementById('cmd-home-dist'),
+        wpProgress: document.getElementById('cmd-wp-progress')
     };
 
     // ARM/DISARM button
@@ -490,17 +493,23 @@ export function updateCommandBar() {
         lastDisplayedMode = STATE.flightMode;
     }
 
-    // ARM state
+    // ARM state. The button is labelled with the ACTION it performs, not with
+    // the state it reports — the state is carried by the colour, by the red
+    // edge on the bar and by the DISARMED banner on the HUD.
     const wasArmed = els.armBtn.classList.contains('armed');
     if (STATE.armed) {
-        els.armBtn.textContent = 'ARMED';
+        els.armBtn.textContent = 'DISARM';
+        els.armBtn.title = 'DISARM the vehicle (currently ARMED)';
         els.armBtn.classList.add('armed');
+        if (els.bar) els.bar.classList.add('armed');
         prearmOk = true;
         // Start flight timer on arm transition
         if (!wasArmed) flightTimeStart = Date.now();
     } else {
-        els.armBtn.textContent = 'DISARMED';
+        els.armBtn.textContent = 'ARM';
+        els.armBtn.title = 'ARM the vehicle (currently DISARMED)';
         els.armBtn.classList.remove('armed');
+        if (els.bar) els.bar.classList.remove('armed');
         // Accumulate time on disarm transition
         if (wasArmed && flightTimeStart > 0) {
             flightTimeAccum += Date.now() - flightTimeStart;
@@ -531,6 +540,30 @@ export function updateCommandBar() {
             els.prearm.className = 'cmd-prearm-status';
             els.prearm.title = 'Pre-arm: Unknown';
         }
+    }
+
+    // Home distance — the one number every GCS keeps in front of the operator
+    // and the flight screen had nowhere to show. Equirectangular projection:
+    // accurate to a few metres over the ranges a link like this covers, and
+    // far cheaper than haversine at animation-loop rate.
+    if (els.homeDist) {
+        if (Number.isFinite(STATE.homeLat) && Number.isFinite(STATE.homeLon)) {
+            const R = 6371000;
+            const latRad = STATE.lat * Math.PI / 180;
+            const dLat = (STATE.lat - STATE.homeLat) * Math.PI / 180;
+            const dLon = (STATE.lon - STATE.homeLon) * Math.PI / 180 * Math.cos(latRad);
+            const d = R * Math.hypot(dLat, dLon);
+            els.homeDist.textContent = d >= 1000 ? (d / 1000).toFixed(2) + 'km' : Math.round(d) + 'm';
+        } else {
+            els.homeDist.textContent = '--';
+        }
+    }
+
+    // Mission progress
+    if (els.wpProgress) {
+        els.wpProgress.textContent = STATE.missionCount > 0
+            ? `${STATE.missionCurrentSeq}/${STATE.missionCount}`
+            : '--';
     }
 
     // RSSI — prefer RADIO_STATUS values; fall back to SYS_STATUS linkQuality

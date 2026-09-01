@@ -4,9 +4,9 @@
 - **Progetto**: CORV SYSTEMS v16 → CORV GCS (MAVLink + CORV binario + MSP)
 - **Approccio**: node-mavlink + serialport nel main process Electron; ogni protocollo non-MAVLink
   viene decodificato nel main process e ri-emesso come MAVLink sintetico
-- **Versione corrente**: 1.5.1
+- **Versione corrente**: 1.6.0
 - **Stato**: Fasi 0-6 (migrazione MAVLink) completate; Fasi 7-11 aggiunte dopo la migrazione
-- **Ultimo aggiornamento**: 2026-08-21
+- **Ultimo aggiornamento**: 2026-09-01
 
 ---
 

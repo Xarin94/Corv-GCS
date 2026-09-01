@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CORV GCS v1.3.0</title>
+    <title>CORV GCS v1.6.0</title>
 
     <!-- Critical inline styles to prevent flash of unstyled content -->
     <style>
@@ -147,15 +147,16 @@
                 <div class="data-cell">
                     <div class="lbl">Airspeed</div>
                     <div class="val" id="disp-as">0</div>
-                    <div class="unit">M/S</div>
+                    <div class="unit">m/s</div>
                 </div>
-                <div class="data-cell no-border">
+                <div class="data-cell">
                     <div class="lbl">Ground Spd</div>
-                    <div class="val val-secondary" id="disp-gs">0</div>
+                    <div class="val" id="disp-gs">0</div>
+                    <div class="unit">m/s</div>
                 </div>
-                <div class="data-cell no-border">
+                <div class="data-cell">
                     <div class="lbl">G-Load</div>
-                    <div class="val val-secondary" id="disp-g">1.0</div>
+                    <div class="val" id="disp-g">1.0</div>
                     <div class="unit">G</div>
                 </div>
                 <div id="disarmed-label" class="disarmed-label">DISARMED</div>
@@ -169,13 +170,14 @@
                 <div class="data-cell">
                     <div class="lbl">Altitude</div>
                     <div class="val" id="disp-alt">0</div>
-                    <div class="unit">MSL</div>
+                    <div class="unit">m MSL</div>
                 </div>
                 <div class="data-cell">
                     <div class="lbl">Terr Alt</div>
-                    <div class="val val-secondary" id="disp-agl">---</div>
+                    <div class="val" id="disp-agl">---</div>
+                    <div class="unit">m AGL</div>
                 </div>
-                <div class="data-cell no-border">
+                <div class="data-cell">
                     <div class="lbl">LiDAR</div>
                     <div class="val" id="disp-lidar">---</div>
                     <div class="unit">m AGL</div>
@@ -185,12 +187,14 @@
 
             <!-- Bottom Status Bars (position + traffic side by side) -->
             <div class="bottom-bar-group">
-                <!-- Rotor schematic stacked above the position readout -->
-                <div class="bottom-bar-stack">
-
-                <!-- ROTOR LOAD: per-motor PWM gauges on the airframe layout -->
-                <div id="rotor-load-panel">
-                    <canvas id="rotor-load-canvas"></canvas>
+                <!-- ROTOR LOAD: per-motor PWM gauges on the airframe layout.
+                     Beside the readouts, not stacked above them — stacked, the
+                     220px schematic reached up into the HUD's VSI tapes. -->
+                <div class="bottom-bar-rotor">
+                    <div class="panel-caption">Rotor Load</div>
+                    <div id="rotor-load-panel">
+                        <canvas id="rotor-load-canvas"></canvas>
+                    </div>
                 </div>
 
                 <!-- Position / Nav data -->
@@ -205,11 +209,9 @@
                     </div>
                     <div class="stat-item">
                         <div class="stat-lbl">RADAR ALT</div>
-                        <div class="stat-val" id="disp-ralt">---</div>
+                        <div class="stat-val"><span id="disp-ralt">---</span><span class="stat-unit">m</span></div>
                     </div>
                 </div>
-
-                </div><!-- end .bottom-bar-stack -->
 
                 <!-- ADS-B Traffic Table -->
                 <div class="bottom-bar traffic-bar" id="traffic-bar">
@@ -1847,10 +1849,13 @@
 
         <!-- ── STATUS ZONE (left) ── -->
         <div class="cmd-zone cmd-zone-status">
-            <!-- Connection Status -->
+            <!-- Link: heartbeat, transport + rate, signal strength -->
             <div class="cmd-section cmd-connection">
                 <div class="cmd-heartbeat" id="cmd-heartbeat" title="Heartbeat"></div>
                 <span class="cmd-status" id="cmd-conn-status">DISCONNECTED</span>
+                <svg class="cmd-icon" viewBox="0 0 24 24" fill="none"><path d="M2 20h2V10h-2zM7 20h2V7H7zM12 20h2V4h-2zM17 20h2V8h-2zM22 20h2V12h-2z" fill="currentColor" opacity="0.7"/></svg>
+                <span class="cmd-val" id="cmd-rssi">--</span>
+                <span class="cmd-val cmd-val-dim" id="cmd-remrssi" style="display:none;"></span>
             </div>
 
             <!-- Battery -->
@@ -1869,13 +1874,6 @@
                 <span class="cmd-val" id="cmd-gps-fix">No Fix</span>
                 <span class="cmd-val cmd-val-dim" id="cmd-gps-sat">0 sat</span>
                 <span class="cmd-val cmd-val-dim" id="cmd-gps-hdop"></span>
-            </div>
-
-            <!-- Signal -->
-            <div class="cmd-section cmd-signal">
-                <svg class="cmd-icon" viewBox="0 0 24 24" fill="none"><path d="M2 20h2V10h-2zM7 20h2V7H7zM12 20h2V4h-2zM17 20h2V8h-2zM22 20h2V12h-2z" fill="currentColor" opacity="0.7"/></svg>
-                <span class="cmd-val" id="cmd-rssi">--</span>
-                <span class="cmd-val cmd-val-dim" id="cmd-remrssi" style="display:none;"></span>
             </div>
 
             <!-- Flight Time -->
@@ -1905,7 +1903,7 @@
             <!-- Action Buttons -->
             <div class="cmd-section cmd-actions">
                 <div class="cmd-prearm-status" id="cmd-prearm" title="Pre-arm status"></div>
-                <button id="cmd-arm" class="cmd-btn cmd-btn-arm" title="ARM / DISARM">DISARMED</button>
+                <button id="cmd-arm" class="cmd-btn cmd-btn-arm" title="ARM / DISARM">ARM</button>
                 <button id="cmd-takeoff" class="cmd-btn" title="Takeoff">TAKEOFF</button>
                 <button id="cmd-rtl" class="cmd-btn cmd-btn-warn" title="Return to Launch">RTL</button>
                 <button id="cmd-auto" class="cmd-btn cmd-btn-auto" title="Start AUTO mission">AUTO</button>
@@ -1913,11 +1911,30 @@
                 <button id="cmd-poshold" class="cmd-btn" title="Position Hold" style="display:none;">POSHOLD</button>
                 <button id="cmd-land" class="cmd-btn cmd-btn-emergency" title="Emergency Land">LAND</button>
             </div>
+        </div>
+
+        <!-- ── INFO ZONE (right) ── -->
+        <div class="cmd-zone cmd-zone-info">
+            <!-- Latest autopilot STATUSTEXT -->
+            <div class="cmd-section cmd-messages" title="Latest autopilot message">
+                <svg class="cmd-icon" viewBox="0 0 24 24" fill="none"><path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+                <span class="cmd-val cmd-msg-text" id="cmd-hud-msg">—</span>
+            </div>
+
+            <!-- Mission speed -->
             <div class="cmd-section cmd-speed-inline">
                 <span class="cmd-lbl">SPD</span>
                 <input type="number" id="cmd-speed-input" class="cmd-input-speed" min="0" max="30" value="10" step="0.5" title="Mission speed (m/s)">
                 <span class="cmd-lbl">m/s</span>
-                <button id="cmd-speed-set" class="cmd-btn" style="padding:2px 8px; font-size:10px; min-width:0;" title="Send speed command">SET</button>
+                <button id="cmd-speed-set" class="cmd-btn cmd-btn-compact" title="Send speed command">SET</button>
+            </div>
+
+            <!-- Home distance + mission progress -->
+            <div class="cmd-section cmd-nav">
+                <span class="cmd-lbl">Home</span>
+                <span class="cmd-val" id="cmd-home-dist" title="Straight-line distance to home">--</span>
+                <span class="cmd-lbl cmd-nav-wp">WP</span>
+                <span class="cmd-val cmd-nav-wp" id="cmd-wp-progress" title="Active waypoint / mission length">--</span>
             </div>
         </div>
 
@@ -1987,6 +2004,10 @@
                     <label class="gcs-checkbox">
                         <input type="checkbox" id="chk-adsb-enable" checked onchange="toggleADSB(this.checked)">
                         <span>SHOW ADS-B TRAFFIC</span>
+                    </label>
+                    <label class="gcs-checkbox">
+                        <input type="checkbox" id="chk-rotor-load" checked onchange="toggleRotorLoad(this.checked)">
+                        <span>SHOW ROTOR LOAD</span>
                     </label>
                     <button class="gcs-btn" style="margin-top:6px;" onclick="clearTrail()">CLEAR TRAIL</button>
                 </div>

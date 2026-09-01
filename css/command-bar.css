@@ -5,13 +5,13 @@
 /* ── Command ACK Toast ── */
 .cmd-ack-toast {
     position: fixed;
-    bottom: 56px;
+    bottom: calc(var(--cmdbar-h) + 8px);
     left: 50%;
     transform: translateX(-50%);
     padding: 6px 24px;
     border-radius: 4px;
     font-family: var(--font-ui);
-    font-size: 14px;
+    font-size: var(--fs-md);
     font-weight: 600;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -39,22 +39,42 @@
     color: #ff9900;
 }
 
+/* Three tracks — status | actions | mission context.
+   `auto` in the middle with `minmax(0, 1fr)` on both sides means the action
+   cluster is centred in the WINDOW (not in whatever space is left over) and
+   the two data clusters give way to it as the window narrows. The old flex
+   row let the centre zone slide on top of the status readouts below ~1400px,
+   hiding link quality and flight time behind the mode dropdown. */
 #gcs-command-bar {
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
-    height: 48px;
+    height: var(--cmdbar-h);
     background: var(--glass-panel-toolbar);
     border-top: 1px solid var(--border-accent);
-    display: flex;
+    display: grid;
+    /* Left track floors at max-content, so a status readout is never sliced
+       in half; it is capped at 1fr, so whenever there IS slack both side
+       tracks grow equally and the action cluster lands dead centre. The
+       right track is minmax(0, 1fr): elastic, because the message strip in
+       it is meant to absorb the leftover space and ellipse. */
+    grid-template-columns: minmax(max-content, 1fr) auto minmax(0, 1fr);
     align-items: center;
-    padding: 0 6px;
-    gap: 0;
+    column-gap: clamp(6px, 0.8vw, 20px);
+    padding: 0 var(--gutter);
     z-index: var(--z-chrome);
     font-family: var(--font-ui);
     box-sizing: border-box;
     backdrop-filter: blur(10px);
+    transition: border-top-color 0.3s;
+}
+
+/* Armed vehicle: the whole bar takes a live red edge. A single button
+   changing colour is easy to miss on a big screen; the full-width rule is
+   not (Auterion/Skydio use the same cue). */
+#gcs-command-bar.armed {
+    border-top: 2px solid var(--accent-red);
 }
 
 /* ── Zones: 3 macro-groups ── */
@@ -62,62 +82,78 @@
     display: flex;
     align-items: center;
     height: 100%;
+    min-width: 0;
 }
 
 .cmd-zone-status {
-    gap: 0;
+    justify-content: flex-start;
+    overflow: hidden;
 }
 
 .cmd-zone-control {
-    gap: 0;
-    padding: 0 4px;
+    justify-content: center;
+    flex: 0 0 auto;
+    padding: 0 clamp(4px, 0.6vw, 12px);
     border-left: 1px solid var(--border-accent-mid);
     border-right: 1px solid var(--border-accent-mid);
 }
 
 .cmd-zone-info {
-    flex: 1;
-    gap: 0;
-    min-width: 0;
+    justify-content: flex-end;
+    overflow: hidden;
 }
 
 /* Sections */
 .cmd-section {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 0 8px;
-    height: 36px;
+    gap: clamp(3px, 0.35vw, 8px);
+    padding: 0 clamp(5px, 0.6vw, 12px);
+    height: 72%;
     border-right: 1px solid var(--border-subtle);
     flex-shrink: 0;
+    min-width: 0;
 }
 
-.cmd-section:last-child {
+.cmd-zone > .cmd-section:last-child {
     border-right: none;
 }
 
-/* SVG icons in command bar */
+/* The info zone reads right-to-left, so its divider sits on the left edge */
+.cmd-zone-info .cmd-section {
+    border-right: none;
+    border-left: 1px solid var(--border-subtle);
+}
+
+.cmd-zone-info > .cmd-section:first-child {
+    border-left: none;
+}
+
+/* SVG icons in command bar — sized in em so they track the fluid type */
 .cmd-icon {
-    width: 16px;
-    height: 16px;
+    width: 1.4em;
+    height: 1.4em;
     color: var(--text-dim);
     flex-shrink: 0;
 }
 
 /* Labels & Values */
 .cmd-lbl {
-    font-size: 10px;
+    font-size: var(--fs-2xs);
     color: var(--text-dim);
-    letter-spacing: 1px;
+    letter-spacing: 0.1em;
     font-weight: 600;
     text-transform: uppercase;
+    white-space: nowrap;
 }
 
 .cmd-val {
     font-family: var(--font-data);
-    font-size: 12px;
+    font-size: var(--fs-sm);
     color: var(--text-main);
-    letter-spacing: 0.5px;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
 .cmd-val-dim {
@@ -126,9 +162,20 @@
 
 .cmd-status {
     font-family: var(--font-data);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     color: #ff4444;
-    letter-spacing: 1px;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    /* If the window is narrow enough that even the media queries below
+       can't free the room, the link string ellipses rather than being
+       sliced in half by the zone's clip. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.cmd-connection {
+    min-width: 0;
 }
 
 .cmd-status.connected {
@@ -141,8 +188,8 @@
 
 /* Heartbeat indicator */
 .cmd-heartbeat {
-    width: 10px;
-    height: 10px;
+    width: clamp(8px, 0.62vw, 13px);
+    height: clamp(8px, 0.62vw, 13px);
     border-radius: 50%;
     background: #ff4444;
     transition: background 0.3s;
@@ -164,12 +211,12 @@
     border: 1px solid var(--border-input);
     color: var(--text-main);
     font-family: var(--font-ui);
-    font-size: 11px;
-    padding: 4px 8px;
+    font-size: var(--fs-xs);
+    padding: 0.35em 0.7em;
     border-radius: 3px;
     cursor: pointer;
     outline: none;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.05em;
 }
 
 .cmd-select:hover {
@@ -183,13 +230,13 @@
 
 /* Flight mode select - prominent */
 .cmd-mode-select {
-    min-width: 120px;
+    min-width: clamp(96px, 8.5vw, 168px);
     font-weight: 700;
-    font-size: 12px;
-    padding: 5px 10px;
+    font-size: var(--fs-sm);
+    padding: 0.35em 0.6em;
     color: var(--accent-cyan);
     border-color: var(--border-accent-mid);
-    letter-spacing: 1px;
+    letter-spacing: 0.08em;
 }
 
 /* Flight mode color classes */
@@ -204,8 +251,8 @@
 }
 
 .cmd-mode-select.mode-auto {
-    color: #44ff44;
-    border-color: rgba(68, 255, 68, 0.4);
+    color: var(--accent-green);
+    border-color: color-mix(in srgb, var(--accent-green) 40%, transparent);
 }
 
 .cmd-mode-select.mode-emergency {
@@ -219,12 +266,12 @@
     border: 1px solid var(--border-input);
     color: var(--text-main);
     font-family: var(--font-ui);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     font-weight: 600;
-    padding: 5px 12px;
+    padding: 0.42em 0.95em;
     border-radius: 3px;
     cursor: pointer;
-    letter-spacing: 1px;
+    letter-spacing: 0.09em;
     transition: all 0.2s;
     white-space: nowrap;
 }
@@ -238,18 +285,46 @@
     transform: scale(0.97);
 }
 
-/* ARM button states */
+/* ARM button.
+   Disarmed it reads "ARM" in green — an available action, matching QGC and
+   Mission Planner. Armed it reads "DISARM" in filled red — a live vehicle
+   and a destructive action. Previously both states were red and the label
+   named the STATE, so the operator had to work out that pressing the red
+   "ARMED" button was what disarmed it. */
 .cmd-btn-arm {
-    border-color: #ff4444;
-    color: #ff4444;
-    min-width: 85px;
+    border-color: var(--accent-green);
+    color: var(--accent-green);
+    min-width: clamp(76px, 6.6vw, 130px);
+    font-weight: 700;
+}
+
+.cmd-btn-arm:hover {
+    background: color-mix(in srgb, var(--accent-green) 15%, transparent);
+    border-color: var(--accent-green);
 }
 
 .cmd-btn-arm.armed {
-    background: rgba(255, 50, 50, 0.2);
+    background: rgba(255, 50, 50, 0.28);
     border-color: #ff4444;
-    color: #ff4444;
+    color: #ff6666;
     animation: armed-glow 2s ease-in-out infinite;
+}
+
+.cmd-btn-arm.armed:hover {
+    background: rgba(255, 50, 50, 0.42);
+    border-color: #ff4444;
+}
+
+/* On the light theme a 28%-alpha red reads as pale pink. The armed state is
+   the one thing on this bar that must never be ambiguous, so it goes solid. */
+[data-theme="light"] .cmd-btn-arm.armed {
+    background: #c62828;
+    border-color: #8e1c1c;
+    color: #ffffff;
+}
+
+[data-theme="light"] .cmd-btn-arm.armed:hover {
+    background: #a81f1f;
 }
 
 @keyframes armed-glow {
@@ -278,19 +353,19 @@
 }
 
 .cmd-btn-auto {
-    border-color: #44ff44;
-    color: #44ff44;
+    border-color: var(--accent-green);
+    color: var(--accent-green);
 }
 
 .cmd-btn-auto:hover {
-    background: rgba(68, 255, 68, 0.15);
-    border-color: #44ff44;
+    background: color-mix(in srgb, var(--accent-green) 15%, transparent);
+    border-color: var(--accent-green);
 }
 
 /* Battery bar - wider */
 .cmd-bat-bar-outer {
-    width: 60px;
-    height: 12px;
+    width: clamp(38px, 3.6vw, 78px);
+    height: clamp(9px, 0.72vw, 15px);
     background: var(--border-subtle);
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 2px;
@@ -320,16 +395,24 @@
 }
 
 .cmd-input-speed {
-    width: 52px;
+    width: clamp(40px, 3.4vw, 72px);
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 3px;
     color: var(--text-main);
     font-family: var(--font-data);
-    font-size: 11px;
+    font-size: var(--fs-xs);
     text-align: center;
-    padding: 2px 4px;
+    padding: 0.25em 0.3em;
     outline: none;
+}
+
+/* SET carried an inline style override in the markup; it belongs here so it
+   scales with everything else. */
+.cmd-btn-compact {
+    padding: 0.3em 0.7em;
+    min-width: 0;
+    font-size: var(--fs-2xs);
 }
 
 .cmd-input-speed:focus {
@@ -338,8 +421,8 @@
 
 /* Pre-arm status indicator */
 .cmd-prearm-status {
-    width: 8px;
-    height: 8px;
+    width: clamp(7px, 0.55vw, 12px);
+    height: clamp(7px, 0.55vw, 12px);
     border-radius: 50%;
     background: var(--text-dim);
     margin-right: 4px;
@@ -355,21 +438,31 @@
     animation: heartbeat-pulse 1.5s ease-in-out infinite;
 }
 
-/* HUD message display */
+/* ── Latest STATUSTEXT (right zone) ──
+   Mission Planner and QGC both keep the newest autopilot message permanently
+   on screen. It used to live only in the sidebar log and in the transient
+   error overlay, so a routine "EKF3 IMU0 origin set" was never seen. This
+   strip takes the slack in the right track, which was dead space before. */
 .cmd-messages {
-    flex: 1;
-    min-width: 80px;
+    flex: 1 1 auto;
+    /* Floor for the whole section, not just the text: with min-width 0 the
+       section itself collapsed and clipped the strip down to its icon. */
+    min-width: 12ch;
     overflow: hidden;
+    justify-content: flex-end;
 }
 
 .cmd-msg-text {
+    flex: 0 1 auto;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 300px;
-    display: inline-block;
-    vertical-align: middle;
-    font-size: 10px;
+    /* A floor, so the strip never collapses to a bare icon when home
+       distance and mission progress are also competing for the track.
+       Anything past the floor ellipses. */
+    min-width: 11ch;
+    font-size: var(--fs-xs);
+    color: var(--text-muted-bright);
     transition: color 0.3s;
 }
 
@@ -381,9 +474,56 @@
     color: var(--accent-red);
 }
 
+/* ── Mission / home context (right zone) ── */
+.cmd-nav {
+    display: flex;
+    align-items: baseline;
+    gap: clamp(3px, 0.35vw, 8px);
+}
+
+.cmd-nav .cmd-val {
+    color: var(--text-nav);
+}
+
 /* Flight time section */
 .cmd-flight-time .cmd-val {
-    font-size: 11px;
+    font-size: var(--fs-xs);
     color: var(--text-dim);
-    letter-spacing: 1px;
+    letter-spacing: 0.08em;
+}
+
+/* ── Progressive disclosure ──
+   As the window narrows, the least operationally critical readouts leave the
+   bar one at a time, cheapest first. Everything that stays is fully readable:
+   nothing is ever clipped mid-value or covered by the zone next to it. */
+/* HDOP is the first to go: with a fix type of "RTK Fixed" beside it, it
+   adds the least. Dropping it at 1980 is what buys the message strip its
+   room on a 1920 panel — the most common size this runs on. */
+@media (max-width: 1980px) {
+    #cmd-gps-hdop { display: none; }
+}
+@media (max-width: 1800px) {
+    .cmd-nav-wp { display: none; }        /* mission progress */
+}
+@media (max-width: 1450px) {
+    /* Drop the speech-bubble glyph before the text it decorates: at this
+       width the zone was clipping the first character of the message. */
+    .cmd-messages .cmd-icon { display: none; }
+}
+@media (max-width: 1500px) {
+    .cmd-nav { display: none; }           /* home distance */
+}
+@media (max-width: 1200px) {
+    .cmd-messages { display: none; }      /* STATUSTEXT (still in sidebar log) */
+}
+@media (max-width: 1100px) {
+    .cmd-speed-inline { display: none; }  /* mission speed (also in sidebar) */
+}
+@media (max-width: 1000px) {
+    .cmd-flight-time { display: none; }
+    #cmd-gps-sat { display: none; }
+}
+@media (max-width: 900px) {
+    #cmd-remrssi { display: none; }
+    .cmd-bat-bar-outer { display: none; } /* percentage carries the state */
 }

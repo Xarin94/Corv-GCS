@@ -17,16 +17,16 @@ const G_FILTER_ALPHA = 0.8;
 // ── HUD Cell Customization ──────────────────────────────────────────────
 
 const HUD_FIELD_DEFS = {
-    as:          { label: 'Airspeed',    getter: () => STATE.as,                           fmt: v => v.toFixed(1),                              unit: 'M/S' },
-    gs:          { label: 'Ground Spd',  getter: () => STATE.gs,                           fmt: v => v.toFixed(1),                              unit: 'M/S' },
-    vs:          { label: 'Vert Speed',  getter: () => STATE.vs,                           fmt: v => v.toFixed(1),                              unit: 'M/S' },
+    as:          { label: 'Airspeed',    getter: () => STATE.as,                           fmt: v => v.toFixed(1),                              unit: 'm/s' },
+    gs:          { label: 'Ground Spd',  getter: () => STATE.gs,                           fmt: v => v.toFixed(1),                              unit: 'm/s' },
+    vs:          { label: 'Vert Speed',  getter: () => STATE.vs,                           fmt: v => v.toFixed(1),                              unit: 'm/s' },
     gload:       { label: 'G-Load',      getter: () => currentGLoad(),                     fmt: v => v.toFixed(1),                              unit: 'G',     special: 'gload' },
-    alt:         { label: 'Altitude',    getter: () => STATE.rawAlt + STATE.offsetAlt,      fmt: v => Math.round(v).toString(),                   unit: 'MSL' },
-    agl:         { label: 'Terr Alt',    getter: () => null,                                fmt: v => Math.round(v).toString(),                   unit: 'AGL',   special: 'agl' },
+    alt:         { label: 'Altitude',    getter: () => STATE.rawAlt + STATE.offsetAlt,      fmt: v => Math.round(v).toString(),                   unit: 'm MSL' },
+    agl:         { label: 'Terr Alt',    getter: () => null,                                fmt: v => Math.round(v).toString(),                   unit: 'm AGL', special: 'agl' },
     lidar:       { label: 'LiDAR',       getter: () => STATE.rangefinderDist,               fmt: v => v.toFixed(2),                              unit: 'm AGL', special: 'lidar' },
-    roll:        { label: 'Roll',        getter: () => STATE.roll * RAD,                    fmt: v => v.toFixed(1),                              unit: 'DEG' },
-    pitch:       { label: 'Pitch',       getter: () => STATE.pitch * RAD,                   fmt: v => v.toFixed(1),                              unit: 'DEG' },
-    yaw:         { label: 'Heading',     getter: () => ((STATE.yaw * RAD) + 360) % 360,     fmt: v => v.toFixed(0).padStart(3, '0'),             unit: 'DEG' },
+    roll:        { label: 'Roll',        getter: () => STATE.roll * RAD,                    fmt: v => v.toFixed(1),                              unit: '\u00b0' },
+    pitch:       { label: 'Pitch',       getter: () => STATE.pitch * RAD,                   fmt: v => v.toFixed(1),                              unit: '\u00b0' },
+    yaw:         { label: 'Heading',     getter: () => ((STATE.yaw * RAD) + 360) % 360,     fmt: v => v.toFixed(0).padStart(3, '0'),             unit: '\u00b0' },
     battV:       { label: 'Battery V',   getter: () => STATE.batteryVoltage,                fmt: v => v.toFixed(1),                              unit: 'V' },
     battA:       { label: 'Battery A',   getter: () => STATE.batteryCurrent,                fmt: v => v.toFixed(1),                              unit: 'A' },
     battPct:     { label: 'Battery %',   getter: () => STATE.batteryRemaining,              fmt: v => Math.round(v).toString(),                   unit: '%' },
@@ -36,8 +36,8 @@ const HUD_FIELD_DEFS = {
     vibX:        { label: 'Vib X',       getter: () => STATE.vibX,                          fmt: v => v.toFixed(1),                              unit: '' },
     vibY:        { label: 'Vib Y',       getter: () => STATE.vibY,                          fmt: v => v.toFixed(1),                              unit: '' },
     vibZ:        { label: 'Vib Z',       getter: () => STATE.vibZ,                          fmt: v => v.toFixed(1),                              unit: '' },
-    aoa:         { label: 'AoA',         getter: () => STATE.aoa * RAD,                     fmt: v => v.toFixed(1),                              unit: 'DEG' },
-    ssa:         { label: 'SSA',         getter: () => STATE.ssa * RAD,                     fmt: v => v.toFixed(1),                              unit: 'DEG' },
+    aoa:         { label: 'AoA',         getter: () => STATE.aoa * RAD,                     fmt: v => v.toFixed(1),                              unit: '\u00b0' },
+    ssa:         { label: 'SSA',         getter: () => STATE.ssa * RAD,                     fmt: v => v.toFixed(1),                              unit: '\u00b0' },
     rtkBaseline: { label: 'RTK Base',    getter: () => STATE.rtkBaseline,                   fmt: v => v.toFixed(0),                              unit: 'mm' },
     rtkAccuracy: { label: 'RTK Acc',     getter: () => STATE.rtkAccuracy,                   fmt: v => v.toFixed(0),                              unit: 'mm' },
 };
@@ -109,6 +109,7 @@ function ensureDomCache() {
         // Traffic table elements
         trafficBar: document.getElementById('traffic-bar'),
         tfcRows: [0, 1, 2, 3].map(i => ({
+            row: document.getElementById(`tfc-row-${i}`),
             cs: document.getElementById(`tfc-cs-${i}`),
             alt: document.getElementById(`tfc-alt-${i}`),
             dist: document.getElementById(`tfc-dist-${i}`)
@@ -191,10 +192,13 @@ export function updateUI() {
                 row.cs.textContent = t.callsign || t.icao24;
                 row.alt.textContent = Math.round(t.alt);
                 row.dist.textContent = (t.dist / 1000).toFixed(1);
+                if (row.row) row.row.classList.remove('tfc-empty');
             } else {
                 row.cs.textContent = '---';
                 row.alt.textContent = '---';
                 row.dist.textContent = '---';
+                // Dim the placeholder so an empty sky doesn't read as four contacts
+                if (row.row) row.row.classList.add('tfc-empty');
             }
         }
     }

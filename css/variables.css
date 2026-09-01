@@ -22,6 +22,32 @@
     --input-green: #00ff00;
     --input-cyan: #00ffff;
 
+    /* Supporting readout colour — one step below --text-main so a tape's
+       secondary values recede without going as dim as a label. */
+    --text-muted-bright: #cfd8dd;
+
+    /* ── Over-scene symbology ─────────────────────────────────────────
+       Readouts painted straight onto the terrain/FPV image, with no panel
+       behind them. These deliberately do NOT follow the light theme: the
+       image underneath is dark and varied whatever the chrome is doing, so
+       dark glyphs on a pale halo wash out over forest. The canvas HUD keeps
+       fixed colours for the same reason. Panelled readouts still theme. */
+    --hud-text: #ffffff;
+    --hud-text-sub: #dde5ea;
+    --hud-text-lbl: #d8e4eb;
+
+    /* Separation from the image is a hard 1px stroke, NOT a glow. A blurred
+       halo bleeds into the thin strokes of 9-14px type and the whole label
+       reads as out of focus; an outline keeps every glyph edge sharp. No
+       blur radius also means these are cheap to repaint every frame. */
+    --text-outline:
+        1px 0 0 rgba(0, 0, 0, 0.92), -1px 0 0 rgba(0, 0, 0, 0.92),
+        0 1px 0 rgba(0, 0, 0, 0.92), 0 -1px 0 rgba(0, 0, 0, 0.92);
+    --text-outline-strong:
+        1px 0 0 #000, -1px 0 0 #000, 0 1px 0 #000, 0 -1px 0 #000,
+        1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
+        0 2px 4px rgba(0, 0, 0, 0.5);
+
     /* Glass panels */
     --glass-panel: rgba(10, 15, 20, 0.95);
     --glass-panel-toolbar: rgba(8, 12, 18, 0.97);
@@ -68,6 +94,26 @@
     --font-ui: 'Rajdhani', sans-serif;
     --font-data: 'Roboto Mono', monospace;
 
+    /* ── Fluid type scale (flight screen) ───────────────────────────────
+       Keyed on min(vw, vh) so a short-and-wide window never blows the
+       type up past the vertical room it has. Every readout on the flight
+       screen and the command bar sizes off these, so nothing overlaps
+       when the window shrinks and nothing turns unreadable on a 4K panel. */
+    --fs-2xs: clamp(8px,  min(0.55vw, 1.05vh), 12px);   /* micro labels     */
+    --fs-xs:  clamp(9px,  min(0.65vw, 1.25vh), 14px);   /* field labels     */
+    --fs-sm:  clamp(10px, min(0.76vw, 1.45vh), 16px);   /* small values     */
+    --fs-md:  clamp(11px, min(0.88vw, 1.70vh), 19px);   /* command-bar data */
+    --fs-lg:  clamp(13px, min(1.10vw, 2.10vh), 24px);   /* buttons / mode   */
+    --fs-xl:  clamp(15px, min(1.50vw, 2.90vh), 32px);   /* secondary tape   */
+    --fs-2xl: clamp(24px, min(2.60vw, 5.00vh), 56px);   /* primary tape     */
+
+    /* ── Flight-screen layout metrics ─────────────────────────────────── */
+    --chrome-top: 92px;                                  /* header 60 + tab bar 32 */
+    --cmdbar-h: clamp(46px, min(3.2vw, 6.2vh), 68px);
+    --gutter: clamp(10px, 1vw, 22px);
+    --minimap-w: clamp(200px, 15vw, 340px);
+    --minimap-h: clamp(140px, 10.4vw, 236px);
+
     /* Z-Index Scale */
     --z-content: 10;
     --z-ui-layer: 20;
@@ -88,6 +134,10 @@
 [data-theme="light"] {
     /* Colors - Primary */
     --bg-color: #d4d4d4;
+    /* The dark-theme greens are unreadable on a light grey panel; the
+       command bar's link state and ARM button both ride on this token. */
+    --accent-green: #0a8f2a;
+    --accent-orange: #b06a00;
 
     /* Colors - Text */
     --text-main: #1a1a1a;
@@ -98,6 +148,8 @@
     /* Colors - Instrument inputs */
     --input-green: #007a00;
     --input-cyan: #007a8a;
+
+    --text-muted-bright: #3a4550;
 
     /* Glass panels */
     --glass-panel: rgba(200, 205, 210, 0.95);

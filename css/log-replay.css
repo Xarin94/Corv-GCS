@@ -52,7 +52,7 @@
 
 .log-replay-timeline {
     position: fixed;
-    bottom: 48px;                 /* above #gcs-command-bar (48px) */
+    bottom: var(--cmdbar-h);      /* above #gcs-command-bar */
     right: 0;
     width: min(500px, calc(100vw - 260px));
     height: 40px;

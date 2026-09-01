@@ -38,10 +38,18 @@
     z-index: var(--z-ui-layer);
     pointer-events: none;
     display: grid;
-    grid-template-columns: 15% 1fr 15%;
-    grid-template-rows: 60px 1fr 25%;
-    padding: 1.5% 2%;
-    padding-top: 70px; /* Space for global header */
+    /* Side columns hold the data tapes; they widen with the window so the
+       fluid type inside them never has to wrap or clip. */
+    grid-template-columns: minmax(120px, 15%) 1fr minmax(120px, 15%);
+    grid-template-rows: auto 1fr auto;
+    /* The right gutter also clears the 24px sidebar toggle tab, which is
+       fixed at right:0 and vertically centred — it was sitting on top of
+       the right tape's unit labels. */
+    padding: 0 calc(var(--gutter) + 26px) var(--gutter) var(--gutter);
+    /* Clear the global header (60px) AND the tab bar (32px) — at 70px the
+       first row of labels was drawn underneath the tab bar. */
+    padding-top: calc(var(--chrome-top) + var(--gutter));
+    column-gap: var(--gutter);
     box-sizing: border-box;
 }
 
@@ -57,6 +65,6 @@ body.mode-fullscreen #hud-wrapper {
     top: 0;
     left: 0;
     right: 0;
-    bottom: 48px; /* Space for GCS command bar */
+    bottom: var(--cmdbar-h); /* Space for GCS command bar */
 }
 
