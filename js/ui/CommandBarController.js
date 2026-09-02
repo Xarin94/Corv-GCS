@@ -354,25 +354,17 @@ export function initCommandBar() {
 
     // Cache pre-arm and message elements
     els.prearm = document.getElementById('cmd-prearm');
-    els.hudMsg = document.getElementById('cmd-hud-msg');
     els.msgLog = document.getElementById('cmd-msg-log');
 
-    // Listen for STATUSTEXT messages (msg id 253)
+    // Listen for STATUSTEXT messages (msg id 253).
+    // The bar does not show the latest message: it already appears on screen
+    // as a transient overlay, and repeating it in a permanent strip only cost
+    // the bar room without telling the operator anything new.
     onMessage(253, (data) => {
         const text = data.text || '';
 
-        // Update latest message display
-        if (els.hudMsg) {
-            els.hudMsg.textContent = text;
-            els.hudMsg.title = text;
-        }
-
         // Severity: 0-3 = error/critical, 4 = warning, 5-7 = info/notice
         const sev = data.severity ?? 6;
-        if (els.hudMsg) {
-            els.hudMsg.className = 'cmd-val cmd-msg-text' +
-                (sev <= 3 ? ' severity-error' : sev <= 4 ? ' severity-warn' : '');
-        }
 
         // Append to message log
         if (els.msgLog) {

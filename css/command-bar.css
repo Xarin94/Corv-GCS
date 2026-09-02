@@ -54,12 +54,11 @@
     background: var(--glass-panel-toolbar);
     border-top: 1px solid var(--border-accent);
     display: grid;
-    /* Left track floors at max-content, so a status readout is never sliced
-       in half; it is capped at 1fr, so whenever there IS slack both side
-       tracks grow equally and the action cluster lands dead centre. The
-       right track is minmax(0, 1fr): elastic, because the message strip in
-       it is meant to absorb the leftover space and ellipse. */
-    grid-template-columns: minmax(max-content, 1fr) auto minmax(0, 1fr);
+    /* Side tracks hug their content against the two edges; the middle track
+       takes everything left over and hands it to the flight commands, which
+       are the controls worth the extra width. Both side tracks floor at
+       max-content, so a status readout is never sliced in half. */
+    grid-template-columns: auto minmax(max-content, 1fr) auto;
     align-items: center;
     column-gap: clamp(6px, 0.8vw, 20px);
     padding: 0 var(--gutter);
@@ -92,10 +91,28 @@
 
 .cmd-zone-control {
     justify-content: center;
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     padding: 0 clamp(4px, 0.6vw, 12px);
     border-left: 1px solid var(--border-accent-mid);
     border-right: 1px solid var(--border-accent-mid);
+}
+
+/* The action group spreads into whatever the middle track was given, so the
+   buttons an operator reaches for under pressure are the ones that get the
+   room — capped, so they stay a button and not a banner on a wide panel. */
+.cmd-actions {
+    flex: 1 1 auto;
+    justify-content: center;
+    gap: clamp(4px, 0.5vw, 12px);
+}
+
+.cmd-actions .cmd-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    /* The cap scales a little with the panel so the label keeps its
+       proportion to the button on a 4K screen, where the type is larger. */
+    max-width: clamp(150px, 8.5vw, 230px);
+    text-align: center;
 }
 
 .cmd-zone-info {
@@ -295,6 +312,7 @@
     border-color: var(--accent-green);
     color: var(--accent-green);
     min-width: clamp(76px, 6.6vw, 130px);
+    max-width: clamp(150px, 9vw, 250px);
     font-weight: 700;
 }
 
@@ -438,50 +456,25 @@
     animation: heartbeat-pulse 1.5s ease-in-out infinite;
 }
 
-/* ── Latest STATUSTEXT (right zone) ──
-   Mission Planner and QGC both keep the newest autopilot message permanently
-   on screen. It used to live only in the sidebar log and in the transient
-   error overlay, so a routine "EKF3 IMU0 origin set" was never seen. This
-   strip takes the slack in the right track, which was dead space before. */
-.cmd-messages {
-    flex: 1 1 auto;
-    /* Floor for the whole section, not just the text: with min-width 0 the
-       section itself collapsed and clipped the strip down to its icon. */
-    min-width: 12ch;
-    overflow: hidden;
-    justify-content: flex-end;
-}
-
-.cmd-msg-text {
-    flex: 0 1 auto;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    /* A floor, so the strip never collapses to a bare icon when home
-       distance and mission progress are also competing for the track.
-       Anything past the floor ellipses. */
-    min-width: 11ch;
-    font-size: var(--fs-xs);
-    color: var(--text-muted-bright);
-    transition: color 0.3s;
-}
-
-.cmd-msg-text.severity-warn {
-    color: var(--accent-orange);
-}
-
-.cmd-msg-text.severity-error {
-    color: var(--accent-red);
-}
-
-/* ── Mission / home context (right zone) ── */
+/* ── Mission / home context (right zone) ──
+   Two stacked rows rather than one long line: half the width for the same
+   two readouts, and the values line up under each other so the pair reads
+   as a block instead of a run-on string. */
 .cmd-nav {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto auto;
+    column-gap: clamp(4px, 0.45vw, 10px);
+    row-gap: 0;
     align-items: baseline;
-    gap: clamp(3px, 0.35vw, 8px);
+    line-height: 1.15;
+}
+
+.cmd-nav .cmd-lbl {
+    justify-self: start;
 }
 
 .cmd-nav .cmd-val {
+    justify-self: end;
     color: var(--text-nav);
 }
 
@@ -496,25 +489,11 @@
    As the window narrows, the least operationally critical readouts leave the
    bar one at a time, cheapest first. Everything that stays is fully readable:
    nothing is ever clipped mid-value or covered by the zone next to it. */
-/* HDOP is the first to go: with a fix type of "RTK Fixed" beside it, it
-   adds the least. Dropping it at 1980 is what buys the message strip its
-   room on a 1920 panel — the most common size this runs on. */
-@media (max-width: 1980px) {
-    #cmd-gps-hdop { display: none; }
+@media (max-width: 1400px) {
+    #cmd-gps-hdop { display: none; }      /* the fix type beside it still shows */
 }
-@media (max-width: 1800px) {
-    .cmd-nav-wp { display: none; }        /* mission progress */
-}
-@media (max-width: 1450px) {
-    /* Drop the speech-bubble glyph before the text it decorates: at this
-       width the zone was clipping the first character of the message. */
-    .cmd-messages .cmd-icon { display: none; }
-}
-@media (max-width: 1500px) {
+@media (max-width: 1300px) {
     .cmd-nav { display: none; }           /* home distance */
-}
-@media (max-width: 1200px) {
-    .cmd-messages { display: none; }      /* STATUSTEXT (still in sidebar log) */
 }
 @media (max-width: 1100px) {
     .cmd-speed-inline { display: none; }  /* mission speed (also in sidebar) */
