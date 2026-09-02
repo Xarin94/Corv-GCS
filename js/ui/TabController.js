@@ -7,7 +7,11 @@ import { STATE } from '../core/state.js';
 import { connect, disconnect, getAvailablePorts } from '../mavlink/ConnectionManager.js';
 import { setParameter, requestAllParameters, requestParameter, requestDataStream, calibrateAccel, calibrateCompass, calibrateGyro, sendServoTest, sendRelayToggle, uploadMission } from '../mavlink/CommandSender.js';
 import { onMessage } from '../mavlink/MAVLinkManager.js';
-import { formatParamValue } from './ParametersPageController.js';
+import { getVehicleTypeName } from '../mavlink/MAVLinkStateMapper.js';
+import {
+    formatParamValue, refreshParametersPanel, setParamsTableRenderer,
+    beginFullRead, isFullReadActive
+} from './ParametersPageController.js';
 import { initJoystick } from '../joystick/JoystickUI.js';
 import { getTerrainElevationFromHGT, getTerrainElevationAsync, resetAutoDownloadFailures } from '../terrain/TerrainManager.js';
 import { getCmdShortName, getCmdColor, getCmdParams, getCmdDefaults, isNavCmd, getGroupedCommands } from '../mission/MissionCommands.js';
@@ -183,6 +187,11 @@ function initSetupVerticalNav() {
             btn.classList.add('active');
             const panel = contentArea.querySelector(`#subtab-${section}`);
             if (panel) panel.classList.add('active');
+
+            // Screens that show live parameter values only refresh on entry:
+            // nothing pushes into them while they are hidden.
+            if (section === 'parameters') refreshParametersPanel();
+            if (section === 'pid-tuning') populatePidInputs();
 
             // Make sure the group containing the active section is expanded
             // (matters when sections are activated programmatically)
@@ -1935,6 +1944,9 @@ function updateCfgProgress() {
     const countEl = document.getElementById('cfg-params-count');
     const progressEl = document.getElementById('cfg-params-progress');
     if (!fillEl || !countEl) return;
+    // A single catalog read still carries the vehicle's full paramCount, so
+    // without this it would paint the bar as "1/1300" — a stalled download.
+    if (!isFullReadActive()) return;
 
     if (STATE.parameterCount > 0) {
         if (progressEl) progressEl.style.display = 'flex';
@@ -1945,14 +1957,91 @@ function updateCfgProgress() {
 }
 
 /**
+ * Fill every input on the PID screen from the parameters already downloaded.
+ *
+ * Values used to arrive only through the PARAM_VALUE listener, so the screen
+ * stayed at 0 unless a download happened to be running while it was open —
+ * even when the parameter was sitting in STATE all along.
+ */
+function populatePidInputs() {
+    applyPidVehicleVisibility();
+    document.querySelectorAll('.pid-input[data-param]').forEach(input => {
+        const param = STATE.parameters.get(input.dataset.param);
+        input.value = param ? Number(param.value).toFixed(4) : '';
+        input.placeholder = param ? '' : '--';
+    });
+}
+
+/**
+ * Show only the panels that apply to the connected vehicle class.
+ *
+ * MAV_TYPE 0 means no HEARTBEAT has identified the airframe yet. Note that
+ * getVehicleTypeName() falls back to 'Copter' rather than reporting unknown,
+ * so the vehicleType has to be tested directly — otherwise a disconnected GCS
+ * would hide every Plane panel behind a guess.
+ */
+let lastPidVehicleType = null;
+
+function applyPidVehicleVisibility() {
+    const known = STATE.vehicleType > 0;
+    const vehicle = known ? getVehicleTypeName(STATE.vehicleType) : null;
+    lastPidVehicleType = STATE.vehicleType;
+    document.querySelectorAll('#subtab-pid-tuning .setup-panel[data-vehicle]').forEach(panel => {
+        const applies = panel.dataset.vehicle.split(/\s+/);
+        panel.classList.toggle('hidden-vehicle', known && !applies.includes(vehicle));
+    });
+}
+
+function setPidStatus(text, cls = '') {
+    const el = document.getElementById('pid-status');
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'pid-status' + (cls ? ' ' + cls : '');
+}
+
+/**
  * Initialize Config/Tuning tab
  */
 function initConfigTuningTab() {
+    // PID read: one PARAM_REQUEST_READ per visible field. Targeted reads, not a
+    // full PARAM_REQUEST_LIST — this screen is ~30 values, the full list is
+    // over a thousand.
+    const readAllBtn = document.getElementById('pid-read-all');
+    if (readAllBtn) {
+        readAllBtn.addEventListener('click', async () => {
+            applyPidVehicleVisibility();
+            const inputs = Array.from(document.querySelectorAll(
+                '#subtab-pid-tuning .setup-panel:not(.hidden-vehicle) .pid-input[data-param]'));
+            const names = [...new Set(inputs.map(i => i.dataset.param))];
+            readAllBtn.disabled = true;
+            let done = 0;
+            try {
+                for (const name of names) {
+                    setPidStatus(`Reading ${++done}/${names.length}...`);
+                    try { await requestParameter(name); } catch (e) { /* keep going */ }
+                    await new Promise(r => setTimeout(r, 60));
+                }
+                // Answers arrive asynchronously, so settle before painting
+                await new Promise(r => setTimeout(r, 600));
+                populatePidInputs();
+                const missing = names.filter(n => !STATE.parameters.has(n));
+                if (missing.length) {
+                    setPidStatus(`${names.length - missing.length}/${names.length} read — ${missing.length} unsupported on this firmware`, '');
+                } else {
+                    setPidStatus(`${names.length} parameters read`, 'ok');
+                }
+            } finally {
+                readAllBtn.disabled = false;
+            }
+        });
+    }
+
     // PID write all button
     const writeAllBtn = document.getElementById('pid-write-all');
     if (writeAllBtn) {
         writeAllBtn.addEventListener('click', async () => {
-            const inputs = document.querySelectorAll('.pid-input[data-param]');
+            const inputs = document.querySelectorAll(
+                '#subtab-pid-tuning .setup-panel:not(.hidden-vehicle) .pid-input[data-param]');
             let count = 0;
             for (const input of inputs) {
                 const paramName = input.dataset.param;
@@ -1967,12 +2056,16 @@ function initConfigTuningTab() {
                     }
                 }
             }
-            alert(`Written ${count} PID parameters`);
+            setPidStatus(`${count} parameters written`, 'ok');
             setTimeout(() => {
                 inputs.forEach(i => i.style.borderColor = '');
             }, 2000);
         });
     }
+
+    // The catalog's single reads land in STATE.parameters; the table beside it
+    // is ours, so it redraws through this.
+    setParamsTableRenderer(renderCfgParamsTable);
 
     // Config params - READ ALL
     const cfgReadBtn = document.getElementById('cfg-params-read');
@@ -1980,6 +2073,7 @@ function initConfigTuningTab() {
         cfgReadBtn.addEventListener('click', async () => {
             const progressEl = document.getElementById('cfg-params-progress');
             if (progressEl) progressEl.style.display = 'flex';
+            beginFullRead();
             await requestAllParameters();
         });
     }
@@ -2068,10 +2162,14 @@ function initConfigTuningTab() {
         const input = document.querySelector(`.pid-input[data-param="${data.paramId}"]`);
         if (input) {
             input.value = data.paramValue.toFixed(4);
+            input.placeholder = '';
         }
 
         // Update extended tuning sliders if they match
         updateExtTuningSlider(data.paramId, data.paramValue);
+
+        // The airframe can be identified after this screen is already open
+        if (STATE.vehicleType !== lastPidVehicleType) applyPidVehicleVisibility();
 
         // Update config params table (throttled to avoid lag during bulk param read)
         updateCfgProgress();

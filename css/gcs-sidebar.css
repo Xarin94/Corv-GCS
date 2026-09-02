@@ -608,9 +608,14 @@
     color: var(--text-dim);
 }
 
-.params-catalog-search {
+/* Specificity bumped on purpose: the generic .params-search below sets
+   flex: 1, which in this column would stretch the input to fill the whole
+   catalog instead of leaving the room to the list. */
+.params-catalog .params-catalog-search {
     flex: none;
     width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
     text-transform: uppercase;
 }
 

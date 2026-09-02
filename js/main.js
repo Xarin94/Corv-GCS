@@ -75,7 +75,7 @@ import { initCommandBar, updateCommandBar } from './ui/CommandBarController.js';
 import { initGCSSidebar, updateGCSSidebar, getTargetCoords } from './ui/GCSSidebarController.js';
 import { initLogReplay } from './logging/LogReplayController.js';
 import { initTabs, getCurrentTab } from './ui/TabController.js';
-import { initParamsPage, toggleParamsPage } from './ui/ParametersPageController.js';
+import { initParametersPanel } from './ui/ParametersPageController.js';
 
 import { setTerrainSatelliteEnabled } from './terrain/TerrainManager.js';
 import { initOfflinePanel } from './maps/OfflineDownloader.js';
@@ -1653,9 +1653,8 @@ function init() {
     initMap('mini-map');
     initMinimapSwap();
     updateMinimapHoverSize();
-    initParamsPage();
+    initParametersPanel();
     initFPV();
-    window.toggleParamsPage = toggleParamsPage;
 
     // Listen for mission updates and rebuild 3D trajectory + 2D mini-map overlay
     window.addEventListener('missionUpdated', () => {

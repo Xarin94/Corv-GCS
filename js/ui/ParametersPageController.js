@@ -1,10 +1,14 @@
 /**
- * ParametersPageController.js - Dedicated full-screen parameters page
- * Handles reading, searching, editing, saving and loading ArduPilot parameters
+ * ParametersPageController.js - SETUP > PARAMETERS screen
+ *
+ * Owns the on-demand side catalog (read one parameter instead of the whole
+ * list), .param file save/load, and the PARAM_VALUE ingest that fills
+ * STATE.parameters. The parameter table beside the catalog is rendered by
+ * TabController, which also owns READ ALL / WRITE CHANGED.
  */
 
 import { STATE } from '../core/state.js';
-import { requestAllParameters, setParameter, fetchParameter } from '../mavlink/CommandSender.js';
+import { setParameter, fetchParameter } from '../mavlink/CommandSender.js';
 import { onMessage } from '../mavlink/MAVLinkManager.js';
 import { getVehicleTypeName } from '../mavlink/MAVLinkStateMapper.js';
 import {
@@ -54,6 +58,52 @@ const PARAM_DESCRIPTIONS = {
     PILOT_SPEED_UP: 'Pilot max climb rate (cm/s)',
     PILOT_SPEED_DN: 'Pilot max descent rate (cm/s)',
     PILOT_ACCEL_Z: 'Pilot vertical acceleration (cm/s/s)',
+    // TECS — fixed-wing total-energy speed/height controller
+    TECS_CLMB_MAX: 'Maximum climb rate in auto throttle modes (m/s)',
+    TECS_SINK_MIN: 'Minimum sink rate at idle throttle (m/s)',
+    TECS_SINK_MAX: 'Maximum sink rate in auto throttle modes (m/s)',
+    TECS_TIME_CONST: 'Speed/height controller time constant (seconds)',
+    TECS_PTCH_DAMP: 'Pitch demand damping gain',
+    TECS_THR_DAMP: 'Throttle demand damping gain',
+    TECS_INTEG_GAIN: 'Integrator gain for height and speed errors',
+    TECS_SPDWEIGHT: 'Weighting of speed vs height in pitch demand (0-2)',
+    TECS_VERT_ACC: 'Maximum vertical acceleration (m/s/s)',
+    TECS_RLL2THR: 'Throttle compensation added in a bank (percent)',
+    TECS_PITCH_MAX: 'Maximum pitch in auto throttle modes (degrees)',
+    TECS_PITCH_MIN: 'Minimum pitch in auto throttle modes (degrees)',
+    // Fixed-wing attitude controllers
+    RLL_RATE_P: 'Roll rate controller P gain',
+    RLL_RATE_I: 'Roll rate controller I gain',
+    RLL_RATE_D: 'Roll rate controller D gain',
+    RLL_RATE_FF: 'Roll rate controller feed forward',
+    PTCH_RATE_P: 'Pitch rate controller P gain',
+    PTCH_RATE_I: 'Pitch rate controller I gain',
+    PTCH_RATE_D: 'Pitch rate controller D gain',
+    PTCH_RATE_FF: 'Pitch rate controller feed forward',
+    RLL2SRV_TCONST: 'Roll angle controller time constant (seconds)',
+    RLL2SRV_RMAX: 'Maximum commanded roll rate (deg/s). 0=disabled',
+    PTCH2SRV_TCONST: 'Pitch angle controller time constant (seconds)',
+    PTCH2SRV_RMAX_UP: 'Maximum commanded nose-up pitch rate (deg/s)',
+    PTCH2SRV_RMAX_DN: 'Maximum commanded nose-down pitch rate (deg/s)',
+    PTCH2SRV_RLL: 'Pitch compensation added in a bank',
+    YAW2SRV_DAMP: 'Yaw damping gain',
+    YAW2SRV_INT: 'Yaw integrator gain for sideslip',
+    YAW2SRV_SLIP: 'Sideslip control gain',
+    YAW2SRV_RLL: 'Yaw coordination gain in a turn',
+    // Fixed-wing limits and trim
+    TRIM_ARSPD_CM: 'Target cruise airspeed (cm/s)',
+    ARSPD_FBW_MIN: 'Minimum airspeed in auto throttle modes (m/s)',
+    ARSPD_FBW_MAX: 'Maximum airspeed in auto throttle modes (m/s)',
+    LIM_ROLL_CD: 'Maximum bank angle (centidegrees)',
+    LIM_PITCH_MAX: 'Maximum pitch (centidegrees)',
+    LIM_PITCH_MIN: 'Minimum pitch (centidegrees, negative)',
+    TRIM_THROTTLE: 'Cruise throttle in auto throttle modes (percent)',
+    THR_MIN: 'Minimum throttle (percent)',
+    THR_MAX: 'Maximum throttle (percent)',
+    // Motors
+    MOT_THST_HOVER: 'Throttle required to hover, 0-1 (learned in flight)',
+    MOT_SPIN_ARM: 'Motor output when armed and throttle at zero, 0-1',
+    MOT_SPIN_MIN: 'Minimum motor output in flight, 0-1',
     // Position Control
     PSC_POSXY_P: 'Position XY controller P gain',
     PSC_VELXY_P: 'Velocity XY controller P gain',
@@ -144,8 +194,6 @@ const PARAM_DESCRIPTIONS = {
     TERRAIN_FOLLOW: 'Terrain follow mode bitmask',
 };
 
-let isOpen = false;
-let searchFilter = '';
 let initialized = false;
 
 // A full PARAM_REQUEST_LIST is running. Single reads must not drive the progress
@@ -156,34 +204,14 @@ let fullReadActive = false;
 /**
  * Initialize parameters page
  */
-export function initParamsPage() {
+export function initParametersPanel() {
     if (initialized) return;
     initialized = true;
 
-    const closeBtn = document.getElementById('params-page-close');
-    if (closeBtn) closeBtn.addEventListener('click', toggleParamsPage);
-
-    bindAction('params-read-all', async () => {
-        const progressEl = document.getElementById('params-progress');
-        if (progressEl) progressEl.style.display = 'flex';
-        fullReadActive = true;
-        await requestAllParameters();
-    });
-
     initCatalog();
 
-    const searchInput = document.getElementById('params-search');
-    let searchDebounceTimer = null;
-    if (searchInput) {
-        searchInput.addEventListener('input', (e) => {
-            searchFilter = e.target.value.toUpperCase();
-            clearTimeout(searchDebounceTimer);
-            searchDebounceTimer = setTimeout(() => renderParamsTable(), 250);
-        });
-    }
-
-    bindAction('params-save', saveParameterFile);
-    bindAction('params-load', loadParameterFile);
+    bindAction('cfg-params-save', saveParameterFile);
+    bindAction('cfg-params-load', loadParameterFile);
 
     // Listen for PARAM_VALUE messages (throttle table render to avoid lag)
     let paramRenderPending = false;
@@ -199,44 +227,66 @@ export function initParamsPage() {
         STATE.parameterCount = data.paramCount;
         STATE.parametersReceived = STATE.parameters.size;
         if (fullReadActive && STATE.parametersReceived >= STATE.parameterCount) fullReadActive = false;
-        updateProgress();
-        if (isOpen && !paramRenderPending) {
+        if (catalogVisibleOnScreen() && !paramRenderPending) {
             paramRenderPending = true;
             setTimeout(() => {
                 paramRenderPending = false;
                 // Skip render if user is typing in search or editing a param value
                 const active = document.activeElement;
-                if (active && (active.id === 'params-search' || active.id === 'params-catalog-search'
+                if (active && (active.id === 'cfg-params-search' || active.id === 'params-catalog-search'
                                || active.classList.contains('param-val-input'))) {
                     return;
                 }
-                renderParamsTable();
                 renderCatalogList();
             }, 500);
         }
     });
-
-    // ESC to close
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && isOpen) toggleParamsPage();
-    });
 }
 
 /**
- * Toggle parameters page visibility
+ * The parameter table beside the catalog belongs to TabController, so it
+ * registers a redraw here — a single on-demand read or a loaded .param file
+ * has to appear in it right away. A callback rather than an import keeps the
+ * dependency one-way (TabController already imports from this module).
  */
-export function toggleParamsPage() {
-    const page = document.getElementById('params-page');
-    if (!page) return;
+let paramsTableRenderer = null;
 
-    isOpen = !isOpen;
-    page.classList.toggle('open', isOpen);
+export function setParamsTableRenderer(fn) {
+    paramsTableRenderer = fn;
+}
 
-    if (isOpen) {
-        renderParamsTable();
-        refreshCatalogGroups();
-        renderCatalogList();
+function notifyParamsChanged() {
+    if (paramsTableRenderer) paramsTableRenderer();
+}
+
+/** True while the catalog is actually laid out (its sub-tab is showing). */
+function catalogVisibleOnScreen() {
+    const list = document.getElementById('params-catalog-list');
+    return !!list && list.offsetParent !== null;
+}
+
+/** Called when the PARAMETERS sub-tab is opened. */
+export function refreshParametersPanel() {
+    refreshCatalogGroups();
+    renderCatalogList();
+}
+
+/**
+ * A full PARAM_REQUEST_LIST is starting. The autopilot repeats the total
+ * parameter count in every PARAM_VALUE, so without this flag a single
+ * on-demand read would drive the progress bar to "1/1300" and read as a
+ * stalled download.
+ */
+export function beginFullRead() {
+    fullReadActive = true;
+}
+
+export function isFullReadActive() {
+    if (fullReadActive && STATE.parameterCount > 0
+        && STATE.parametersReceived >= STATE.parameterCount) {
+        fullReadActive = false;
     }
+    return fullReadActive;
 }
 
 function bindAction(id, handler) {
@@ -248,24 +298,6 @@ function bindAction(id, handler) {
     }
 }
 
-function updateProgress() {
-    const fillEl = document.getElementById('params-fill');
-    const countEl = document.getElementById('params-count');
-    const progressEl = document.getElementById('params-progress');
-    if (!fillEl || !countEl) return;
-    if (!fullReadActive) return; // single reads don't own the progress bar
-
-    if (STATE.parameterCount > 0) {
-        if (progressEl) progressEl.style.display = 'flex';
-        const pct = (STATE.parametersReceived / STATE.parameterCount * 100).toFixed(0);
-        fillEl.style.width = pct + '%';
-        countEl.textContent = `${STATE.parametersReceived}/${STATE.parameterCount}`;
-    }
-}
-
-/**
- * Get parameter description
- */
 function getParamDescription(name) {
     // Direct match
     if (PARAM_DESCRIPTIONS[name]) return PARAM_DESCRIPTIONS[name];
@@ -343,49 +375,6 @@ export function formatParamValue(value, type) {
 /**
  * Render the parameter table
  */
-function renderParamsTable() {
-    const tbody = document.getElementById('params-table-body');
-    if (!tbody) return;
-
-    const params = Array.from(STATE.parameters.entries())
-        .filter(([name]) => !searchFilter || name.includes(searchFilter))
-        .sort((a, b) => a[0].localeCompare(b[0]));
-
-    tbody.innerHTML = params.map(([name, param]) => {
-        const desc = getParamDescription(name);
-        const val = formatParamValue(param.value, param.type);
-        return `<tr>
-            <td class="param-name">${name}</td>
-            <td><input class="param-val-input" type="text" value="${val}"
-                       data-param-name="${name}" data-param-type="${param.type}"></td>
-            <td class="param-desc">${desc}</td>
-        </tr>`;
-    }).join('');
-
-    // Bind edit handlers
-    tbody.querySelectorAll('input[data-param-name]').forEach(input => {
-        input.addEventListener('change', async (e) => {
-            const paramName = e.target.dataset.paramName;
-            const paramType = parseInt(e.target.dataset.paramType) || 9;
-            // Parse as integer for integer types (1-6), float otherwise
-            const raw = e.target.value.trim();
-            const newValue = (paramType >= 1 && paramType <= 6)
-                ? parseInt(raw, 10)
-                : parseFloat(raw);
-            if (isNaN(newValue)) return;
-
-            try {
-                await setParameter(paramName, newValue, paramType);
-                e.target.style.borderColor = '#44ff44';
-                setTimeout(() => { e.target.style.borderColor = ''; }, 2000);
-            } catch (err) {
-                e.target.style.borderColor = '#ff4444';
-                alert('Parameter set failed: ' + err.message);
-            }
-        });
-    });
-}
-
 function saveParameterFile() {
     if (STATE.parameters.size === 0) {
         alert('No parameters loaded. Read parameters first.');
@@ -611,7 +600,7 @@ async function drainFetchQueue() {
             catalogNames = getCatalog(getVehicleTypeName(STATE.vehicleType), STATE.parameters);
         }
         renderCatalogList();
-        renderParamsTable();
+        notifyParamsChanged();
         if (fetchQueue.length) await new Promise(r => setTimeout(r, INTER_REQUEST_GAP_MS));
     }
 
@@ -665,7 +654,7 @@ function loadParameterFile() {
             }
         }
         alert(`Loaded ${count} parameters from ${file.name}`);
-        renderParamsTable();
+        notifyParamsChanged();
     });
     input.click();
 }

@@ -615,6 +615,99 @@ body.has-tabs #ui-layer {
     border-color: var(--accent-cyan);
 }
 
+/* Named parameters (TECS, primary config) need room for a real label, unlike
+   the bare P / I / D of a rate row. */
+.pid-row-wide label {
+    min-width: 88px;
+    flex-shrink: 0;
+}
+
+/* Inputs carry an intrinsic minimum width; without this they refuse to shrink
+   and push the value out past the edge of the panel. */
+.pid-input {
+    min-width: 0;
+}
+
+/* The PID screen packs several panels of differing shape side by side, so its
+   panels size to the space instead of the standard fixed 500px column, and
+   each grid reflows into as many columns as fit. */
+#subtab-pid-tuning .setup-panel {
+    width: auto;
+    flex: 1 1 460px;
+    max-width: 680px;
+    box-sizing: border-box;
+}
+
+#subtab-pid-tuning .setup-panel.full-width {
+    flex: 1 1 100%;
+    max-width: none;
+}
+
+#subtab-pid-tuning .pid-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 10px 20px;
+}
+
+.pid-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+/* .gcs-btn is full-width by default, which here stacked the two buttons */
+.pid-actions .gcs-btn {
+    width: auto;
+    flex: 0 0 auto;
+    padding: 7px 18px;
+}
+
+.pid-status {
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+.pid-status.ok    { color: var(--accent-green); }
+.pid-status.error { color: var(--accent-red); }
+
+/* A vehicle only ever shows the panels that apply to it */
+.setup-panel[data-vehicle].hidden-vehicle {
+    display: none;
+}
+
+/* PID and PARAMETERS need more width than the standard centred setup column:
+   the first shows several panels side by side, the second a catalog next to a
+   table. */
+#subtab-pid-tuning.active {
+    max-width: 1400px;
+    justify-content: flex-start;
+}
+
+#subtab-parameters.active {
+    max-width: none;
+    height: 100%;
+    padding: 16px 20px;
+    align-items: stretch;
+    justify-content: flex-start;
+}
+
+#subtab-parameters .setup-panel.full-width {
+    max-width: none;
+    display: flex;
+    flex-direction: column;
+    /* Bounded, not content-sized: the catalog and the table each scroll
+       inside it rather than growing the page. */
+    height: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+}
+
+#subtab-parameters .params-layout {
+    min-height: 0;
+}
+
 /* ============= CONFIG PARAMETER TREE ============= */
 .config-param-tree {
     max-height: 400px;

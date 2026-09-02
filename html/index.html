@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CORV GCS v1.6.0</title>
+    <title>CORV GCS v1.6.1</title>
 
     <!-- Critical inline styles to prevent flash of unstyled content -->
     <style>
@@ -813,8 +813,21 @@
 
             <!-- Sub-tab: PID Tuning -->
             <div class="sub-tab-content" id="subtab-pid-tuning">
-                <div class="setup-panel wide">
-                    <div class="panel-header">PID TUNING</div>
+                <!-- Panels carry data-vehicle so a Plane is not shown copter-only
+                     rate gains and vice versa; applyPidVehicleVisibility() reads
+                     the MAV_TYPE reported by the vehicle. -->
+
+                <div class="setup-panel full-width">
+                    <div class="pid-actions">
+                        <button class="gcs-btn" id="pid-read-all" title="Read every value on this page from the vehicle">READ FROM VEHICLE</button>
+                        <button class="gcs-btn" id="pid-write-all" title="Write every value on this page to the vehicle">WRITE ALL</button>
+                        <span class="pid-status" id="pid-status"></span>
+                    </div>
+                </div>
+
+                <!-- Multirotor / sub: body-rate controllers -->
+                <div class="setup-panel wide" data-vehicle="Copter Sub">
+                    <div class="panel-header">RATE PID</div>
                     <div class="pid-grid">
                         <div class="pid-group">
                             <div class="pid-title">ROLL</div>
@@ -835,34 +848,196 @@
                             <div class="pid-row"><label>D</label><input type="number" class="pid-input" data-param="ATC_RAT_YAW_D" step="0.0001" value="0"></div>
                         </div>
                     </div>
-                    <button class="gcs-btn" id="pid-write-all">WRITE ALL PID</button>
                 </div>
+
+                <!-- Copter angle (outer) loop -->
+                <div class="setup-panel wide" data-vehicle="Copter Sub">
+                    <div class="panel-header">ANGLE P</div>
+                    <div class="pid-grid">
+                        <div class="pid-group">
+                            <div class="pid-row pid-row-wide"><label>ROLL</label><input type="number" class="pid-input" data-param="ATC_ANG_RLL_P" step="0.1" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>PITCH</label><input type="number" class="pid-input" data-param="ATC_ANG_PIT_P" step="0.1" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>YAW</label><input type="number" class="pid-input" data-param="ATC_ANG_YAW_P" step="0.1" value="0"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Plane: rate controllers (ArduPlane 4.x names) -->
+                <div class="setup-panel wide" data-vehicle="Plane">
+                    <div class="panel-header">RATE PID</div>
+                    <div class="pid-grid">
+                        <div class="pid-group">
+                            <div class="pid-title">ROLL</div>
+                            <div class="pid-row"><label>P</label><input type="number" class="pid-input" data-param="RLL_RATE_P" step="0.001" value="0"></div>
+                            <div class="pid-row"><label>I</label><input type="number" class="pid-input" data-param="RLL_RATE_I" step="0.001" value="0"></div>
+                            <div class="pid-row"><label>D</label><input type="number" class="pid-input" data-param="RLL_RATE_D" step="0.0001" value="0"></div>
+                            <div class="pid-row"><label>FF</label><input type="number" class="pid-input" data-param="RLL_RATE_FF" step="0.001" value="0"></div>
+                        </div>
+                        <div class="pid-group">
+                            <div class="pid-title">PITCH</div>
+                            <div class="pid-row"><label>P</label><input type="number" class="pid-input" data-param="PTCH_RATE_P" step="0.001" value="0"></div>
+                            <div class="pid-row"><label>I</label><input type="number" class="pid-input" data-param="PTCH_RATE_I" step="0.001" value="0"></div>
+                            <div class="pid-row"><label>D</label><input type="number" class="pid-input" data-param="PTCH_RATE_D" step="0.0001" value="0"></div>
+                            <div class="pid-row"><label>FF</label><input type="number" class="pid-input" data-param="PTCH_RATE_FF" step="0.001" value="0"></div>
+                        </div>
+                        <div class="pid-group">
+                            <div class="pid-title">YAW</div>
+                            <div class="pid-row pid-row-wide"><label>DAMP</label><input type="number" class="pid-input" data-param="YAW2SRV_DAMP" step="0.01" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>INT</label><input type="number" class="pid-input" data-param="YAW2SRV_INT" step="0.01" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>SLIP</label><input type="number" class="pid-input" data-param="YAW2SRV_SLIP" step="0.01" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>RLL</label><input type="number" class="pid-input" data-param="YAW2SRV_RLL" step="0.01" value="0"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Plane: angle-loop time constants -->
+                <div class="setup-panel wide" data-vehicle="Plane">
+                    <div class="panel-header">ATTITUDE LIMITS</div>
+                    <div class="pid-grid">
+                        <div class="pid-group">
+                            <div class="pid-row pid-row-wide"><label>RLL TCONST</label><input type="number" class="pid-input" data-param="RLL2SRV_TCONST" step="0.05" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>PTCH TCONST</label><input type="number" class="pid-input" data-param="PTCH2SRV_TCONST" step="0.05" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>RLL RMAX</label><input type="number" class="pid-input" data-param="RLL2SRV_RMAX" step="1" value="0"></div>
+                        </div>
+                        <div class="pid-group">
+                            <div class="pid-row pid-row-wide"><label>PTCH RMAX UP</label><input type="number" class="pid-input" data-param="PTCH2SRV_RMAX_UP" step="1" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>PTCH RMAX DN</label><input type="number" class="pid-input" data-param="PTCH2SRV_RMAX_DN" step="1" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>PTCH2SRV RLL</label><input type="number" class="pid-input" data-param="PTCH2SRV_RLL" step="0.05" value="0"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Plane: TECS total-energy speed/height controller -->
+                <div class="setup-panel wide" data-vehicle="Plane">
+                    <div class="panel-header">TECS &mdash; SPEED / HEIGHT</div>
+                    <div class="pid-grid">
+                        <div class="pid-group">
+                            <div class="pid-row pid-row-wide"><label>CLMB MAX</label><input type="number" class="pid-input" data-param="TECS_CLMB_MAX" step="0.1" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>SINK MIN</label><input type="number" class="pid-input" data-param="TECS_SINK_MIN" step="0.1" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>SINK MAX</label><input type="number" class="pid-input" data-param="TECS_SINK_MAX" step="0.1" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>TIME CONST</label><input type="number" class="pid-input" data-param="TECS_TIME_CONST" step="0.1" value="0"></div>
+                        </div>
+                        <div class="pid-group">
+                            <div class="pid-row pid-row-wide"><label>PTCH DAMP</label><input type="number" class="pid-input" data-param="TECS_PTCH_DAMP" step="0.05" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>THR DAMP</label><input type="number" class="pid-input" data-param="TECS_THR_DAMP" step="0.05" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>INTEG GAIN</label><input type="number" class="pid-input" data-param="TECS_INTEG_GAIN" step="0.01" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>SPD WEIGHT</label><input type="number" class="pid-input" data-param="TECS_SPDWEIGHT" step="0.1" value="0"></div>
+                        </div>
+                        <div class="pid-group">
+                            <div class="pid-row pid-row-wide"><label>PITCH MAX</label><input type="number" class="pid-input" data-param="TECS_PITCH_MAX" step="1" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>PITCH MIN</label><input type="number" class="pid-input" data-param="TECS_PITCH_MIN" step="1" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>RLL2THR</label><input type="number" class="pid-input" data-param="TECS_RLL2THR" step="0.5" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>VERT ACC</label><input type="number" class="pid-input" data-param="TECS_VERT_ACC" step="0.5" value="0"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Primary configuration, the values Mission Planner puts in its
+                     basic-tuning box: the handful you set before a first flight. -->
+                <div class="setup-panel wide" data-vehicle="Copter Sub">
+                    <div class="panel-header">PRIMARY CONFIG</div>
+                    <div class="pid-grid">
+                        <div class="pid-group">
+                            <div class="pid-row pid-row-wide"><label>THR HOVER</label><input type="number" class="pid-input" data-param="MOT_THST_HOVER" step="0.01" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>SPIN ARM</label><input type="number" class="pid-input" data-param="MOT_SPIN_ARM" step="0.01" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>SPIN MIN</label><input type="number" class="pid-input" data-param="MOT_SPIN_MIN" step="0.01" value="0"></div>
+                        </div>
+                        <div class="pid-group">
+                            <div class="pid-row pid-row-wide"><label>CLIMB P</label><input type="number" class="pid-input" data-param="PSC_ACCZ_P" step="0.01" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>CLIMB I</label><input type="number" class="pid-input" data-param="PSC_ACCZ_I" step="0.01" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>RC FEEL</label><input type="number" class="pid-input" data-param="ATC_INPUT_TC" step="0.01" value="0"></div>
+                        </div>
+                        <div class="pid-group">
+                            <div class="pid-row pid-row-wide"><label>ANGLE MAX</label><input type="number" class="pid-input" data-param="ANGLE_MAX" step="100" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>WP SPEED</label><input type="number" class="pid-input" data-param="WPNAV_SPEED" step="10" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>RTL ALT</label><input type="number" class="pid-input" data-param="RTL_ALT" step="100" value="0"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="setup-panel wide" data-vehicle="Plane">
+                    <div class="panel-header">PRIMARY CONFIG</div>
+                    <div class="pid-grid">
+                        <div class="pid-group">
+                            <div class="pid-row pid-row-wide"><label>CRUISE ARSPD</label><input type="number" class="pid-input" data-param="TRIM_ARSPD_CM" step="10" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>ARSPD MIN</label><input type="number" class="pid-input" data-param="ARSPD_FBW_MIN" step="1" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>ARSPD MAX</label><input type="number" class="pid-input" data-param="ARSPD_FBW_MAX" step="1" value="0"></div>
+                        </div>
+                        <div class="pid-group">
+                            <div class="pid-row pid-row-wide"><label>ROLL LIMIT</label><input type="number" class="pid-input" data-param="LIM_ROLL_CD" step="100" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>PITCH MAX</label><input type="number" class="pid-input" data-param="LIM_PITCH_MAX" step="100" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>PITCH MIN</label><input type="number" class="pid-input" data-param="LIM_PITCH_MIN" step="100" value="0"></div>
+                        </div>
+                        <div class="pid-group">
+                            <div class="pid-row pid-row-wide"><label>TRIM THR</label><input type="number" class="pid-input" data-param="TRIM_THROTTLE" step="1" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>THR MIN</label><input type="number" class="pid-input" data-param="THR_MIN" step="1" value="0"></div>
+                            <div class="pid-row pid-row-wide"><label>THR MAX</label><input type="number" class="pid-input" data-param="THR_MAX" step="1" value="0"></div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
             <!-- Sub-tab: Parameters -->
             <div class="sub-tab-content" id="subtab-parameters">
                 <div class="setup-panel full-width">
                     <div class="panel-header">PARAMETERS</div>
-                    <div class="params-toolbar">
-                        <button class="gcs-btn" id="cfg-params-read">READ ALL</button>
-                        <button class="gcs-btn" id="cfg-params-write">WRITE CHANGED</button>
-                        <div class="params-progress" id="cfg-params-progress">
-                            <div class="gcs-progress-bar"><div class="gcs-progress-fill" id="cfg-params-fill"></div></div>
-                            <span class="gcs-progress-text" id="cfg-params-count">0/0</span>
+                    <div class="params-layout">
+                        <!-- Side catalog: pick a single parameter and read only that
+                             one. READ ALL costs one PARAM_VALUE per parameter — over
+                             a thousand on a typical vehicle — which is minutes of
+                             airtime on a slow link. -->
+                        <aside class="params-catalog">
+                            <div class="params-catalog-head">
+                                <span class="params-catalog-title">PARAM LIST</span>
+                                <span class="params-catalog-count" id="params-catalog-count">0</span>
+                            </div>
+                            <input type="text" class="params-search params-catalog-search" id="params-catalog-search"
+                                   placeholder="Type a parameter name..." spellcheck="false">
+                            <div class="params-catalog-filters">
+                                <select class="params-select" id="params-catalog-group" title="Filter by parameter group">
+                                    <option value="">All groups</option>
+                                </select>
+                                <select class="params-select" id="params-catalog-timeout" title="Per-request timeout — raise it on high-latency links">
+                                    <option value="2000">2 s</option>
+                                    <option value="4000" selected>4 s</option>
+                                    <option value="8000">8 s</option>
+                                    <option value="15000">15 s</option>
+                                </select>
+                            </div>
+                            <div class="params-catalog-list" id="params-catalog-list"></div>
+                            <div class="params-catalog-actions">
+                                <button class="gcs-btn" id="params-fetch-group" title="Read every parameter currently listed">READ LISTED</button>
+                                <button class="gcs-btn" id="params-fetch-fav" title="Read all starred parameters">READ &#9733;</button>
+                            </div>
+                            <div class="params-queue" id="params-queue"></div>
+                        </aside>
+
+                        <div class="params-main">
+                            <div class="params-toolbar">
+                                <button class="gcs-btn" id="cfg-params-read">READ ALL</button>
+                                <button class="gcs-btn" id="cfg-params-write">WRITE CHANGED</button>
+                                <div class="params-progress" id="cfg-params-progress">
+                                    <div class="gcs-progress-bar"><div class="gcs-progress-fill" id="cfg-params-fill"></div></div>
+                                    <span class="gcs-progress-text" id="cfg-params-count">0/0</span>
+                                </div>
+                                <input type="text" class="params-search" id="cfg-params-search" placeholder="Filter loaded parameters...">
+                                <button class="gcs-btn" id="cfg-params-save">SAVE .PARAM</button>
+                                <button class="gcs-btn" id="cfg-params-load">LOAD .PARAM</button>
+                            </div>
+                            <div class="params-table-wrapper">
+                                <table class="params-table">
+                                    <thead>
+                                        <tr>
+                                            <th class="params-col-name">NAME</th>
+                                            <th class="params-col-value">VALUE</th>
+                                            <th class="params-col-desc">DESCRIPTION</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="cfg-params-table-body"></tbody>
+                                </table>
+                            </div>
                         </div>
-                        <input type="text" class="params-search" id="cfg-params-search" placeholder="Search parameters...">
-                    </div>
-                    <div class="params-table-wrapper">
-                        <table class="params-table">
-                            <thead>
-                                <tr>
-                                    <th class="params-col-name">NAME</th>
-                                    <th class="params-col-value">VALUE</th>
-                                    <th class="params-col-desc">DESCRIPTION</th>
-                                </tr>
-                            </thead>
-                            <tbody id="cfg-params-table-body"></tbody>
-                        </table>
                     </div>
                 </div>
             </div>
@@ -2134,70 +2309,6 @@
     </div>
 
     <!-- ==================== PARAMETERS PAGE (Full-screen overlay) ==================== -->
-    <div id="params-page" class="params-page">
-        <div class="params-page-header">
-            <span class="params-page-title">PARAMETERS</span>
-            <button class="params-page-close" id="params-page-close" title="Close">&times;</button>
-        </div>
-        <div class="params-page-body">
-            <div class="params-layout">
-                <!-- Side catalog: pick a single parameter and read only that one.
-                     Keeps airtime near zero on high-latency / low-datarate links. -->
-                <aside class="params-catalog">
-                    <div class="params-catalog-head">
-                        <span class="params-catalog-title">PARAM LIST</span>
-                        <span class="params-catalog-count" id="params-catalog-count">0</span>
-                    </div>
-                    <input type="text" class="params-search params-catalog-search" id="params-catalog-search"
-                           placeholder="Type a parameter name..." spellcheck="false">
-                    <div class="params-catalog-filters">
-                        <select class="params-select" id="params-catalog-group" title="Filter by parameter group">
-                            <option value="">All groups</option>
-                        </select>
-                        <select class="params-select" id="params-catalog-timeout" title="Per-request timeout — raise it on high-latency links">
-                            <option value="2000">2 s</option>
-                            <option value="4000" selected>4 s</option>
-                            <option value="8000">8 s</option>
-                            <option value="15000">15 s</option>
-                        </select>
-                    </div>
-                    <div class="params-catalog-list" id="params-catalog-list"></div>
-                    <div class="params-catalog-actions">
-                        <button class="gcs-btn" id="params-fetch-group" title="Read every parameter currently listed">READ LISTED</button>
-                        <button class="gcs-btn" id="params-fetch-fav" title="Read all starred parameters">READ &#9733;</button>
-                    </div>
-                    <div class="params-queue" id="params-queue"></div>
-                </aside>
-
-                <div class="params-main">
-                    <div class="params-toolbar">
-                        <button class="gcs-btn" id="params-read-all">READ ALL</button>
-                        <div class="params-progress" id="params-progress" style="display:none;">
-                            <div class="gcs-progress-bar"><div class="gcs-progress-fill" id="params-fill"></div></div>
-                            <span class="gcs-progress-text" id="params-count">0/0</span>
-                        </div>
-                        <input type="text" class="params-search" id="params-search" placeholder="Filter loaded parameters...">
-                        <button class="gcs-btn" id="params-save">SAVE .PARAM</button>
-                        <button class="gcs-btn" id="params-load">LOAD .PARAM</button>
-                    </div>
-                    <div class="params-table-wrapper">
-                        <table class="params-table">
-                            <thead>
-                                <tr>
-                                    <th class="params-col-name">NAME</th>
-                                    <th class="params-col-value">VALUE</th>
-                                    <th class="params-col-desc">DESCRIPTION</th>
-                                </tr>
-                            </thead>
-                            <tbody id="params-table-body"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-
     <!-- Fix keyboard input behavior in Electron frameless window -->
     <script>
     document.addEventListener('DOMContentLoaded', () => {
