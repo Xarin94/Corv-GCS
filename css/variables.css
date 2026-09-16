@@ -113,6 +113,8 @@
     --gutter: clamp(10px, 1vw, 22px);
     --minimap-w: clamp(200px, 15vw, 340px);
     --minimap-h: clamp(140px, 10.4vw, 236px);
+    /* Annunciator column (health icons beside the left tape) */
+    --annun-w: clamp(84px, 6.2vw, 130px);
 
     /* Z-Index Scale */
     --z-content: 10;
@@ -192,4 +194,12 @@
     --border-input: rgba(0, 0, 0, 0.15);
     --border-section: rgba(0, 120, 160, 0.3);
     --border-section-mid: rgba(0, 120, 160, 0.5);
+}
+
+/* Chinese UI: the Latin faces have no CJK glyphs, so name the system CJK
+   fonts explicitly instead of leaving the per-glyph fallback to the browser
+   default (which on Windows is a serif). */
+:root[lang="zh-CN"] {
+    --font-ui: 'Rajdhani', 'Noto Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+    --font-data: 'Roboto Mono', 'Noto Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'PingFang SC', monospace;
 }

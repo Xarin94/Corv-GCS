@@ -11,6 +11,7 @@ import {
     DEMO_STRAIGHT, DEMO_TURN_RADIUS, DEMO_CAPTURE_R
 } from './core/constants.js';
 import { STATE, demoFlightState, pushGHistory } from './core/state.js';
+import { initI18n, setLanguage } from './core/i18n.js';
 import { latLonToMeters, calculateDistance, lerpColor, getHeightColor } from './core/utils.js';
 import { fetchADSBData, downloadTrafficCSV, getNearestTraffic } from './adsb/ADSBManager.js';
 
@@ -60,6 +61,7 @@ import { TlogLogger } from './logging/TlogLogger.js';
 
 // UI imports
 import { initRotorLoadPanel, updateRotorLoadPanel } from './ui/RotorLoadPanel.js';
+import { initAnnunciatorPanel, updateAnnunciatorPanel } from './ui/AnnunciatorPanel.js';
 import { updateUI, toggleConfig, toggleTelemetry, updateOffset, updateAGLDisplay, setStatusMessage, updateFPSDisplay, initMoreMenu, initConfigAutoClose, initHudCells } from './ui/UIController.js';
 
 // Split view imports
@@ -1261,6 +1263,7 @@ function animate() {
         lastUiBarUpdate = now;
         updateCommandBar();
         updateGCSSidebar();
+        updateAnnunciatorPanel();
         const tc = getTargetCoords();
         if (tc) {
             const tElev = getTerrainElevationCached(tc.lat, tc.lon);
@@ -1605,6 +1608,10 @@ async function checkConnectivity() {
 
 // ============== INITIALIZATION ==============
 function init() {
+    // Saved UI language first: the observer it installs translates every
+    // panel the controllers below build, so nothing has to be re-rendered.
+    initI18n();
+
     // Initialize 3D scene
     const container = document.getElementById('scene-container');
     const { scene, camera, renderer } = init3D(container);
@@ -1648,6 +1655,7 @@ function init() {
     initLogReplay();
     initHudCells();
     initRotorLoadPanel();
+    initAnnunciatorPanel();
     initTabs();
     initOfflinePanel();
     initMap('mini-map');
@@ -1768,6 +1776,7 @@ function init() {
 window.toggleConfig = toggleConfig;
 window.toggleTelemetry = toggleTelemetry;
 window.updateOffset = updateOffset;
+window.setLanguage = setLanguage;
 window.connectSerial = connectSerial;
 window.fetchRunways = fetchRunwaysAuto;
 window.fetchRunwaysAuto = fetchRunwaysAuto;

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.6.1-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.6.2-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"/>
   <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
   <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
@@ -22,6 +22,8 @@
 **CORV GCS** is a desktop Ground Control Station designed for ArduPilot-based vehicles (Plane, Copter, Rover, Sub, Heli, VTOL). It features immersive 3D terrain visualization using real SRTM elevation data, full mission planning, real-time telemetry, and a modern UI — all in a lightweight Electron application.
 
 It also speaks the **CORV binary protocol** for the onboard CORV autopilot and reads **MSP/MSP2 telemetry** from INAV and Betaflight flight controllers. Every protocol is decoded in the main process and normalised to MAVLink, so all three drive the same HUD, 3D view and instruments.
+
+The interface is available in **English and Simplified Chinese** (SYS CONFIG → LANGUAGE).
 
 > This project is under active development. Feedback, bug reports, and feature requests are welcome!
 
@@ -59,6 +61,11 @@ It also speaks the **CORV binary protocol** for the onboard CORV autopilot and r
 - **Total G-load** computed from all three axes, on live MAVLink and SITL alike
 - **Total-energy variometer** alongside the VSI
 - **ROTOR LOAD** schematic on the flight data screen
+- **Health annunciators** beside the airspeed tape — the conditions Mission Planner flags on its
+  HUD (failsafe, EKF variance, vibration and clipping, IMU/compass/baro/GPS health, GPS glitch,
+  jamming and spoofing, RC loss, fence breach, calibrations in progress, pre-arm, HDOP, weak
+  link…) as flashing red warnings from the top and amber cautions from the bottom, with the
+  RSSI or satellite/HDOP figures under the link and GPS ones
 - **Mini-Map** — Leaflet-based 2D satellite map with vehicle position
 - **Status panel** — GPS fix, battery voltage/current, link quality, flight mode
 - Split-view mode: 3D + 2D map simultaneously
@@ -134,8 +141,8 @@ It also speaks the **CORV binary protocol** for the onboard CORV autopilot and r
 
 ### Download
 Pre-built installers are available on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
-- **Windows**: `CORV GCS Setup 1.6.1.exe`
-- **Linux**: `CORV GCS-1.6.1.AppImage` or `corv-gcs_1.6.1_amd64.deb`
+- **Windows**: `CORV GCS Setup 1.6.2.exe`
+- **Linux**: `CORV GCS-1.6.2.AppImage` or `corv-gcs_1.6.2_amd64.deb`
 
 ### Build from Source
 

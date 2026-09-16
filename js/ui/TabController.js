@@ -4,6 +4,7 @@
  */
 
 import { STATE } from '../core/state.js';
+import { t } from '../core/i18n.js';
 import { connect, disconnect, getAvailablePorts } from '../mavlink/ConnectionManager.js';
 import { setParameter, requestAllParameters, requestParameter, requestDataStream, calibrateAccel, calibrateCompass, calibrateGyro, sendServoTest, sendRelayToggle, uploadMission } from '../mavlink/CommandSender.js';
 import { onMessage } from '../mavlink/MAVLinkManager.js';
@@ -1239,7 +1240,7 @@ function render3DMission() {
         ctx.fillStyle = '#889999';
         ctx.font = '11px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('Add at least 2 nav waypoints for elevation view', w / 2, h / 2);
+        ctx.fillText(t('Add at least 2 nav waypoints for elevation view'), w / 2, h / 2);
         return;
     }
 
@@ -1491,7 +1492,7 @@ function renderAltitudeProfile() {
         ctx.fillStyle = '#889999';
         ctx.font = '11px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('Add at least 2 nav waypoints to see altitude profile', w / 2, h / 2);
+        ctx.fillText(t('Add at least 2 nav waypoints to see altitude profile'), w / 2, h / 2);
         return;
     }
 

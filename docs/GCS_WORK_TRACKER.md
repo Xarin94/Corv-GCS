@@ -4,9 +4,9 @@
 - **Progetto**: CORV SYSTEMS v16 → CORV GCS (MAVLink + CORV binario + MSP)
 - **Approccio**: node-mavlink + serialport nel main process Electron; ogni protocollo non-MAVLink
   viene decodificato nel main process e ri-emesso come MAVLink sintetico
-- **Versione corrente**: 1.6.1
+- **Versione corrente**: 1.6.2
 - **Stato**: Fasi 0-6 (migrazione MAVLink) completate; Fasi 7-11 aggiunte dopo la migrazione
-- **Ultimo aggiornamento**: 2026-09-02
+- **Ultimo aggiornamento**: 2026-09-16
 
 ---
 
@@ -155,6 +155,20 @@ Motivazione: su link ad alta latenza e basso datarate (SiK 19200, LoRa) un
 | Missioni MSP (`MSP_WP` / `MSP2_INAV_MISSION_ITEM`) | [ ] | futuro |
 | RC override MSP (`MSP_SET_RAW_RC`) | [ ] | futuro |
 | Verifica su INAV reale o INAV SITL | [ ] | finora testato solo contro un FC simulato |
+
+## Fase 12: Annunciatori di stato e lingua cinese — 2026-09-16
+| Task | Stato | File |
+|------|-------|------|
+| Colonna annunciatori a lato del tape airspeed (rossi dall'alto, ambra dal basso sopra la minimappa) | [x] | html/index.html, css/components.css, css/layout.css |
+| Regole di Mission Planner: bit SYS_STATUS, system_status, EKF, VIBRATION, GPS, MAG_CAL, STATUSTEXT | [x] | js/ui/AnnunciatorPanel.js |
+| Nuovi campi STATE + mapping 191/192/193/441 | [x] | js/core/state.js, js/mavlink/MAVLinkStateMapper.js |
+| Dialetto `development` registrato solo per gli id non stabili (GNSS_INTEGRITY) | [x] | main-mavlink.js |
+| RSSI/LQ sotto LINK, satelliti+HDOP sotto gli alert GPS | [x] | js/ui/AnnunciatorPanel.js |
+| Sequenza di allarmi casuali nella demo | [x] | js/ui/AnnunciatorPanel.js |
+| Selettore lingua EN / 中文 in SYS CONFIG, persistito | [x] | html/index.html, js/core/i18n.js |
+| Traduzione DOM via dizionario + MutationObserver, ritorno esatto all'inglese | [x] | js/core/i18n.js, js/core/lang-zh.js |
+| Fallback font CJK con `html[lang=zh-CN]` | [x] | css/variables.css |
+| `GNSS_INTEGRITY` da ArduPilot stable | [ ] | il firmware non lo emette ancora; jam/spoof oggi solo via STATUSTEXT |
 
 ---
 

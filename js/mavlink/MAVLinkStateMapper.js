@@ -156,10 +156,14 @@ export function mapMessageToState(msgId, data) {
         case 132: mapDistanceSensor(data); break;
         case 136: mapTerrainReport(data); break;
         case 168: mapWind(data); break;
+        case 191: mapMagCalProgress(data); break;
+        case 192: mapMagCalReport(data); break;
+        case 193: mapEkfStatusReport(data); break;
         case 241: mapVibration(data); break;
         case 242: mapHomePosition(data); break;
         case 246: mapAdsbVehicle(data); break;
         case 253: mapStatusText(data); break;
+        case 441: mapGnssIntegrity(data); break;
     }
 }
 
@@ -171,6 +175,7 @@ function mapHeartbeat(data) {
     STATE.autopilotType = data.autopilot;
     STATE.vehicleType = data.type;
     STATE.armed = (data.baseMode & 128) !== 0; // MAV_MODE_FLAG_SAFETY_ARMED = 128
+    if (Number.isFinite(data.systemStatus)) STATE.systemStatus = data.systemStatus;
     STATE.flightModeNum = data.customMode;
     STATE.flightMode = getFlightModeName(data.customMode, data.type);
 }
@@ -206,6 +211,50 @@ function mapSysStatus(data) {
     if (Number.isFinite(data.dropRateComm)) {
         STATE.linkQuality = Math.max(0, Math.min(100, 100 - data.dropRateComm / 100)); // percent
     }
+    // Sensor health bitmasks. Bit 31 (EXTENSION_USED) pushes the uint32 past
+    // 2^31; `>>> 0` keeps it unsigned so the annunciator's bit tests hold.
+    if (Number.isFinite(data.onboardControlSensorsPresent)) {
+        STATE.sensorsPresent = data.onboardControlSensorsPresent >>> 0;
+        STATE.sensorsEnabled = (data.onboardControlSensorsEnabled || 0) >>> 0;
+        STATE.sensorsHealth  = (data.onboardControlSensorsHealth  || 0) >>> 0;
+        STATE.sysStatusTime = Date.now();
+    }
+}
+
+// EKF_STATUS_REPORT (193, ArduPilot). Mission Planner grades the largest of
+// the variances (velocity, horizontal/vertical position, compass, terrain):
+// > 0.5 amber, > 0.8 red. Airspeed variance is an extension and is left out
+// so a plane without a pitot doesn't trip the light.
+function mapEkfStatusReport(data) {
+    if (!Number.isFinite(data.flags)) return;
+    STATE.ekfFlags = data.flags;
+    const vars = [data.velocityVariance, data.posHorizVariance, data.posVertVariance,
+                  data.compassVariance, data.terrainAltVariance];
+    let max = 0;
+    for (const v of vars) if (Number.isFinite(v) && v > max) max = v;
+    STATE.ekfVariance = max;
+    STATE.ekfCompassVariance = Number.isFinite(data.compassVariance) ? data.compassVariance : 0;
+    STATE.ekfDataTime = Date.now();
+}
+
+// GNSS_INTEGRITY (441, development dialect): receiver-reported jamming and
+// spoofing state. Registered in main-mavlink.js alongside the stable dialects.
+function mapGnssIntegrity(data) {
+    if (!Number.isFinite(data.jammingState)) return;
+    STATE.gnssJamming  = data.jammingState;
+    STATE.gnssSpoofing = Number.isFinite(data.spoofingState) ? data.spoofingState : 0;
+    STATE.gnssIntegrityTime = Date.now();
+}
+
+// MAG_CAL_PROGRESS (191) streams at a few Hz for the whole calibration;
+// MAG_CAL_REPORT (192) closes it. The timestamp doubles as an "in progress"
+// flag with a staleness timeout in the annunciator.
+function mapMagCalProgress() {
+    STATE.magCalTime = Date.now();
+}
+
+function mapMagCalReport() {
+    STATE.magCalTime = 0;
 }
 
 // Tracks the last time GLOBAL_POSITION_INT (msg 33) was received. GPS_RAW_INT
@@ -215,7 +264,7 @@ let _lastGlobalPosTs = 0;
 const GLOBAL_POS_STALE_MS = 2000;
 
 function mapGpsRawInt(data) {
-    if (Number.isFinite(data.fixType)) STATE.gpsFix = data.fixType;
+    if (Number.isFinite(data.fixType)) { STATE.gpsFix = data.fixType; STATE.gpsDataTime = Date.now(); }
     if (Number.isFinite(data.satellitesVisible)) STATE.gpsNumSat = data.satellitesVisible;
     // eph is uint16 HDOP*100; 65535 = unknown
     if (Number.isFinite(data.eph) && data.eph !== 65535) STATE.gpsHdop = data.eph / 100;

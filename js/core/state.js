@@ -79,6 +79,33 @@ export const STATE = {
     statusText: '',
     statusSeverity: 0,
 
+    // ── Vehicle health (feeds the annunciator column) ────────────────────
+    // HEARTBEAT.system_status (MAV_STATE): 5 = CRITICAL, 6 = EMERGENCY mean
+    // the autopilot is in a failsafe.
+    systemStatus: 0,
+    // SYS_STATUS sensor bitmasks (MAV_SYS_STATUS_SENSOR). A sensor is "bad"
+    // when it is present and enabled but not healthy — Mission Planner's
+    // "Bad X Health" rule.
+    sensorsPresent: 0,
+    sensorsEnabled: 0,
+    sensorsHealth: 0,
+    sysStatusTime: 0,   // ms timestamp of last SYS_STATUS (0 = never)
+    gpsDataTime: 0,     // ms timestamp of last GPS_RAW_INT (0 = never)
+    // EKF_STATUS_REPORT (193): flags bitmask + the largest of the five
+    // variances, which is what Mission Planner grades (>0.5 amber, >0.8 red).
+    ekfFlags: 0,
+    ekfVariance: 0,
+    ekfCompassVariance: 0,
+    ekfDataTime: 0,
+    // GNSS_INTEGRITY (441): GPS_JAMMING_STATE / GPS_SPOOFING_STATE
+    // (0 unknown, 1 ok, 2 mitigated, 3 detected).
+    gnssJamming: 0,
+    gnssSpoofing: 0,
+    gnssIntegrityTime: 0,
+    // MAG_CAL_PROGRESS keeps this fresh while a compass calibration runs;
+    // MAG_CAL_REPORT zeroes it.
+    magCalTime: 0,
+
     // Rangefinder / LiDAR
     rangefinderDist: null, // meters, null = no data
 
@@ -264,6 +291,15 @@ export function resetReplayState() {
     STATE.rallyPoints = [];
     STATE.statusText = '';
     STATE.statusSeverity = 0;
+
+    STATE.systemStatus = 0;
+    STATE.sensorsPresent = 0; STATE.sensorsEnabled = 0; STATE.sensorsHealth = 0;
+    STATE.sysStatusTime = 0;
+    STATE.gpsDataTime = 0;
+    STATE.ekfFlags = 0; STATE.ekfVariance = 0; STATE.ekfCompassVariance = 0;
+    STATE.ekfDataTime = 0;
+    STATE.gnssJamming = 0; STATE.gnssSpoofing = 0; STATE.gnssIntegrityTime = 0;
+    STATE.magCalTime = 0;
 
     STATE.rangefinderDist = null;
 

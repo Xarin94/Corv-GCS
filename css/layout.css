@@ -39,8 +39,10 @@
     pointer-events: none;
     display: grid;
     /* Side columns hold the data tapes; they widen with the window so the
-       fluid type inside them never has to wrap or clip. */
-    grid-template-columns: minmax(120px, 15%) 1fr minmax(120px, 15%);
+       fluid type inside them never has to wrap or clip. The narrow second
+       column is the annunciator strip — health icons on the inboard side of
+       the airspeed tape, between the readouts and the HUD symbology. */
+    grid-template-columns: minmax(120px, 15%) var(--annun-w) 1fr minmax(120px, 15%);
     grid-template-rows: auto 1fr auto;
     /* The right gutter also clears the 24px sidebar toggle tab, which is
        fixed at right:0 and vertically centred — it was sitting on top of

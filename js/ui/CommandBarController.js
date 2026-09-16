@@ -4,6 +4,7 @@
  */
 
 import { STATE } from '../core/state.js';
+import { t } from '../core/i18n.js';
 import { getGPSFixName, getAvailableFlightModes, getVehicleTypeName } from '../mavlink/MAVLinkStateMapper.js';
 import {
     armVehicle, disarmVehicle, setFlightMode,
@@ -228,24 +229,24 @@ export function initCommandBar() {
             const aglAlt = Number.isFinite(STATE.homeAlt) ? (STATE.rawAlt - STATE.homeAlt) : 0;
             const flying = aglAlt > 2 || STATE.gs > 1.5 || STATE.as > 1.5;
             const choice = await showConfirmDialog({
-                title: 'DISARM the vehicle?',
-                detail: 'Sends MAV_CMD_COMPONENT_ARM_DISARM (400) with param1=0. The autopilot refuses a normal disarm while the vehicle is flying or not landed.'
-                    + (flying ? ' The vehicle currently looks airborne — a normal disarm will most likely be rejected.' : ''),
-                forceDetail: 'FORCE DISARM sends param2=21196: it bypasses the disarm checks and cuts the motors immediately, in flight too. The vehicle will fall.',
-                confirmLabel: 'DISARM',
-                forceLabel: 'FORCE DISARM'
+                title: t('DISARM the vehicle?'),
+                detail: t('Sends MAV_CMD_COMPONENT_ARM_DISARM (400) with param1=0. The autopilot refuses a normal disarm while the vehicle is flying or not landed.')
+                    + (flying ? t(' The vehicle currently looks airborne — a normal disarm will most likely be rejected.') : ''),
+                forceDetail: t('FORCE DISARM sends param2=21196: it bypasses the disarm checks and cuts the motors immediately, in flight too. The vehicle will fall.'),
+                confirmLabel: t('DISARM'),
+                forceLabel: t('FORCE DISARM')
             });
             if (!choice) return;
             try { await disarmVehicle(choice === 'force'); }
             catch (e) { alert('Disarm failed: ' + e.message); }
         } else {
             const choice = await showConfirmDialog({
-                title: 'ARM the vehicle?',
-                detail: 'Ensure the area is clear. Sends MAV_CMD_COMPONENT_ARM_DISARM (400) with param1=1. The autopilot runs all pre-arm checks (GPS, EKF, compass, battery, safety switch) and refuses if any fails.'
-                    + (prearmOk ? '' : ' Pre-arm checks are currently NOT passing.'),
-                forceDetail: 'FORCE ARM sends param2=21196: it skips every pre-arm check. The props can spin with a bad EKF, no GPS fix or a failing sensor. Use only if you know exactly which check is failing and why.',
-                confirmLabel: 'ARM',
-                forceLabel: 'FORCE ARM'
+                title: t('ARM the vehicle?'),
+                detail: t('Ensure the area is clear. Sends MAV_CMD_COMPONENT_ARM_DISARM (400) with param1=1. The autopilot runs all pre-arm checks (GPS, EKF, compass, battery, safety switch) and refuses if any fails.')
+                    + (prearmOk ? '' : t(' Pre-arm checks are currently NOT passing.')),
+                forceDetail: t('FORCE ARM sends param2=21196: it skips every pre-arm check. The props can spin with a bad EKF, no GPS fix or a failing sensor. Use only if you know exactly which check is failing and why.'),
+                confirmLabel: t('ARM'),
+                forceLabel: t('FORCE ARM')
             });
             if (!choice) return;
             try { await armVehicle(choice === 'force'); }

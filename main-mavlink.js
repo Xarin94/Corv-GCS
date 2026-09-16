@@ -44,6 +44,16 @@ function ensureMAVLinkLoaded() {
             messageRegistry.set(Number(id), clazz);
         }
     }
+    // The development dialect only for ids the stable dialects don't define
+    // (GNSS_INTEGRITY 441 — GPS jamming/spoofing state for the annunciators).
+    // Never let it override a common/ardupilotmega class: development.xml
+    // carries draft revisions of stable messages with different payloads.
+    const development = mavlink.development;
+    if (development && development.REGISTRY) {
+        for (const [id, clazz] of Object.entries(development.REGISTRY)) {
+            if (!messageRegistry.has(Number(id))) messageRegistry.set(Number(id), clazz);
+        }
+    }
 }
 
 function ensureSerialLoaded() {

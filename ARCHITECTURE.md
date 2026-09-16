@@ -2,7 +2,7 @@
 
 > Desktop Ground Control Station for ArduPilot — Electron + Three.js + Leaflet
 
-**Version:** 1.5.1 | **License:** Apache-2.0 | **Repository:** [github.com/Xarin94/Corv-GCS](https://github.com/Xarin94/Corv-GCS)
+**Version:** 1.6.2 | **License:** Apache-2.0 | **Repository:** [github.com/Xarin94/Corv-GCS](https://github.com/Xarin94/Corv-GCS)
 
 Corv-GCS is a frameless Electron desktop application providing 3D terrain visualization, 2D mapping, HUD flight instruments, mission planning with undo/redo and a local mission library, FPV camera, RTK/NTRIP corrections, ADS-B traffic awareness, joystick RC override, `.tlog` flight recording, `.tlog` and ArduPilot `.bin` log replay, and offline map/elevation caching.
 
@@ -47,7 +47,8 @@ Three link protocols are supported, all normalised to MAVLink before they reach 
 │                                                                      │
 │  js/main.js ── Init + 60 FPS animation loop                         │
 │     │                                                                │
-│     ├── core/      STATE, constants, utils, RingBuffer, LRUCache     │
+│     ├── core/      STATE, constants, utils, RingBuffer, LRUCache,    │
+│     │              i18n + lang-zh (EN/ZH UI language)               │
 │     ├── mavlink/   MAVLinkManager, StateMapper, CommandSender,       │
 │     │              ConnectionManager                                 │
 │     ├── engine/    Scene3D, TrajectoryPredictor, TrajectoryCorridor, │
@@ -59,6 +60,7 @@ Three link protocols are supported, all normalised to MAVLink before they reach 
 │     ├── ui/        TabController, UIController, CommandBarController, │
 │     │              GCSSidebarController, ParametersPageController,    │
 │     │              ParamCatalog, FPVController, RotorLoadPanel,       │
+│     │              AnnunciatorPanel,                                 │
 │     │              LoadingOverlay                                     │
 │     ├── adsb/      ADSBManager                                       │
 │     ├── joystick/  JoystickManager, JoystickUI                       │
@@ -96,7 +98,9 @@ Corv-GCS/
 │   │   ├── utils.js            Math helpers (coordinates, colors, CRC)
 │   │   ├── RingBuffer.js       O(1) circular buffer (Float64Array)
 │   │   ├── LRUCache.js         Least-recently-used cache
-│   │   └── ExpressionParser.js Safe formula evaluator (whitelist, no eval)
+│   │   ├── ExpressionParser.js Safe formula evaluator (whitelist, no eval)
+│   │   ├── i18n.js             UI language switch (EN/ZH): DOM text swap + MutationObserver
+│   │   └── lang-zh.js          Simplified Chinese dictionary, keyed by English UI string
 │   ├── engine/                 3D rendering engine
 │   │   ├── Scene3D.js          Three.js scene, camera, lighting, trail
 │   │   ├── TrajectoryPredictor.js  Physics-based flight path prediction
@@ -127,6 +131,7 @@ Corv-GCS/
 │   │   ├── GCSSidebarController.js Right sidebar (connections, SITL, RTK)
 │   │   ├── ParametersPageController.js Full parameter editor
 │   │   ├── RotorLoadPanel.js    ROTOR LOAD schematic
+│   │   ├── AnnunciatorPanel.js  Health annunciators (red warnings / amber cautions)
 │   │   ├── ParamCatalog.js      Known-param name catalog (on-demand reads)
 │   │   ├── FPVController.js     FPV camera overlay & settings
 │   │   └── LoadingOverlay.js    Splash screen with loading progress
@@ -214,6 +219,7 @@ Corv-GCS/
 | `RingBuffer.js` | `RingBuffer`, `MultiChannelRingBuffer` | O(1) circular buffer (Float64Array) with binary search (`lowerBound`), array export, clear. Used for telemetry time-series |
 | `LRUCache.js` | `LRUCache` | Least-recently-used eviction cache for terrain satellite textures. Prevents GPU memory exhaustion |
 | `ExpressionParser.js` | `compileExpression()`, `validateExpression()`, `getAvailableFields()`, `ExpressionError` | Safe math expression evaluator (whitelist-based, no eval) for user-supplied formulas |
+| `i18n.js` | `initI18n()`, `setLanguage()`, `getLanguage()`, `t()` | UI language (EN/ZH). Swaps DOM text nodes and title/placeholder attributes against the dictionary, keeps translating controller-written text through a MutationObserver, restores the exact English on switch-back. Code comments and docs stay English |
 
 ### 3.3 MAVLink (`js/mavlink/`)
 

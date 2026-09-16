@@ -215,6 +215,107 @@ button.ui-btn.recording {
     100% { color: #ff2020; }
 }
 
+/* ANNUNCIATOR COLUMN — the CAS/master-caution strip. Warnings (red) hang
+   from the top of the tape row, cautions (amber) stack up from the top edge
+   of the mini-map, so the two classes never interleave and the eye learns
+   where each lives. No boxes: a stroked glyph over the scene, outlined the
+   same way the tape text is. */
+#annunciator-col {
+    grid-column: 2;
+    grid-row: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    /* Clear the mini-map, which floats in the same corner outside the grid */
+    padding-bottom: calc(var(--minimap-h) + var(--gutter));
+    box-sizing: border-box;
+    min-height: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.annun-list {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(4px, 0.9vh, 12px);
+    min-height: 0;
+}
+
+.annun-list.annun-cautions {
+    justify-content: flex-end;
+}
+
+.annun {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    width: var(--annun-w);
+    pointer-events: auto;
+    cursor: default;
+    line-height: 1;
+}
+
+.annun svg {
+    width: calc(var(--annun-w) * 0.74);
+    height: calc(var(--annun-w) * 0.74);
+    fill: none;
+    stroke: currentColor;
+    /* Thin at this size: the glyphs are 24-unit paths blown up 3-4x, and a
+       heavier stroke turns them into blobs over terrain. */
+    stroke-width: 1.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    /* Hard 1px edge, like --text-outline, not a glow */
+    filter: drop-shadow(0 0 1px #000) drop-shadow(0 0 1px #000);
+}
+
+.annun .annun-lbl {
+    font-family: var(--font-ui);
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-align: center;
+    white-space: nowrap;
+    text-shadow: var(--text-outline);
+}
+
+/* Quality readout under the label (RSSI for link, sats/HDOP for GPS) — data
+   face, steady white so the number stays legible through the flash. */
+.annun .annun-val {
+    font-family: var(--font-data);
+    font-size: var(--fs-sm);
+    color: var(--hud-text);
+    text-align: center;
+    white-space: pre-line;
+    line-height: 1.15;
+    text-shadow: var(--text-outline);
+    font-variant-numeric: tabular-nums;
+}
+
+.annun .annun-val:empty {
+    display: none;
+}
+
+/* Warning: red, fast flash. Caution: amber, slower — the rate is a second
+   cue after the colour. steps() keeps the flash crisp rather than fading. */
+.annun-warn {
+    color: #ff2a2a;
+    animation: annun-flash 0.7s steps(1, end) infinite;
+}
+
+.annun-caut {
+    color: #ffb300;
+    animation: annun-flash 1.2s steps(1, end) infinite;
+}
+
+@keyframes annun-flash {
+    0%, 55%   { opacity: 1; }
+    56%, 100% { opacity: 0.22; }
+}
+
 /* DATA TAPES */
 .tape-col {
     display: flex;
@@ -355,7 +456,7 @@ button.ui-btn.recording {
    sits over the outer edge of the cluster and well clear of the HUD's
    vertical-speed tapes. */
 .bottom-bar-group {
-    grid-column: 3 / 4;
+    grid-column: 4 / 5;
     grid-row: 3 / 4;
     align-self: end;
     justify-self: end;
