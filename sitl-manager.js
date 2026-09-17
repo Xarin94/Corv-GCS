@@ -19,7 +19,11 @@ const VEHICLE_MAP = {
     // Symmetric 12S tricopter (3x Hobbywing X8 G2), stock arducopter firmware.
     // Physics (mass, battery, thrust) come from tri12s.json.
     tri12s: { binary: 'arducopter', model: 'tri:tri12s.json' },
-    plane:   { binary: 'arduplane',   model: 'plane' },
+    // plane-jet: ArduPilot's heavy jet variant of the SITL plane — 22 kg, 20 kgf
+    // of thrust, level flight around 100 m/s. The stock 'plane' is a 2 kg foamie
+    // that tops out near 35 m/s, so a 300 km/h cruise target just pins the
+    // throttle at 100 %. Tuning comes from default_params_plane.parm.
+    plane:   { binary: 'arduplane',   model: 'plane-jet' },
     rover:   { binary: 'ardurover',   model: 'rover' },
     sub:     { binary: 'ardusub',     model: 'vectored' },
     heli:    { binary: 'arducopter',  model: 'heli' },
