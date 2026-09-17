@@ -300,80 +300,119 @@
     </div><!-- end #tab-flight-data -->
 
     <!-- ==================== TAB CONTENT: FLIGHT PLAN ==================== -->
+    <!-- Route editor: segment cards on the left, map with the tool
+         palette in the middle, elevation profile along the bottom. All of it is
+         driven by js/ui/FlightPlanController.js -->
     <div id="tab-flight-plan" class="tab-content">
-        <div class="tab-panel-layout">
-            <div id="mission-map-full" class="mission-map-container"></div>
-            <div id="mission-waypoint-panel" class="mission-wp-panel">
-                <div class="panel-header">MISSION WAYPOINTS</div>
-                <div class="mission-wp-toolbar">
-                    <select id="mission-wp-cmd" class="cfg-select cfg-select-sm">
-                        <!-- Populated dynamically from MissionCommands.js -->
-                    </select>
-                    <div class="mission-wp-alt-row">
-                        <label>ALT</label>
-                        <input type="number" id="mission-default-alt" class="gcs-input input-narrow" value="100" step="1">
-                        <span class="mission-info-text">m</span>
+        <div class="fp-layout">
+            <aside class="fp-side" id="fp-side">
+                <div class="fp-route-card" id="fp-route-card">
+                    <div class="fp-route-head">
+                        <span class="fp-status" id="fp-status" data-state="empty" title="Route status"></span>
+                        <input type="text" id="fp-route-name" class="fp-route-name" placeholder="Untitled route" spellcheck="false" autocomplete="off">
+                        <button class="fp-icon-btn" id="fp-camera-btn" title="Camera &amp; gimbal">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg>
+                        </button>
+                        <button class="fp-icon-btn" id="fp-route-settings" title="Route settings">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+                        </button>
+                        <button class="fp-icon-btn" id="fp-route-menu" title="Route menu">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+                        </button>
+                    </div>
+                    <div class="fp-stats">
+                        <div class="fp-stat"><span class="fp-stat-val" id="fp-stat-len">--</span><span class="fp-stat-lbl">LENGTH</span></div>
+                        <div class="fp-stat"><span class="fp-stat-val" id="fp-stat-time">--</span><span class="fp-stat-lbl">TIME</span></div>
+                        <div class="fp-stat"><span class="fp-stat-val" id="fp-stat-wp">--</span><span class="fp-stat-lbl">WAYPOINTS</span></div>
+                        <div class="fp-stat"><span class="fp-stat-val" id="fp-stat-alt">--</span><span class="fp-stat-lbl">MAX AGL</span></div>
+                    </div>
+                    <div class="fp-chips" id="fp-chips" title="Route settings"></div>
+                    <div class="fp-issues" id="fp-issues"></div>
+                    <div class="fp-route-btns">
+                        <button class="gcs-btn fp-btn-primary" id="fp-upload" title="Write the calculated route to the autopilot">UPLOAD</button>
+                        <button class="gcs-btn" id="fp-download" title="Read the mission stored on the autopilot">READ</button>
+                    </div>
+                    <div class="fp-route-btns">
+                        <button class="gcs-btn" id="fp-save" title="Save to the local mission library">SAVE</button>
+                        <button class="gcs-btn" id="fp-library" title="Open the local mission library">LIBRARY</button>
                     </div>
                 </div>
-                <div id="mission-wp-edit-hint" class="mission-wp-edit-hint" style="display:none;">
-                    <span>Editing WP <b id="mission-wp-edit-idx">-</b> — change CMD/ALT above</span>
-                    <button id="mission-wp-deselect" class="gcs-btn-sm" title="Deselect">ESC</button>
+
+                <div class="fp-list-head">
+                    <span class="fp-seg-title">SEGMENTS <span id="fp-seg-count"></span></span>
+                    <span class="fp-seg-tools">
+                        <button class="fp-icon-btn" id="fp-undo" title="Undo (Ctrl+Z)" disabled>
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></svg>
+                        </button>
+                        <button class="fp-icon-btn" id="fp-redo" title="Redo (Ctrl+Y)" disabled>
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/></svg>
+                        </button>
+                    </span>
                 </div>
-                <div id="mission-wp-params" class="mission-wp-params" style="display:none;"></div>
-                <div id="mission-wp-list" class="mission-wp-list"></div>
-                <div class="mission-wp-info">
-                    <span id="mission-total-dist" class="mission-info-text">Dist: --</span>
-                    <span id="mission-wp-count" class="mission-info-text">WP: 0</span>
-                    <span id="mission-current-name" class="mission-info-text is-unsaved" title="Currently loaded mission">unsaved</span>
-                </div>
-                <div class="mission-wp-controls">
-                    <button class="gcs-btn" id="mission-undo" title="Undo (Ctrl+Z)" disabled>&#8630; UNDO</button>
-                    <button class="gcs-btn" id="mission-redo" title="Redo (Ctrl+Y)" disabled>REDO &#8631;</button>
-                </div>
-                <div class="mission-wp-controls">
-                    <button class="gcs-btn" id="mission-save" title="Save to the local mission library">SAVE</button>
-                    <button class="gcs-btn" id="mission-library" title="Open the local mission library">LIBRARY</button>
-                </div>
-                <div class="mission-wp-controls">
-                    <button class="gcs-btn" id="mission-upload">UPLOAD</button>
-                    <button class="gcs-btn" id="mission-download">DOWNLOAD</button>
-                </div>
-                <div class="mission-wp-controls">
-                    <button class="gcs-btn" id="mission-clear">CLEAR ALL</button>
-                    <button class="gcs-btn" id="mission-set-home">SET HOME</button>
-                </div>
-                <div class="mission-survey-section" id="mission-survey-section">
-                    <div class="panel-header">SURVEY / GRID</div>
-                    <div class="survey-row">
-                        <label>ALTITUDE (m)</label>
-                        <input type="number" id="survey-alt" class="gcs-input input-narrow" value="50" step="5" data-survey-param>
+                <div class="fp-seg-list" id="fp-seg-list"></div>
+
+                <!-- Route settings popover -->
+                <div class="fp-popover" id="fp-route-params" style="display:none;">
+                    <div class="fp-popover-head">
+                        <span>ROUTE SETTINGS</span>
+                        <button class="fp-icon-btn" id="fp-route-params-close" title="Close">&times;</button>
                     </div>
-                    <div class="survey-row">
-                        <label>FOV (°)</label>
-                        <input type="number" id="survey-fov" class="gcs-input input-narrow" value="73" step="1" min="10" max="180" data-survey-param>
+                    <div class="fp-popover-body" id="fp-route-params-body"></div>
+                    <div class="fp-popover-foot">
+                        <span class="fp-popover-lbl">TAKE-OFF POINT</span>
+                        <span id="fp-home-desc" class="fp-popover-val">vehicle home</span>
+                        <div class="fp-route-btns">
+                            <button class="gcs-btn" id="fp-home-vehicle" title="Use the vehicle's current position">VEHICLE</button>
+                            <button class="gcs-btn" id="fp-home-reset" title="Follow the vehicle's home position">AUTO</button>
+                        </div>
+                        <span class="fp-popover-hint">Drag the H marker on the map to move it</span>
                     </div>
-                    <div class="survey-row">
-                        <label>OVERLAP (%)</label>
-                        <input type="number" id="survey-overlap" class="gcs-input input-narrow" value="60" step="5" min="0" max="95" data-survey-param>
-                    </div>
-                    <div class="survey-row">
-                        <label>SPACING (m)</label>
-                        <input type="number" id="survey-spacing" class="gcs-input input-narrow" value="" step="1" min="1" placeholder="auto" data-survey-param>
-                    </div>
-                    <div class="survey-row">
-                        <label>ANGLE (°)</label>
-                        <input type="number" id="survey-angle" class="gcs-input input-narrow" value="0" step="5">
-                    </div>
-                    <div class="survey-btn-row">
-                        <button class="gcs-btn" id="survey-generate">GENERATE</button>
-                        <button class="gcs-btn survey-clear-btn" id="survey-clear">CLEAR POLYGON</button>
-                    </div>
-                    <div class="survey-info" id="survey-info"></div>
                 </div>
+
+                <!-- Camera & gimbal popover -->
+                <div class="fp-popover" id="fp-camera" style="display:none;">
+                    <div class="fp-popover-head">
+                        <span>CAMERA &amp; GIMBAL</span>
+                        <button class="fp-icon-btn" id="fp-camera-close" title="Close">&times;</button>
+                    </div>
+                    <div class="fp-popover-body" id="fp-camera-body"></div>
+                    <div class="fp-derived" id="fp-camera-derived"></div>
+                    <div class="fp-popover-foot">
+                        <span class="fp-popover-hint">A red dot on the route marks every photo (trigger-by-distance along survey lanes, single shots). Hover a dot to see the ground footprint at the planned height, heading and camera pitch. While a POI is active, hover a waypoint to see the wedge the camera is looking through.</span>
+                    </div>
+                </div>
+
+                <!-- Route menu -->
+                <div class="fp-menu" id="fp-route-menu-list" style="display:none;">
+                    <button data-act="new">New route</button>
+                    <button data-act="invert">Invert direction</button>
+                    <button data-act="flatten">Convert to waypoints</button>
+                    <button data-act="fit">Zoom to route</button>
+                    <div class="fp-menu-sep"></div>
+                    <button data-act="import">Import .waypoints…</button>
+                    <button data-act="export">Export .waypoints</button>
+                    <div class="fp-menu-sep"></div>
+                    <button data-act="clear" class="is-danger">Clear route</button>
+                </div>
+                <input type="file" id="fp-import-file" accept=".waypoints,.txt,.json" style="display:none;">
+            </aside>
+
+            <div class="fp-map-wrap">
+                <div id="mission-map-full" class="mission-map-container"></div>
+                <div class="fp-tools" id="fp-tools"></div>
+                <div class="fp-map-hint" id="fp-map-hint" style="display:none;"></div>
+                <div class="fp-layers" id="fp-layers">
+                    <button class="fp-layer-btn active" id="fp-sat-toggle" title="Satellite imagery">SAT</button>
+                    <button class="fp-layer-btn active" id="fp-calc-toggle" title="Show calculated waypoints">WP</button>
+                    <button class="fp-layer-btn active" id="fp-cam-toggle" title="Show camera footprints and POI view cones">CAM</button>
+                    <button class="fp-layer-btn" id="fp-fit" title="Zoom to route">FIT</button>
+                </div>
+                <div class="fp-ctx" id="fp-ctx" style="display:none;"></div>
             </div>
         </div>
-        <div id="mission-3d-strip" class="mission-3d-strip">
+        <div id="fp-profile" class="fp-profile">
             <canvas id="mission-3d-canvas"></canvas>
+            <div class="fp-profile-tip" id="fp-profile-tip" style="display:none;"></div>
         </div>
     </div>
 

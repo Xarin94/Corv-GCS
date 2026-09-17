@@ -752,6 +752,14 @@ async function sendMAVLinkMessage(msg) {
             mavMsg.missionType = msg.missionType || 0;
             break;
         }
+        case 'MISSION_REQUEST_INT': {
+            mavMsg = new common.MissionRequestInt();
+            mavMsg.targetSystem = msg.targetSystem || 1;
+            mavMsg.targetComponent = msg.targetComponent || 1;
+            mavMsg.seq = msg.seq || 0;
+            mavMsg.missionType = msg.missionType || 0;
+            break;
+        }
         case 'MISSION_COUNT': {
             mavMsg = new common.MissionCount();
             mavMsg.targetSystem = msg.targetSystem || 1;

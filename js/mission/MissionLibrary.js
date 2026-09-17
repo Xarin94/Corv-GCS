@@ -10,6 +10,8 @@
  */
 
 import { STATE } from '../core/state.js';
+import { getRoute, replaceRoute, cloneRoute } from './RouteModel.js';
+import { itemsToRoute } from './MissionTransfer.js';
 
 let initialized = false;
 let onMissionLoaded = null;   // callback into TabController
@@ -103,7 +105,7 @@ function formatSize(bytes) {
 }
 
 /**
- * @param {Function} loadedCallback - invoked after STATE.missionItems is replaced
+ * @param {Function} loadedCallback - invoked after the route has been replaced
  */
 export function initMissionLibrary(loadedCallback) {
     onMissionLoaded = loadedCallback;
@@ -227,16 +229,17 @@ async function onListClick(e) {
                 break;
 
             case 'overwrite': {
-                if (!STATE.missionItems.length) {
+                if (!getRoute().segments.length) {
                     alert('The current plan is empty — nothing to write over it with.');
                     return;
                 }
-                if (!await confirm(`Overwrite "${entry?.name || id}" with the current plan (${STATE.missionItems.length} WP)?`)) return;
+                if (!await confirm(`Overwrite "${entry?.name || id}" with the current plan (${getRoute().segments.length} segments, ${STATE.missionItems.length} items)?`)) return;
                 await window.missionStore.save({
                     id,
                     name: entry?.name || id,
                     notes: entry?.notes || '',
                     items: serializeItems(),
+                    route: cloneRoute(),
                     vehicleType: STATE.vehicleType,
                 });
                 currentId = id;
@@ -266,7 +269,10 @@ async function onListClick(e) {
     }
 }
 
-/** Strip runtime-only fields; seq is recomputed on load anyway. */
+/**
+ * The compiled items, stripped of runtime-only fields. They are what other tools
+ * (and the library summary) read; the editable source of truth is `route`.
+ */
 function serializeItems() {
     return STATE.missionItems.map(it => ({
         seq: it.seq,
@@ -274,6 +280,7 @@ function serializeItems() {
         lat: it.lat,
         lng: it.lng,
         alt: it.alt,
+        altMsl: it.altMsl,
         frame: it.frame,
         param1: it.param1 ?? 0,
         param2: it.param2 ?? 0,
@@ -284,19 +291,26 @@ function serializeItems() {
 }
 
 async function loadMission(id) {
-    if (STATE.missionItems.length &&
+    if (getRoute().segments.length &&
         !await confirm('Replace the current plan? Unsaved changes will be lost.')) {
         return;
     }
     const data = await window.missionStore.load(id);
-    STATE.missionItems.length = 0;
-    data.items.forEach((it, i) => {
-        STATE.missionItems.push({ ...it, seq: i });
-    });
+    // Files written before the route editor only carry compiled items — rebuild
+    // an editable route from them (waypoints, circles, actions; grids stay waypoints).
+    const route = data.route?.segments ? data.route : itemsToRoute(data.items, { name: data.name });
+    route.name = data.name || id;
+    replaceRoute(route);
     currentId = id;
     currentName = data.name || id;
     closeMissionLibrary();
     if (onMissionLoaded) onMissionLoaded();
+}
+
+/** Forget which file is open — the next SAVE asks for a name. */
+export function detachCurrentMission() {
+    currentId = null;
+    currentName = null;
 }
 
 /**
@@ -306,8 +320,8 @@ async function loadMission(id) {
  */
 export async function saveCurrentMission(opts = {}) {
     if (!window.missionStore) throw new Error('Mission store not available');
-    if (!STATE.missionItems.length) {
-        alert('No waypoints to save.');
+    if (!getRoute().segments.length) {
+        alert('Nothing to save — the route is empty.');
         return null;
     }
 
@@ -324,11 +338,13 @@ export async function saveCurrentMission(opts = {}) {
         id,
         name,
         items: serializeItems(),
+        route: cloneRoute(),
         vehicleType: STATE.vehicleType,
     });
 
     currentId = saved.id;
     currentName = saved.name;
+    getRoute().name = saved.name;
     if (isOpen()) await refresh();
     return saved;
 }

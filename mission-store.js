@@ -190,7 +190,7 @@ function rebuildIndex() {
  * Save a mission. With an `id` the existing file is overwritten (keeping its original
  * creation date); without one a new id is derived from the name, uniquified.
  */
-function saveMission({ id, name, notes, items, vehicleType, meta }) {
+function saveMission({ id, name, notes, items, route, vehicleType, meta }) {
     if (!Array.isArray(items) || items.length === 0) throw new Error('Mission is empty');
     const dir = getMissionsDir();
 
@@ -212,13 +212,16 @@ function saveMission({ id, name, notes, items, vehicleType, meta }) {
 
     const payload = {
         format: 'corv-gcs-mission',
-        version: 1,
+        version: 2,
         name: name || targetId,
         notes: notes || '',
         created,
         modified: new Date().toISOString(),
         vehicleType: vehicleType ?? null,
         meta: meta || {},
+        // v2: the editable route (segments + parameters). `items` below is the
+        // compiled MAVLink list, kept so v1 readers and the index summary still work.
+        route: route || null,
         items,
     };
 

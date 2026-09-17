@@ -2,7 +2,7 @@
 
 > Desktop Ground Control Station for ArduPilot — Electron + Three.js + Leaflet
 
-**Version:** 1.6.2 | **License:** Apache-2.0 | **Repository:** [github.com/Xarin94/Corv-GCS](https://github.com/Xarin94/Corv-GCS)
+**Version:** 1.7.0 | **License:** Apache-2.0 | **Repository:** [github.com/Xarin94/Corv-GCS](https://github.com/Xarin94/Corv-GCS)
 
 Corv-GCS is a frameless Electron desktop application providing 3D terrain visualization, 2D mapping, HUD flight instruments, mission planning with undo/redo and a local mission library, FPV camera, RTK/NTRIP corrections, ADS-B traffic awareness, joystick RC override, `.tlog` flight recording, `.tlog` and ArduPilot `.bin` log replay, and offline map/elevation caching.
 
@@ -57,15 +57,17 @@ Three link protocols are supported, all normalised to MAVLink before they reach 
 │     ├── hud/       HUDRenderer (Canvas 2D)                           │
 │     ├── maps/      MapEngine, CachedTileLayer, TileCache,            │
 │     │              OfflineDownloader                                  │
-│     ├── ui/        TabController, UIController, CommandBarController, │
-│     │              GCSSidebarController, ParametersPageController,    │
+│     ├── ui/        TabController, FlightPlanController, UIController, │
+│     │              CommandBarController, GCSSidebarController,        │
+│     │              ParametersPageController,                          │
 │     │              ParamCatalog, FPVController, RotorLoadPanel,       │
 │     │              AnnunciatorPanel,                                 │
 │     │              LoadingOverlay                                     │
 │     ├── adsb/      ADSBManager                                       │
 │     ├── joystick/  JoystickManager, JoystickUI                       │
 │     ├── logging/   TlogLogger, LogReplayController                   │
-│     ├── mission/   MissionCommands, MissionHistory, MissionLibrary   │
+│     ├── mission/   RouteModel, RouteCompiler, MissionTransfer,       │
+│     │              MissionCommands, MissionHistory, MissionLibrary   │
 │     └── serial/    SerialHandler (CORV binary protocol v7/v8)        │
 │                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
@@ -126,7 +128,8 @@ Corv-GCS/
 │   │   └── ConnectionManager.js Connection lifecycle orchestrator
 │   ├── ui/                      UI controllers
 │   │   ├── UIController.js      Telemetry display, HUD cell config
-│   │   ├── TabController.js     Tab navigation, mission editor, survey
+│   │   ├── TabController.js     Tab navigation, Setup / Sys Config pages
+│   │   ├── FlightPlanController.js Flight Plan page: tools, segment cards, inspector, map layers, elevation profile
 │   │   ├── CommandBarController.js Bottom bar (ARM/mode/status)
 │   │   ├── GCSSidebarController.js Right sidebar (connections, SITL, RTK)
 │   │   ├── ParametersPageController.js Full parameter editor
@@ -144,8 +147,12 @@ Corv-GCS/
 │   │   ├── TlogLogger.js        .tlog auto-recording (start/stop bridge to main)
 │   │   └── LogReplayController.js Log Replay UI: open file, timeline scrub, full-track trail
 │   ├── mission/
+│   │   ├── RouteModel.js        Route document: segment & action catalogue, route params, geometry helpers
+│   │   ├── RouteCompiler.js     Route → MAVLink items: lanes, passes, loiters, terrain following, validation, stats
+│   │   ├── CameraFootprint.js   Pinhole camera → ground footprint, POI aiming, photo positions along a lane
+│   │   ├── MissionTransfer.js   Mission download protocol + items → route conversion
 │   │   ├── MissionCommands.js   MAVLink command catalog (100+ commands)
-│   │   ├── MissionHistory.js    Undo/redo (snapshot based)
+│   │   ├── MissionHistory.js    Undo/redo (route snapshots)
 │   │   └── MissionLibrary.js    Saved-mission browser (load/save/overwrite)
 │   └── serial/
 │       └── SerialHandler.js     CORV binary protocol v7/v8 (WebSerial)
@@ -163,7 +170,7 @@ Corv-GCS/
 │       ├── plotly-container.html Trace checkboxes + chart
 │       ├── loading-overlay.html  Animated splash screen
 │
-├── css/                         17 modular CSS files
+├── css/                         18 modular CSS files
 │   ├── style.css                Master import file
 │   ├── variables.css            Design tokens (dark/light themes)
 │   ├── base.css                 Resets & scrollbar styles
@@ -171,7 +178,8 @@ Corv-GCS/
 │   ├── components.css           Buttons, data cells, controls
 │   ├── panels.css               Floating panels (glass effect)
 │   ├── title-bar.css            Custom window title bar
-│   ├── tabs.css                 Tab navigation
+│   ├── tabs.css                 Tab navigation, Setup / Sys Config pages
+│   ├── flight-plan.css          Route editor (segment cards, inspector, map chrome, profile)
 │   ├── command-bar.css          Bottom command bar
 │   ├── gcs-sidebar.css          Right sidebar
 │   ├── plotly.css               Chart controls & trace config
@@ -264,7 +272,8 @@ Corv-GCS/
 | File | Key Exports | Purpose |
 |------|-------------|---------|
 | `UIController.js` | `updateUI()`, `initHudCells()`, `toggleConfig()`, `toggleTelemetry()`, `updateOffset()`, `updateAGLDisplay()`, `setStatusMessage()`, `updateFPSDisplay()`, `initMoreMenu()`, `initConfigAutoClose()` | Telemetry display updates (40+ fields), configurable 2×3 HUD cell grid, config/telemetry panel toggles, FPS counter. Persists cell config to localStorage |
-| `TabController.js` | `initTabs()`, `getCurrentTab()`, `initSurveyGrid()` | Tab-based page navigation (Flight Data, Flight Plan, Setup, Sys Config), mission editor UI, survey grid planner |
+| `TabController.js` | `initTabs()`, `switchTab()`, `getCurrentTab()` | Tab-based page navigation (Flight Data, Flight Plan, Setup, Sys Config), Setup and Sys Config pages |
+| `FlightPlanController.js` | `initFlightPlan()`, `onFlightPlanShown()`, `scheduleCompile()` | Flight Plan page: tool palette (waypoint, circle, perimeter, area scan, corridor, POI, landing), drawing on the Leaflet map, segment cards with an inline inspector and actions, drag handles (vertices, mid-points, centre, radius), context menu, route card with statistics and validation, route settings, upload/read/import/export, elevation profile with hover sync |
 | `CommandBarController.js` | `initCommandBar()`, `updateCommandBar()` | Bottom command bar: ARM/DISARM button, flight mode dropdown (color-coded: yellow=manual, cyan=assisted, blue=auto, orange=RTL), battery/GPS/link indicators, flight timer |
 | `GCSSidebarController.js` | `initGCSSidebar()`, `updateGCSSidebar()`, `getTargetCoords()` | Right sidebar: connection panel (serial/UDP/TCP port selection), SITL launcher, RTK base station, telemetry forwarding config |
 | `ParametersPageController.js` | `initParamsPage()`, `toggleParamsPage()`, `formatParamValue()` | Full ArduPilot parameter editor with search, inline edit, save. Side catalog reads single parameters via `PARAM_REQUEST_READ` (serialized queue + retries) so a slow link never needs the full list |
@@ -281,7 +290,11 @@ Corv-GCS/
 | `joystick/JoystickUI.js` | `initJoystick()` | Joystick configuration UI: gamepad selection, axis live display, channel mapping |
 | `logging/TlogLogger.js` | `TlogLogger` class | `.tlog` flight recording (raw MAVLink v2 packet capture). Auto-starts on MAVLink connect, auto-stops on disconnect — the actual file write happens in `main-mavlink.js`; this class is a renderer-side controller over IPC |
 | `logging/LogReplayController.js` | `initLogReplay()` | Log Replay UI controller. Wires the GCS sidebar (OPEN FILE / UNLOAD / file info) and the bottom-right timeline (play/pause, scrubber, current/total). Gates visibility on connection state — replay is only allowed while disconnected, and going live auto-unloads. On file load, swaps to a dedicated replay model, draws the full flight trail in red (slightly under the camera plane), and on backward seek invokes `resetReplayState()` + clears the trail |
-| `mission/MissionHistory.js` | `commitMission()`, `undoMission()`, `redoMission()`, `resetMissionHistory()` | Snapshot undo/redo for STATE.missionItems. Every editor mutation calls commitMission() afterwards; commits that change nothing are ignored |
+| `mission/RouteModel.js` | `SEGMENT_TYPES`, `ACTION_TYPES`, `ROUTE_PARAM_FIELDS`, `getRoute()`, `replaceRoute()`, `createSegment()`, `createAction()`, `surveyGeometry()`, geometry helpers | The editable flight-plan document: route parameters + ordered segments, each with base points, typed parameters and actions. The catalogues are schema objects that drive the inspector |
+| `mission/RouteCompiler.js` | `compileRoute(route, ctx)`, `corridorOutline()` | Pure "calculate route" step: expands segments to navigation points (boustrophedon lanes at any heading, corridor passes, loiter turns, perimeter), emits DO_/CONDITION_ items for actions, subdivides legs for terrain following (AGL tolerance), resolves AGL/AMSL/relative altitudes, validates (below terrain, clearance, ceiling, item limit) and computes length / duration / photos / GSD |
+| `mission/CameraFootprint.js` | `groundFootprint()`, `aimAt()`, `photosAlong()` | Camera preview geometry: the four corner rays of the field of view intersected with a flat ground plane at the vehicle's terrain elevation (nadir → rectangle, tilted → trapezoid, rays above the horizon clamped), gimbal aim towards a POI, and photo positions every trigger distance along a lane |
+| `mission/MissionTransfer.js` | `downloadMission()`, `itemsToRoute()` | MISSION_REQUEST_LIST → COUNT → REQUEST_INT/ITEM_INT → ACK download, and the reverse mapping from flat MAVLink items to editable segments (waypoints, circles, POIs, landing; DO commands become actions; unknown commands are kept as raw actions) |
+| `mission/MissionHistory.js` | `commitMission()`, `undoMission()`, `redoMission()`, `resetMissionHistory()` | Snapshot undo/redo of the route document. Every editor mutation calls commitMission() afterwards; commits that change nothing are ignored |
 | `mission/MissionLibrary.js` | `initMissionLibrary()`, `openMissionLibrary()`, `saveCurrentMission()`, `getCurrentMissionName()` | Local mission library UI: list, load, overwrite, rename, delete. Talks to mission-store.js over IPC |
 | `mission/MissionCommands.js` | `MISSION_COMMANDS`, `getCmdDef()`, `getCmdName()`, `getCmdParams()`, `isNavCmd()`, `getGroupedCommands()` | MAVLink mission command catalog (100+ commands). Categories: Navigation, Condition, DO, Camera/Gimbal. Used by mission planner UI and CommandSender.uploadMission() |
 | `serial/SerialHandler.js` | `connectSerial()` | CORV binary protocol v7/v8 via WebSerial API (460800 baud). Custom packets: `[0xA5, 0x5A, TYPE, LEN, PAYLOAD, CRC16]`. Decodes Navigation / Debug (with particle filter ESS/spread/N) / Raw Sensor frames. Re-emits as synthetic MAVLink (msgs 30/33/74/26/24/0) so the renderer telemetry pipeline is shared |
@@ -560,8 +573,25 @@ Four completely different data sources converge on a single render path:
 
 All four emit MAVLink-shaped messages onto the same `mavlink-message` IPC channel → `MAVLinkManager.handleMessage()` → `mapMessageToState()` → STATE. UI modules read STATE without knowing the source. This is what makes the velocity priority chain, the HUD, the 3D view and the charts work uniformly across every link type — **and it is the contract any new protocol adapter must satisfy**: decode in the main process, emit MAVLink, touch nothing in the renderer.
 
-### 5.9 Snapshot Undo/Redo
-`mission/MissionHistory.js` keeps whole-mission snapshots rather than an inverse-command log. A mission is at most a few hundred small plain objects, so cloning costs less than the bookkeeping — and, more importantly, it cannot drift out of sync with `STATE.missionItems`, which a dozen call sites in `TabController` mutate directly. Editors mutate first and call `commitMission('label')` afterwards; a commit that changes nothing is ignored, so handlers that may be no-ops are safe to instrument. Snapshots are applied **in place** because other modules hold a reference to the array.
+### 5.9 Route → Items: the Planning Pipeline
+On the Flight Plan page the operator never edits MAVLink commands: they draw **segments** (a waypoint, a circle, a perimeter, an area to scan, a corridor to map, a POI, a landing) and set **route parameters** (altitude mode AGL / AMSL / relative, default altitude and speed, automatic take-off, what happens after the last segment, ceiling and minimum clearance). A quarter of a second after the last edit `RouteCompiler.compileRoute()` turns the route into `STATE.missionItems`:
+
+```
+route (RouteModel) ──compileRoute()──▶ items + stats + issues + navPath
+        ▲                                   │
+        │ edit / drag / inspector            ├─▶ STATE.missionItems  → 3D trajectory, mini-map, library, UPLOAD
+        │                                   ├─▶ route card (length, time, waypoints, max AGL, status LED)
+   FlightPlanController ◀───────────────────┴─▶ map layers + elevation profile
+```
+
+The compiler is a pure function of `(route, { terrain, home, vehicleType })`. In AGL mode it subdivides every leg with a Douglas-Peucker pass over the deviation between the straight line and the terrain-following altitude, so the uploaded straight segments stay within the AGL tolerance of the ground; in AMSL / relative modes it only validates clearance. Every located item carries `alt` (AGL, the legacy convention the 3D scene relies on), `altMsl` and `altRel`; upload sends frame 0 with `altMsl`. Errors (path below terrain, item limit) turn the status LED red and make UPLOAD ask for confirmation; warnings (clearance, ceiling, missing elevation data) turn it amber.
+
+**Camera preview.** The route carries one camera profile (`params.camera`: sensor size, focal length, pixel count — presets or custom — plus default gimbal pitch/yaw), edited from the CAMERA popover. Survey lane spacing, trigger distance and GSD derive from it. The compiler also emits `camera.photos` (one entry per trigger-by-distance shot along area/corridor lanes and per single-shot action, with its ground footprint at the planned AGL height, lane heading and gimbal attitude in force at that point) and `camera.cones` (from every base point flown while a POI is active: the wedge the camera looks through and the frame on the ground). The map draws a red dot per photo on one canvas layer and shows the footprint / wedge only while the mouse is over the dot or the waypoint, so a dense survey stays legible.
+
+`itemsToRoute()` is the inverse for missions read from the vehicle, imported `.waypoints` files or v1 library files: navigation commands become waypoint / circle / landing segments, DO_ commands become actions on the preceding segment, and an area scan read back stays a list of waypoints (the generating shape is not recoverable from the flat list).
+
+### 5.10 Snapshot Undo/Redo
+`mission/MissionHistory.js` keeps whole-route snapshots rather than an inverse-command log. A route is a handful of segments with a few hundred points at most, so cloning costs less than the bookkeeping — and, more importantly, it cannot drift out of sync with the route object, which the editor mutates directly from drag handles, inspector fields and the context menu. Editors mutate first and call `commitMission('label')` afterwards; a commit that changes nothing is ignored, so handlers that may be no-ops are safe to instrument. Snapshots are applied **in place** through `replaceRoute()` because other modules hold a reference to the document.
 
 ---
 
@@ -590,14 +620,22 @@ Read-only inputs the operator supplies stay outside `data/`: `topo/` or `topogra
 
 ```json
 {
-  "format": "corv-gcs-mission", "version": 1,
+  "format": "corv-gcs-mission", "version": 2,
   "name": "Patrol circuit", "notes": "",
   "created": "2026-08-06T10:00:00.000Z", "modified": "2026-08-06T12:30:00.000Z",
   "vehicleType": 1, "meta": {},
-  "items": [ { "seq": 0, "command": 16, "lat": 45.0, "lng": 11.0, "alt": 100, "frame": 0,
+  "route": {
+    "name": "Patrol circuit",
+    "params": { "altMode": "agl", "defaultAlt": 100, "defaultSpeed": 10, "takeoff": true, "endAction": "rtl", "..." : "..." },
+    "segments": [ { "id": "s…", "type": "area", "points": [ { "lat": 45.0, "lng": 11.0 } ],
+                    "params": { "angle": 45, "sideOverlap": 70, "..." : "..." }, "actions": [] } ]
+  },
+  "items": [ { "seq": 0, "command": 16, "lat": 45.0, "lng": 11.0, "alt": 100, "altMsl": 612, "frame": 0,
                "param1": 0, "param2": 0, "param3": 0, "param4": 0 } ]
 }
 ```
+
+`route` is the editable document; `items` is the compiled MAVLink list, kept for the index summary and for other tools. A v1 file (items only) is rebuilt into a route on load.
 
 The `id` is the filename stem, derived from the name on first save and stable across renames —
 so overwriting keeps writing the same file instead of accumulating copies.

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.6.2-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.7.0-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"/>
   <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
   <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
@@ -42,16 +42,26 @@ The interface is available in **English and Simplified Chinese** (SYS CONFIG →
 - Keyboard view toggles: `T` tilt +90°, `P` trajectory, `M` satellite, `L` sunlight
 
 ### Mission Planning
-- Full mission editor with **40+ ArduPilot MAV_CMD commands** organized by category:
-  - Navigation (waypoints, loiter, takeoff, land, RTL, VTOL transitions)
-  - Conditions (delay, altitude change, yaw)
-  - DO commands (set mode, jump, speed change, ROI, mount control)
-  - Camera/Gimbal (trigger distance, shutter, capture)
-- **Polygon survey tool** — draw an area and auto-generate survey grid waypoints
-- **Elevation profile** strip along the mission path
-- Terrain-relative altitude support (AGL)
-- Mission upload to vehicle
-- **Undo / redo** on every edit (`Ctrl+Z` / `Ctrl+Y`), 100 steps deep
+- **Segment-based route editor**: draw high-level *segments* instead of typing MAVLink commands —
+  **Waypoint**, **Circle** (loiter), **Perimeter**, **Area scan** (photogrammetry lawn-mower at any heading,
+  camera model with overlap / GSD, overshoot, double grid, automatic trigger-by-distance), **Corridor**
+  (parallel passes along a polyline), **Point of interest** (camera ROI) and **Landing**
+- Pick the tool, click on the map, tune it in the inspector under its card; every segment can carry
+  **actions** (camera trigger, photo, gimbal attitude, heading, wait, speed, servo, relay)
+- **Route parameters**: altitude mode **AGL (terrain following) / AMSL / relative**, default altitude and
+  speed, straight or spline turns, automatic take-off, RTL / land / nothing at the end, ceiling and minimum
+  clearance
+- The route is **recalculated automatically** after every edit: terrain-following waypoints within the AGL
+  tolerance, length, flight time, photo count, min/max AGL, and **validation** — a green / amber / red status
+  with the list of problems (path below terrain, clearance, ceiling, missing elevation data, item limit)
+- Drag vertices, mid-points, the whole figure or a circle's radius on the map; right-click for insert /
+  delete; undo/redo; segment cards reorder by drag
+- **Camera & gimbal menu**: camera presets (DJI, Sony, MicaSense…) or custom sensor / focal / pixels, default
+  gimbal pitch — lane spacing, trigger distance and GSD follow from it. A red dot marks every photo on the
+  route; hover it to see the **ground footprint** at the planned height, heading and camera tilt, and hover a
+  waypoint flown with an active **POI** to see the wedge the camera is looking through
+- **Elevation profile** with terrain, clearance floor, per-segment highlight and hover synchronised with the map
+- Upload to the vehicle, **read** the mission stored on it, import / export Mission Planner `.waypoints`
 - **Local mission library** — save, recall, overwrite, rename and delete missions stored
   next to the installation, with an `index.json` catalogue rebuilt from the folder contents
 
@@ -133,7 +143,7 @@ The interface is available in **English and Simplified Chinese** (SYS CONFIG →
 *Aviation-style HUD with artificial horizon, airspeed, altitude, and G-load*
 
 ![Mission Planning](screenshots/mission-planning.png)
-*Mission editor with waypoints, polygon survey, and elevation profile*
+*Route editor: segment cards, area scan lanes, elevation profile*
 
 ---
 
@@ -141,8 +151,8 @@ The interface is available in **English and Simplified Chinese** (SYS CONFIG →
 
 ### Download
 Pre-built installers are available on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
-- **Windows**: `CORV GCS Setup 1.6.2.exe`
-- **Linux**: `CORV GCS-1.6.2.AppImage` or `corv-gcs_1.6.2_amd64.deb`
+- **Windows**: `CORV GCS Setup 1.7.0.exe`
+- **Linux**: `CORV GCS-1.7.0.AppImage` or `corv-gcs_1.7.0_amd64.deb`
 
 ### Build from Source
 
@@ -283,7 +293,7 @@ corv-gcs/
 │   ├── terrain/            # Terrain loading, chunks, hillshade
 │   ├── maps/               # Leaflet mini-map, tile cache, offline downloader
 │   ├── mavlink/            # MAVLink message routing & commands
-│   ├── mission/            # Command catalog, undo/redo history, mission library
+│   ├── mission/            # Route model + compiler, vehicle transfer, command catalog, undo/redo, library
 │   ├── ui/                 # UI controllers & panels
 │   ├── hud/                # HUD canvas rendering
 │   ├── adsb/               # ADS-B traffic
