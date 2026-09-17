@@ -115,8 +115,11 @@
         <!-- FPV Status Message -->
         <div id="fpv-status-msg" class="fpv-status-msg" style="display:none;"></div>
 
-        <!-- HUD Canvas Overlay -->
-        <canvas id="hud-canvas"></canvas>
+        <!-- HUD Canvas Overlay. The glass clips the canvas to the viewport
+             while the look-around perspective transform slides it off-frame. -->
+        <div id="hud-glass">
+            <canvas id="hud-canvas"></canvas>
+        </div>
 
         <!-- Map Reload Indicator -->
         <div id="reload-indicator">RELOADING MAP...</div>

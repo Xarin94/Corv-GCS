@@ -159,6 +159,27 @@ let isOrbitDragging = false;
 let orbitLastX = 0;
 let orbitLastY = 0;
 
+// Ace Combat-style look-around for the first-person camera: holding an arrow
+// snaps the view toward a fixed offset (90° up/down, 110° left/right) and
+// releasing it snaps back to the nose. The motion is a fixed-duration
+// ease-in/ease-out tween between the two viewpoints: it accelerates out of
+// rest, decelerates into the target and lands on it exactly — no spring, no
+// overshoot, whatever the frame rate. Offsets are body-relative and applied
+// on top of the aircraft attitude; the HUD glass follows the nose (see
+// applyHudLookTransform).
+const look = {
+    yaw: 0, pitch: 0,                       // current offset (rad)
+    fromYaw: 0, fromPitch: 0,               // tween start
+    toYaw: 0, toPitch: 0,                   // tween end (the commanded viewpoint)
+    t0: 0, dur: 0,                          // tween start time (ms) and length (s)
+    keys: { up: false, down: false, left: false, right: false },
+    _q: null, _euler: null                  // scratch objects, allocated on first use
+};
+const LOOK_PITCH_MAX = 90 * Math.PI / 180;
+const LOOK_YAW_MAX = 110 * Math.PI / 180;
+const LOOK_FULL_SWEEP_S = 0.3;  // time for a full 110° sweep; shorter moves scale down
+const LOOK_MIN_SWEEP_S = 0.12;
+
 // Smoothed attitude: time-based interpolation between MAVLink samples
 const smoothAtt = { roll: 0, pitch: 0, yaw: 0 };
 let ATT_SMOOTH = 0.15; // slider control: 0 = raw, higher = more smoothing
@@ -794,6 +815,15 @@ function update3DWorld() {
         camera.rotation.x = horizonLocked ? 0 : smoothAtt.pitch;
         camera.rotation.z = -smoothAtt.roll;
         camera.rotation.y = -smoothAtt.yaw;
+
+        // Look-around offset, composed in the body frame so "up" is over the
+        // canopy and "left" is over the wing whatever the bank angle.
+        if (look.yaw !== 0 || look.pitch !== 0) {
+            if (!look._q) { look._q = new THREE.Quaternion(); look._euler = new THREE.Euler(); }
+            look._euler.set(look.pitch, look.yaw, 0, 'YXZ');
+            look._q.setFromEuler(look._euler);
+            camera.quaternion.multiply(look._q);
+        }
     }
 
     // Update predicted trajectory corridor (throttled to every 3rd frame)
@@ -1248,6 +1278,7 @@ function animate() {
         if (cameraMode !== 'THIRD') {
             drawHUD();
         }
+        updateLookAround();
         update3DWorld();
         updateHomeMarker3D(getHomeTerrainElevation());
 
@@ -1415,6 +1446,98 @@ function initViewShortcuts() {
         }
         e.preventDefault();
     });
+}
+
+// ============== LOOK-AROUND (ARROW KEYS) ==============
+// Arrow keys drive the first-person look-around while held: up/down pitch
+// the view ±90°, left/right yaw it ±110°; opposite keys cancel out and
+// diagonals combine. Release returns to the nose. Same guards as the
+// single-key toggles above: Flight Data tab only, not while typing.
+function initLookAround() {
+    const KEY_MAP = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+    const release = () => { for (const k in look.keys) look.keys[k] = false; };
+
+    document.addEventListener('keydown', (e) => {
+        const dir = KEY_MAP[e.key];
+        if (!dir) return;
+        if (e.ctrlKey || e.altKey || e.metaKey) return;
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        const flightTab = document.getElementById('tab-flight-data');
+        if (!flightTab || !flightTab.classList.contains('active')) return;
+        e.preventDefault(); // also swallows key-repeat and page scroll
+        look.keys[dir] = true;
+    });
+    document.addEventListener('keyup', (e) => {
+        const dir = KEY_MAP[e.key];
+        if (dir) look.keys[dir] = false;
+    });
+    // A lost focus never delivers the keyup — don't leave the view stuck aside.
+    window.addEventListener('blur', release);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) release(); });
+}
+
+// Tween the view toward the commanded viewpoint. A new command (key press or
+// release) restarts the tween from wherever the view is now, so a change of
+// mind mid-sweep still eases into the new target. Time-based, so it lands
+// exactly on the target and stays there regardless of frame rate.
+function updateLookAround() {
+    const k = look.keys;
+    const inFirstPerson = cameraMode !== 'THIRD';
+    const targetPitch = inFirstPerson ? ((k.up ? 1 : 0) - (k.down ? 1 : 0)) * LOOK_PITCH_MAX : 0;
+    const targetYaw = inFirstPerson ? ((k.left ? 1 : 0) - (k.right ? 1 : 0)) * LOOK_YAW_MAX : 0;
+    const now = performance.now();
+
+    if (targetYaw !== look.toYaw || targetPitch !== look.toPitch) {
+        look.fromYaw = look.yaw; look.fromPitch = look.pitch;
+        look.toYaw = targetYaw; look.toPitch = targetPitch;
+        const dist = Math.hypot(targetYaw - look.yaw, targetPitch - look.pitch);
+        look.dur = Math.max(LOOK_MIN_SWEEP_S, LOOK_FULL_SWEEP_S * Math.min(1, dist / LOOK_YAW_MAX));
+        look.t0 = now;
+    }
+
+    if (look.yaw !== look.toYaw || look.pitch !== look.toPitch) {
+        const t = Math.min(1, (now - look.t0) / (look.dur * 1000));
+        // ease-in-out cubic: accelerate, then brake into a clean stop
+        const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        look.yaw = t >= 1 ? look.toYaw : look.fromYaw + (look.toYaw - look.fromYaw) * e;
+        look.pitch = t >= 1 ? look.toPitch : look.fromPitch + (look.toPitch - look.fromPitch) * e;
+    }
+
+    applyHudLookTransform();
+}
+
+// The HUD is the glass in front of the nose, not a screen overlay: when the
+// view turns away it has to slide out of frame with the scene. The canvas
+// is treated as a plane at the camera's focal distance and rotated about
+// the eye by the inverse of the look offset, so its perspective matches
+// the 3D render exactly (same vertical FOV → same focal length in px).
+function applyHudLookTransform() {
+    const hudCanvas = document.getElementById('hud-canvas');
+    if (!hudCanvas) return;
+    if (look.yaw === 0 && look.pitch === 0) {
+        if (hudCanvas.style.transform) {
+            hudCanvas.style.transform = '';
+            hudCanvas.style.opacity = '';
+        }
+        return;
+    }
+    const camera = getCamera();
+    const h = hudCanvas.clientHeight || 1;
+    const fovRad = ((camera && camera.fov) || 60) * Math.PI / 180;
+    const f = (h / 2) / Math.tan(fovRad / 2); // focal length in CSS px
+
+    // Past ~55° the whole glass is already off screen; fade it out before the
+    // plane sweeps through the eye at 90°, where the projection degenerates.
+    const cosAngle = Math.cos(look.yaw) * Math.cos(look.pitch);
+    const angle = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
+    const fade = 1 - Math.max(0, Math.min(1, (angle - 55 * Math.PI / 180) / (25 * Math.PI / 180)));
+
+    const yawDeg = -look.yaw * 180 / Math.PI;   // camera turns left → glass moves right
+    const pitchDeg = look.pitch * 180 / Math.PI; // camera tilts up → glass moves down
+    hudCanvas.style.transform =
+        `perspective(${f}px) translateZ(${f}px) rotateX(${pitchDeg}deg) rotateY(${yawDeg}deg) translateZ(${-f}px)`;
+    hudCanvas.style.opacity = fade < 1 ? String(fade) : '';
 }
 
 // ============== HGT FILE INPUT ==============
@@ -1637,6 +1760,7 @@ function init() {
     window.onresize = handleResize;
     setupHGTInput();
     initViewShortcuts();
+    initLookAround();
     setupTimeSlider();
     setupMapBrightnessSlider();
     setupAttSmoothSlider();

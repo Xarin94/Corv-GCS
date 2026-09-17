@@ -19,10 +19,17 @@ body {
     background: var(--bg-scene);
 }
 
-#hud-canvas {
+#hud-glass {
     position: absolute;
     inset: 0;
     z-index: var(--z-hud);
+    pointer-events: none;
+    overflow: hidden;
+}
+
+#hud-canvas {
+    position: absolute;
+    inset: 0;
     pointer-events: none;
     background: transparent;
 }
