@@ -261,6 +261,18 @@
         <!-- MAVLink status messages overlay -->
         <div id="mav-msg-overlay"></div>
 
+        <!-- LiDAR map strip: shown while the Livox point cloud is enabled.
+             State LED + point count and the two actions that matter in
+             flight: clear the accumulated map, save it. -->
+        <div id="lidar-strip" class="lidar-strip hidden">
+            <span class="lidar-strip-led" id="lidar-strip-led"></span>
+            <span class="lidar-strip-title">LIDAR</span>
+            <span class="lidar-strip-state" id="lidar-strip-state">OFF</span>
+            <span class="lidar-strip-count" id="lidar-strip-count">0 pts</span>
+            <button class="lidar-strip-btn" id="lidar-strip-clear" type="button" title="Clear the accumulated map">CLEAR MAP</button>
+            <button class="lidar-strip-btn" id="lidar-strip-save" type="button" title="Save the map as .ply">SAVE</button>
+        </div>
+
         <!-- Annunciator glyph sheet: 24x24 stroke-only symbols, coloured
              through currentColor by the .annun-warn / .annun-caut classes -->
         <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
@@ -529,6 +541,11 @@
                     <button class="setup-nav-btn" data-section="corv-setup">
                         <span class="nav-btn-title">CORV SETUP</span>
                         <span class="nav-btn-desc">CORV binary config</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                    <button class="setup-nav-btn" data-section="lidar">
+                        <span class="nav-btn-title">LIDAR</span>
+                        <span class="nav-btn-desc">Livox Mid-360 &middot; point cloud</span>
                         <span class="nav-status-dot"></span>
                     </button>
                 </div>
@@ -1563,6 +1580,153 @@
             </div>
 
             <!-- Sub-tab: CORV Setup -->
+            <!-- Sub-tab: LiDAR (Livox Mid-360 point cloud) — driven by js/ui/LidarController.js -->
+            <div class="sub-tab-content" id="subtab-lidar">
+                <div class="setup-panel" id="lidar-panel">
+                    <div class="panel-header">LIDAR &middot; LIVOX MID-360</div>
+                    <div class="cfg-row">
+                        <label>POINT CLOUD</label>
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="lidar-enable">
+                            <span>Connect to the LiDAR and draw the 3D map</span>
+                        </label>
+                    </div>
+                    <div class="cfg-row">
+                        <label>LIDAR IP</label>
+                        <input type="text" id="lidar-ip" class="failsafe-input" style="width:160px;" value="192.168.1.12" placeholder="192.168.1.1XX (XX = S/N)">
+                    </div>
+                    <div class="cfg-row">
+                        <label>HOST IP (POINT DESTINATION)</label>
+                        <select id="lidar-host" class="cfg-select">
+                            <option value="auto">AUTO (interface on the LiDAR subnet)</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>POINT FORMAT</label>
+                        <select id="lidar-datatype" class="cfg-select">
+                            <option value="1">Cartesian 32-bit (mm) &middot; ~24 Mbit/s</option>
+                            <option value="2">Cartesian 16-bit (cm) &middot; ~14 Mbit/s</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>TELEMETRY LAG (ms)</label>
+                        <input type="number" id="lidar-lag" class="failsafe-input" value="0" step="10" min="-500" max="2000" title="How much later than the point packets the telemetry reaches the GCS">
+                    </div>
+                    <div class="cfg-row">
+                        <label>ACCUMULATE ONLY WITH</label>
+                        <select id="lidar-min-fix" class="cfg-select">
+                            <option value="3">GPS 3D fix or better</option>
+                            <option value="4">DGPS or better</option>
+                            <option value="5">RTK float or better</option>
+                            <option value="6">RTK fixed</option>
+                        </select>
+                        <div class="cfg-row-inline lidar-inline">
+                            <span class="lidar-il">SATS &ge;</span>
+                            <input type="number" id="lidar-min-sats" class="failsafe-input" value="8" step="1" min="4" max="40" title="Minimum satellites">
+                            <span class="lidar-il">HDOP &le;</span>
+                            <input type="number" id="lidar-max-hdop" class="failsafe-input" value="2" step="0.1" min="0.5" max="10" title="Maximum HDOP">
+                        </div>
+                        <label style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+                            <input type="checkbox" id="lidar-require-ekf" checked>
+                            <span>EKF healthy (position flags + variances)</span>
+                        </label>
+                    </div>
+                    <div class="cfg-row">
+                        <label>LIVE POINTS (NOT GEOREFERENCED) FADE AFTER (s)</label>
+                        <input type="number" id="lidar-live-ttl" class="failsafe-input" value="3" step="0.5" min="0.5" max="30" title="Without a usable position the scan is still shown around the aircraft, then fades">
+                    </div>
+                    <div class="cfg-row">
+                        <label>RECORD RAW POINTS (.PLY)</label>
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="lidar-record-raw">
+                            <span>Stream every point to data/lidar/raw-*.ply</span>
+                        </label>
+                    </div>
+                    <div class="cfg-row">
+                        <div class="gcs-btn-row">
+                            <button class="gcs-btn gcs-btn-half" id="lidar-clear-btn">CLEAR MAP</button>
+                            <button class="gcs-btn gcs-btn-half" id="lidar-save-btn">SAVE MAP .PLY</button>
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>STATUS</label>
+                        <div class="lidar-status" id="lidar-status-text">OFF</div>
+                    </div>
+                    <div class="cfg-row" style="opacity:0.6;font-size:11px;line-height:1.4;">
+                        <span>Livox SDK2 over UDP: the LiDAR must reach this host on ports 56101 / 56201 / 56301 / 56401 through the LAN bridge. Raise SR_POSITION and SR_EXTRA1 to 10 Hz for a sharper map.</span>
+                    </div>
+                </div>
+                <div class="setup-panel">
+                    <div class="panel-header">MOUNT &amp; FILTERS</div>
+                    <div class="cfg-row">
+                        <label>MOUNT ATTITUDE VS IMU (ROLL / PITCH / YAW &deg;)</label>
+                        <div class="cfg-row-inline">
+                            <input type="number" id="lidar-mount-roll" class="failsafe-input" value="0" step="0.1" min="-180" max="180" title="Roll">
+                            <input type="number" id="lidar-mount-pitch" class="failsafe-input" value="0" step="0.1" min="-90" max="90" title="Pitch">
+                            <input type="number" id="lidar-mount-yaw" class="failsafe-input" value="0" step="0.1" min="-180" max="180" title="Yaw">
+                        </div>
+                        <select id="lidar-mount-preset" class="cfg-select" style="margin-top:6px;">
+                            <option value="">Preset&hellip;</option>
+                            <option value="0,0,0">Upright, connector aft (Z up)</option>
+                            <option value="180,0,0">Inverted under the belly (Z down)</option>
+                            <option value="180,0,90">Inverted, rotated 90&deg;</option>
+                            <option value="0,-45,0">Upright, nose-down 45&deg;</option>
+                            <option value="0,-90,0">Forward-looking (Z fwd)</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>LEVER ARM IMU &rarr; LIDAR (X FWD / Y RIGHT / Z DOWN, m)</label>
+                        <div class="cfg-row-inline">
+                            <input type="number" id="lidar-lever-x" class="failsafe-input" value="0" step="0.01" title="X forward">
+                            <input type="number" id="lidar-lever-y" class="failsafe-input" value="0" step="0.01" title="Y right">
+                            <input type="number" id="lidar-lever-z" class="failsafe-input" value="0" step="0.01" title="Z down">
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>MIN RANGE &mdash; DISCARD CLOSER THAN (m)</label>
+                        <div class="cfg-row-inline lidar-inline">
+                            <input type="number" id="lidar-min-range" class="failsafe-input" value="2.5" step="0.1" min="0.1" max="50" title="Returns closer than this are false echoes from the airframe">
+                            <span class="lidar-il" style="white-space:normal;letter-spacing:0.5px;">rudder, landing gear, antennas in the field of view</span>
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>MAX RANGE (m)</label>
+                        <input type="number" id="lidar-max-range" class="failsafe-input" value="70" step="1" min="1" max="300" title="Maximum range">
+                    </div>
+                    <div class="cfg-row">
+                        <label>VOXEL SIZE (m) / MAX POINTS</label>
+                        <div class="cfg-row-inline">
+                            <input type="number" id="lidar-voxel" class="failsafe-input" value="0.25" step="0.05" min="0.05" max="5" title="One point kept per voxel">
+                            <input type="number" id="lidar-max-points" class="failsafe-input" value="3000000" step="100000" min="100000" max="8000000" title="Map capacity">
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>NOISE FILTER</label>
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="lidar-drop-noise" checked>
+                            <span>Drop points the LiDAR tags as noise</span>
+                        </label>
+                    </div>
+                    <div class="cfg-row">
+                        <label>COLOR BY / POINT SIZE (px)</label>
+                        <div class="cfg-row-inline">
+                            <select id="lidar-color-mode" class="cfg-select" style="flex:1;">
+                                <option value="height">Height</option>
+                                <option value="intensity">Reflectivity</option>
+                            </select>
+                            <input type="number" id="lidar-point-size" class="failsafe-input" value="2" step="1" min="1" max="8" title="Point size in pixels">
+                        </div>
+                        <label style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+                            <input type="checkbox" id="lidar-over-terrain" checked>
+                            <span>Draw through the terrain mesh (SRTM is coarser than the LiDAR)</span>
+                        </label>
+                    </div>
+                    <div class="cfg-row" style="opacity:0.6;font-size:11px;line-height:1.4;">
+                        <span>Angles are ZYX Euler of the LiDAR body relative to the aircraft body (FRD). The Mid-360 sees 360&deg; &times; (-7&deg;&hellip;+52&deg;): mounted flat under the belly it is blind straight down, tilt it to close the gap.</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="sub-tab-content" id="subtab-corv-setup">
 
                 <!-- GPS -->

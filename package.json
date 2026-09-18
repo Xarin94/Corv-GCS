@@ -18,6 +18,8 @@
     "asar": true,
     "asarUnpack": [
       "**/*.node",
+      "lidar-worker.js",
+      "lidar-core.js",
       "**/node_modules/@serialport/**",
       "**/node_modules/serialport/**"
     ],

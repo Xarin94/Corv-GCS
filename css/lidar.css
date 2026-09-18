@@ -1,0 +1,131 @@
+/**
+ * lidar.css - Livox point cloud: Sys Config panel status + flight-screen strip
+ */
+
+/* ============== SYS CONFIG PANEL ============== */
+.lidar-status {
+    font-family: var(--font-data);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--text-muted-bright);
+    white-space: pre-line;
+}
+
+.lidar-status .ok    { color: var(--accent-green); }
+.lidar-status .warn  { color: var(--accent-orange); }
+.lidar-status .err   { color: #ff4444; }
+
+#lidar-panel .cfg-row-inline .cfg-select {
+    width: auto;
+}
+
+.lidar-inline {
+    align-items: center;
+}
+
+.lidar-il {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+
+/* ============== FLIGHT-SCREEN STRIP ============== */
+/* Bottom-centre of the 3D view, above the command bar, between the mini-map
+   and the position readouts. Same over-scene language as the HUD: thin,
+   monochrome, no box fill beyond what keeps it legible over terrain. */
+.lidar-strip {
+    position: absolute;
+    left: 50%;
+    bottom: 14px;
+    transform: translateX(-50%);
+    z-index: var(--z-overlay);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 12px;
+    background: rgba(0, 12, 6, 0.72);
+    border: 1px solid rgba(0, 255, 127, 0.35);
+    border-radius: 3px;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    color: rgba(0, 255, 127, 0.95);
+    pointer-events: auto;
+    backdrop-filter: blur(6px);
+    white-space: nowrap;
+}
+
+.lidar-strip.hidden {
+    display: none;
+}
+
+.lidar-strip-led {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #556;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+    flex-shrink: 0;
+}
+
+.lidar-strip.state-search .lidar-strip-led { background: var(--accent-orange); animation: lidar-blink 1s steps(2) infinite; }
+.lidar-strip.state-hold   .lidar-strip-led { background: var(--accent-orange); }
+.lidar-strip.state-accum  .lidar-strip-led { background: var(--accent-green); box-shadow: 0 0 6px rgba(68, 255, 68, 0.8); }
+.lidar-strip.state-full   .lidar-strip-led { background: var(--accent-cyan); }
+.lidar-strip.state-error  .lidar-strip-led { background: #ff4444; }
+
+.lidar-strip.state-hold .lidar-strip-state,
+.lidar-strip.state-search .lidar-strip-state { color: var(--accent-orange); }
+.lidar-strip.state-error .lidar-strip-state { color: #ff4444; }
+
+@keyframes lidar-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
+}
+
+.lidar-strip-title {
+    color: var(--hud-text);
+    letter-spacing: 3px;
+}
+
+.lidar-strip-state {
+    min-width: 90px;
+}
+
+.lidar-strip-count {
+    font-family: var(--font-data);
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    color: var(--text-muted-bright);
+    min-width: 80px;
+    text-align: right;
+}
+
+.lidar-strip-btn {
+    background: transparent;
+    border: 1px solid rgba(0, 255, 127, 0.45);
+    color: rgba(0, 255, 127, 0.95);
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    padding: 3px 9px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.lidar-strip-btn:hover {
+    background: rgba(0, 255, 127, 0.18);
+    color: #fff;
+}
+
+.lidar-strip-btn:active {
+    transform: scale(0.96);
+}
+
+/* The theme's light mode keeps over-scene elements dark (see variables.css). */

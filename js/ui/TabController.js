@@ -159,7 +159,7 @@ function initSetupVerticalNav() {
  * Set the status dot on a setup-nav section button (and its group header,
  * so activity is visible while the group is collapsed)
  */
-function setNavDot(section, on) {
+export function setNavDot(section, on) {
     const btn = document.querySelector(`.setup-nav-btn[data-section="${section}"]`);
     if (!btn) return;
     const dot = btn.querySelector('.nav-status-dot');

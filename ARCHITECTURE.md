@@ -34,6 +34,8 @@ Three link protocols are supported, all normalised to MAVLink before they reach 
 │     ├── fpv-manager.js  ── ffmpeg RTSP → MJPEG frame extraction      │
 │     ├── telforward-manager.js ── LTM / MAVLink / UDP mirror output    │
 │     ├── msp-manager.js  ── MSP/MSP2 (INAV/Betaflight) → MAVLink      │
+│     ├── lidar-manager.js ── Livox Mid-360 glue → lidar-worker.js     │
+│     │       └── lidar-core.js (worker thread): UDP, georef, voxel map │
 │     └── mission-store.js ── data root, mission library, index.json   │
 │                                                                      │
 └──────────────────────────┬───────────────────────────────────────────┘
@@ -59,10 +61,11 @@ Three link protocols are supported, all normalised to MAVLink before they reach 
 │     │              OfflineDownloader                                  │
 │     ├── ui/        TabController, FlightPlanController, UIController, │
 │     │              CommandBarController, GCSSidebarController,        │
-│     │              ParametersPageController,                          │
+│     │              ParametersPageController, LidarController,         │
 │     │              ParamCatalog, FPVController, RotorLoadPanel,       │
 │     │              AnnunciatorPanel,                                 │
 │     │              LoadingOverlay                                     │
+│     ├── lidar/     LidarCloud (THREE.Points chunks, height/intensity)│
 │     ├── adsb/      ADSBManager                                       │
 │     ├── joystick/  JoystickManager, JoystickUI                       │
 │     ├── logging/   TlogLogger, LogReplayController                   │
@@ -89,7 +92,10 @@ Corv-GCS/
 ├── fpv-manager.js              FPV camera stream (ffmpeg RTSP→MJPEG)
 ├── telforward-manager.js       Telemetry forwarding (LTM / MAVLink / UDP mirror)
 ├── msp-manager.js              MSP/MSP2 adapter (INAV, Betaflight) → MAVLink
-├── mission-store.js            Data root: missions/, logs/, index.json
+├── lidar-manager.js            Livox Mid-360: main-thread IPC glue, forks the worker
+├── lidar-worker.js             worker_threads host for lidar-core.js
+├── lidar-core.js               Livox SDK2 UDP client, pose interpolation, georeferencing, voxel map, .ply
+├── mission-store.js            Data root: missions/, logs/, lidar/, index.json
 ├── package.json                Dependencies & build config
 │
 ├── js/                         Renderer process modules (ES Modules)
@@ -137,7 +143,11 @@ Corv-GCS/
 │   │   ├── AnnunciatorPanel.js  Health annunciators (red warnings / amber cautions)
 │   │   ├── ParamCatalog.js      Known-param name catalog (on-demand reads)
 │   │   ├── FPVController.js     FPV camera overlay & settings
+│   │   ├── LidarController.js   LIDAR panel (Sys Config) + flight-screen strip (CLEAR MAP / SAVE)
 │   │   └── LoadingOverlay.js    Splash screen with loading progress
+│   ├── lidar/
+│   │   ├── LidarCloud.js        Georeferenced point cloud: chunked THREE.Points, shader colour ramps, fading live layer
+│   │   └── LidarDemo.js         Demo flight: synthetic scan of SRTM terrain + DemoObstacles (spin axis along the fuselage)
 │   ├── adsb/
 │   │   └── ADSBManager.js       OpenSky Network ADS-B traffic
 │   ├── joystick/
@@ -186,6 +196,7 @@ Corv-GCS/
 │   ├── loading.css              Loading overlay
 │   ├── animations.css           Keyframe animations
 │   ├── fpv.css                  FPV camera panel
+│   ├── lidar.css                LiDAR panel status + flight-screen strip
 │   ├── joystick.css             Joystick config panel
 │   └── vendors.css              Leaflet overrides
 │
@@ -209,12 +220,13 @@ Corv-GCS/
 | `main-mavlink.js` | `initMAVLinkHandlers()`, `connectSerial/UDP/TCP()`, `handlePacket()`, `sendMAVLinkCommand()`, `sendMAVLinkMessage()`, `startHeartbeat()`, `disconnectCurrent()`, `sendRawBuffer()`, `corvEmitNavigation()`, `corvEmitDebug()`, `corvEmitRawSensor()`, `emitFakeMavlinkMessage()`, `getReplayParserBuilder()` | MAVLink v2 connection pipeline: serial/UDP/TCP transport, packet splitting/parsing/deserialization, 1 Hz GCS heartbeat (sysid 255, compid 190, MAV_TYPE_GCS), command encoding, GCS output mute toggle. Also hosts the CORV binary protocol v7/v8 decoder (re-emits as synthetic MAVLink to share the renderer pipeline) and the .tlog raw-packet recorder (auto-start on connect). Exports replay hooks consumed by `log-replay-manager.js` |
 | `log-replay-manager.js` | `initLogReplay()`, internal: `loadFile()`, `play()/pause()`, `seek()`, `tick()`, sticky-message re-emit, 20 Hz emitter + 10 Hz UI tick | Main-process replay engine. Indexes a .tlog or .bin file once, then streams its MAVLink messages into the renderer via the same `mavlink-message` IPC channel live connections use — the UI is animated without awareness of the source. .tlog uses a replay-scoped `MavLinkPacketSplitter`/`MavLinkPacketParser` from node-mavlink; .bin uses a custom minimal parser. Sticky whitelist re-emits the last HOME/MODE/etc. on seek so the UI stays coherent |
 | `log-replay-bin-parser.js` | `parseBinLog()` | Minimal ArduPilot DataFlash (.bin) parser. Decodes a whitelisted subset (ATT/GPS/AHR2/BARO/ARSP/BAT/MODE/MSG/RCIN/RCOU/VIBE/ORGN) and synthesizes MAVLink-shaped records for IDs 30/33/24/74/1/0/253/35/36/241/242. Trajectory comes from AHR2 (EKF-smoothed), velocity carries over from the most recent GPS sample; VFR_HUD is synthesized from GPS speed + (barometer climb when present) so the HUD shows real values on logs without sensors |
-| `preload.js` | Context bridge: `mavlink`, `msp`, `missionStore`, `sitl`, `rtk`, `fpv`, `telForward`, `adsb`, `tlogLogger`, `logReplay`, `corvSerial`, `topography` (load/loadOne/save), `models`, `windowControls`, `devtools` | Secure IPC bridge between main and renderer processes (15 namespaced APIs). Topography API supports load, loadOne, and save for offline SRTM management. `corvSerial` and `msp` expose the non-MAVLink link bridges; `missionStore` exposes list/load/save/delete/rename plus the data-root path; `logReplay` exposes open-file / play / pause / seek / unload + tick & state events |
+| `preload.js` | Context bridge: `mavlink`, `msp`, `missionStore`, `sitl`, `rtk`, `fpv`, `telForward`, `adsb`, `tlogLogger`, `logReplay`, `lidar`, `corvSerial`, `topography` (load/loadOne/save), `models`, `windowControls`, `devtools` | Secure IPC bridge between main and renderer processes (16 namespaced APIs). `lidar` exposes connect/disconnect/setConfig/clear/saveMap/resync plus the `lidar-points` / `lidar-origin` / `lidar-status` events. Topography API supports load, loadOne, and save for offline SRTM management. `corvSerial` and `msp` expose the non-MAVLink link bridges; `missionStore` exposes list/load/save/delete/rename plus the data-root path; `logReplay` exposes open-file / play / pause / seek / unload + tick & state events |
 | `sitl-manager.js` | `initSITLHandlers()`, `cleanup()` | Download ArduPilot SITL binaries, spawn process (native Linux or WSL on Windows), TCP 5760 |
 | `rtk-manager.js` | `initRTKHandlers()`, `cleanup()` | RTCM3 frame parsing from serial GPS base station, GPS_RTCM_DATA (ID 233) injection to drone via raw MAVLink v2 packets |
 | `fpv-manager.js` | `initFPVHandlers()`, `cleanupFPV()` | Spawn ffmpeg for RTSP-to-MJPEG conversion, extract JPEG frames (SOI/EOI markers), send base64 frames via IPC |
 | `telforward-manager.js` | `initTelForwardHandlers()`, `cleanup()` | Forward telemetry as LTM protocol (G/A/S/O frames) or MAVLink passthrough to an external serial port, or mirror it over UDP |
 | `msp-manager.js` | `initMSPHandlers()`, `cleanup()`, internal: `encodeRequest()`, `parseBuffer()`, `tick()`, `decode()`, `resolveModeName()`, `emit*()` | MSP/MSP2 adapter for INAV and Betaflight over serial or TCP. Frames both v1 (`$M`, XOR checksum) and v2 (`$X`, CRC8 DVB-S2). MSP is request/response, so a 20 ms scheduler polls a rate table with **one request in flight at a time** (MSP has no sequence numbers). Replies are decoded and re-emitted as synthetic MAVLink (30/74/24/33/27/1/147/65/0) on the same `mavlink-message` channel. Flight mode is resolved from the active mode boxes read once via `MSP_BOXNAMES`. A command unanswered 3× is dropped from the schedule, so an absent sensor cannot starve the poll budget |
+| `lidar-manager.js` / `lidar-worker.js` / `lidar-core.js` | `initLidarHandlers()`, `cleanup()`, `onMavlinkMessage()`; core: `bind()`, `commands.{connect,disconnect,setConfig,getStatus,listInterfaces,clear,saveMap,getDir,resync}`, `_test` | Livox Mid-360 / Mid-360S point cloud over a direct IP link (LAN bridge to the aircraft). `lidar-core.js` runs on a **worker thread**: Livox SDK2 UDP protocol (search 56000, config 0x0100 on 56100, point packets to 56301), pose ring buffer fed by the decoded MAVLink tap (ATTITUDE, GLOBAL_POSITION_INT, GPS_RAW_INT, EKF_STATUS_REPORT), packet hold + time interpolation, Livox FLU → mount → body → NED → ENU chain, navigation-quality gate, voxel occupancy hash, chunked map, streaming binary PLY (raw recording + map export). `lidar-manager.js` only relays IPC and forwards pose messages; keeping the 2 kHz socket traffic off the main thread matters because that thread is also Chromium's browser process |
 | `mission-store.js` | `initMissionStoreHandlers()`, `getRoot()`, `getLogsDir()`, `getMissionsDir()`, `rebuildIndex()` | On-disk data root: `<install>/data/` with `index.json`, `missions/` and `logs/`, falling back to the per-user data folder when the installation directory is not writable (the default `Program Files` case). Missions are saved via temp-file + rename so an interrupted overwrite cannot destroy the previous version; `index.json` is rebuilt from the folder contents on every read and write, so it is a cache and never the source of truth |
 
 ### 3.2 Core (`js/core/`)
@@ -279,12 +291,15 @@ Corv-GCS/
 | `ParametersPageController.js` | `initParamsPage()`, `toggleParamsPage()`, `formatParamValue()` | Full ArduPilot parameter editor with search, inline edit, save. Side catalog reads single parameters via `PARAM_REQUEST_READ` (serialized queue + retries) so a slow link never needs the full list |
 | `ParamCatalog.js` | `getCatalog()`, `getGroups()`, `groupOf()`, `learnNames()`, `toggleFavorite()` | Parameter-name catalog per vehicle class: built-in seed + names learned from vehicles/.param files, persisted in localStorage |
 | `FPVController.js` | `initFPV()`, `onFPVButtonClick()`, `setFPVActive()`, `stopFPVStream()`, `resizeFPV()`, `openFPVSettings()` | FPV camera overlay on 3D view. ffmpeg stream controls, SIYI HM30 / generic RTSP settings dialog |
+| `LidarController.js` | `initLidarController()`, `isLidarEnabled()` | LIDAR section under SETUP → TOOLS (LiDAR/host IP, point format, mount attitude vs the autopilot IMU + lever arm, telemetry lag, range/noise/voxel filters, GPS/EKF gate, live-points TTL, colour mode, raw recording) persisted in localStorage; nav status dot while connected; flight-screen strip with state LED (ACCUMULATING / LIVE ONLY · reason), point count, CLEAR MAP and SAVE; HUD messages on gate transitions; resync on renderer restart |
 | `LoadingOverlay.js` | `showLoadingOverlay()`, `hideLoadingOverlay()`, `checkInitialLoadComplete()`, `scheduleHideLoadingOverlaySoon()` | Animated splash screen with cloud parallax and plane animation, terrain loading progress bar |
 
 ### 3.8 Other Modules
 
 | File | Key Exports | Purpose |
 |------|-------------|---------|
+| `lidar/LidarDemo.js` + `engine/DemoObstacles.js` | `startLidarDemo()`, `stopLidarDemo()`, `resetLidarDemo()`, `configureLidarDemo()`, `updateLidarDemo()`; `updateDemoObstacles()`, `DEMO_OBSTACLES` | Synthetic scan for the demo flight (50 m AGL circuit): per frame, rays in a Mid-360 pattern with the spin axis along the fuselage are marched against the SRTM heightfield and tested analytically against a seeded field of trees (cylinder + sphere), hangars and pylons (boxes) that are never rendered; airframe false echoes at 0.5–2.4 m demonstrate MIN RANGE; voxel-decimated and fed to LidarCloud through the same origin/batch API as the real link, within a 2.5 ms per-frame budget |
+| `lidar/LidarCloud.js` | `initLidarCloud()`, `setLidarOrigin()`, `appendLidarPoints()`, `appendLiveLidarPoints()`, `clearLidarCloud()`, `clearLiveLidarPoints()`, `setLidarCloudVisible()`, `setLidarColorMode()`, `setLidarPointSize()`, `setLidarMaxPoints()`, `setLidarOverTerrain()`, `updateLidarCloud()`, `getLidarPointCount()` | Point cloud in the scene: one group at the cloud origin (scaled to the app's flat-earth convention), points appended into 262 144-point `THREE.Points` chunks with partial buffer uploads, ShaderMaterial colouring by height (Turbo ramp auto-ranged on the 2–98th percentile through a histogram) or reflectivity, optional draw-through-terrain (SRTM is coarser than the LiDAR). Second, transient layer for the non-georeferenced LIVE points: vehicle-relative ring buffer with a birth-time attribute, clipped and faded by the shader after the TTL |
 | `adsb/ADSBManager.js` | `fetchADSBData()`, `getNearestTraffic(n)`, `downloadTrafficCSV()` | OpenSky Network ADS-B traffic polling (50km radius, via main process for CORS bypass). Rate limited (10s), stale entry removal (60s), CSV export |
 | `joystick/JoystickManager.js` | `JoystickManager` class | Gamepad API polling at 25 Hz. Axis mapping (roll/pitch/yaw/throttle), deadzone, expo, inversion config. Sends RC_CHANNELS_OVERRIDE (1000–2000 PWM). Config persisted to localStorage |
 | `joystick/JoystickUI.js` | `initJoystick()` | Joystick configuration UI: gamepad selection, axis live display, channel mapping |
@@ -531,13 +546,55 @@ Poll rates, per profile:
 
 ---
 
+### 4.9 LiDAR Point Cloud Pipeline (Livox Mid-360)
+
+The LiDAR is not behind the autopilot: the GCS opens the Livox SDK2 UDP protocol
+directly over the IP link to the aircraft (a LAN bridge), while MAVLink keeps
+flowing on its own channel. Every point is georeferenced on the ground with the
+vehicle pose taken from that telemetry.
+
+```
+Livox Mid-360 (192.168.1.1xx)                lidar-core.js  (worker thread)
+   56000 ◀── search 0x0000 ─────────────── 56000   1 Hz until answered (unicast + broadcast)
+   56100 ◀── config 0x0100 ─────────────── 56101   host IP/ports (keys 0x0005/6/7), PCL type, work mode NORMAL
+   56300 ── point packets (96 pts) ──────▶ 56301   ~2 083 packets/s = 200 kpts/s
+                                                     │
+                                                     ▼
+   main-mavlink.js ── decoded-message tap ──▶ pose ring buffer (rx time):
+     ATTITUDE 30, GLOBAL_POSITION_INT 33         att(t) slerp-ish on wrapped angles,
+     GPS_RAW_INT 24, EKF_STATUS_REPORT 193       pos(t) lerp, ≤400 ms dead-reckoning on EKF velocity
+                                                     │
+   packets held (lag + 60 ms) ──▶ gate? ──▶ pose(t + lag) ──▶ per point:
+       fix ≥ min, sats ≥ min, HDOP ≤ max,        FLU→FRD, R_mount·p + lever, R_att·p, + ENU(pos)
+       EKF flags + variances, freshness           range / tag / voxel filters
+             │ closed                                │
+             ▼                         ┌─────────────┴──────────────┐
+   live subsample, vehicle-relative    map chunks (ENU)              raw .ply (optional)
+   (levelled NED / body frame)               │
+             │                'lidar-points' batches ≤ 20 Hz (transferable Float32Array)
+   'lidar-live' batches                      │
+             └────────────┬──────────────────┘
+   lidar-manager.js (main) ── webContents.send ──▶ LidarController ──▶ LidarCloud
+                                                       │                 ├─ map: persistent THREE.Points chunks
+                                                       │                 └─ live: ring buffer, fades after TTL
+                                            strip: LED · state · count · CLEAR MAP · SAVE
+```
+
+Two things make this a *live preview* rather than a survey product, and both
+are exposed as settings: the time base (no PPS into the Mid-360, so both streams
+are aligned on GCS arrival time and a **telemetry lag** absorbs the radio delay)
+and the telemetry rate (SR_POSITION / SR_EXTRA1 at 10 Hz give a visibly sharper
+map than the 3 Hz defaults). `scripts/livox-sim.js` emulates the sensor against
+SITL's second MAVLink port and `scripts/test-lidar-math.js` checks the frame
+chain offline; see `docs/LIDAR.md`.
+
 ## 5. Key Integration Patterns
 
 ### 5.1 Single Source of Truth (STATE)
 All telemetry flows through the global `STATE` object in `core/state.js`. The 60 FPS render loop reads STATE — no UI component queries the autopilot directly. `MAVLinkStateMapper` writes to STATE; all rendering and UI modules read from it.
 
 ### 5.2 IPC Bridge Architecture
-`preload.js` exposes 13 namespaced APIs via `contextBridge.exposeInMainWorld()`: `mavlink`, `sitl`, `rtk`, `fpv`, `telForward`, `adsb`, `tlogLogger`, `logReplay`, `corvSerial`, `topography`, `models`, `windowControls`, `devtools`. All IPC uses `invoke`/`handle` (request-response) or `send`/`on` (events). Security: `contextIsolation: true`, no `nodeIntegration`.
+`preload.js` exposes 16 namespaced APIs via `contextBridge.exposeInMainWorld()`: `mavlink`, `msp`, `missionStore`, `sitl`, `rtk`, `fpv`, `telForward`, `adsb`, `tlogLogger`, `logReplay`, `lidar`, `corvSerial`, `topography`, `models`, `windowControls`, `devtools`. All IPC uses `invoke`/`handle` (request-response) or `send`/`on` (events). Security: `contextIsolation: true`, no `nodeIntegration`.
 
 ### 5.3 Web Workers for Heavy Computation
 4 dedicated Web Workers handle terrain processing: mesh generation, tile download, hillshade, frustum culling. Workers communicate via `postMessage` with transferable ArrayBuffers. This keeps the main thread free for 60 FPS rendering.
@@ -604,7 +661,9 @@ by `mission-store.js`:
 <data root>/
 ├── index.json      catalogue of missions + logs (rebuilt on every read/write)
 ├── missions/       saved missions, one .json each
-└── logs/           .tlog and .crv flight recordings
+├── logs/           .tlog and .crv flight recordings
+└── lidar/          map-*.ply (voxel map exports) and raw-*.ply (raw point recordings), ENU
+                    metres from the origin written in the header comments
 ```
 
 | Situation | Root |

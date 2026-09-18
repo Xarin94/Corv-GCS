@@ -84,6 +84,10 @@ import { initOfflinePanel } from './maps/OfflineDownloader.js';
 
 // FPV imports
 import { initFPV, onFPVButtonClick, saveFPVSettings, resizeFPV, isFPVARMode, stopFPVStream } from './ui/FPVController.js';
+import { initLidarCloud, updateLidarCloud } from './lidar/LidarCloud.js';
+import { updateLidarDemo } from './lidar/LidarDemo.js';
+import { updateDemoObstacles } from './engine/DemoObstacles.js';
+import { initLidarController } from './ui/LidarController.js';
 
 // Loading overlay imports
 import {
@@ -863,6 +867,9 @@ function update3DWorld() {
 
     updateChunkVisibility();
     updateWireframeProximity();
+    updateDemoObstacles();     // analytic only — the demo LiDAR's targets, never drawn
+    updateLidarDemo();
+    updateLidarCloud();
     render();
 }
 
@@ -1787,6 +1794,10 @@ function init() {
     updateMinimapHoverSize();
     initParametersPanel();
     initFPV();
+
+    // Livox point cloud: geometry in the scene, settings panel + flight strip
+    initLidarCloud(scene);
+    initLidarController();
 
     // Listen for mission updates and rebuild 3D trajectory + 2D mini-map overlay
     window.addEventListener('missionUpdated', () => {

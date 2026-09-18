@@ -23,8 +23,9 @@ export const MAX_CONCURRENT_LOADS = 6;
 // Demo mode - realistic fixed-wing patrol circuit (coordinated turns)
 export const DEMO_CRUISE_SPEED = 28;              // m/s cruise airspeed
 export const DEMO_SPEED_VARIANCE = 4;             // m/s gentle airspeed variation
-export const DEMO_CRUISE_AGL = 150;               // m cruise height above circuit-centre terrain
-export const DEMO_MIN_CLEARANCE = 90;             // m minimum terrain clearance (climb trigger)
+export const DEMO_CRUISE_AGL = 50;                // m cruise height above circuit-centre terrain — low, so
+                                                  //   the demo LiDAR reaches the ground and the obstacles
+export const DEMO_MIN_CLEARANCE = 35;             // m minimum terrain clearance (climb trigger)
 export const DEMO_MAX_VS = 3.5;                   // m/s climb/descent limit — gentle terrain follow
 export const DEMO_MAX_BANK = 28 * Math.PI / 180;  // rad, max bank in a coordinated turn
 export const DEMO_ROLL_RATE = 22 * Math.PI / 180; // rad/s, max roll rate (aileron authority)

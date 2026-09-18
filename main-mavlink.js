@@ -591,6 +591,10 @@ function handlePacket(packet) {
             }
         }
 
+        for (const cb of decodedMessageCallbacks) {
+            try { cb(msgId, data); } catch (err) { console.error('[mavlink] decoded-message tap failed:', err.message); }
+        }
+
         mainWindow.webContents.send('mavlink-message', {
             msgId,
             data,
@@ -1045,6 +1049,13 @@ function getNextSequenceNumber() {
 let rawPacketCallback = null;
 function registerRawPacketCallback(cb) { rawPacketCallback = typeof cb === 'function' ? cb : null; }
 
+// Decoded-message taps: main-process consumers of the live telemetry that
+// must not wait for the renderer round trip (the LiDAR georeferencer needs
+// the pose at packet arrival time). Called with (msgId, data) for every
+// message a live link decodes.
+const decodedMessageCallbacks = [];
+function registerDecodedMessageCallback(cb) { if (typeof cb === 'function') decodedMessageCallbacks.push(cb); }
+
 // GCS output mute flag — when true, suppress ALL outgoing messages (heartbeat, RTK, RC override, commands)
 let gcsOutputMuted = false;
 function isGcsOutputMuted() { return gcsOutputMuted; }
@@ -1244,6 +1255,7 @@ module.exports = {
     sendRawBuffer,
     getNextSequenceNumber,
     registerRawPacketCallback,
+    registerDecodedMessageCallback,
     isGcsOutputMuted,
     // Log-replay integration
     handlePacket,

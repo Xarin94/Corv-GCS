@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { initMAVLinkHandlers, cleanup: cleanupMAVLink } = require('./main-mavlink');
+const { initMAVLinkHandlers, cleanup: cleanupMAVLink, registerDecodedMessageCallback } = require('./main-mavlink');
 const { initSITLHandlers, cleanup: cleanupSITL } = require('./sitl-manager');
 const { initRTKHandlers, cleanup: cleanupRTK } = require('./rtk-manager');
 const { initFPVHandlers, cleanupFPV } = require('./fpv-manager');
@@ -9,6 +9,7 @@ const { initTelForwardHandlers, cleanup: cleanupTelFwd } = require('./telforward
 const { initLogReplayHandlers, cleanup: cleanupLogReplay } = require('./log-replay-manager');
 const { initMissionStoreHandlers } = require('./mission-store');
 const { initMSPHandlers, cleanup: cleanupMSP } = require('./msp-manager');
+const { initLidarHandlers, cleanup: cleanupLidar, onMavlinkMessage: lidarOnMavlink } = require('./lidar-manager');
 
 // Hide the application menu (will be set when app is ready)
 
@@ -202,6 +203,11 @@ function createWindow() {
   // MSP (INAV / Betaflight) telemetry adapter
   initMSPHandlers(win);
 
+  // Livox Mid-360 point cloud: direct UDP link to the LiDAR, georeferenced
+  // with the pose taken straight from the decoded MAVLink stream.
+  initLidarHandlers(win);
+  registerDecodedMessageCallback(lidarOnMavlink);
+
   // Forward renderer console.* messages to the terminal (PowerShell) so we can debug
   // without opening DevTools.
   win.webContents.on('console-message', (event) => {
@@ -258,6 +264,7 @@ app.on('window-all-closed', () => {
   cleanupFPV();
   cleanupTelFwd();
   cleanupMSP();
+  cleanupLidar();
   if (process.platform !== 'darwin') app.quit();
 });
 

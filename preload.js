@@ -198,6 +198,23 @@ contextBridge.exposeInMainWorld('fpv', {
   onStatus: (callback) => ipcRenderer.on('fpv-status', (event, status) => callback(status))
 });
 
+// Livox Mid-360 point cloud API bridge (UDP client + georeferencing in main)
+contextBridge.exposeInMainWorld('lidar', {
+  connect: (cfg) => ipcRenderer.invoke('lidar-connect', cfg),
+  disconnect: () => ipcRenderer.invoke('lidar-disconnect'),
+  setConfig: (cfg) => ipcRenderer.invoke('lidar-set-config', cfg),
+  getStatus: () => ipcRenderer.invoke('lidar-get-status'),
+  listInterfaces: () => ipcRenderer.invoke('lidar-list-interfaces'),
+  clear: () => ipcRenderer.invoke('lidar-clear'),
+  saveMap: () => ipcRenderer.invoke('lidar-save-map'),
+  getDir: () => ipcRenderer.invoke('lidar-get-dir'),
+  resync: () => ipcRenderer.invoke('lidar-resync'),
+  onPoints: (cb) => ipcRenderer.on('lidar-points', (_e, d) => cb(d)),
+  onLive: (cb) => ipcRenderer.on('lidar-live', (_e, d) => cb(d)),
+  onOrigin: (cb) => ipcRenderer.on('lidar-origin', (_e, d) => cb(d)),
+  onStatus: (cb) => ipcRenderer.on('lidar-status', (_e, d) => cb(d))
+});
+
 // ADS-B fetch API bridge (via main process to bypass CORS)
 contextBridge.exposeInMainWorld('adsb', {
   fetch: (lamin, lomin, lamax, lomax) => ipcRenderer.invoke('adsb-fetch', lamin, lomin, lamax, lomax)

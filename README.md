@@ -107,6 +107,13 @@ The interface is available in **English and Simplified Chinese** (SYS CONFIG →
 - FFmpeg-based real-time MJPEG conversion
 - Live video overlay in the main interface
 
+### LiDAR Point Cloud (Livox Mid-360 / Mid-360S)
+- **Direct UDP link to the sensor** over a LAN bridge (Livox SDK2 protocol, no companion computer) next to the MAVLink telemetry
+- Every point **georeferenced on the ground station** with the interpolated vehicle pose, mount attitude and lever arm relative to the autopilot IMU set in SETUP → TOOLS → LIDAR
+- Live 3D map in the flight view, voxel-decimated, coloured by height or reflectivity; **CLEAR MAP / SAVE** on the flight screen
+- Accumulates only with a good navigation solution (GPS fix level, satellites, HDOP, EKF flags and variances); without one the scan is still shown around the aircraft and fades after a few seconds
+- `.ply` export of the map and optional raw recording; `scripts/livox-sim.js` emulates the sensor against SITL, and the no-link demo flight runs a synthetic scan of the real terrain plus invisible trees / hangars / pylons — see [docs/LIDAR.md](docs/LIDAR.md)
+
 ### Telemetry Forwarding
 - Forward live telemetry to external serial devices, or mirror it over UDP
 - MAVLink passthrough and **LTM (Lightweight Telemetry)** protocol output
