@@ -5,8 +5,8 @@
 <h1 align="center">CORV GCS</h1>
 
 <p align="center">
-  <b>A modern, 3D Ground Control Station for ArduPilot</b><br>
-  Built with Electron + Three.js | Windows & Linux
+  <b>A 3D ground control station for ArduPilot drones</b><br>
+  Windows &amp; Linux · Electron + Three.js
 </p>
 
 <p align="center">
@@ -19,326 +19,158 @@
 
 ---
 
-**CORV GCS** is a desktop Ground Control Station designed for ArduPilot-based vehicles (Plane, Copter, Rover, Sub, Heli, VTOL). It features immersive 3D terrain visualization using real SRTM elevation data, full mission planning, real-time telemetry, and a modern UI — all in a lightweight Electron application.
+A ground control station is the software on the laptop that talks to the drone: it shows what the
+aircraft is doing, lets you plan a flight and sends it to the autopilot. CORV GCS does that for
+ArduPilot vehicles (Plane, Copter, Rover, Sub, Heli, VTOL) on a **real 3D model of the terrain**,
+built from the same elevation data used by mapping services, with satellite imagery on top.
 
-It also speaks the **CORV binary protocol** for the onboard CORV autopilot and reads **MSP/MSP2 telemetry** from INAV and Betaflight flight controllers. Every protocol is decoded in the main process and normalised to MAVLink, so all three drive the same HUD, 3D view and instruments.
+It also reads INAV / Betaflight controllers over **MSP** and the onboard CORV autopilot over its
+binary protocol; the interface is in **English and Simplified Chinese**.
 
-The interface is available in **English and Simplified Chinese** (SYS CONFIG → LANGUAGE).
-
-> This project is under active development. Feedback, bug reports, and feature requests are welcome!
-
----
-
-## Key Features
-
-### 3D Terrain Visualization
-- Real-time 3D terrain rendering using **SRTM .hgt elevation data**
-- Chunk-based LOD system with satellite imagery overlay
-- Dynamic **hillshade** rendering with realistic sun positioning (time-of-day aware)
-- Wireframe overlay with proximity-based display
-- First-person (pilot) and third-person (observer) camera modes, plus a **horizon-lock** view
-- **Per-airframe 3D models**, selected automatically from the vehicle's `MAV_TYPE`
-- Flight trail visualization (up to 50,000 points)
-- Keyboard view toggles: `T` tilt +90°, `P` trajectory, `M` satellite, `L` sunlight
-
-### Mission Planning
-- **Segment-based route editor**: draw high-level *segments* instead of typing MAVLink commands —
-  **Waypoint**, **Circle** (loiter), **Perimeter**, **Area scan** (photogrammetry lawn-mower at any heading,
-  camera model with overlap / GSD, overshoot, double grid, automatic trigger-by-distance), **Corridor**
-  (parallel passes along a polyline), **Point of interest** (camera ROI) and **Landing**
-- Pick the tool, click on the map, tune it in the inspector under its card; every segment can carry
-  **actions** (camera trigger, photo, gimbal attitude, heading, wait, speed, servo, relay)
-- **Route parameters**: altitude mode **AGL / AMSL / relative**, default altitude and speed, straight or
-  spline turns, automatic take-off, RTL / land / nothing at the end, ceiling and minimum clearance. The
-  vehicle flies **straight from one waypoint to the next** — in AGL mode each waypoint sits at its height
-  above the ground under it — and that is what the profile, the clearance checks and the radio link use;
-  optional **terrain-following waypoints** add intermediate points so the legs stay within an AGL tolerance
-- The route is **recalculated automatically** after every edit: length, flight time, photo count, min/max
-  AGL (the lowest point of a straight leg included), and **validation** — a green / amber / red status with
-  the list of problems (path below terrain, clearance, ceiling, missing elevation data, item limit)
-- Drag vertices, mid-points, the whole figure or a circle's radius on the map; right-click for insert /
-  delete; undo/redo; segment cards reorder by drag
-- **Camera & gimbal menu**: camera presets (DJI, Sony, MicaSense…) or custom sensor / focal / pixels, default
-  gimbal pitch — lane spacing, trigger distance and GSD follow from it. A red dot marks every photo on the
-  route; hover it to see the **ground footprint** at the planned height, heading and camera tilt, and hover a
-  waypoint flown with an active **POI** to see the wedge the camera is looking through
-- **Elevation profile** with terrain, clearance floor, per-segment highlight and hover synchronised with the map
-- **Radio link menu** next to the camera: presets for common radios (RFD900x/868x, SiK, Herelink, Microhard,
-  Doodle Labs, ExpressLRS, Crossfire) or custom frequency, TX power, antenna gains, losses, sensitivity, safety
-  budget and ground antenna height. Place the **operator position** with its own tool (or leave it at the take-off
-  point) and switch the **LINK** layer on: a coverage overlay around the antenna at the planned altitude — light green
-  good link, orange degraded by the terrain (first Fresnel zone intruded or diffraction), red link possible but under
-  the safety budget — plus a halo along the route, warnings for the stretches without link, a link band in the
-  elevation profile and a **LINK PROFILE** cut (terrain, earth curvature, line of sight, Fresnel zone, obstruction
-  loss) for the hovered or worst point. Everything is computed on the SRTM elevation model
-- Upload to the vehicle, **read** the mission stored on it, import / export Mission Planner `.waypoints`
-- **Local mission library** — save, recall, overwrite, rename and delete missions stored
-  next to the installation, with an `index.json` catalogue rebuilt from the folder contents
-
-### Real-Time Telemetry
-- **HUD (Heads-Up Display)** — IFR-style primary flight display with artificial horizon, attitude, airspeed, altitude, vertical speed and G-load graph
-- **Perspective-conformal HUD markers** and an air-relative flight-path vector
-- **Total G-load** computed from all three axes, on live MAVLink and SITL alike
-- **Total-energy variometer** alongside the VSI
-- **ROTOR LOAD** schematic on the flight data screen
-- **Health annunciators** beside the airspeed tape — the conditions Mission Planner flags on its
-  HUD (failsafe, EKF variance, vibration and clipping, IMU/compass/baro/GPS health, GPS glitch,
-  jamming and spoofing, RC loss, fence breach, calibrations in progress, pre-arm, HDOP, weak
-  link…) as flashing red warnings from the top and amber cautions from the bottom, with the
-  RSSI or satellite/HDOP figures under the link and GPS ones
-- **Mini-Map** — Leaflet-based 2D satellite map with vehicle position
-- **Status panel** — GPS fix, battery voltage/current, link quality, flight mode
-- Split-view mode: 3D + 2D map simultaneously
-
-### Connectivity
-- **Serial** telemetry (USB radio, SiK, etc.) — configurable baud rate
-- **UDP** connection (default `127.0.0.1:14550`)
-- **TCP** connection (for SITL via WSL: `127.0.0.1:5760`)
-- MAVLink 2.0 protocol (ardupilotmega dialect)
-- **MSP / MSP2** over serial or TCP for **INAV and Betaflight** — telemetry only
-  (attitude, GPS, altitude, battery, RC, flight mode from the active mode boxes),
-  with a normal and a slow-link poll profile
-- **CORV binary** protocol v7/v8 for the onboard CORV autopilot
-
-### SITL Integration
-- Built-in **ArduPilot SITL launcher** — downloads and runs pre-built SITL binaries
-- Supports Plane, Copter, Rover, Sub, Helicopter, QuadPlane
-- WSL integration for Windows users
-- One-click start with automatic connection
-
-### RTK GPS Support
-- **RTCM3 correction injection** via `GPS_RTCM_DATA` MAVLink messages
-- U-Blox F9P base station support (serial)
-- **NTRIP client** with sourcetable browsing
-- RTK fix status, accuracy, and baseline monitoring
-
-### FPV Camera
-- **RTSP video stream** integration (default: SIYI HM30)
-- FFmpeg-based real-time MJPEG conversion
-- Live video overlay in the main interface
-
-### LiDAR Point Cloud (Livox Mid-360 / Mid-360S)
-- **Direct UDP link to the sensor** over a LAN bridge (Livox SDK2 protocol, no companion computer) next to the MAVLink telemetry
-- Every point **georeferenced on the ground station** with the interpolated vehicle pose, mount attitude and lever arm relative to the autopilot IMU set in SETUP → TOOLS → LIDAR
-- Live 3D map in the flight view, voxel-decimated, coloured by height or reflectivity; **CLEAR MAP / SAVE** on the flight screen
-- Accumulates only with a good navigation solution (GPS fix level, satellites, HDOP, EKF flags and variances); without one the scan is still shown around the aircraft and fades after a few seconds
-- `.ply` export of the map and optional raw recording; `scripts/livox-sim.js` emulates the sensor against SITL, and the no-link demo flight runs a synthetic scan of the real terrain plus invisible trees / hangars / pylons — see [docs/LIDAR.md](docs/LIDAR.md)
-
-### Telemetry Forwarding
-- Forward live telemetry to external serial devices, or mirror it over UDP
-- MAVLink passthrough and **LTM (Lightweight Telemetry)** protocol output
-- Antenna tracker integration
-
-### Flight Logging
-- **`.tlog` recording** of the live MAVLink stream, auto-started on connection
-- **CRV binary format** — compact flight logs (~930 bytes/sec, ~3.3 MB/hour)
-- Replay of `.tlog` and ArduPilot `.bin` DataFlash logs with adjustable speed
-- CRC-16-CCITT data validation
-
-### Parameter Editor
-- Read, write and monitor vehicle parameters in real time
-- **On-demand single reads** — pick a parameter from the side catalogue and fetch just
-  that one, instead of downloading the full list. On a 19200-baud SiK or a LoRa link a
-  full `PARAM_REQUEST_LIST` is minutes of airtime; a single read is two packets
-- Catalogue of known parameter names per vehicle class, which **learns** every name seen
-  from a vehicle or a `.param` file and remembers it for later offline sessions
-- Starred parameters, group filter, per-request timeout for high-latency links
-- Save and load `.param` files
-
-### Additional Features
-- **Joystick/gamepad** support with RC channel override and calibration
-- Predicted trajectory corridor visualization
-- ADS-B traffic awareness
-- Offline satellite tile and SRTM elevation downloader with on-disk cache
-- Cross-platform: Windows (NSIS installer) and Linux (AppImage, .deb)
+![Flight screen](screenshots/flight-hud.jpg)
 
 ---
 
-## Screenshots
+## Flight screen
 
-![HUD & Telemetry](screenshots/hud-telemetry.png)
-*Aviation-style HUD with artificial horizon, airspeed, altitude, and G-load*
+You see what the aircraft sees: the terrain ahead in 3D, with an aviation-style head-up display
+over it. Speed, altitude, heading, vertical speed and G-load are drawn the way an airliner's primary
+flight display draws them — the pitch ladder, the flight-path marker and the bank arc follow the
+same conventions as a Garmin or Boeing HUD, so the picture reads at a glance.
 
-![Mission Planning](screenshots/mission-planning.png)
-*Route editor: segment cards, area scan lanes, elevation profile*
+<p align="center"><img src="screenshots/annunciators.png" width="370" alt="Health annunciators"/></p>
+
+A column of **annunciators** beside the speed tape flags anything wrong with the vehicle: red
+warnings from the top, amber cautions from the bottom. They are the same conditions Mission Planner
+checks — GPS quality, compass and IMU health, vibration, EKF variance, radio signal, failsafes —
+each shown with its own icon and the number behind it (satellites and HDOP under the GPS flag, RSSI
+under the link one).
+
+## Mission planning
+
+You draw the mission as shapes, not as a list of commands: a waypoint, a circle to loiter in, a
+perimeter to fly around, an area to photograph, a corridor to follow, a point the camera should
+look at, a landing. The route between them is calculated for you a moment after every edit — for
+an area scan the parallel lanes come from the camera model, so a DJI Mavic 3 at 100 m gives 49 m
+between lanes, a photo every 26 m and 2.7 cm per pixel on the ground.
+
+![Mission planning](screenshots/mission-planning.jpg)
+
+<p align="center"><img src="screenshots/camera-footprint.png" width="300" alt="Camera footprint"/></p>
+
+Every planned photo is a red dot on the route; hover one and the rectangle it will cover on the
+ground appears. The **elevation profile** along the bottom shows the ground under the whole route
+and the height the aircraft will fly at: the autopilot flies straight from one waypoint to the
+next, so each leg is checked against the terrain and a leg that would clip a hill is listed on the
+route card ("Clearance under 20 m" on segment 6 in the picture) before you upload anything.
+
+## Radio link coverage
+
+A drone is only as far away as its radio can reach, and hills get in the way. Pick your radio from
+the list (RFD900x, SiK, Herelink, Microhard, Doodle Labs, ExpressLRS, Crossfire — or type the
+transmit power, antenna gains and sensitivity of your own), place the operator on the map and turn
+the **LINK** layer on: the map shows in light green where the link will be good, in orange where
+the terrain degrades it, in red where it will work but with too little margin, and nothing where
+it will not work at all.
+
+![Radio link](screenshots/radio-link.jpg)
+
+<p align="center"><img src="screenshots/link-profile.png" width="620" alt="Link profile"/></p>
+
+The check is the one an RF planner would do: a straight line of sight from the antenna to the
+aircraft, the **first Fresnel zone** around it (the radio needs that ellipse clear, not just the
+line), the loss when a ridge cuts into it, and the curvature of the Earth. The **LINK PROFILE** cut
+shows it for the point under the cursor or for the worst point of the route — in the picture a
+mountain between operator and aircraft costs 46.7 dB and the link is lost.
+
+## Flying the mission
+
+One button uploads the plan to the autopilot; **READ** brings back the mission stored on it. The
+command bar keeps the flight mode, battery, GPS quality and the waypoint being flown in view, with
+ARM, TAKEOFF, RTL, AUTO and LAND at hand — the picture is a simulated copter flying the plan above,
+on waypoint 4 of 54.
+
+![Flying the mission](screenshots/mission-auto.jpg)
+
+![Command bar](screenshots/command-bar.png)
+
+Every flight is recorded as a `.tlog` from the moment the link comes up, and both `.tlog` and
+ArduPilot `.bin` logs can be replayed on the same screen, with a timeline to scrub through.
+
+## LiDAR point cloud
+
+With a Livox Mid-360 laser scanner on the aircraft, a 3D map of the ground builds up live on the
+screen. The scanner sends its points over the network link and CORV GCS places each one on the map
+from the aircraft position and attitude in the telemetry — about 170,000 points in the picture, coloured
+by height; the map can be saved as a `.ply` file for other software.
+
+![LiDAR](screenshots/lidar.jpg)
+
+## Setup and parameters
+
+The vehicle connects over a USB telemetry radio, UDP or TCP, and a built-in **ArduPilot simulator**
+(SITL) starts with one click when you want to try things without an aircraft. The parameter editor
+reads a single parameter on request instead of the full list of a thousand — on a slow long-range
+radio that is the difference between two packets and several minutes.
+
+![Parameters](screenshots/parameters.jpg)
+
+## Also on board
+
+- **RTK GPS**: corrections from a base station or an NTRIP caster are forwarded to the drone, for centimetre-level positioning.
+- **FPV video**: an RTSP camera stream (SIYI HM30 and similar) shown over the 3D view.
+- **Joystick**: fly with a gamepad through RC override, with per-axis calibration.
+- **Telemetry forwarding**: mirror the link over UDP or output MAVLink / LTM to an antenna tracker.
+- **ADS-B traffic**: nearby aircraft on the map.
+- **Offline maps**: satellite tiles and elevation data cached on disk, so the app starts and works without a network.
 
 ---
 
 ## Installation
 
-### Download
-Pre-built installers are available on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
-- **Windows**: `CORV GCS Setup 1.7.1.exe`
-- **Linux**: `CORV GCS-1.7.1.AppImage` or `corv-gcs_1.7.1_amd64.deb`
+Installers are on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
+**Windows** `CORV GCS Setup 1.7.1.exe` · **Linux** `CORV GCS-1.7.1.AppImage` or `corv-gcs_1.7.1_amd64.deb`.
 
-### Build from Source
-
-**Prerequisites:** [Node.js](https://nodejs.org/) (v18+) and npm.
+To run from source you need [Node.js](https://nodejs.org/) 18 or newer:
 
 ```bash
-# Clone the repository
 git clone https://github.com/Xarin94/Corv-GCS.git
 cd Corv-GCS
-
-# Install dependencies
 npm install
-
-# Rebuild native modules for Electron
-npx electron-rebuild
-
-# Run in development mode
-npm start
-
-# Build installers
-npm run build          # Windows + Linux
-npm run build:win      # Windows only
-npm run build:linux    # Linux only
+npx electron-rebuild     # native serial-port module for Electron
+npm start                # run
+npm run build            # installers for Windows + Linux → dist/
 ```
 
-Build output goes to the `dist/` directory.
+## Terrain data and local files
 
----
+The 3D terrain comes from SRTM `.hgt` elevation tiles (one file per 1° × 1° square, ~25 MB each at
+30 m resolution). The tiles under the vehicle are downloaded automatically when a network is
+available; you can also put your own files in `topography/` inside the installation folder, from
+[OpenTopography](https://portal.opentopography.org/raster?opentopoID=OTSRTM.082015.4326.1) or
+[USGS EarthExplorer](https://earthexplorer.usgs.gov/), named like `N47E011.hgt`.
 
-## Local Data Setup
+Missions, flight logs and LiDAR maps are written to a `data/` folder next to the installation
+(`data/missions`, `data/logs`, `data/lidar`) — under `Program Files`, where that is not allowed,
+they go to the per-user data folder and the mission library shows the path in use. Custom aircraft
+models (`.glb` / `.gltf`) go in `models/`.
 
-CORV GCS loads terrain data and 3D models from folders inside the **application installation directory**, and writes missions, logs and its catalogue into a `data/` folder in the same place:
+## Connection guide
 
-```
-CORV GCS/                         <-- installation folder
-├── topography/   (or topo/)      <-- SRTM .hgt terrain files       (you provide)
-├── models/                       <-- 3D aircraft models (.glb/.gltf) (you provide)
-└── data/                         <-- created on first run
-    ├── index.json                <-- catalogue of missions and logs
-    ├── missions/                 <-- saved missions (.json)
-    └── logs/                     <-- .tlog / .crv flight logs
-```
+| Method | Protocol | Typical use | Default |
+|--------|----------|-------------|---------|
+| Serial | MAVLink 2 | USB telemetry radio (SiK, RFD900…) | 57600 baud |
+| UDP | MAVLink 2 | MAVProxy, MAVLink router | `127.0.0.1:14550` |
+| TCP | MAVLink 2 | SITL, also through WSL on Windows | `127.0.0.1:5760` |
+| Serial / TCP | MSP / MSP2 | INAV or Betaflight controller, telemetry only | 115200 baud |
+| Serial | CORV binary | Onboard CORV autopilot over USB | 460800 baud |
 
-**Default installation paths:**
+## Documentation
 
-| Platform | Path |
-|----------|------|
-| **Windows** | `C:\Program Files\CORV GCS\` (or custom path chosen during install) |
-| **Linux (.deb)** | `/opt/CORV GCS/` |
-| **Linux (AppImage)** | Portable — same folder as the AppImage |
-
-> **Installing under `Program Files`?** That folder is not writable without elevation, so
-> `data/` automatically falls back to the per-user data folder (`%APPDATA%\CORV GCS\data\`
-> on Windows, `~/.config/CORV GCS/data/` on Linux). The mission library shows the real
-> path in use, highlighted in amber when it is the fallback. To keep the installation
-> self-contained, install somewhere writable — the whole folder can then be copied to
-> another machine with missions and logs intact.
-
-`index.json` is a convenience catalogue for external tools: it is **rebuilt from the folder
-contents** every time the library is opened or a mission is saved, so deleting it or dropping
-a mission file in by hand are both safe.
-
-### Terrain Data (SRTM HGT)
-
-CORV GCS uses **SRTM .hgt files** for 3D terrain elevation rendering. Both resolutions are supported, but **SRTM1 (1 arc-second, ~30 m) is recommended** for the best detail:
-
-| Format | Resolution | Grid Size | File Size | Detail |
-|--------|-----------|-----------|-----------|--------|
-| **SRTM1** | 1 arc-second (~30 m) | 3601 x 3601 | ~25 MB | **Recommended** |
-| SRTM3 | 3 arc-second (~90 m) | 1201 x 1201 | ~2.8 MB | Lower detail |
-
-**How to set up:**
-
-1. Download **SRTM1** `.hgt` files for your area of interest from [OpenTopography](https://portal.opentopography.org/raster?opentopoID=OTSRTM.082015.4326.1) or [USGS EarthExplorer](https://earthexplorer.usgs.gov/)
-2. Place them in the `topography/` (or `topo/`) folder inside the installation directory
-3. Files follow the naming convention `N45E011.hgt` (latitude/longitude of the SW corner)
-
-The terrain system automatically loads the correct tiles based on the vehicle's GPS position. You can also manually load `.hgt` files from the UI.
-
-> **Tip:** Each SRTM1 tile covers a 1x1 degree area. Download only the tiles you need for your flying area.
-
-### 3D Aircraft Models
-
-You can load custom aircraft models in **GLB/GLTF** format:
-
-1. Place your `.glb` or `.gltf` file in the `models/` folder inside the installation directory
-2. Select it from the settings panel in the app — available models are listed automatically
-
----
-
-## Connection Guide
-
-| Method | Protocol | Use Case | Default |
-|--------|----------|----------|---------|
-| **MAVLink Serial** | MAVLink 2 | USB telemetry radio (SiK, RFD900, etc.) | 57600 baud |
-| **MAVLink UDP** | MAVLink 2 | MAVProxy, MAVLink router | `127.0.0.1:14550` |
-| **MAVLink TCP** | MAVLink 2 | SITL (especially via WSL) | `127.0.0.1:5760` |
-| **CORV Binary** | CORV v7/v8 | Onboard CORV autopilot over USB | 460800 baud |
-| **MSP Serial** | MSP / MSP2 | INAV or Betaflight flight controller over USB | 115200 baud |
-| **MSP TCP** | MSP / MSP2 | INAV SITL | `127.0.0.1:5760` |
-
-MSP is request/response, not a stream: the GCS polls the flight controller, so the poll
-profile *is* the telemetry rate. Use **Normal** on USB and **Slow link** on a long-range
-radio, where a 25 Hz attitude poll would use the whole budget.
-
----
-
-## Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Framework | Electron 39 |
-| 3D Engine | Three.js r128 |
-| 2D Maps | Leaflet 1.9.4 |
-| Protocol | node-mavlink 2.3 |
-| Serial | serialport 13.0 |
-
----
-
-## Project Structure
-
-```
-corv-gcs/
-├── main.js                 # Electron main process
-├── main-mavlink.js         # MAVLink serial/UDP/TCP + CORV binary + .tlog recording
-├── msp-manager.js          # MSP/MSP2 adapter (INAV, Betaflight)
-├── mission-store.js        # Data root: missions/, logs/, index.json
-├── preload.js              # IPC security bridge
-├── sitl-manager.js         # SITL launcher
-├── rtk-manager.js          # RTK base station + NTRIP client
-├── fpv-manager.js          # RTSP video stream manager
-├── telforward-manager.js   # Telemetry forwarding (LTM / MAVLink / UDP mirror)
-├── log-replay-manager.js   # .tlog / .bin replay engine
-├── log-replay-bin-parser.js# ArduPilot DataFlash .bin parser
-├── js/
-│   ├── core/               # Constants, state, utilities
-│   ├── engine/             # 3D scene, trajectory, sun position
-│   ├── terrain/            # Terrain loading, chunks, hillshade
-│   ├── maps/               # Leaflet mini-map, tile cache, offline downloader
-│   ├── mavlink/            # MAVLink message routing & commands
-│   ├── mission/            # Route model + compiler, vehicle transfer, command catalog, undo/redo, library
-│   ├── ui/                 # UI controllers & panels
-│   ├── hud/                # HUD canvas rendering
-│   ├── adsb/               # ADS-B traffic
-│   ├── joystick/           # Gamepad input
-│   ├── serial/             # CORV binary link
-│   └── logging/            # tlog logger, replay controller
-├── html/                   # HTML pages & components
-├── css/                    # Stylesheets
-├── assets/                 # Icons & logos
-├── docs/                   # Architecture & work tracker
-├── topo/                   # SRTM .hgt terrain files
-├── models/                 # 3D aircraft models (GLB)
-└── data/                   # Runtime: missions, logs, index.json (created on first run)
-```
-
----
-
-## Contributing
-
-Contributions are welcome! Feel free to:
-- Report bugs or request features via [GitHub Issues](https://github.com/Xarin94/Corv-GCS/issues)
-- Submit pull requests
-- Share screenshots or videos of your setup
-
----
+[ARCHITECTURE.md](ARCHITECTURE.md) describes every module and data flow; [docs/LIDAR.md](docs/LIDAR.md)
+covers the Livox setup. Bug reports and feature requests are welcome in the
+[issues](https://github.com/Xarin94/Corv-GCS/issues).
 
 ## License
 
-This project is licensed under the [Apache License 2.0](LICENSE).
-
----
+[Apache License 2.0](LICENSE)
