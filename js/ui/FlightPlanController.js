@@ -14,6 +14,8 @@
  *   points    – calculated waypoints (small) and segment base points (large)
  *   handles   – drag handles of the selected segment (vertices, mid-points, centre, radius)
  *   draft     – the figure being drawn
+ *   link      – radio coverage from the operator position, a halo along the
+ *               route and the line of sight (RadioLinkView, behind LINK)
  */
 
 import { STATE } from '../core/state.js';
@@ -22,10 +24,13 @@ import { getTerrainElevationFromHGT, getTerrainElevationAsync, resetAutoDownload
 import { cachedTileLayer } from '../maps/CachedTileLayer.js';
 import {
     SEGMENT_TYPES, SEGMENT_ORDER, ACTION_TYPES, ACTION_ORDER, ROUTE_PARAM_FIELDS, CAMERA_FIELDS, GIMBAL_FIELDS, CAMERA_PRESETS,
+    RADIO_FIELDS, RADIO_PRESETS, rememberRadio,
     getRoute, replaceRoute, clearRoute, createRoute, createSegment, createAction, getSegment,
     segmentAlt, fieldVisible, haversine, bearing, localFrame, centroid, surveyGeometry, cameraFov, cameraFootprint,
 } from '../mission/RouteModel.js';
 import { compileRoute, corridorOutline } from '../mission/RouteCompiler.js';
+import { LINK, LINK_STYLE, groundStation, evaluateLink, analyzeRoute, computeCoverage, freeSpaceRange, summarizeLink } from '../mission/RadioLink.js';
+import { createRadioLinkView, drawLinkBand, drawLinkInset } from './RadioLinkView.js';
 import { commitMission, undoMission, redoMission, resetMissionHistory, canUndo, canRedo } from '../mission/MissionHistory.js';
 import { initMissionLibrary, openMissionLibrary, saveCurrentMission, getCurrentMissionName, detachCurrentMission } from '../mission/MissionLibrary.js';
 import { downloadMission, itemsToRoute } from '../mission/MissionTransfer.js';
@@ -37,6 +42,7 @@ let satLayer = null;
 let satVisible = true;
 let showCalcPoints = true;
 let showCamera = true;
+let showLink = false;
 let initialized = false;
 let visible = false;
 
@@ -54,11 +60,18 @@ const figures = new Map();        // segId → { fig, axis, points[], label, gly
 let cameraRenderer = null;
 let vehicleMarker = null;
 let homeMarker = null;
+let operatorMarker = null;
 let hoverMarker = null;
 let centeredOnce = false;
 
+// Radio link: the ground station, the analysis along the route and the coverage raster
+let linkView = null;
+const link = { gs: null, analysis: null, worstEval: null, coverage: null, coverageKey: null, token: null, timer: null, pendingTerrain: null };
+const LS_LINK = 'corv.fp.link';
+const LS_RADIO = 'corv.fp.radio';
+
 // Elevation profile view state
-const profile = { zoom: 1, scroll: 0, hoverDist: null, dragging: false, dragX: 0, scrollStart: 0, bound: false };
+const profile = { zoom: 1, scroll: 0, hoverDist: null, dragging: false, dragX: 0, scrollStart: 0, bound: false, padL: 52, padR: 16 };
 
 const isPlane = () => STATE.vehicleType === 1;
 
@@ -74,6 +87,7 @@ const ICON = {
     poi:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>',
     landing:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v11"/><path d="M7 10l5 5 5-5"/><path d="M4 20h16"/></svg>',
     home:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 11l9-8 9 8v10h-6v-6H9v6H3z"/></svg>',
+    operator:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22v-9"/><circle cx="12" cy="10.5" r="2.2"/><path d="M8.3 6.8a5.2 5.2 0 0 0 0 7.4M15.7 6.8a5.2 5.2 0 0 1 0 7.4"/><path d="M5.5 4a9.2 9.2 0 0 0 0 13M18.5 4a9.2 9.2 0 0 1 0 13"/></svg>',
     trash:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
     warn:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3L2 21h20z"/><path d="M12 10v5M12 18v.5"/></svg>',
 };
@@ -83,6 +97,14 @@ const ICON = {
 export function initFlightPlan() {
     if (initialized) return;
     initialized = true;
+    // The ground radio outlives any one route: the last one used seeds new routes
+    try {
+        const saved = JSON.parse(localStorage.getItem(LS_RADIO) || 'null');
+        if (saved && typeof saved === 'object') {
+            rememberRadio(saved);
+            if (!getRoute().segments.length) Object.assign(getRoute().params.radio, saved);
+        }
+    } catch { /* storage unavailable or corrupt */ }
     initMap();
     initTools();
     initRouteCard();
@@ -153,6 +175,7 @@ function initMap() {
     hoverPane.style.pointerEvents = 'none';
     map.createPane('fpHandles').style.zIndex = 650;
     map.createPane('fpLabels').style.zIndex = 640;
+    linkView = createRadioLinkView(map);
 
     // Debug hook for the devtools console (the module scope is not reachable otherwise)
     window.__flightPlan = { map, layers, route: getRoute, compiled: () => compiled };
@@ -179,7 +202,11 @@ function initMap() {
         e.currentTarget.classList.toggle('active', showCamera);
         renderCameraLayer();
     });
+    document.getElementById('fp-link-toggle')?.addEventListener('click', () => setLinkVisible(!showLink));
     document.getElementById('fp-fit')?.addEventListener('click', fitRoute);
+    try { showLink = localStorage.getItem(LS_LINK) === '1'; } catch { /* storage unavailable */ }
+    document.getElementById('fp-link-toggle')?.classList.toggle('active', showLink);
+    linkView.setVisible(showLink);
 
     setInterval(() => {
         if (!visible) return;
@@ -262,14 +289,49 @@ function updateHomeMarker() {
     }
 }
 
+// Operator / ground antenna ------------------------------------------------------
+
+/** Where the ground antenna is: the placed operator, else the take-off point. */
+function operatorPosition() {
+    const P = getRoute().params;
+    if (P.operator) return P.operator;
+    return compiled.home ? { lat: compiled.home.lat, lng: compiled.home.lng } : null;
+}
+
+function setOperator(pos) {
+    getRoute().params.operator = pos ? { lat: pos.lat, lng: pos.lng } : null;
+    commitMission(pos ? 'Place operator' : 'Reset operator');
+    updateOperatorMarker();
+    renderOperatorDesc();
+    scheduleLink(0);
+}
+
+/** The antenna marker is shown only for an explicitly placed operator; at the take-off point the H marker is the operator. */
+function updateOperatorMarker() {
+    if (!map) return;
+    const pos = getRoute().params.operator;
+    if (!pos) { if (operatorMarker) { operatorMarker.remove(); operatorMarker = null; } return; }
+    if (!operatorMarker) {
+        const icon = L.divIcon({ html: `<div class="fp-gs-icon">${ICON.operator}</div>`, iconSize: [26, 26], iconAnchor: [13, 13], className: 'vehicle-map-marker' });
+        operatorMarker = L.marker([pos.lat, pos.lng], { icon, draggable: true, zIndexOffset: 950, title: 'Operator / ground antenna — drag to move' }).addTo(map);
+        operatorMarker.on('dragend', () => {
+            const ll = operatorMarker.getLatLng();
+            setOperator({ lat: ll.lat, lng: ll.lng });
+        });
+        operatorMarker.on('click', () => { selectSegment(null); openRadioPopover(); });
+    } else {
+        operatorMarker.setLatLng([pos.lat, pos.lng]);
+    }
+}
+
 // ── Tools ─────────────────────────────────────────────────────────────────────
 
 function initTools() {
     const bar = document.getElementById('fp-tools');
     if (!bar) return;
-    const tools = [['select', 'Select / pan', 'V'], ...SEGMENT_ORDER.map(t => [t, SEGMENT_TYPES[t].label, SEGMENT_TYPES[t].hotkey])];
+    const tools = [['select', 'Select / pan', 'V'], ...SEGMENT_ORDER.map(t => [t, SEGMENT_TYPES[t].label, SEGMENT_TYPES[t].hotkey]), ['operator', 'Operator position (ground antenna)', 'O']];
     bar.innerHTML = tools.map(([id, label, key]) =>
-        `<button class="fp-tool${id === 'select' ? ' active' : ''}" data-tool="${id}" title="${label} (${key})">${ICON[id]}</button>`
+        `<button class="fp-tool${id === 'select' ? ' active' : ''}${id === 'operator' ? ' is-aux' : ''}" data-tool="${id}" title="${label} (${key})">${ICON[id]}</button>`
     ).join('');
     bar.querySelectorAll('.fp-tool').forEach(btn => btn.addEventListener('click', () => setTool(btn.dataset.tool)));
     L.DomEvent.disableClickPropagation(bar);
@@ -286,15 +348,16 @@ function setTool(name) {
     if (mapEl) mapEl.classList.toggle('is-drawing', name !== 'select');
     const hint = document.getElementById('fp-map-hint');
     if (hint) {
-        const def = SEGMENT_TYPES[name];
-        hint.style.display = def ? 'block' : 'none';
-        if (def) hint.textContent = def.hint;
+        const text = name === 'operator' ? 'Click on the map where the operator and the ground antenna will be — Esc to cancel' : SEGMENT_TYPES[name]?.hint;
+        hint.style.display = text ? 'block' : 'none';
+        if (text) hint.textContent = text;
     }
 }
 
 function onMapClick(e) {
     hideContextMenu();
     if (tool === 'select') { selectSegment(null); return; }
+    if (tool === 'operator') { setOperator({ lat: e.latlng.lat, lng: e.latlng.lng }); setTool('select'); return; }
     const def = SEGMENT_TYPES[tool];
     if (!def) return;
     const p = { lat: e.latlng.lat, lng: e.latlng.lng };
@@ -442,7 +505,9 @@ async function runCompile() {
     if (document.activeElement?.closest?.('.fp-seg-body')) refreshSummaries();
     else renderSegmentList();
     renderMap();
+    updateOperatorMarker();
     renderProfile();
+    scheduleLink(0);
 }
 
 function refreshSummaries() {
@@ -461,6 +526,16 @@ async function ensureRouteTerrain() {
     if (P.home) pts.push(P.home);
     else if (STATE.homeLat !== null && STATE.homeLat !== undefined) pts.push({ lat: STATE.homeLat, lng: STATE.homeLon });
     for (const s of getRoute().segments) for (const p of s.points) pts.push(p);
+    // The radio coverage raster reaches `coverageRange` around the operator in every direction
+    const op = P.operator || (pts.length ? pts[0] : null);
+    if (op) {
+        add(op.lat, op.lng);
+        if (showLink) {
+            const dLat = (+P.radio?.coverageRange || 15) * 1000 / 111320;
+            const dLng = dLat / Math.max(0.2, Math.cos(op.lat * Math.PI / 180));
+            for (const [a, b] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) add(op.lat + a * dLat, op.lng + b * dLng);
+        }
+    }
     for (let i = 0; i < pts.length; i++) {
         add(pts[i].lat, pts[i].lng);
         if (i > 0) {
@@ -505,6 +580,11 @@ function initRouteCard() {
 
     document.getElementById('fp-camera-btn')?.addEventListener('click', toggleCameraPopover);
     document.getElementById('fp-camera-close')?.addEventListener('click', closeCameraPopover);
+    document.getElementById('fp-radio-btn')?.addEventListener('click', toggleRadioPopover);
+    document.getElementById('fp-radio-close')?.addEventListener('click', closeRadioPopover);
+    document.getElementById('fp-operator-place')?.addEventListener('click', () => { closeRadioPopover(); setTool('operator'); });
+    document.getElementById('fp-operator-reset')?.addEventListener('click', () => setOperator(null));
+    document.getElementById('fp-link-switch')?.addEventListener('change', (e) => setLinkVisible(e.target.checked));
     document.getElementById('fp-route-settings')?.addEventListener('click', toggleRouteSettings);
     document.getElementById('fp-route-params-close')?.addEventListener('click', closeRouteSettings);
     document.getElementById('fp-chips')?.addEventListener('click', toggleRouteSettings);
@@ -527,6 +607,7 @@ function initRouteCard() {
         e.stopPropagation();
         closeRouteSettings();
         closeCameraPopover();
+        closeRadioPopover();
         menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
     });
     document.addEventListener('click', () => { if (menu) menu.style.display = 'none'; });
@@ -561,6 +642,8 @@ function applyHistory(label) {
     syncNameField();
     renderHomeDesc();
     updateHomeMarker();
+    updateOperatorMarker();
+    renderOperatorDesc();
     scheduleCompile(0);
 }
 
@@ -610,13 +693,15 @@ function renderRouteCard() {
         st?.photos ? `${st.photos} photos` : null,
     ].filter(Boolean);
     const chipsEl = document.getElementById('fp-chips');
-    if (chipsEl) chipsEl.innerHTML = chips.map(c => `<span class="fp-chip">${c}</span>`).join('');
+    if (chipsEl) {
+        chipsEl.innerHTML = chips.map(c => `<span class="fp-chip">${c}</span>`).join('') + linkChip();
+    }
 
     const issuesEl = document.getElementById('fp-issues');
     if (issuesEl) {
         // One line per distinct problem; the same warning on forty waypoints reads "… (40 segments)"
         const groups = new Map();
-        for (const i of compiled.issues) {
+        for (const i of [...compiled.issues, ...linkIssues()]) {
             if (i.level === 'info' && segs.length) continue;
             const key = `${i.level}|${i.text}`;
             const g = groups.get(key) || { level: i.level, text: i.text, segIds: [] };
@@ -635,6 +720,7 @@ function renderRouteCard() {
     const upload = document.getElementById('fp-upload');
     if (upload) upload.classList.toggle('is-blocked', errors.length > 0);
     renderHomeDesc();
+    renderOperatorDesc();
 }
 
 function renderHomeDesc() {
@@ -745,6 +831,205 @@ function renderCameraDerived() {
 function closeCameraPopover() {
     const pop = document.getElementById('fp-camera');
     if (pop) pop.style.display = 'none';
+}
+
+// Radio link popover ----------------------------------------------------------------
+
+function toggleRadioPopover(e) {
+    e?.stopPropagation();
+    const pop = document.getElementById('fp-radio');
+    if (!pop) return;
+    if (pop.style.display !== 'none') { closeRadioPopover(); return; }
+    closeRouteSettings();
+    closeCameraPopover();
+    openRadioPopover();
+}
+
+function openRadioPopover() {
+    const pop = document.getElementById('fp-radio');
+    const body = document.getElementById('fp-radio-body');
+    if (!pop || !body) return;
+    const P = getRoute().params;
+    const radio = P.radio;
+    body.innerHTML = `<div class="fp-fields">${renderFields(RADIO_FIELDS, radio, 'rad')}</div>`;
+    bindFields(body.querySelector('.fp-fields'), RADIO_FIELDS, radio, (key) => {
+        if (key === 'preset') {
+            const preset = RADIO_PRESETS[radio.preset];
+            if (preset && radio.preset !== 'custom') Object.assign(radio, preset);
+            else radio.name = 'Custom';
+            openRadioPopover();           // the specification fields follow the preset
+        } else if (['freq', 'txPower', 'gainGround', 'gainAir', 'minRssi'].includes(key) && radio.preset !== 'custom') {
+            radio.preset = 'custom';      // hand-edited specifications are a custom radio
+            radio.name = 'Custom';
+            const sel = body.querySelector('select[data-key=preset]');
+            if (sel) sel.value = 'custom';
+        }
+        commitMission('Radio profile');
+        rememberRadio(radio);
+        try { localStorage.setItem(LS_RADIO, JSON.stringify(radio)); } catch { /* storage unavailable */ }
+        renderRadioDerived();
+        scheduleLink();
+    });
+    const sw = document.getElementById('fp-link-switch');
+    if (sw) sw.checked = showLink;
+    renderRadioDerived();
+    renderOperatorDesc();
+    pop.style.display = 'block';
+    document.getElementById('fp-route-menu-list').style.display = 'none';
+}
+
+function closeRadioPopover() {
+    const pop = document.getElementById('fp-radio');
+    if (pop) pop.style.display = 'none';
+}
+
+/** Budget numbers plus, when the link has been analysed, what the route looks like from the antenna. */
+function renderRadioDerived() {
+    const el = document.getElementById('fp-radio-derived');
+    if (!el) return;
+    const P = getRoute().params;
+    const R = P.radio;
+    const budget = (+R.txPower || 0) + (+R.gainGround || 0) + (+R.gainAir || 0) - (+R.losses || 0) - (+R.minRssi || 0);
+    const fs0 = freeSpaceRange(R, 0), fsM = freeSpaceRange(R, +R.minMargin || 0);
+    const altText = { agl: `${P.defaultAlt} m AGL`, amsl: `${P.defaultAlt} m AMSL`, rel: `${P.defaultAlt} m above take-off` }[P.altMode];
+    const parts = [
+        `budget <b>${budget.toFixed(0)} dB</b>`,
+        `free space <b>${fmtDist(fsM)}</b> with margin · <b>${fmtDist(fs0)}</b> to sensitivity`,
+        `overlay at <b>${altText}</b>`,
+    ];
+    if (link.gs) {
+        parts.push(`antenna <b>${link.gs.antennaMsl !== null ? Math.round(link.gs.antennaMsl) + ' m AMSL' : 'no terrain data'}</b>`);
+    }
+    if (showLink && link.analysis) {
+        const A = link.analysis;
+        const w = A.worst;
+        const cls = w ? w.clazz : LINK.GOOD;
+        const name = { [LINK.GOOD]: 'good', [LINK.DEGRADED]: 'degraded', [LINK.MARGINAL]: 'marginal', [LINK.NONE]: 'none' }[cls];
+        parts.push(`route: <b class="fp-link-${name}">${summarizeLink(A)}</b>`);
+        if (w && w.clazz !== LINK.GOOD) parts.push(`worst at <b>${fmtDist(w.dist)}</b>: ${w.rssi.toFixed(0)} dBm, margin <b>${w.margin.toFixed(0)} dB</b>${w.loss > 0 ? `, terrain −${w.loss.toFixed(0)} dB` : ''}`);
+        parts.push(`farthest <b>${fmtDist(A.maxGsDist)}</b> from the antenna`);
+    } else if (!showLink) {
+        parts.push('enable the coverage overlay to analyse the route');
+    }
+    el.innerHTML = parts.map(t => `<span>${t}</span>`).join('');
+}
+
+function renderOperatorDesc() {
+    const el = document.getElementById('fp-operator-desc');
+    if (!el) return;
+    const P = getRoute().params;
+    if (P.operator) el.textContent = `${P.operator.lat.toFixed(5)}, ${P.operator.lng.toFixed(5)}`;
+    else if (compiled.home) el.textContent = 'at the take-off point';
+    else el.textContent = 'at the take-off point (none yet)';
+    const reset = document.getElementById('fp-operator-reset');
+    if (reset) reset.disabled = !P.operator;
+}
+
+function linkChip() {
+    if (!showLink || !link.analysis) return '';
+    const cls = link.analysis.worst ? link.analysis.worst.clazz : LINK.GOOD;
+    const name = { [LINK.GOOD]: 'good', [LINK.DEGRADED]: 'degraded', [LINK.MARGINAL]: 'marginal', [LINK.NONE]: 'none', [LINK.UNKNOWN]: 'none' }[cls];
+    const text = cls === LINK.GOOD ? 'LINK OK' : cls === LINK.UNKNOWN ? 'LINK ?' : `LINK ${LINK_STYLE[cls].short}`;
+    return `<span class="fp-chip is-link-${name}" title="${escapeHtml(summarizeLink(link.analysis))}">${text}</span>`;
+}
+
+/** Warnings from the link analysis, shown with the compiler's own. */
+function linkIssues() {
+    if (!showLink || !link.analysis) return [];
+    const L = link.analysis.lengths;
+    const out = [];
+    if (L[LINK.NONE] > 0) out.push({ level: 'warn', text: `Radio link lost along ${fmtDist(L[LINK.NONE])} of the route`, segId: null });
+    if (L[LINK.MARGINAL] > 0) out.push({ level: 'warn', text: `Radio link below the safety margin along ${fmtDist(L[LINK.MARGINAL])}`, segId: null });
+    if (L[LINK.UNKNOWN] > 0) out.push({ level: 'warn', text: `No elevation data for the radio link along ${fmtDist(L[LINK.UNKNOWN])}`, segId: null });
+    return out;
+}
+
+// Radio link: analysis + coverage --------------------------------------------------
+
+function setLinkVisible(v) {
+    showLink = !!v;
+    try { localStorage.setItem(LS_LINK, showLink ? '1' : '0'); } catch { /* storage unavailable */ }
+    document.getElementById('fp-link-toggle')?.classList.toggle('active', showLink);
+    const sw = document.getElementById('fp-link-switch');
+    if (sw) sw.checked = showLink;
+    linkView?.setVisible(showLink);
+    scheduleLink(0);
+    renderRouteCard();
+    renderProfile();
+}
+
+function setLinkBusy(v) {
+    document.getElementById('fp-link-toggle')?.classList.toggle('is-busy', !!v);
+}
+
+function scheduleLink(delay = 150) {
+    clearTimeout(link.timer);
+    link.timer = setTimeout(runLink, delay);
+}
+
+/** Planned altitude over a cell for the coverage overlay: the route default altitude in the route's mode. */
+function coverageAltitude() {
+    const P = getRoute().params;
+    const alt = +P.defaultAlt || 0;
+    const homeElev = compiled.home?.elev ?? link.gs?.elev ?? 0;
+    if (P.altMode === 'amsl') return () => alt;
+    if (P.altMode === 'rel') return () => homeElev + alt;
+    return t => t + alt;
+}
+
+function runLink() {
+    if (link.token) link.token.cancelled = true;
+    link.token = null;
+    setLinkBusy(false);
+    const P = getRoute().params;
+    const pos = operatorPosition();
+    link.gs = pos ? groundStation(P.radio, pos, getTerrainElevationFromHGT) : null;
+    link.analysis = null;
+    link.worstEval = null;
+
+    if (!showLink || !link.gs) {
+        linkView?.setHalo(null);
+        renderRadioDerived();
+        renderRouteCard();
+        renderProfile();
+        return;
+    }
+    // No tile under the antenna yet: fetch it once, then analyse
+    if (link.gs.antennaMsl === null) {
+        const key = `${pos.lat.toFixed(4)},${pos.lng.toFixed(4)}`;
+        if (link.pendingTerrain !== key) {
+            link.pendingTerrain = key;
+            getTerrainElevationAsync(pos.lat, pos.lng).then(v => { if (v !== null && link.pendingTerrain === key) { link.pendingTerrain = null; scheduleLink(0); } }).catch(() => {});
+        }
+    }
+
+    link.analysis = compiled.navPath.length >= 2 ? analyzeRoute(P.radio, link.gs, compiled.navPath, getTerrainElevationFromHGT, { profileStep: 40 }) : null;
+    if (link.analysis?.worst) {
+        const w = link.analysis.worst;
+        link.worstEval = evaluateLink(P.radio, link.gs, w, getTerrainElevationFromHGT, { profile: true });
+    }
+    linkView.setHalo(link.analysis);
+    renderRadioDerived();
+    renderRouteCard();
+    renderProfile();
+
+    // Coverage raster: only when something it depends on changed
+    const R = P.radio;
+    const key = JSON.stringify([R.freq, R.txPower, R.gainGround, R.gainAir, R.losses, R.minRssi, R.minMargin, R.groundHeight, R.coverageRange,
+        link.gs.lat, link.gs.lng, link.gs.antennaMsl, P.altMode, P.defaultAlt, compiled.home?.elev]);
+    if (key === link.coverageKey && link.coverage) return;
+    if (link.gs.antennaMsl === null) { link.coverage = null; link.coverageKey = null; linkView.setCoverage(null); return; }
+    const token = { cancelled: false };
+    link.token = token;
+    setLinkBusy(true);
+    computeCoverage(R, link.gs, coverageAltitude(), getTerrainElevationFromHGT, { range: (+R.coverageRange || 15) * 1000, token })
+        .then(cov => {
+            if (token.cancelled || !cov) return;
+            link.coverage = cov;
+            link.coverageKey = key;
+            linkView.setCoverage(cov);
+        })
+        .finally(() => { if (link.token === token) { link.token = null; setLinkBusy(false); } });
 }
 
 // Menu ----------------------------------------------------------------------------
@@ -1555,7 +1840,7 @@ function showContextMenu(e, ctx) {
         }
         items.push(['delete', 'Delete segment']);
     } else {
-        items.push(['wp', 'Add waypoint here'], ['poi', 'Add POI here'], ['home', 'Take-off point here']);
+        items.push(['wp', 'Add waypoint here'], ['poi', 'Add POI here'], ['home', 'Take-off point here'], ['operator', 'Operator here']);
         if (selectedId) items.push(['deselect', 'Deselect']);
     }
     el.innerHTML = items.map(([a, l]) => `<button data-act="${a}"${a === 'delete' || a === 'delvtx' ? ' class="is-danger"' : ''}>${l}</button>`).join('');
@@ -1591,6 +1876,7 @@ function showContextMenu(e, ctx) {
                 getRoute().params.home = { lat: ll.lat, lng: ll.lng };
                 commitMission('Set take-off point'); renderHomeDesc(); updateHomeMarker(); scheduleCompile();
                 break;
+            case 'operator': setOperator({ lat: ll.lat, lng: ll.lng }); break;
             case 'deselect': selectSegment(null); break;
         }
     };
@@ -1615,6 +1901,7 @@ function initKeyboard() {
             hideContextMenu();
             closeRouteSettings();
             closeCameraPopover();
+            closeRadioPopover();
             return;
         }
         if (typing) return;
@@ -1629,6 +1916,7 @@ function initKeyboard() {
         if (e.altKey) return;
         const k = e.key.toUpperCase();
         if (k === 'V') setTool('select');
+        else if (k === 'O') setTool('operator');
         else for (const tname of SEGMENT_ORDER) if (SEGMENT_TYPES[tname].hotkey === k) { setTool(tname); break; }
     });
     document.addEventListener('click', (e) => {
@@ -1642,16 +1930,15 @@ function initProfile() {
     const canvas = document.getElementById('mission-3d-canvas');
     if (!canvas || profile.bound) return;
     profile.bound = true;
-    const PAD_L = 52, PAD_R = 16;
 
     canvas.addEventListener('wheel', (e) => {
         e.preventDefault();
-        const plotW = canvas.width - PAD_L - PAD_R;
+        const plotW = canvas.width - profile.padL - profile.padR;
         if (e.ctrlKey || e.metaKey) {
             const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
             const old = profile.zoom;
             profile.zoom = Math.max(1, Math.min(40, profile.zoom * factor));
-            const mx = e.clientX - canvas.getBoundingClientRect().left - PAD_L;
+            const mx = e.clientX - canvas.getBoundingClientRect().left - profile.padL;
             const ratio = (mx + profile.scroll) / (plotW * old);
             profile.scroll = ratio * plotW * profile.zoom - mx;
         } else {
@@ -1663,7 +1950,7 @@ function initProfile() {
     canvas.addEventListener('mousedown', (e) => { profile.dragging = true; profile.dragX = e.clientX; profile.scrollStart = profile.scroll; profile.moved = false; });
     window.addEventListener('mousemove', (e) => {
         if (profile.dragging) {
-            const plotW = canvas.width - PAD_L - PAD_R;
+            const plotW = canvas.width - profile.padL - profile.padR;
             const dx = profile.dragX - e.clientX;
             if (Math.abs(dx) > 2) profile.moved = true;
             profile.scroll = Math.max(0, Math.min(plotW * profile.zoom - plotW, profile.scrollStart + dx));
@@ -1680,6 +1967,7 @@ function initProfile() {
     canvas.addEventListener('mouseleave', () => {
         profile.hoverX = null;
         if (hoverMarker) { hoverMarker.remove(); hoverMarker = null; }
+        linkView?.clearLos();
         const tip = document.getElementById('fp-profile-tip');
         if (tip) tip.style.display = 'none';
         renderProfile();
@@ -1706,7 +1994,11 @@ function renderProfile() {
     canvas.height = panel.clientHeight || 170;
     const ctx = canvas.getContext('2d');
     const w = canvas.width, h = canvas.height;
-    const pad = { top: 34, bottom: 24, left: 52, right: 16 };
+    // With the radio link on, the right part of the panel is the line-of-sight cut
+    const linkOn = showLink && !!link.gs && compiled.navPath.length >= 2;
+    const insetW = linkOn ? Math.max(240, Math.min(420, Math.round(w * 0.34))) : 0;
+    const pad = { top: 34, bottom: 24, left: 52, right: 16 + insetW };
+    profile.padL = pad.left; profile.padR = pad.right;
 
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = 'rgba(5, 12, 20, 0.95)';
@@ -1770,6 +2062,10 @@ function renderProfile() {
         if (x < pad.left || x > pad.left + plotW) continue;
         ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + plotH); ctx.stroke();
     }
+
+    // Radio link class along the route, as a band under the header
+    const BAND_Y = pad.top - 11, BAND_H = 6;
+    if (linkOn && link.analysis) drawLinkBand(ctx, link.analysis, X, BAND_Y, BAND_H, pad.left, pad.left + plotW);
 
     // Terrain
     const tPts = terr.filter(p => p.elev !== null);
@@ -1873,22 +2169,49 @@ function renderProfile() {
         ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, pad.top + plotH); ctx.stroke();
         ctx.beginPath(); ctx.arc(x, Y(alt), 4, 0, Math.PI * 2); ctx.fillStyle = '#00d2ff'; ctx.fill();
 
+        // Radio link at the hovered point: numbers in the tooltip, the cut in the inset, the ray on the map
+        let hoverLink = null;
+        if (linkOn) {
+            hoverLink = evaluateLink(P.radio, link.gs, { lat, lng, altMsl: alt }, getTerrainElevationFromHGT, { profile: true });
+            linkView.setLos(link.gs, { lat, lng }, hoverLink.clazz);
+        }
+        profile.hoverLink = hoverLink;
+
         const tip = document.getElementById('fp-profile-tip');
         if (tip) {
             const seg = profile.hoverSeg ? getSegment(profile.hoverSeg) : null;
             const idx = seg ? segs.indexOf(seg) + 1 : null;
+            let linkText = '';
+            if (hoverLink) {
+                const st = LINK_STYLE[hoverLink.clazz];
+                linkText = hoverLink.clazz === LINK.UNKNOWN
+                    ? `<br><span style="color:${st.color}">link: no terrain data</span>`
+                    : `<br><span style="color:${st.color}">${st.short}</span> · ${hoverLink.rssi.toFixed(0)} dBm · margin <b>${hoverLink.margin.toFixed(0)} dB</b> · ${fmtDist(hoverLink.dist)} from GS${hoverLink.loss > 0 ? ` · terrain −${hoverLink.loss.toFixed(0)} dB` : ''}`;
+            }
             tip.innerHTML = `<b>${fmtDist(d)}</b>${seg ? ` · ${idx} ${SEGMENT_TYPES[seg.type].label}` : ''}<br>
-                AMSL <b>${Math.round(alt)} m</b>${g !== null ? ` · AGL <b>${Math.round(alt - g)} m</b> · terrain ${Math.round(g)} m` : ''}`;
+                AMSL <b>${Math.round(alt)} m</b>${g !== null ? ` · AGL <b>${Math.round(alt - g)} m</b> · terrain ${Math.round(g)} m` : ''}${linkText}`;
             tip.style.display = 'block';
-            tip.style.left = `${Math.min(w - 190, profile.hoverX + 12)}px`;
-            tip.style.top = `${Math.max(4, Math.min(h - 46, profile.hoverY - 40))}px`;
+            const tipW = hoverLink ? 300 : 190;
+            tip.style.left = `${Math.max(pad.left, Math.min(pad.left + plotW - tipW, profile.hoverX + 12))}px`;
+            tip.style.top = `${Math.max(4, Math.min(h - (hoverLink ? 60 : 46), profile.hoverY - 40))}px`;
         }
         if (map) {
             if (!hoverMarker) hoverMarker = L.circleMarker([lat, lng], { radius: 6, color: '#00d2ff', weight: 2, fillColor: '#00d2ff', fillOpacity: 0.4, interactive: false, pane: 'fpHandles' }).addTo(map);
             else hoverMarker.setLatLng([lat, lng]);
         }
+    } else {
+        profile.hoverLink = null;
     }
     ctx.restore();
+
+    // Line-of-sight cut: the hovered point, else the worst point of the route
+    if (linkOn) {
+        const ev = profile.hoverLink || link.worstEval;
+        const title = profile.hoverLink ? 'GS → cursor' : link.worstEval ? `GS → worst point, ${fmtDist(link.analysis.worst.dist)}` : '';
+        drawLinkInset(ctx, { x: w - insetW - 8, y: 0, w: insetW + 8, h }, ev, { title });
+        ctx.fillStyle = '#6e7f8d'; ctx.font = `8px ${mono}`; ctx.textAlign = 'right';
+        ctx.fillText('LINK', pad.left - 6, BAND_Y + BAND_H - 1);
+    }
 
     // Axes
     ctx.fillStyle = '#6e7f8d'; ctx.font = `9px ${mono}`; ctx.textAlign = 'right';

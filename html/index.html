@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CORV GCS v1.6.2</title>
+    <title>CORV GCS v1.7.1</title>
 
     <!-- Critical inline styles to prevent flash of unstyled content -->
     <style>
@@ -329,6 +329,9 @@
                         <button class="fp-icon-btn" id="fp-camera-btn" title="Camera &amp; gimbal">
                             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg>
                         </button>
+                        <button class="fp-icon-btn" id="fp-radio-btn" title="Radio link">
+                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22v-9"/><circle cx="12" cy="10.5" r="2.2"/><path d="M8.3 6.8a5.2 5.2 0 0 0 0 7.4M15.7 6.8a5.2 5.2 0 0 1 0 7.4"/><path d="M5.5 4a9.2 9.2 0 0 0 0 13M18.5 4a9.2 9.2 0 0 1 0 13"/></svg>
+                        </button>
                         <button class="fp-icon-btn" id="fp-route-settings" title="Route settings">
                             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
                         </button>
@@ -398,6 +401,38 @@
                     </div>
                 </div>
 
+                <!-- Radio link popover -->
+                <div class="fp-popover" id="fp-radio" style="display:none;">
+                    <div class="fp-popover-head">
+                        <span>RADIO LINK</span>
+                        <button class="fp-icon-btn" id="fp-radio-close" title="Close">&times;</button>
+                    </div>
+                    <div class="fp-popover-sect">
+                        <span class="fp-popover-lbl">OPERATOR POSITION</span>
+                        <span id="fp-operator-desc" class="fp-popover-val">at the take-off point</span>
+                        <div class="fp-route-btns">
+                            <button class="gcs-btn" id="fp-operator-place" title="Click on the map to place the ground antenna (O)">PLACE ON MAP</button>
+                            <button class="gcs-btn" id="fp-operator-reset" title="Put the operator back at the take-off point">TAKE-OFF</button>
+                        </div>
+                        <span class="fp-popover-hint">Drag the antenna marker on the map to move it</span>
+                        <div class="fp-field is-check fp-link-switch-row">
+                            <label for="fp-link-switch">Coverage overlay on the map</label>
+                            <label class="fp-switch"><input type="checkbox" id="fp-link-switch"><span></span></label>
+                        </div>
+                    </div>
+                    <div class="fp-popover-body" id="fp-radio-body"></div>
+                    <div class="fp-derived" id="fp-radio-derived"></div>
+                    <div class="fp-popover-foot">
+                        <div class="fp-legend">
+                            <span><i class="is-good"></i>good link</span>
+                            <span><i class="is-degraded"></i>degraded</span>
+                            <span><i class="is-marginal"></i>below margin</span>
+                            <span><i class="is-none"></i>no link</span>
+                        </div>
+                        <span class="fp-popover-hint">Line of sight and first Fresnel zone are checked against the elevation model between the ground antenna and the aircraft. Green: clear zone and margin above the safety budget. Orange: the terrain intrudes into the Fresnel zone or blocks the line of sight (diffraction path). Red: link possible but below the safety budget. The map overlay is computed at the route default altitude; the route band and the profile use the planned altitude of every point. Preset figures are typical datasheet values — verify them against your radio and air rate.</span>
+                    </div>
+                </div>
+
                 <!-- Route menu -->
                 <div class="fp-menu" id="fp-route-menu-list" style="display:none;">
                     <button data-act="new">New route</button>
@@ -421,6 +456,7 @@
                     <button class="fp-layer-btn active" id="fp-sat-toggle" title="Satellite imagery">SAT</button>
                     <button class="fp-layer-btn active" id="fp-calc-toggle" title="Show calculated waypoints">WP</button>
                     <button class="fp-layer-btn active" id="fp-cam-toggle" title="Show camera footprints and POI view cones">CAM</button>
+                    <button class="fp-layer-btn" id="fp-link-toggle" title="Radio link coverage from the operator position">LINK</button>
                     <button class="fp-layer-btn" id="fp-fit" title="Zoom to route">FIT</button>
                 </div>
                 <div class="fp-ctx" id="fp-ctx" style="display:none;"></div>

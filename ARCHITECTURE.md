@@ -2,7 +2,7 @@
 
 > Desktop Ground Control Station for ArduPilot — Electron + Three.js + Leaflet
 
-**Version:** 1.7.0 | **License:** Apache-2.0 | **Repository:** [github.com/Xarin94/Corv-GCS](https://github.com/Xarin94/Corv-GCS)
+**Version:** 1.7.1 | **License:** Apache-2.0 | **Repository:** [github.com/Xarin94/Corv-GCS](https://github.com/Xarin94/Corv-GCS)
 
 Corv-GCS is a frameless Electron desktop application providing 3D terrain visualization, 2D mapping, HUD flight instruments, mission planning with undo/redo and a local mission library, FPV camera, RTK/NTRIP corrections, ADS-B traffic awareness, joystick RC override, `.tlog` flight recording, `.tlog` and ArduPilot `.bin` log replay, and offline map/elevation caching.
 
@@ -135,7 +135,8 @@ Corv-GCS/
 │   ├── ui/                      UI controllers
 │   │   ├── UIController.js      Telemetry display, HUD cell config
 │   │   ├── TabController.js     Tab navigation, Setup / Sys Config pages
-│   │   ├── FlightPlanController.js Flight Plan page: tools, segment cards, inspector, map layers, elevation profile
+│   │   ├── FlightPlanController.js Flight Plan page: tools, segment cards, inspector, map layers, elevation profile, radio link
+│   │   ├── RadioLinkView.js     Radio link drawing: coverage image overlay, route halo, LOS line, profile band + LINK PROFILE inset
 │   │   ├── CommandBarController.js Bottom bar (ARM/mode/status)
 │   │   ├── GCSSidebarController.js Right sidebar (connections, SITL, RTK)
 │   │   ├── ParametersPageController.js Full parameter editor
@@ -160,6 +161,7 @@ Corv-GCS/
 │   │   ├── RouteModel.js        Route document: segment & action catalogue, route params, geometry helpers
 │   │   ├── RouteCompiler.js     Route → MAVLink items: lanes, passes, loiters, terrain following, validation, stats
 │   │   ├── CameraFootprint.js   Pinhole camera → ground footprint, POI aiming, photo positions along a lane
+│   │   ├── RadioLink.js         Ground ↔ aircraft link over terrain: FSPL, Fresnel, knife-edge diffraction, route analysis, polar coverage
 │   │   ├── MissionTransfer.js   Mission download protocol + items → route conversion
 │   │   ├── MissionCommands.js   MAVLink command catalog (100+ commands)
 │   │   ├── MissionHistory.js    Undo/redo (route snapshots)
@@ -285,7 +287,8 @@ Corv-GCS/
 |------|-------------|---------|
 | `UIController.js` | `updateUI()`, `initHudCells()`, `toggleConfig()`, `toggleTelemetry()`, `updateOffset()`, `updateAGLDisplay()`, `setStatusMessage()`, `updateFPSDisplay()`, `initMoreMenu()`, `initConfigAutoClose()` | Telemetry display updates (40+ fields), configurable 2×3 HUD cell grid, config/telemetry panel toggles, FPS counter. Persists cell config to localStorage |
 | `TabController.js` | `initTabs()`, `switchTab()`, `getCurrentTab()` | Tab-based page navigation (Flight Data, Flight Plan, Setup, Sys Config), Setup and Sys Config pages |
-| `FlightPlanController.js` | `initFlightPlan()`, `onFlightPlanShown()`, `scheduleCompile()` | Flight Plan page: tool palette (waypoint, circle, perimeter, area scan, corridor, POI, landing), drawing on the Leaflet map, segment cards with an inline inspector and actions, drag handles (vertices, mid-points, centre, radius), context menu, route card with statistics and validation, route settings, upload/read/import/export, elevation profile with hover sync |
+| `FlightPlanController.js` | `initFlightPlan()`, `onFlightPlanShown()`, `scheduleCompile()` | Flight Plan page: tool palette (waypoint, circle, perimeter, area scan, corridor, POI, landing, operator position), drawing on the Leaflet map, segment cards with an inline inspector and actions, drag handles (vertices, mid-points, centre, radius), context menu, route card with statistics and validation, route settings, camera & gimbal and radio link popovers, upload/read/import/export, elevation profile with hover sync. The radio link runs behind the `LINK` layer button: after every compile the route is analysed against the ground antenna (placed with the dedicated tool, else the take-off point) and the coverage raster is recomputed only when radio, antenna or planned altitude change; the last radio profile is kept in `localStorage` and seeds new routes |
+| `RadioLinkView.js` | `createRadioLinkView(map)`, `drawLinkBand()`, `drawLinkInset()` | Leaflet + canvas side of the radio link: the polar coverage rasterised in Web Mercator to an `L.imageOverlay` (light green / orange / red, transparent where there is no link) in a pane under the route, a translucent halo along the calculated path coloured by link class, the dashed operator → cursor line of sight, the link band under the profile header and the LINK PROFILE inset (terrain cut with earth bulge, first Fresnel zone and its 60 % core, intruding ground in red, worst knife edge with its loss) |
 | `CommandBarController.js` | `initCommandBar()`, `updateCommandBar()` | Bottom command bar: ARM/DISARM button, flight mode dropdown (color-coded: yellow=manual, cyan=assisted, blue=auto, orange=RTL), battery/GPS/link indicators, flight timer |
 | `GCSSidebarController.js` | `initGCSSidebar()`, `updateGCSSidebar()`, `getTargetCoords()` | Right sidebar: connection panel (serial/UDP/TCP port selection), SITL launcher, RTK base station, telemetry forwarding config |
 | `ParametersPageController.js` | `initParamsPage()`, `toggleParamsPage()`, `formatParamValue()` | Full ArduPilot parameter editor with search, inline edit, save. Side catalog reads single parameters via `PARAM_REQUEST_READ` (serialized queue + retries) so a slow link never needs the full list |
@@ -308,6 +311,7 @@ Corv-GCS/
 | `mission/RouteModel.js` | `SEGMENT_TYPES`, `ACTION_TYPES`, `ROUTE_PARAM_FIELDS`, `getRoute()`, `replaceRoute()`, `createSegment()`, `createAction()`, `surveyGeometry()`, geometry helpers | The editable flight-plan document: route parameters + ordered segments, each with base points, typed parameters and actions. The catalogues are schema objects that drive the inspector |
 | `mission/RouteCompiler.js` | `compileRoute(route, ctx)`, `corridorOutline()` | Pure "calculate route" step: expands segments to navigation points (boustrophedon lanes at any heading, corridor passes, loiter turns, perimeter), emits DO_/CONDITION_ items for actions, subdivides legs for terrain following (AGL tolerance), resolves AGL/AMSL/relative altitudes, validates (below terrain, clearance, ceiling, item limit) and computes length / duration / photos / GSD |
 | `mission/CameraFootprint.js` | `groundFootprint()`, `aimAt()`, `photosAlong()` | Camera preview geometry: the four corner rays of the field of view intersected with a flat ground plane at the vehicle's terrain elevation (nadir → rectangle, tilted → trapezoid, rays above the horizon clamped), gimbal aim towards a POI, and photo positions every trigger distance along a lane |
+| `mission/RadioLink.js` | `LINK`, `LINK_STYLE`, `evaluateLink()`, `analyzeRoute()`, `computeCoverage()`, `coverageClassAt()`, `groundStation()`, `freeSpaceRange()`, `fspl()`, `fresnelRadius()`, `knifeEdgeLoss()` | Pure link-budget maths, no DOM. Received power = TX power + both antenna gains − losses − free-space loss − knife-edge diffraction (ITU-R P.526 on the terrain sample with the largest Fresnel parameter ν, earth bulge with 4/3 radius). Classes: GOOD (margin ≥ safety budget, 60 % first Fresnel zone clear, ν ≤ −0.78), DEGRADED (margin OK but zone intruded or LOS blocked), MARGINAL (above sensitivity, below the safety budget), NONE, UNKNOWN (no SRTM). `analyzeRoute()` samples the calculated path and returns runs of equal class, per-class lengths and the worst point; `computeCoverage()` is a polar raster (720 rays × ≤400 cells) around the antenna at the planned altitude, O(cells²) per ray, time-sliced with a cancel token so the map keeps responding. Radio presets and fields live in RouteModel (`RADIO_PRESETS`, `RADIO_FIELDS`, `defaultRadio()`); the route carries `params.radio` and `params.operator`. `scripts/test-radio-link.js` checks it offline against synthetic terrain |
 | `mission/MissionTransfer.js` | `downloadMission()`, `itemsToRoute()` | MISSION_REQUEST_LIST → COUNT → REQUEST_INT/ITEM_INT → ACK download, and the reverse mapping from flat MAVLink items to editable segments (waypoints, circles, POIs, landing; DO commands become actions; unknown commands are kept as raw actions) |
 | `mission/MissionHistory.js` | `commitMission()`, `undoMission()`, `redoMission()`, `resetMissionHistory()` | Snapshot undo/redo of the route document. Every editor mutation calls commitMission() afterwards; commits that change nothing are ignored |
 | `mission/MissionLibrary.js` | `initMissionLibrary()`, `openMissionLibrary()`, `saveCurrentMission()`, `getCurrentMissionName()` | Local mission library UI: list, load, overwrite, rename, delete. Talks to mission-store.js over IPC |

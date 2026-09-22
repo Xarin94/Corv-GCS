@@ -4,9 +4,9 @@
 - **Progetto**: CORV SYSTEMS v16 → CORV GCS (MAVLink + CORV binario + MSP)
 - **Approccio**: node-mavlink + serialport nel main process Electron; ogni protocollo non-MAVLink
   viene decodificato nel main process e ri-emesso come MAVLink sintetico
-- **Versione corrente**: 1.6.2
+- **Versione corrente**: 1.7.1
 - **Stato**: Fasi 0-6 (migrazione MAVLink) completate; Fasi 7-11 aggiunte dopo la migrazione
-- **Ultimo aggiornamento**: 2026-09-16
+- **Ultimo aggiornamento**: 2026-09-22
 
 ---
 
@@ -170,6 +170,18 @@ Motivazione: su link ad alta latenza e basso datarate (SiK 19200, LoRa) un
 | Fallback font CJK con `html[lang=zh-CN]` | [x] | css/variables.css |
 | `GNSS_INTEGRITY` da ArduPilot stable | [ ] | il firmware non lo emette ancora; jam/spoof oggi solo via STATUSTEXT |
 
+## Fase 13: Link radio nel Flight Plan — 2026-09-22
+| Task | Stato | File |
+|------|-------|------|
+| Preset radio (RFD, SiK, Herelink, Microhard, Doodle, ELRS, Crossfire) + campi: frequenza, potenza, guadagni, perdite, sensibilità, budget minimo, altezza antenna, raggio | [x] | js/mission/RouteModel.js |
+| Fisica: FSPL, zona di Fresnel, diffrazione knife-edge ITU-R P.526, curvatura 4/3, classi GOOD/DEGRADED/MARGINAL/NONE | [x] | js/mission/RadioLink.js |
+| Analisi lungo la rotta (run per classe, tratti persi, punto peggiore) e raster polare di copertura time-sliced | [x] | js/mission/RadioLink.js |
+| Overlay immagine Web Mercator, alone lungo la rotta, linea LOS, banda + inset LINK PROFILE nel profilo | [x] | js/ui/RadioLinkView.js |
+| Tasto radio accanto a camera, popover, tool "operatore" (O) + tasto PLACE + menu contestuale, layer LINK, chip e warning | [x] | js/ui/FlightPlanController.js, html/index.html, css/flight-plan.css |
+| Radio ricordata in localStorage per le nuove rotte; operatore e radio salvati con la missione | [x] | js/ui/FlightPlanController.js, js/mission/RouteModel.js |
+| Test offline su terreno sintetico (cresta, curvatura, antenna bassa, cancellazione) | [x] | scripts/test-radio-link.js |
+| Antenne direzionali / pattern | [ ] | oggi omnidirezionali: il guadagno è costante in azimut |
+
 ---
 
 ## File Creati (post-migrazione)
@@ -188,6 +200,8 @@ Motivazione: su link ad alta latenza e basso datarate (SiK 19200, LoRa) un
 | js/mission/MissionLibrary.js | Renderer | UI libreria missioni |
 | js/adsb/ADSBManager.js | Renderer | Traffico ADS-B |
 | js/maps/OfflineDownloader.js | Renderer | Download offline tile + SRTM |
+| js/mission/RadioLink.js | Renderer | Link budget, Fresnel, diffrazione, copertura polare |
+| js/ui/RadioLinkView.js | Renderer | Overlay copertura, alone rotta, inset LINK PROFILE |
 
 ---
 

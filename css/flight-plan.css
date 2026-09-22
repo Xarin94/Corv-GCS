@@ -514,6 +514,7 @@
 .fp-tool svg { width: 18px; height: 18px; }
 .fp-tool:hover { background: rgba(0, 210, 255, 0.12); color: #fff; }
 .fp-tool.active { background: rgba(0, 210, 255, 0.22); color: var(--accent-cyan); box-shadow: inset 3px 0 0 var(--accent-cyan); }
+.fp-tool.is-aux { border-top: 1px solid var(--border-accent); }
 
 .fp-map-hint {
     position: absolute;
@@ -559,6 +560,7 @@
 .fp-layer-btn:last-child { border-right: none; }
 .fp-layer-btn:hover { color: var(--text-main); background: rgba(0, 210, 255, 0.1); }
 .fp-layer-btn.active { color: var(--accent-cyan); background: rgba(0, 210, 255, 0.16); }
+.fp-layer-btn.is-busy { animation: fp-pulse 0.8s ease-in-out infinite; }
 
 /* Map symbols */
 .fp-seg-label {
@@ -620,6 +622,22 @@
 }
 .fp-home-icon.is-custom { background: #ffb347; border-style: dashed; }
 
+/* Operator / ground antenna */
+.fp-gs-icon {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f4f7fa;
+    border: 2px solid #1a2430;
+    color: #0a1018;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.6);
+    cursor: grab;
+}
+.fp-gs-icon svg { width: 15px; height: 15px; }
+.fp-coverage-img { image-rendering: auto; }
+
 .fp-glyph { width: 18px; height: 18px; pointer-events: none; }
 .fp-glyph svg { width: 18px; height: 18px; filter: drop-shadow(0 0 2px #000); }
 
@@ -666,3 +684,35 @@
 
 #fp-camera .fp-derived { margin: 0 10px 8px; }
 #fp-camera .fp-popover-body .fp-field .cfg-select { width: 170px; }
+
+/* ── Radio link popover ─────────────────────────────────────────────────── */
+
+#fp-radio .fp-derived { margin: 0 10px 8px; }
+#fp-radio .fp-popover-body .fp-field .cfg-select { width: 190px; }
+.fp-popover-sect { padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); }
+.fp-link-switch-row { margin-top: 8px; }
+.fp-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px 10px;
+    margin-top: 6px;
+    font-family: var(--font-ui);
+    font-size: 9.5px;
+    color: var(--text-muted);
+}
+.fp-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.fp-legend i { width: 14px; height: 8px; border-radius: 1px; border: 1px solid rgba(255, 255, 255, 0.15); }
+.fp-legend i.is-good { background: rgba(96, 255, 128, 0.5); }
+.fp-legend i.is-degraded { background: rgba(255, 170, 0, 0.6); }
+.fp-legend i.is-marginal { background: rgba(255, 60, 60, 0.6); }
+.fp-legend i.is-none { background: repeating-linear-gradient(90deg, rgba(154, 164, 176, 0.6) 0 2px, transparent 2px 4px); }
+.fp-derived .fp-link-good { color: #60ff80; }
+.fp-derived .fp-link-degraded { color: #ffaa00; }
+.fp-derived .fp-link-marginal { color: #ff5c5c; }
+.fp-derived .fp-link-none { color: #9aa4b0; }
+
+/* Link chip on the route card */
+.fp-chip.is-link-good { color: #60ff80; border-color: rgba(96, 255, 128, 0.4); }
+.fp-chip.is-link-degraded { color: #ffaa00; border-color: rgba(255, 170, 0, 0.45); }
+.fp-chip.is-link-marginal { color: #ff5c5c; border-color: rgba(255, 60, 60, 0.45); }
+.fp-chip.is-link-none { color: #9aa4b0; border-color: rgba(154, 164, 176, 0.45); }

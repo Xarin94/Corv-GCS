@@ -235,6 +235,54 @@ export function cameraFov(cam) {
     };
 }
 
+// ── Radio link profile ────────────────────────────────────────────────────────
+// One radio per route (the ground ↔ aircraft link, whatever carries the
+// telemetry). Transmit power, antenna gains and receiver sensitivity give the
+// link budget; frequency sets the free-space loss and the Fresnel zone that
+// RadioLink.js checks against the terrain. Preset numbers are typical datasheet
+// values for planning — the operator is expected to verify them against the
+// actual hardware and air rate.
+
+export const RADIO_PRESETS = {
+    rfd900x:   { name: 'RFD900x · 900 MHz · 1 W',         freq: 915,  txPower: 30, minRssi: -105, gainGround: 2,  gainAir: 2 },
+    rfd868x:   { name: 'RFD868x · 868 MHz · 500 mW',      freq: 868,  txPower: 27, minRssi: -105, gainGround: 2,  gainAir: 2 },
+    sik433:    { name: 'SiK telemetry · 433 MHz · 100 mW', freq: 433,  txPower: 20, minRssi: -108, gainGround: 2,  gainAir: 2 },
+    sik915:    { name: 'SiK telemetry · 915 MHz · 100 mW', freq: 915,  txPower: 20, minRssi: -108, gainGround: 2,  gainAir: 2 },
+    herelink:  { name: 'Herelink · 2.4 GHz',              freq: 2400, txPower: 20, minRssi: -98,  gainGround: 5,  gainAir: 2 },
+    pmddl2450: { name: 'Microhard pMDDL2450 · 1 W',       freq: 2450, txPower: 30, minRssi: -96,  gainGround: 5,  gainAir: 2 },
+    doodle24:  { name: 'Doodle Labs Mesh Rider · 2.4 GHz', freq: 2450, txPower: 30, minRssi: -98,  gainGround: 5,  gainAir: 2 },
+    elrs900:   { name: 'ExpressLRS · 900 MHz · 1 W',      freq: 915,  txPower: 30, minRssi: -117, gainGround: 2,  gainAir: 2 },
+    elrs24:    { name: 'ExpressLRS · 2.4 GHz · 250 mW',   freq: 2440, txPower: 24, minRssi: -108, gainGround: 2,  gainAir: 2 },
+    crossfire: { name: 'TBS Crossfire · 868/915 MHz · 2 W', freq: 900, txPower: 33, minRssi: -120, gainGround: 2,  gainAir: 2 },
+    custom:    { name: 'Custom' },
+};
+
+export const RADIO_FIELDS = [
+    { key: 'preset',        label: 'Radio',                 type: 'select', options: Object.entries(RADIO_PRESETS).map(([k, v]) => [k, v.name]) },
+    { key: 'freq',          label: 'Frequency',             unit: 'MHz', type: 'number', min: 100, max: 6000, step: 1 },
+    { key: 'txPower',       label: 'TX power',              unit: 'dBm', type: 'number', min: -10, max: 50, step: 1 },
+    { key: 'gainGround',    label: 'Ground antenna gain',   unit: 'dBi', type: 'number', min: -10, max: 30, step: 0.5 },
+    { key: 'gainAir',       label: 'Aircraft antenna gain', unit: 'dBi', type: 'number', min: -10, max: 30, step: 0.5 },
+    { key: 'losses',        label: 'Cable / system losses', unit: 'dB',  type: 'number', min: 0, max: 30, step: 0.5 },
+    { key: 'minRssi',       label: 'Min RSSI (sensitivity)', unit: 'dBm', type: 'number', min: -140, max: 0, step: 1 },
+    { key: 'minMargin',     label: 'Min link budget',       unit: 'dB',  type: 'number', min: 0, max: 60, step: 1, title: 'Safety margin above the sensitivity — less than this is shown in red' },
+    { key: 'groundHeight',  label: 'Ground antenna height', unit: 'm',   type: 'number', min: 0, max: 200, step: 0.5, title: 'Above the ground at the operator position' },
+    { key: 'coverageRange', label: 'Coverage radius',       unit: 'km',  type: 'number', min: 0.5, max: 100, step: 0.5, title: 'Extent of the coverage overlay around the operator' },
+];
+
+let rememberedRadio = null;
+
+/** The radio a new route starts with: the last one used, else the RFD900x. */
+export function defaultRadio() {
+    const base = rememberedRadio || { preset: 'rfd900x', ...RADIO_PRESETS.rfd900x };
+    return { losses: 1, minMargin: 10, groundHeight: 2, coverageRange: 15, ...base };
+}
+
+/** The ground radio rarely changes between missions — remember it for the next new route. */
+export function rememberRadio(radio) {
+    rememberedRadio = radio ? JSON.parse(JSON.stringify(radio)) : null;
+}
+
 // ── Route-level parameters ────────────────────────────────────────────────────
 
 export const ROUTE_PARAM_FIELDS = [
@@ -274,6 +322,8 @@ export function defaultRouteParams() {
         camera: defaultCamera(),
         gimbalPitch: -90,    // ° — nadir unless a segment carries a gimbal action
         gimbalYaw: 0,        // ° relative to the flight direction
+        radio: defaultRadio(),
+        operator: null,      // {lat, lng} — ground antenna; null = at the take-off point
     };
 }
 
@@ -299,6 +349,7 @@ export function replaceRoute(next) {
     route.name = next?.name ?? null;
     route.params = { ...defaultRouteParams(), ...(next?.params || {}) };
     route.params.camera = { ...defaultCamera(), ...(next?.params?.camera || {}) };
+    route.params.radio = { ...defaultRadio(), ...(next?.params?.radio || {}) };
     route.segments.length = 0;
     for (const s of next?.segments || []) route.segments.push(normalizeSegment(s));
 }

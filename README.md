@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.0-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.7.1-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"/>
   <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
   <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
@@ -61,6 +61,14 @@ The interface is available in **English and Simplified Chinese** (SYS CONFIG →
   route; hover it to see the **ground footprint** at the planned height, heading and camera tilt, and hover a
   waypoint flown with an active **POI** to see the wedge the camera is looking through
 - **Elevation profile** with terrain, clearance floor, per-segment highlight and hover synchronised with the map
+- **Radio link menu** next to the camera: presets for common radios (RFD900x/868x, SiK, Herelink, Microhard,
+  Doodle Labs, ExpressLRS, Crossfire) or custom frequency, TX power, antenna gains, losses, sensitivity, safety
+  budget and ground antenna height. Place the **operator position** with its own tool (or leave it at the take-off
+  point) and switch the **LINK** layer on: a coverage overlay around the antenna at the planned altitude — light green
+  good link, orange degraded by the terrain (first Fresnel zone intruded or diffraction), red link possible but under
+  the safety budget — plus a halo along the route, warnings for the stretches without link, a link band in the
+  elevation profile and a **LINK PROFILE** cut (terrain, earth curvature, line of sight, Fresnel zone, obstruction
+  loss) for the hovered or worst point. Everything is computed on the SRTM elevation model
 - Upload to the vehicle, **read** the mission stored on it, import / export Mission Planner `.waypoints`
 - **Local mission library** — save, recall, overwrite, rename and delete missions stored
   next to the installation, with an `index.json` catalogue rebuilt from the folder contents
@@ -158,8 +166,8 @@ The interface is available in **English and Simplified Chinese** (SYS CONFIG →
 
 ### Download
 Pre-built installers are available on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
-- **Windows**: `CORV GCS Setup 1.7.0.exe`
-- **Linux**: `CORV GCS-1.7.0.AppImage` or `corv-gcs_1.7.0_amd64.deb`
+- **Windows**: `CORV GCS Setup 1.7.1.exe`
+- **Linux**: `CORV GCS-1.7.1.AppImage` or `corv-gcs_1.7.1_amd64.deb`
 
 ### Build from Source
 
