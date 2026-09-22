@@ -20,15 +20,21 @@
  * Output items keep the legacy shape consumed by the 3D scene, the mini-map and
  * the library (`alt` = height above ground) and add `altMsl` / `altRel` plus a
  * `segId` back-reference so the map can highlight the selected segment.
+ *
+ * The items are MAVLink-shaped whatever the target stack: when the mission is
+ * bound for INAV the same list is re-encoded into waypoint records at the end
+ * (`result.inav`), so the geometry, the terrain resolution and the statistics
+ * are computed once and only the encoding differs.
  */
 
 import {
     SEGMENT_TYPES, haversine, bearing, localFrame, centroid, polygonArea, segmentAlt, surveyGeometry,
 } from './RouteModel.js';
 import { groundFootprint, aimAt, photosAlong } from './CameraFootprint.js';
+import { getPlatform } from './Platforms.js';
+import { toInavMission } from './InavMission.js';
 
 const D2R = Math.PI / 180;
-const ARDUPILOT_ITEM_LIMIT = 700;   // conservative: Copter/Plane store 700 on most boards
 const CLIMB_RATE = 2.5;             // m/s, for the duration estimate only
 const DESCENT_RATE = 1.5;
 
@@ -36,10 +42,16 @@ const DESCENT_RATE = 1.5;
 
 /**
  * @param {object} route   the document (see RouteModel)
- * @param {object} ctx     { terrain(lat,lng)→m|null, home:{lat,lng}|null, homeAlt, vehicleType }
+ * @param {object} ctx     { terrain(lat,lng)→m|null, home:{lat,lng}|null, homeAlt, vehicleType,
+ *                           platform:'ardupilot'|'inav'|…, itemLimit:number|null }
  */
 export function compileRoute(route, ctx) {
     const P = route.params;
+    const platform = getPlatform(ctx.platform);
+    const isInav = platform.id === 'inav';
+    // The board reports its own waypoint capacity over MSP; without a link the
+    // catalogue figure stands.
+    const itemLimit = +ctx.itemLimit > 0 ? +ctx.itemLimit : platform.itemLimit;
     const terrain = ctx.terrain || (() => null);
     const issues = [];
     const segStats = {};
@@ -69,7 +81,11 @@ export function compileRoute(route, ctx) {
 
     push({ command: 16, lat: home.lat, lng: home.lng, alt: 0, loc: true, isHome: true, segId: null, derived: false, param1: 0, param2: 0, param3: 0, param4: 0 });
 
-    if (P.takeoff) {
+    // INAV has no take-off waypoint at all. Emitting one only to drop it again in
+    // the translation would be busywork, but the operator still has to be told
+    // that the setting they can see is not going to be flown.
+    if (P.takeoff && isInav) addIssue('warn', 'INAV has no take-off waypoint — arm and take off in a flight mode, then switch to WP');
+    if (P.takeoff && !isInav) {
         push({
             command: 22, lat: home.lat, lng: home.lng, alt: +P.takeoffAlt || 30, loc: true, segId: null, derived: false,
             param1: isPlane ? 15 : 0, param2: 0, param3: 0, param4: 0, kind: 'takeoff',
@@ -283,8 +299,10 @@ export function compileRoute(route, ctx) {
     for (const id of low) if (!below.has(id)) addIssue('warn', `Clearance under ${minClear} m`, id);
     for (const id of high) addIssue('warn', `Above the ${maxAgl} m AGL ceiling`, id);
 
-    if (items.length > ARDUPILOT_ITEM_LIMIT) addIssue('error', `${items.length} items — ArduPilot stores at most ${ARDUPILOT_ITEM_LIMIT}`);
-    if (!P.takeoff && !isPlane && route.segments.length) addIssue('warn', 'No automatic take-off — the vehicle must already be airborne when AUTO starts');
+    // INAV counts waypoint records, not MAVLink items — that check lives in the
+    // translation below, where the records actually exist.
+    if (!isInav && itemLimit > 0 && items.length > itemLimit) addIssue('error', `${items.length} items — ${platform.label} stores at most ${itemLimit}`);
+    if (!P.takeoff && !isPlane && !isInav && route.segments.length) addIssue('warn', 'No automatic take-off — the vehicle must already be airborne when AUTO starts');
     if (route.segments.length && flying.length) {
         const far = haversine(home, flying[0]);
         if (far > 5000) addIssue('warn', `First waypoint is ${(far / 1000).toFixed(1)} km from the take-off point`);
@@ -312,7 +330,16 @@ export function compileRoute(route, ctx) {
     // The lowest point of the flight can be in the middle of a straight leg, not at a waypoint
     if (legMinAgl !== null && (stats.minAgl === null || legMinAgl < stats.minAgl)) stats.minAgl = legMinAgl;
 
-    return { items, stats, issues, navPath, segStats, home: { ...home, elev: homeElev }, camera };
+    // ── INAV encoding ─────────────────────────────────────────────────────────
+    // Everything the waypoint format cannot carry is reported here, so the route
+    // card warns about it while the route is edited and not at upload time.
+    let inav = null;
+    if (isInav) {
+        inav = toInavMission(items, { amsl: !!P.inavAltAmsl, limit: itemLimit });
+        for (const i of inav.issues) issues.push(i);
+    }
+
+    return { items, stats, issues, navPath, segStats, home: { ...home, elev: homeElev }, camera, inav, platform: platform.id };
 }
 
 // ── Camera preview ────────────────────────────────────────────────────────────

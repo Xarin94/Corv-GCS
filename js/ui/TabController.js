@@ -17,6 +17,7 @@ import {
 import { initJoystick } from '../joystick/JoystickUI.js';
 import { getTerrainElevationAsync, resetAutoDownloadFailures } from '../terrain/TerrainManager.js';
 import { onFlightPlanShown, onFlightPlanHidden } from './FlightPlanController.js';
+import { activePlatformId, setActivePlatform, getPlatform, missionsSupported } from '../mission/Platforms.js';
 
 let currentTab = 'flight-data';
 /**
@@ -67,6 +68,80 @@ export function initTabs() {
 
     // CORV Setup tab handlers
     initCorvSetupTab();
+
+    // Flight stack selector (SYS CONFIG): link suggestion + mission gating
+    initPlatformSelector();
+}
+
+// ── Flight stack ──────────────────────────────────────────────────────────────
+// One selector decides three things: which link the CONNECTION page suggests,
+// which mission features the Flight Plan page offers, and whether that page
+// exists at all (Betaflight has no navigation stack, so it does not).
+
+function initPlatformSelector() {
+    const sel = document.getElementById('syscfg-platform');
+    if (sel) {
+        sel.value = activePlatformId();
+        sel.addEventListener('change', () => {
+            if (!setActivePlatform(sel.value)) sel.value = activePlatformId();
+        });
+    }
+    // The setting has one owner; everything else reacts to the event it raises.
+    window.addEventListener('platformChanged', () => applyPlatform());
+    applyPlatform();
+}
+
+function applyPlatform() {
+    const plat = getPlatform();
+    const sel = document.getElementById('syscfg-platform');
+    if (sel && sel.value !== plat.id) sel.value = plat.id;
+
+    const hint = document.getElementById('syscfg-platform-hint');
+    if (hint) hint.textContent = plat.hint;
+
+    suggestConnection(plat);
+    syncMissionTab(plat);
+}
+
+/**
+ * Pre-set the CONNECTION page for this stack. A live link is never touched —
+ * switching stack mid-flight must not look like it changed the connection.
+ */
+function suggestConnection(plat) {
+    const typeSel = document.getElementById('setup-conn-type');
+    const label = typeSel?.querySelector(`option[value="${plat.connection.type}"]`)?.textContent || plat.connection.type;
+
+    const linkEl = document.getElementById('syscfg-platform-link');
+    if (linkEl) linkEl.textContent = `${label} · ${plat.connection.baud} baud`;
+
+    const note = document.getElementById('setup-conn-hint');
+    if (note) {
+        note.textContent = STATE.connected
+            ? `${plat.label} selected — disconnect to change the link.`
+            : `${plat.label}: ${label} at ${plat.connection.baud} baud (pre-selected — change it if your setup differs).`;
+    }
+
+    if (!typeSel || STATE.connected) return;
+    if (typeSel.value !== plat.connection.type) {
+        typeSel.value = plat.connection.type;
+        typeSel.dispatchEvent(new Event('change'));   // the conditional fields follow it
+    }
+    const baudSel = document.getElementById('setup-baud');
+    if (baudSel && [...baudSel.options].some(o => Number(o.value) === plat.connection.baud)) {
+        baudSel.value = String(plat.connection.baud);
+    }
+}
+
+/** FLIGHT PLAN is greyed out and unclickable on a stack that cannot fly missions. */
+function syncMissionTab(plat = getPlatform()) {
+    const btn = document.querySelector('.gcs-tab[data-tab="flight-plan"]');
+    const ok = missionsSupported(plat.id);
+    if (btn) {
+        btn.disabled = !ok;
+        btn.classList.toggle('is-disabled', !ok);
+        btn.title = ok ? '' : (plat.noMissionReason || `${plat.label} cannot fly missions`);
+    }
+    if (!ok && currentTab === 'flight-plan') switchTab('flight-data');
 }
 
 /**
@@ -178,6 +253,9 @@ export function setNavDot(section, on) {
  */
 export function switchTab(tabName) {
     if (currentTab === tabName) return;
+    // Betaflight has no navigation stack: the page is not just empty, it is
+    // meaningless, so the tab does not open by click or by Ctrl+2 either.
+    if (tabName === 'flight-plan' && !missionsSupported()) return;
     const previousTab = currentTab;
 
     // Deactivate all tabs and content

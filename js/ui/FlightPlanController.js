@@ -20,6 +20,7 @@
 
 import { STATE } from '../core/state.js';
 import { uploadMission } from '../mavlink/CommandSender.js';
+import { isMSPLink } from '../mavlink/ConnectionManager.js';
 import { getTerrainElevationFromHGT, getTerrainElevationAsync, resetAutoDownloadFailures } from '../terrain/TerrainManager.js';
 import { cachedTileLayer } from '../maps/CachedTileLayer.js';
 import {
@@ -34,6 +35,9 @@ import { createRadioLinkView, drawLinkBand, drawLinkInset } from './RadioLinkVie
 import { commitMission, undoMission, redoMission, resetMissionHistory, canUndo, canRedo } from '../mission/MissionHistory.js';
 import { initMissionLibrary, openMissionLibrary, saveCurrentMission, getCurrentMissionName, detachCurrentMission } from '../mission/MissionLibrary.js';
 import { downloadMission, itemsToRoute } from '../mission/MissionTransfer.js';
+import { activePlatformId, getPlatform, usesMspMissions, unsupportedReason, segmentAllowed } from '../mission/Platforms.js';
+import { inavToItems } from '../mission/InavMission.js';
+import { uploadInavMission, downloadInavMission } from '../mission/InavTransfer.js';
 
 // ── Module state ──────────────────────────────────────────────────────────────
 
@@ -74,6 +78,11 @@ const LS_RADIO = 'corv.fp.radio';
 const profile = { zoom: 1, scroll: 0, hoverDist: null, dragging: false, dragX: 0, scrollStart: 0, bound: false, padL: 52, padR: 16 };
 
 const isPlane = () => STATE.vehicleType === 1;
+
+// Waypoint capacity reported by an INAV board over MSP — it beats the catalogue
+// figure, and is forgotten whenever the flight stack selection changes.
+let inavLimit = null;
+let hintTimer = null;
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -118,7 +127,48 @@ export function initFlightPlan() {
         scheduleCompile(0);
         setTimeout(fitRoute, 300);
     });
+    window.addEventListener('platformChanged', onPlatformChanged);
+    syncToolAvailability();
     scheduleCompile(0);
+}
+
+/**
+ * The flight stack changed in SYS CONFIG. Everything platform-dependent is
+ * re-derived rather than patched: which tools can draw, which fields can be
+ * edited, and how the route compiles.
+ */
+function onPlatformChanged() {
+    inavLimit = null;
+    closeRouteSettings();
+    closeCameraPopover();
+    closeRadioPopover();
+    if (tool !== 'select' && tool !== 'operator' && !segmentAllowed(tool)) setTool('select');
+    syncToolAvailability();
+    renderSegmentList();
+    scheduleCompile(0);
+}
+
+/** Grey out the tools this flight stack cannot fly, with the reason in the tooltip. */
+function syncToolAvailability() {
+    document.querySelectorAll('#fp-tools .fp-tool').forEach(btn => {
+        const id = btn.dataset.tool;
+        const def = SEGMENT_TYPES[id];
+        if (!def) return;                       // select / operator are always available
+        const why = unsupportedReason('segment', id);
+        btn.disabled = !!why;
+        btn.classList.toggle('is-unsupported', !!why);
+        btn.title = why ? `${def.label} — ${why}` : `${def.label} (${def.hotkey})`;
+    });
+}
+
+/** Say why nothing happened, where the drawing hints appear. */
+function flashHint(text) {
+    const hint = document.getElementById('fp-map-hint');
+    if (!hint || !text) return;
+    hint.textContent = text;
+    hint.style.display = 'block';
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => { if (tool === 'select') hint.style.display = 'none'; }, 4000);
 }
 
 /** Called by the tab controller whenever the page becomes visible. */
@@ -334,6 +384,7 @@ function initTools() {
         `<button class="fp-tool${id === 'select' ? ' active' : ''}${id === 'operator' ? ' is-aux' : ''}" data-tool="${id}" title="${label} (${key})">${ICON[id]}</button>`
     ).join('');
     bar.querySelectorAll('.fp-tool').forEach(btn => btn.addEventListener('click', () => setTool(btn.dataset.tool)));
+    syncToolAvailability();
     L.DomEvent.disableClickPropagation(bar);
     L.DomEvent.disableScrollPropagation(bar);
     const layersEl = document.getElementById('fp-layers');
@@ -341,6 +392,8 @@ function initTools() {
 }
 
 function setTool(name) {
+    const why = SEGMENT_TYPES[name] ? unsupportedReason('segment', name) : null;
+    if (why) { flashHint(`${SEGMENT_TYPES[name].label}: ${why}`); return; }
     if (draft) cancelDraft();
     tool = name;
     document.querySelectorAll('#fp-tools .fp-tool').forEach(b => b.classList.toggle('active', b.dataset.tool === name));
@@ -493,6 +546,8 @@ async function runCompile() {
         home,
         homeAlt: STATE.homeAlt || 0,
         vehicleType: STATE.vehicleType,
+        platform: activePlatformId(),
+        itemLimit: inavLimit,
     });
 
     // Publish the calculated mission for the 3D scene, mini-map and library
@@ -683,7 +738,11 @@ function renderRouteCard() {
     set('fp-seg-count', segs.length ? `(${segs.length})` : '');
 
     const P = getRoute().params;
+    const plat = getPlatform();
+    const inav = compiled.inav;
     const chips = [
+        plat.id === 'ardupilot' ? null : plat.label,
+        inav ? `${inav.wps.length} / ${inavLimit || plat.itemLimit} WP` : null,
         `${{ agl: 'AGL', amsl: 'AMSL', rel: 'REL' }[P.altMode]} ${P.defaultAlt} m`,
         P.altMode === 'agl' && P.terrainWaypoints ? `terrain WPs ±${P.aglTolerance} m` : null,
         P.defaultSpeed > 0 ? `${P.defaultSpeed} m/s` : 'vehicle speed',
@@ -702,7 +761,7 @@ function renderRouteCard() {
     if (issuesEl) {
         // One line per distinct problem; the same warning on forty waypoints reads "… (40 segments)"
         const groups = new Map();
-        for (const i of [...compiled.issues, ...linkIssues()]) {
+        for (const i of [...compiled.issues, ...platformIssues(), ...linkIssues()]) {
             if (i.level === 'info' && segs.length) continue;
             const key = `${i.level}|${i.text}`;
             const g = groups.get(key) || { level: i.level, text: i.text, segIds: [] };
@@ -722,6 +781,19 @@ function renderRouteCard() {
     if (upload) upload.classList.toggle('is-blocked', errors.length > 0);
     renderHomeDesc();
     renderOperatorDesc();
+}
+
+/** The selected flight stack and the live link have to agree about the protocol. */
+function platformIssues() {
+    const plat = getPlatform();
+    if (STATE.connectionType === 'none') return [];
+    if (plat.transport === 'msp' && !isMSPLink()) {
+        return [{ level: 'warn', text: `${plat.label} missions travel over MSP — the connected link speaks MAVLink` }];
+    }
+    if (plat.transport === 'mavlink' && isMSPLink()) {
+        return [{ level: 'warn', text: 'The connected link speaks MSP — an ArduPilot mission cannot be uploaded over it' }];
+    }
+    return [];
 }
 
 function renderHomeDesc() {
@@ -744,16 +816,24 @@ function toggleRouteSettings(e) {
     openRouteSettings();
 }
 
+/** Route settings the active flight stack actually has a use for. */
+function routeParamFields() {
+    const plat = activePlatformId();
+    return ROUTE_PARAM_FIELDS.filter(f => !f.platforms || f.platforms.includes(plat));
+}
+
 function openRouteSettings() {
     const pop = document.getElementById('fp-route-params');
     const body = document.getElementById('fp-route-params-body');
     if (!pop || !body) return;
     const P = getRoute().params;
-    body.innerHTML = renderFields(ROUTE_PARAM_FIELDS, P, 'rp');
-    bindFields(body, ROUTE_PARAM_FIELDS, P, (key) => {
+    const fields = routeParamFields();
+    const disabled = (f, opt) => unsupportedReason('routeParam', opt === null || opt === undefined ? f.key : `${f.key}.${opt}`);
+    body.innerHTML = renderFields(fields, P, 'rp', { disabled });
+    bindFields(body, fields, P, (key) => {
         commitMission(`Route ${key}`);
         // Dependent fields (AGL tolerance, take-off altitude) appear or vanish
-        if (ROUTE_PARAM_FIELDS.some(f => f.when && f.when[key] !== undefined)) openRouteSettings();
+        if (fields.some(f => f.when && f.when[key] !== undefined)) openRouteSettings();
         renderRouteCard();
         scheduleCompile();
     });
@@ -1155,6 +1235,7 @@ function uploadItems() {
 }
 
 async function doUpload() {
+    if (usesMspMissions()) return doUploadInav();
     const btn = document.getElementById('fp-upload');
     if (STATE.connectionType === 'none') return alert('Not connected');
     if (!getRoute().segments.length) return alert('The route is empty');
@@ -1175,6 +1256,7 @@ async function doUpload() {
 }
 
 async function doDownload() {
+    if (usesMspMissions()) return doDownloadInav();
     const btn = document.getElementById('fp-download');
     if (STATE.connectionType === 'none') return alert('Not connected');
     if (getRoute().segments.length && !await confirm('Replace the current route with the mission stored on the vehicle?')) return;
@@ -1191,6 +1273,77 @@ async function doDownload() {
         scheduleCompile(0);
         setTimeout(fitRoute, 400);
         btn.textContent = `READ ${items.length}`;
+    } catch (e) {
+        alert('Read failed: ' + e.message);
+        btn.textContent = 'READ';
+    } finally {
+        setTimeout(() => { btn.textContent = 'READ'; btn.disabled = false; }, 2000);
+    }
+}
+
+// ── Upload / download, INAV ──────────────────────────────────────────────────
+// The waypoint records were produced by the compiler (RouteCompiler → INAV
+// encoding), so there is nothing left to translate here: this is the transfer
+// and the errors the operator has to see before it starts.
+
+/** The whole route in one sentence, for the upload confirmation. */
+function inavLinkProblem() {
+    if (STATE.connectionType === 'none') return 'Not connected';
+    if (!isMSPLink()) return `${getPlatform().label} missions travel over MSP — connect the aircraft as MSP Serial or MSP TCP (SETUP → CONNECTION)`;
+    return null;
+}
+
+async function doUploadInav() {
+    const btn = document.getElementById('fp-upload');
+    const problem = inavLinkProblem();
+    if (problem) return alert(problem);
+    if (!getRoute().segments.length) return alert('The route is empty');
+    const wps = compiled.inav?.wps || [];
+    if (!wps.length) return alert('Nothing in this route can be uploaded to INAV');
+    const errors = compiled.issues.filter(i => i.level === 'error');
+    if (errors.length && !await confirm(`The route has ${errors.length} error${errors.length > 1 ? 's' : ''}:\n${errors.map(e => '• ' + e.text).join('\n')}\n\nUpload anyway?`)) return;
+    const save = !!getRoute().params.inavSaveEeprom;
+    btn.disabled = true;
+    btn.textContent = 'UPLOADING…';
+    try {
+        await ensureRouteTerrain();
+        const result = await uploadInavMission(wps, { save }, (pr) => {
+            btn.textContent = pr.phase === 'upload' ? `UPLOADING ${pr.done}/${pr.total}` : 'UPLOADING…';
+        });
+        // The board just told us how many waypoints it can hold — believe it
+        if (result?.maxWaypoints > 0 && result.maxWaypoints !== inavLimit) {
+            inavLimit = result.maxWaypoints;
+            scheduleCompile(0);
+        }
+        btn.textContent = `DONE (${result.count})${save ? ' · SAVED' : ''}`;
+    } catch (e) {
+        alert('Upload failed: ' + e.message);
+        btn.textContent = 'UPLOAD';
+    } finally {
+        setTimeout(() => { btn.textContent = 'UPLOAD'; btn.disabled = false; }, 2000);
+    }
+}
+
+async function doDownloadInav() {
+    const btn = document.getElementById('fp-download');
+    const problem = inavLinkProblem();
+    if (problem) return alert(problem);
+    if (getRoute().segments.length && !await confirm('Replace the current route with the mission stored on the vehicle?')) return;
+    btn.disabled = true;
+    btn.textContent = 'READING…';
+    try {
+        const res = await downloadInavMission((pr) => { btn.textContent = `READING ${pr.done}/${pr.total}`; });
+        if (res?.maxWaypoints > 0) inavLimit = res.maxWaypoints;
+        if (!res?.count) { alert('The flight controller has no mission loaded'); btn.textContent = 'READ'; return; }
+        const route = itemsToRoute(inavToItems(res.wps), { fromVehicle: true, name: 'From INAV' });
+        replaceRoute(route);
+        detachCurrentMission();
+        selectedId = null;
+        resetMissionHistory();
+        syncNameField();
+        scheduleCompile(0);
+        setTimeout(fitRoute, 400);
+        btn.textContent = `READ ${res.count}`;
     } catch (e) {
         alert('Read failed: ' + e.message);
         btn.textContent = 'READ';
@@ -1232,6 +1385,8 @@ function initSegmentList() {
         if (!sel) return;
         const seg = getSegment(sel.closest('.fp-seg').dataset.id);
         if (!seg || !sel.value) return;
+        const why = unsupportedReason('action', sel.value);
+        if (why) { sel.value = ''; flashHint(why); return; }
         seg.actions.push(createAction(sel.value));
         sel.value = '';
         commitMission('Add action');
@@ -1356,26 +1511,34 @@ function renderInspector(seg, issues) {
         </div>`;
     }
     const canAct = seg.type !== 'poi';
+    // An action the flight stack cannot fly is kept — the route may be replanned
+    // for another stack tomorrow — but it is greyed out and says why.
     const actions = canAct ? `<div class="fp-actions">
         <div class="fp-actions-head">
             <span>ACTIONS</span>
             <select class="cfg-select cfg-select-sm fp-add-action" data-act="add-action" title="Add an action executed at the start of this segment">
                 <option value="">+ add…</option>
-                ${ACTION_ORDER.map(k => `<option value="${k}">${ACTION_TYPES[k].label}</option>`).join('')}
+                ${ACTION_ORDER.map(k => {
+                    const why = unsupportedReason('action', k);
+                    return `<option value="${k}"${why ? ` disabled title="${escapeHtml(why)}"` : ''}>${ACTION_TYPES[k].label}</option>`;
+                }).join('')}
             </select>
         </div>
         ${seg.actions.map((a, i) => {
             const ad = ACTION_TYPES[a.type] || ACTION_TYPES.raw;
-            return `<div class="fp-action" data-action-idx="${i}">
-                <div class="fp-action-head"><span class="fp-action-name">${ad.label}</span><span class="fp-action-sum">${escapeHtml(ad.summary(a))}</span>
+            const why = unsupportedReason('action', a.type);
+            return `<div class="fp-action${why ? ' is-unsupported' : ''}" data-action-idx="${i}"${why ? ` title="${escapeHtml(why)}"` : ''}>
+                <div class="fp-action-head"><span class="fp-action-name">${ad.label}</span><span class="fp-action-sum">${why ? `not flown by ${getPlatform().label}` : escapeHtml(ad.summary(a))}</span>
                     <button class="fp-icon-btn" data-act="del-action" title="Remove action">&times;</button></div>
-                ${ad.fields.length ? `<div class="fp-fields is-compact">${renderFields(ad.fields, a, `a${i}`)}</div>` : ''}
+                ${ad.fields.length ? `<div class="fp-fields is-compact">${renderFields(ad.fields, a, `a${i}`, { disabled: () => why })}</div>` : ''}
             </div>`;
         }).join('')}
     </div>` : '';
     return `<div class="fp-seg-body">
         ${issues.length ? `<div class="fp-seg-issues">${issues.map(i => `<div class="fp-issue is-${i.level}">${escapeHtml(i.text)}</div>`).join('')}</div>` : ''}
-        <div class="fp-fields">${renderFields(fields, values, 'p')}</div>
+        <div class="fp-fields">${renderFields(fields, values, 'p', {
+            disabled: (f, opt) => unsupportedReason('segField', opt === null || opt === undefined ? `${seg.type}.${f.key}` : `${seg.type}.${f.key}.${opt}`),
+        })}</div>
         ${extra}
         ${actions}
         <div class="fp-seg-coords">${seg.points.length === 1
@@ -1419,24 +1582,36 @@ function renderCardSummary(seg) {
 
 // Generic schema-driven fields ----------------------------------------------------
 
-function renderFields(fields, values, prefix) {
+/**
+ * @param {object} opts  { disabled(field, optionValue|null) → reason|null } — a
+ *                       field the flight stack cannot fly is rendered greyed out
+ *                       and unclickable, with the reason as its tooltip.
+ */
+function renderFields(fields, values, prefix, opts = {}) {
+    const why = opts.disabled || (() => null);
     return fields.filter(f => fieldVisible(f, values)).map(f => {
         const id = `fp-${prefix}-${f.key}`;
         const v = values[f.key];
+        const reason = why(f, null);
+        const off = reason ? ' disabled' : '';
+        const tip = reason || f.title || '';
         let control;
         if (f.type === 'select') {
-            control = `<select class="cfg-select cfg-select-sm" id="${id}" data-key="${f.key}">
-                ${f.options.map(([val, lbl]) => `<option value="${val}"${String(v) === String(val) ? ' selected' : ''}>${lbl}</option>`).join('')}
+            control = `<select class="cfg-select cfg-select-sm" id="${id}" data-key="${f.key}"${off}>
+                ${f.options.map(([val, lbl]) => {
+                    const optOff = reason ? null : why(f, val);
+                    return `<option value="${val}"${String(v) === String(val) ? ' selected' : ''}${optOff ? ' disabled' : ''} ${optOff ? `title="${escapeHtml(optOff)}"` : ''}>${lbl}</option>`;
+                }).join('')}
             </select>`;
         } else if (f.type === 'check') {
-            control = `<label class="fp-switch"><input type="checkbox" id="${id}" data-key="${f.key}"${v ? ' checked' : ''}><span></span></label>`;
+            control = `<label class="fp-switch"><input type="checkbox" id="${id}" data-key="${f.key}"${v ? ' checked' : ''}${off}><span></span></label>`;
         } else {
             const empty = v === null || v === undefined || v === '' || (f.zeroLabel && +v === 0);
             const ph = f.placeholder || f.zeroLabel || '';
-            control = `<span class="fp-num"><input type="number" class="gcs-input" id="${id}" data-key="${f.key}" value="${empty ? '' : v}" placeholder="${ph}"${f.title ? ` title="${f.title}"` : ''}
+            control = `<span class="fp-num"><input type="number" class="gcs-input" id="${id}" data-key="${f.key}" value="${empty ? '' : v}" placeholder="${ph}"${tip ? ` title="${escapeHtml(tip)}"` : ''}${off}
                 ${f.min !== undefined ? `min="${f.min}"` : ''} ${f.max !== undefined ? `max="${f.max}"` : ''} step="${f.step ?? 1}">${f.unit ? `<span class="fp-unit">${f.unit}</span>` : ''}</span>`;
         }
-        return `<div class="fp-field${f.type === 'check' ? ' is-check' : ''}"${f.title ? ` title="${f.title}"` : ''}><label for="${id}">${f.label}</label>${control}</div>`;
+        return `<div class="fp-field${f.type === 'check' ? ' is-check' : ''}${reason ? ' is-unsupported' : ''}"${tip ? ` title="${escapeHtml(tip)}"` : ''}><label for="${id}">${f.label}</label>${control}</div>`;
     }).join('');
 }
 

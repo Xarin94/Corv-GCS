@@ -298,6 +298,10 @@ export const ROUTE_PARAM_FIELDS = [
     { key: 'maxAgl',       label: 'Max altitude AGL', unit: 'm', type: 'number', min: 0, max: 10000, step: 10, zeroLabel: 'no limit' },
     { key: 'minClearance', label: 'Min clearance',    unit: 'm', type: 'number', min: 0, max: 1000, step: 5 },
     { key: 'actionExec',   label: 'Segment actions run', type: 'select', options: [['start', 'At segment start'], ['every', 'At every point']] },
+    // INAV only: two decisions the MAVLink mission never has to make. `platforms`
+    // hides a field on every other flight stack (see Platforms.js).
+    { key: 'inavAltAmsl',    label: 'Waypoint altitudes AMSL', type: 'check', platforms: ['inav'], title: 'Off: altitudes are relative to the arming point, which every INAV version understands. On: absolute MSL (needs INAV 5 or later)' },
+    { key: 'inavSaveEeprom', label: 'Store mission on the board', type: 'check', platforms: ['inav'], title: 'After the upload, also write the mission to the flight controller storage so it survives a reboot' },
 ];
 
 /** Gimbal defaults live next to the camera profile in the CAMERA popover. */
@@ -320,6 +324,8 @@ export function defaultRouteParams() {
         maxAgl: 120,
         minClearance: 20,
         actionExec: 'start',
+        inavAltAmsl: false,      // INAV: send absolute MSL altitudes instead of relative to home
+        inavSaveEeprom: false,   // INAV: write the uploaded mission to the board storage as well
         home: null,          // {lat, lng} — take-off point; null = vehicle home / position
         camera: defaultCamera(),
         gimbalPitch: -90,    // ° — nadir unless a segment carries a gimbal action

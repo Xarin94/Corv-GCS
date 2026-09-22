@@ -516,6 +516,22 @@
 .fp-tool.active { background: rgba(0, 210, 255, 0.22); color: var(--accent-cyan); box-shadow: inset 3px 0 0 var(--accent-cyan); }
 .fp-tool.is-aux { border-top: 1px solid var(--border-accent); }
 
+/* What the selected flight stack cannot fly: still visible, so the operator
+   sees what exists, but greyed out and unclickable, with the reason in the
+   tooltip (see js/mission/Platforms.js). */
+.fp-tool:disabled { opacity: 0.28; cursor: not-allowed; }
+.fp-tool:disabled:hover { background: none; color: var(--text-dim); }
+
+.fp-field.is-unsupported { opacity: 0.42; }
+.fp-field.is-unsupported label,
+.fp-field.is-unsupported input,
+.fp-field.is-unsupported select { cursor: not-allowed; }
+.fp-field input:disabled,
+.fp-field select:disabled { cursor: not-allowed; }
+
+.fp-action.is-unsupported { opacity: 0.5; }
+.fp-action.is-unsupported .fp-action-sum { font-style: italic; }
+
 .fp-map-hint {
     position: absolute;
     top: 12px;

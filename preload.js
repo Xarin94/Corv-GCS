@@ -174,7 +174,14 @@ contextBridge.exposeInMainWorld('msp', {
   connectSerial: (portPath, baudRate, profile) => ipcRenderer.invoke('msp-connect-serial', portPath, baudRate, profile),
   connectTCP: (host, port, profile) => ipcRenderer.invoke('msp-connect-tcp', host, port, profile),
   disconnect: () => ipcRenderer.invoke('msp-disconnect'),
-  status: () => ipcRenderer.invoke('msp-status')
+  status: () => ipcRenderer.invoke('msp-status'),
+  // INAV waypoint missions: the whole transfer runs in the main process, which
+  // owns the single MSP request slot, and reports progress as it goes.
+  missionInfo: () => ipcRenderer.invoke('msp-mission-info'),
+  missionUpload: (wps, opts) => ipcRenderer.invoke('msp-mission-upload', wps, opts),
+  missionDownload: () => ipcRenderer.invoke('msp-mission-download'),
+  missionLoadStored: (index) => ipcRenderer.invoke('msp-mission-load-stored', index),
+  onMissionProgress: (callback) => ipcRenderer.on('msp-mission-progress', (event, p) => callback(p))
 });
 
 // Mission library / data root API bridge

@@ -51,6 +51,21 @@
     background: rgba(0, 210, 255, 0.06);
 }
 
+/* A page the selected flight stack has no use for: Betaflight has no
+   navigation, so FLIGHT PLAN is greyed out and does not answer a click. */
+.gcs-tab:disabled,
+.gcs-tab.is-disabled {
+    color: var(--text-muted);
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.gcs-tab:disabled:hover,
+.gcs-tab.is-disabled:hover {
+    color: var(--text-muted);
+    background: none;
+}
+
 /* Tab content containers */
 .tab-content {
     display: none;
@@ -260,6 +275,16 @@ body.has-tabs #ui-layer {
     letter-spacing: 1px;
     margin-bottom: 4px;
     font-weight: 600;
+}
+
+/* One line of plain explanation under a control (suggested link, why a
+   setting is greyed out) */
+.cfg-note {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    line-height: 1.45;
+    color: var(--text-dim);
+    margin-top: 6px;
 }
 
 .setup-panel .cfg-val {

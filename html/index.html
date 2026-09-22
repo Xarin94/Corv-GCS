@@ -604,6 +604,7 @@
                             <option value="msp-serial">MSP Serial (INAV / Betaflight)</option>
                             <option value="msp-tcp">MSP TCP (INAV SITL)</option>
                         </select>
+                        <div class="cfg-note" id="setup-conn-hint"></div>
                     </div>
                     <div class="cfg-row conn-field msp-field">
                         <label>POLL RATE</label>
@@ -1947,6 +1948,22 @@
     <!-- ==================== TAB CONTENT: SYS CONFIG ==================== -->
     <div id="tab-sys-config" class="tab-content">
         <div class="tab-panel-center">
+            <div class="setup-panel">
+                <div class="panel-header">FLIGHT STACK</div>
+                <div class="cfg-row">
+                    <label>ENVIRONMENT</label>
+                    <select id="syscfg-platform" class="cfg-select" title="Which firmware this GCS is set up for: it suggests the link protocol and decides which mission features can be flown">
+                        <option value="ardupilot">ArduPilot &middot; Copter / Plane / Rover</option>
+                        <option value="inav">INAV &middot; waypoint missions over MSP</option>
+                        <option value="betaflight">Betaflight &middot; acro, no navigation</option>
+                    </select>
+                </div>
+                <div class="cfg-row">
+                    <label>SUGGESTED LINK</label>
+                    <span class="cfg-val" id="syscfg-platform-link">--</span>
+                </div>
+                <div class="cfg-note" id="syscfg-platform-hint"></div>
+            </div>
             <div class="setup-panel">
                 <div class="panel-header">SYSTEM CONFIG</div>
                 <div class="cfg-row">

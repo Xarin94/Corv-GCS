@@ -45,14 +45,22 @@ const MSP2_INAV_STATUS   = 0x2000;
 const MSP2_INAV_ANALOG   = 0x2002;
 const MSP2_INAV_AIR_SPEED = 0x2009;
 
+// Waypoint missions (INAV). MSP_WP/MSP_SET_WP carry one 21-byte record each;
+// MSP_WP_GETINFO says how many the board stores and how many are loaded.
+const MSP_WP_MISSION_LOAD = 18;
+const MSP_WP_MISSION_SAVE = 19;
+const MSP_WP_GETINFO      = 20;
+const MSP_WP              = 118;
+const MSP_SET_WP          = 209;
+
 // ── Connection state ─────────────────────────────────────────────────────────
 let mainWindow = null;
 let port = null;          // SerialPort or net.Socket
 let portKind = null;      // 'serial' | 'tcp'
 let rxBuf = Buffer.alloc(0);
 let schedulerTimer = null;
-let pending = null;       // { cmd, timer, resolve }
-let queue = [];           // pending command ids
+let pending = null;       // { cmd, job, timer } — the one request in flight
+let queue = [];           // one-shot jobs: { cmd, payload?, resolve?, reject?, tries?, timeout? }
 let bytesRx = 0;
 let statsTimer = null;
 let lastStatsBytes = 0;
@@ -212,39 +220,61 @@ function writeRaw(buf) {
     }
 }
 
-function sendRequest(cmd, payload) {
+// A job is one request in flight: either a scheduled poll, which nobody is
+// waiting for, or a one-shot whose reply somebody wants back (identification at
+// connect, a waypoint of a mission transfer).
+function sendJob(job) {
     pending = {
-        cmd,
-        timer: setTimeout(() => {
-            // A dropped reply must not wedge the scheduler forever
-            pending = null;
-            const n = (misses.get(cmd) || 0) + 1;
-            misses.set(cmd, n);
-            if (n >= MAX_MISSES) {
-                const before = schedule.length;
-                schedule = schedule.filter(s => s.cmd !== cmd);
-                if (schedule.length !== before) {
-                    console.warn(`[msp] Command 0x${cmd.toString(16)} unanswered ${n}x — removed from the poll schedule`);
-                }
-            }
-        }, replyTimeoutMs),
+        cmd: job.cmd,
+        job,
+        timer: setTimeout(() => onReplyTimeout(job), job.timeout || replyTimeoutMs),
     };
-    writeRaw(encodeRequest(cmd, payload));
+    writeRaw(encodeRequest(job.cmd, job.payload));
 }
 
-function failPending(cmd) {
-    if (pending && pending.cmd === cmd) {
-        clearTimeout(pending.timer);
-        pending = null;
+function onReplyTimeout(job) {
+    // A dropped reply must not wedge the scheduler forever
+    pending = null;
+    if (job.reject) {
+        // A mission transfer is worth retrying: one frame lost on a radio link
+        // must not cost the whole upload.
+        if (--job.tries > 0) { queue.unshift(job); return; }
+        job.reject(new Error(`No reply to MSP command ${job.cmd}`));
+        return;
     }
+    const cmd = job.cmd;
+    const n = (misses.get(cmd) || 0) + 1;
+    misses.set(cmd, n);
+    if (n >= MAX_MISSES) {
+        const before = schedule.length;
+        schedule = schedule.filter(s => s.cmd !== cmd);
+        if (schedule.length !== before) {
+            console.warn(`[msp] Command 0x${cmd.toString(16)} unanswered ${n}x — removed from the poll schedule`);
+        }
+    }
+}
+
+/** Free the request slot without deciding the job's fate. */
+function clearPending(cmd) {
+    if (!pending || pending.cmd !== cmd) return null;
+    clearTimeout(pending.timer);
+    const job = pending.job;
+    pending = null;
+    return job || null;
+}
+
+/** The flight controller answered with an error frame ('!'). */
+function failPending(cmd) {
+    const job = clearPending(cmd);
+    if (job && job.reject) job.reject(new Error(`Flight controller rejected MSP command ${cmd}`));
 }
 
 function tick() {
     if (!port || pending) return;
 
-    // One-shot requests (identification, box names) go first
+    // One-shot jobs (identification, box names, mission transfer) go first
     if (queue.length) {
-        sendRequest(queue.shift());
+        sendJob(queue.shift());
         return;
     }
 
@@ -257,14 +287,15 @@ function tick() {
     }
     if (!best) return;
     nextDue.set(best.cmd, now + 1000 / best.hz);
-    sendRequest(best.cmd);
+    sendJob({ cmd: best.cmd });
 }
 
 // ── Reply decoding ───────────────────────────────────────────────────────────
 
 function handleReply(cmd, p) {
-    failPending(cmd);
+    const job = clearPending(cmd);
     misses.set(cmd, 0);
+    if (job && job.resolve) job.resolve(p);
     try {
         decode(cmd, p);
     } catch (e) {
@@ -573,6 +604,123 @@ function stopStats() {
     if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
 }
 
+// ── Waypoint missions (INAV) ─────────────────────────────────────────────────
+// INAV keeps its mission in a flat list of 21-byte records addressed by index,
+// so a transfer is nothing but a run of one-shot requests. It lives here rather
+// than in the renderer because the single request slot and the matching of a
+// reply to its request belong to the scheduler above — and because a transfer
+// has to own that slot: telemetry pauses for the second or two it takes.
+//
+//   index u8 · action u8 · lat i32(1e7) · lon i32(1e7) · alt i32(cm)
+//   p1 i16 · p2 i16 · p3 i16 · flag u8   (0xA5 on the last waypoint)
+
+const WP_RECORD_LEN = 21;
+const MISSION_TIMEOUT_MS = 1500;
+const MISSION_TRIES = 3;
+let missionBusy = false;
+
+/** Queue a one-shot request and resolve with its reply payload. */
+function request(cmd, payload = undefined, timeout = MISSION_TIMEOUT_MS) {
+    if (!port) return Promise.reject(new Error('MSP link not connected'));
+    return new Promise((resolve, reject) => {
+        queue.push({ cmd, payload, resolve, reject, tries: MISSION_TRIES, timeout: Math.max(timeout, replyTimeoutMs) });
+    });
+}
+
+function clampI16(v) {
+    const n = Math.round(Number(v) || 0);
+    return Math.max(-32768, Math.min(32767, n));
+}
+
+function encodeWp(wp, index) {
+    const b = Buffer.alloc(WP_RECORD_LEN);
+    b.writeUInt8(index & 0xFF, 0);
+    b.writeUInt8(Number(wp.action) & 0xFF, 1);
+    b.writeInt32LE(Math.round(Number(wp.lat) || 0), 2);
+    b.writeInt32LE(Math.round(Number(wp.lon) || 0), 6);
+    b.writeInt32LE(Math.round(Number(wp.alt) || 0), 10);
+    b.writeInt16LE(clampI16(wp.p1), 14);
+    b.writeInt16LE(clampI16(wp.p2), 16);
+    b.writeInt16LE(clampI16(wp.p3), 18);
+    b.writeUInt8(Number(wp.flag) & 0xFF, 20);
+    return b;
+}
+
+function decodeWp(buf) {
+    if (!buf || buf.length < WP_RECORD_LEN) throw new Error('Short MSP_WP reply');
+    return {
+        index: buf.readUInt8(0),
+        action: buf.readUInt8(1),
+        lat: buf.readInt32LE(2),
+        lon: buf.readInt32LE(6),
+        alt: buf.readInt32LE(10),
+        p1: buf.readInt16LE(14),
+        p2: buf.readInt16LE(16),
+        p3: buf.readInt16LE(18),
+        flag: buf.readUInt8(20),
+    };
+}
+
+function missionProgress(phase, done, total) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('msp-mission-progress', { phase, done, total });
+    }
+}
+
+/** { maxWaypoints, valid, count } — what the board can hold and what it holds. */
+async function missionInfo() {
+    const p = await request(MSP_WP_GETINFO);
+    if (!p || p.length < 4) throw new Error('Short MSP_WP_GETINFO reply');
+    return { maxWaypoints: p[1], valid: p[2] === 1, count: p[3] };
+}
+
+async function missionUpload(wps, opts = {}) {
+    if (!port) throw new Error('MSP link not connected');
+    if (!Array.isArray(wps) || !wps.length) throw new Error('No waypoints to upload');
+    if (missionBusy) throw new Error('A mission transfer is already running');
+    missionBusy = true;
+    try {
+        // The board knows its own limit; refuse before writing half a mission.
+        const info = await missionInfo().catch(() => null);
+        if (info && wps.length > info.maxWaypoints) {
+            throw new Error(`${wps.length} waypoints — this board stores at most ${info.maxWaypoints}`);
+        }
+        for (let i = 0; i < wps.length; i++) {
+            await request(MSP_SET_WP, encodeWp(wps[i], i + 1));
+            missionProgress('upload', i + 1, wps.length);
+        }
+        // The list lives in RAM until it is written to the board storage.
+        if (opts.save) await request(MSP_WP_MISSION_SAVE, Buffer.from([0]), 4000);
+        return { count: wps.length, saved: !!opts.save, maxWaypoints: info ? info.maxWaypoints : null };
+    } finally {
+        missionBusy = false;
+    }
+}
+
+async function missionDownload() {
+    if (!port) throw new Error('MSP link not connected');
+    if (missionBusy) throw new Error('A mission transfer is already running');
+    missionBusy = true;
+    try {
+        const info = await missionInfo();
+        const wps = [];
+        for (let i = 1; i <= info.count; i++) {
+            wps.push(decodeWp(await request(MSP_WP, Buffer.from([i]))));
+            missionProgress('download', i, info.count);
+        }
+        return { wps, count: info.count, maxWaypoints: info.maxWaypoints, valid: info.valid };
+    } finally {
+        missionBusy = false;
+    }
+}
+
+/** Reload the mission the board has in storage into its working list. */
+async function missionLoadStored(index = 0) {
+    if (!port) throw new Error('MSP link not connected');
+    await request(MSP_WP_MISSION_LOAD, Buffer.from([index & 0xFF]), 4000);
+    return missionInfo();
+}
+
 function sendConnectionState(state) {
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('mavlink-connection-state', state);
@@ -599,15 +747,21 @@ function startSession(profile) {
     replyTimeoutMs = profile === 'slow' ? 2000 : 500;
     // Identify the FC and learn the box names before the periodic polling starts —
     // without MSP_BOXNAMES the flight mode cannot be resolved at all.
-    queue = [MSP_FC_VARIANT, MSP_FC_VERSION, MSP_BOXNAMES, MSP_BOXIDS];
+    queue = [MSP_FC_VARIANT, MSP_FC_VERSION, MSP_BOXNAMES, MSP_BOXIDS].map(cmd => ({ cmd }));
     schedulerTimer = setInterval(tick, TICK_MS);
 }
 
 function stopSession() {
     if (schedulerTimer) { clearInterval(schedulerTimer); schedulerTimer = null; }
+    // Whoever is waiting on a transfer has to hear about the link going away,
+    // or the upload button spins forever.
+    const orphans = queue.filter(j => j.reject);
+    if (pending && pending.job && pending.job.reject) orphans.push(pending.job);
     if (pending) { clearTimeout(pending.timer); pending = null; }
     queue = [];
     rxBuf = Buffer.alloc(0);
+    missionBusy = false;
+    for (const j of orphans) j.reject(new Error('MSP link closed during the transfer'));
 }
 
 async function connectSerial(portPath, baudRate = 115200, profile = 'normal') {
@@ -685,6 +839,10 @@ function initMSPHandlers(win) {
     ipcMain.handle('msp-connect-tcp', (e, host, tcpPort, profile) =>
         connectTCP(host, tcpPort, profile));
     ipcMain.handle('msp-disconnect', () => disconnect());
+    ipcMain.handle('msp-mission-info', () => missionInfo());
+    ipcMain.handle('msp-mission-upload', (e, wps, opts) => missionUpload(wps, opts || {}));
+    ipcMain.handle('msp-mission-download', () => missionDownload());
+    ipcMain.handle('msp-mission-load-stored', (e, index) => missionLoadStored(index || 0));
     ipcMain.handle('msp-status', () => ({
         connected: !!port,
         kind: portKind,
