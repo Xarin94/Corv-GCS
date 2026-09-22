@@ -38,8 +38,7 @@ import {
     initTerrain, getTerrainElevationCached, updateTerrainChunks,
     updateTerrainHillshading, setHillshadeNeedsUpdate,
     addHGTFile, getHGTFileCount, getActiveChunks, setAvailableHgtFiles,
-    getChunkCreationQueue, getTileLoadQueue, getCurrentTileLoads,
-    getTotalTilesToLoad, getTilesLoaded,
+    getInitialLoadStatus, setTileNetworkEnabled,
     getTerrainElevationFromHGT, getRunwayObjects,
     refreshNearbyChunkTextures, resetTextureRefreshPosition,
     setMapBrightness,
@@ -92,7 +91,7 @@ import { initLidarController } from './ui/LidarController.js';
 // Loading overlay imports
 import {
     showLoadingOverlay, hideLoadingOverlay, scheduleHideLoadingOverlaySoon,
-    checkInitialLoadComplete, setAutoLoadAttempted
+    checkInitialLoadComplete, setAutoLoadAttempted, setLoadingMessage
 } from './ui/LoadingOverlay.js';
 
 
@@ -860,7 +859,9 @@ function update3DWorld() {
         (planePos.z - STATE.lastUpdatePos.z) ** 2
     );
     
-    if (getHGTFileCount() > 0 && (Object.keys(getActiveChunks()).length === 0 || dist > 2000)) {
+    // (The 1 s periodic refresh above covers the "no chunk yet" case; doing
+    // it here too meant a call per frame while the HGT files were loading.)
+    if (getHGTFileCount() > 0 && dist > 2000) {
         STATE.lastUpdatePos = { x: planePos.x, z: planePos.z };
         updateTerrainChunks();
     }
@@ -1317,14 +1318,7 @@ function animate() {
 
     updateMap();
 
-    checkInitialLoadComplete(
-        getActiveChunks(), 
-        getChunkCreationQueue(), 
-        getTileLoadQueue(), 
-        getCurrentTileLoads(),
-        getTotalTilesToLoad(),
-        getTilesLoaded()
-    );
+    checkInitialLoadComplete(getInitialLoadStatus());
 }
 
 // ============== MISSION TRAJECTORY 3D ==============
@@ -1693,17 +1687,15 @@ async function loadTopographyAtStart() {
         const names = await window.topography.load('topography');
 
         if (!names || names.length === 0) {
-            setAutoLoadAttempted();
             setStatusMessage('AUTO HGT LOAD: no files found', '#ffcc00');
-            scheduleHideLoadingOverlaySoon();
-            return;
+        } else {
+            // Register available files for lazy on-demand loading
+            setAvailableHgtFiles(names);
+            setStatusMessage(`${names.length} HGT AVAILABLE (lazy)`, 'var(--accent-cyan)');
         }
 
-        // Register available files for lazy on-demand loading
-        setAvailableHgtFiles(names);
-        setStatusMessage(`${names.length} HGT AVAILABLE (lazy)`, 'var(--accent-cyan)');
-
-        // Trigger terrain update — will lazy-load nearby tiles
+        // Trigger terrain update — lazy-loads nearby tiles from disk, or
+        // auto-downloads the missing ones. The overlay tracks both.
         updateTerrainChunks();
         setAutoLoadAttempted();
     } catch (e) {
@@ -1720,20 +1712,43 @@ async function checkConnectivity() {
     try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
-        const res = await fetch(TEST_URL, { signal: controller.signal });
+        // no-store: the z=0 tile is otherwise served from Chromium's HTTP
+        // cache and the check passes with the cable unplugged.
+        const res = await fetch(TEST_URL, { signal: controller.signal, cache: 'no-store' });
         clearTimeout(timeout);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         // Connection OK - satellite stays enabled
-        showLoadingOverlay('Loading maps...');
+        if (cacheOnlyMode) leaveCacheOnlyMode();
+        else setTileNetworkEnabled(true);
+        setLoadingMessage('Loading maps...');
     } catch (e) {
-        // No connection - disable satellite, go wireframe-only
-        console.warn('Connectivity check failed, switching to wireframe mode:', e.message);
-        window.satelliteEnabled = false;
-        try { setSatelliteEnabled(false); } catch (_) {}
-        setStatusMessage('NO CONNECTION — WIREFRAME MODE', '#ff8800');
-        pushHudMessage('[WARNING] No internet connection — satellite maps unavailable, using wireframe 3D', 'warning');
-        showLoadingOverlay('Loading terrain (offline)...');
+        // No connection: satellite stays ON but reads only the tiles already
+        // cached in IndexedDB (offline download / previous sessions). Chunks
+        // with nothing cached stay height-tinted.
+        console.warn('Connectivity check failed, satellite from cache only:', e.message);
+        enterCacheOnlyMode('NO CONNECTION');
+        setLoadingMessage('Loading terrain (cached maps)...');
     }
+}
+
+let cacheOnlyMode = false;
+function enterCacheOnlyMode(reason) {
+    setTileNetworkEnabled(false);
+    if (cacheOnlyMode) return;
+    cacheOnlyMode = true;
+    setStatusMessage(`${reason} — CACHED MAPS ONLY`, '#ff8800');
+    pushHudMessage(`[WARNING] ${reason} — satellite from offline cache only, uncached areas shown as wireframe`, 'warning');
+}
+
+function leaveCacheOnlyMode() {
+    setTileNetworkEnabled(true);
+    if (!cacheOnlyMode) return;
+    cacheOnlyMode = false;
+    setStatusMessage('CONNECTION RESTORED', 'var(--accent-cyan)');
+    pushHudMessage('Connection restored — satellite maps back online', 'info');
+    // Re-texture the chunks left bare while offline.
+    resetTextureRefreshPosition();
+    refreshNearbyChunkTextures();
 }
 
 // ============== INITIALIZATION ==============
@@ -1882,23 +1897,27 @@ function init() {
         setSatelliteEnabled(window.satelliteEnabled);
     } catch (e) {}
 
-    // Listen for runtime connection loss (many consecutive tile errors)
-    window.addEventListener('connectionLost', () => {
-        setSatelliteEnabled(false);
-        setStatusMessage('CONNECTION LOST — WIREFRAME MODE', '#ff8800');
-        pushHudMessage('[WARNING] Connection lost — satellite maps disabled, using wireframe 3D', 'warning');
+    // Runtime connection loss (many consecutive tile errors) or OS-level
+    // offline: keep serving cached tiles, resume the network when it's back.
+    window.addEventListener('connectionLost', () => enterCacheOnlyMode('CONNECTION LOST'));
+    window.addEventListener('offline', () => enterCacheOnlyMode('OFFLINE'));
+    window.addEventListener('online', () => {
+        // navigator.onLine only says the NIC is up — verify before trusting it.
+        checkConnectivity();
     });
 
     // Initialize trajectory corridor (hidden by default)
     initCorridor(getScene());
 
     // Show loading and start auto-load
-    showLoadingOverlay('Checking connection...');
+    showLoadingOverlay('Loading terrain...');
 
-    // Check connectivity before loading maps
-    checkConnectivity().then(() => {
-        loadTopographyAtStart();
-    });
+    // Offline content first: HGT files and cached tiles come from disk and
+    // don't depend on the network, so terrain starts right away. The
+    // connectivity probe (up to 5 s) runs alongside and only decides what
+    // happens to tile cache misses — network fetch or cache-only mode.
+    loadTopographyAtStart();
+    checkConnectivity();
     
     // Start ADS-B auto-polling (OpenSky + MAVLink ADSB_VEHICLE)
     startADSBPolling();

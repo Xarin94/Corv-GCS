@@ -81,6 +81,8 @@ let cleanupIntervalId = null;
 // Set of HGT filenames available on disk (populated at startup, lazy-loaded on demand)
 const availableHgtFiles = new Set();
 const hgtLoadingInProgress = new Set(); // prevent duplicate loads
+let hgtParsing = 0; // FileReader passes in flight (HGT → chunk queue)
+const hgtReadInProgress = new Set(); // tile keys with a FileReader pass in flight
 
 /** Register which HGT files are available on disk without loading them */
 export function setAvailableHgtFiles(names) {
@@ -235,6 +237,31 @@ let tilesLoaded = 0;       // Tile caricate con successo
 let consecutiveTileErrors = 0;
 const CONSECUTIVE_ERROR_THRESHOLD = 15;
 let connectionLostNotified = false;
+
+// Cache-only mode: when the network is down, satellite stays ON so the tiles
+// already stored in IndexedDB are used; only the network fetch is skipped.
+// Cache misses resolve to null right away and don't count as errors.
+let tileNetworkEnabled = true;
+
+export function setTileNetworkEnabled(enabled) {
+    tileNetworkEnabled = !!enabled;
+    if (tileNetworkEnabled) {
+        consecutiveTileErrors = 0;
+        connectionLostNotified = false;
+        return;
+    }
+    // Drop anything waiting for the network: nothing will answer it.
+    while (tileLoadQueue.length > 0) {
+        const item = tileLoadQueue.shift();
+        resolveTileCallbacks(item.key, null);
+    }
+}
+
+export function isTileNetworkEnabled() { return tileNetworkEnabled; }
+
+// Set once the first satellite pass has been scheduled after the base terrain
+// is ready; the loading overlay uses it to know the texture phase has begun.
+let firstTexturePassStarted = false;
 
 // Chunk creation queue
 const CHUNKS_PER_FRAME = 5; // Aumentato per velocizzare
@@ -605,8 +632,8 @@ function initTileWorker() {
                 consecutiveTileErrors++;
                 if (consecutiveTileErrors >= CONSECUTIVE_ERROR_THRESHOLD && !connectionLostNotified) {
                     connectionLostNotified = true;
-                    console.warn(`${CONSECUTIVE_ERROR_THRESHOLD} consecutive tile errors — connection lost, disabling satellite`);
-                    window.satelliteEnabled = false;
+                    console.warn(`${CONSECUTIVE_ERROR_THRESHOLD} consecutive tile errors — connection lost, satellite from cache only`);
+                    setTileNetworkEnabled(false);
                     window.dispatchEvent(new CustomEvent('connectionLost'));
                 }
                 resolveTileCallbacks(data.key, null);
@@ -1011,32 +1038,56 @@ export function getHgtFileBounds() {
 /**
  * Update terrain chunks based on current position
  */
+/**
+ * Distance (m) from a position to the nearest point of the 1° HGT cell
+ * [la, la+1] x [lo, lo+1]. Zero when the position is inside the cell.
+ */
+function hgtTileDistance(lat, lon, la, lo) {
+    const dLat = lat < la ? la - lat : (lat > la + 1 ? lat - (la + 1) : 0);
+    const dLon = lon < lo ? lo - lon : (lon > lo + 1 ? lon - (lo + 1) : 0);
+    const mLat = dLat * 111320;
+    const mLon = dLon * 111320 * Math.cos(lat * Math.PI / 180);
+    return Math.sqrt(mLat * mLat + mLon * mLon);
+}
+
 export async function updateTerrainChunks() {
     const currentLat = STATE.lat;
     const currentLon = STATE.lon;
 
+    // Only the HGT cells that reach into the chunk visibility radius matter:
+    // chunks beyond it are never built, so reading (or worse, downloading)
+    // the old ±2° window — up to 25 x 25 MB — just delayed the first terrain.
+    // Nearest cell first, so the ground under the aircraft appears first.
+    const HGT_MARGIN_M = 5000;
+    const candidates = [];
+    for (let la = Math.floor(currentLat - 1); la <= Math.floor(currentLat + 1); la++) {
+        for (let lo = Math.floor(currentLon - 1); lo <= Math.floor(currentLon + 1); lo++) {
+            const dist = hgtTileDistance(currentLat, currentLon, la, lo);
+            if (dist <= VISIBILITY_RADIUS + HGT_MARGIN_M) candidates.push({ la, lo, dist });
+        }
+    }
+    candidates.sort((a, b) => a.dist - b.dist);
+
     let loaded = 0, lazy = 0, missing = 0;
     const missingFiles = [];
-    for (let la = Math.floor(currentLat - 2); la <= Math.floor(currentLat + 2); la++) {
-        for (let lo = Math.floor(currentLon - 2); lo <= Math.floor(currentLon + 2); lo++) {
-            const latStr = (la >= 0 ? 'N' : 'S') + Math.abs(la).toString().padStart(2, '0');
-            const lonStr = (lo >= 0 ? 'E' : 'W') + Math.abs(lo).toString().padStart(3, '0');
-            const filename = `${latStr}${lonStr}.HGT`;
-            if (hgtFiles[filename]) {
-                loaded++;
-                processHGTFile(hgtFiles[filename], la, lo);
-            } else if (availableHgtFiles.has(filename)) {
-                lazy++;
-                // Lazy-load from disk, then process
-                ensureHgtLoaded(filename).then(ok => {
-                    if (ok && hgtFiles[filename]) {
-                        processHGTFile(hgtFiles[filename], la, lo);
-                    }
-                });
-            } else {
-                missing++;
-                missingFiles.push({ filename, latBase: la, lonBase: lo });
-            }
+    for (const { la, lo } of candidates) {
+        const latStr = (la >= 0 ? 'N' : 'S') + Math.abs(la).toString().padStart(2, '0');
+        const lonStr = (lo >= 0 ? 'E' : 'W') + Math.abs(lo).toString().padStart(3, '0');
+        const filename = `${latStr}${lonStr}.HGT`;
+        if (hgtFiles[filename]) {
+            loaded++;
+            processHGTFile(hgtFiles[filename], la, lo);
+        } else if (availableHgtFiles.has(filename)) {
+            lazy++;
+            // Lazy-load from disk, then process
+            ensureHgtLoaded(filename).then(ok => {
+                if (ok && hgtFiles[filename]) {
+                    processHGTFile(hgtFiles[filename], la, lo);
+                }
+            });
+        } else {
+            missing++;
+            missingFiles.push({ filename, latBase: la, lonBase: lo });
         }
     }
 
@@ -1078,8 +1129,24 @@ function processHGTFile(file, latBase, lonBase) {
         return;
     }
 
+    // One read per tile at a time: updateTerrainChunks() is re-run every
+    // second (and every frame while no chunk exists yet), and each call used
+    // to start another 25 MB FileReader for the same file — hundreds in
+    // flight during startup, all producing the same chunks.
+    if (hgtReadInProgress.has(key)) return;
+    hgtReadInProgress.add(key);
+
     const reader = new FileReader();
-    reader.onload = (e) => generateChunksFromBuffer(e.target.result, latBase, lonBase);
+    hgtParsing++;
+    const done = () => {
+        hgtParsing = Math.max(0, hgtParsing - 1);
+        hgtReadInProgress.delete(key);
+    };
+    reader.onload = (e) => {
+        done();
+        generateChunksFromBuffer(e.target.result, latBase, lonBase);
+    };
+    reader.onerror = done;
     reader.readAsArrayBuffer(file);
 }
 
@@ -1225,8 +1292,17 @@ function processChunkQueue() {
                 setTimeout(() => {
                     resetTextureRefreshPosition();
                     refreshNearbyChunkTextures();
+                    firstTexturePassStarted = true;
                 }, 100);
+            } else {
+                firstTexturePassStarted = true;
             }
+        } else if (terrainBaseReady && window.satelliteEnabled) {
+            // A later batch drained (HGT tiles arrive one at a time at
+            // startup): texture the new chunks now instead of waiting for the
+            // movement/30 s gate of the periodic refresh.
+            resetTextureRefreshPosition();
+            refreshNearbyChunkTextures();
         }
         return;
     }
@@ -1549,6 +1625,7 @@ function createChunkTexture(mesh, latTop, latBottom, lonLeft, lonRight) {
         zoomLevel,
         totalTiles: totalTilesForChunk,
         tilesDrawn: 0,
+        tilesHit: 0,   // tiles that really landed on the canvas (cache or network)
         aborted: false
     };
     
@@ -1624,6 +1701,7 @@ function processTileDrawQueue() {
                 // Draw in mosaic space shifted by the crop origin — out-of-bounds
                 // portions are clipped by the canvas for free.
                 job.ctx.drawImage(img, localX * tileSize - job.cropX, localY * tileSize - job.cropY, tileSize, tileSize);
+                job.tilesHit++;
             } catch (e) {
                 // Detached/invalid image source — leave fallback fill.
             }
@@ -1637,7 +1715,14 @@ function processTileDrawQueue() {
             const canvas = job.canvas;
             job.ctx = null;
             job.canvas = null;
-            enqueueCompositeTexture(job.mesh, canvas);
+            if (job.tilesHit === 0) {
+                // Not a single tile (typically offline with nothing cached for
+                // this area): keep the height-tinted chunk rather than a grey slab.
+                releaseCanvas(canvas);
+                if (job.mesh && job.mesh.userData) job.mesh.userData.textureLoaded = false;
+            } else {
+                enqueueCompositeTexture(job.mesh, canvas);
+            }
         }
 
         processed++;
@@ -1797,6 +1882,11 @@ function loadTileImage(tileX, tileY, tileZ, callback) {
 }
 
 function enqueueForNetwork(tileX, tileY, tileZ, key) {
+    if (!tileNetworkEnabled) {
+        // Cache-only mode: not in IndexedDB → no tile, no error accounting.
+        resolveTileCallbacks(key, null);
+        return;
+    }
     tileLoadQueue.push({ tileX, tileY, tileZ, key });
     if (!isProcessingTileQueue) {
         processTileLoadQueue();
@@ -1871,8 +1961,8 @@ function processTileLoadQueue() {
                 consecutiveTileErrors++;
                 if (consecutiveTileErrors >= CONSECUTIVE_ERROR_THRESHOLD && !connectionLostNotified) {
                     connectionLostNotified = true;
-                    console.warn(`${CONSECUTIVE_ERROR_THRESHOLD} consecutive tile errors — connection lost, disabling satellite`);
-                    window.satelliteEnabled = false;
+                    console.warn(`${CONSECUTIVE_ERROR_THRESHOLD} consecutive tile errors — connection lost, satellite from cache only`);
+                    setTileNetworkEnabled(false);
                     window.dispatchEvent(new CustomEvent('connectionLost'));
                 }
                 resolveTileCallbacks(item.key, null);
@@ -2489,6 +2579,38 @@ function applyMaterialBrightness(scale) {
 }
 
 // Getters
+/**
+ * Everything the loading overlay needs to decide whether the initial load
+ * is really over. Each *Pending counter covers a stage the older per-queue
+ * getters missed: HGT reads/downloads in flight, chunks handed to the worker,
+ * textures being composed/compressed off the tile queue (cached tiles never
+ * enter tileLoadQueue at all).
+ */
+export function getInitialLoadStatus() {
+    let texturedChunks = 0;
+    let chunksActive = 0;
+    for (const key in activeChunks) {
+        chunksActive++;
+        const ud = activeChunks[key] && activeChunks[key].userData;
+        if (ud && ud.textureLoaded) texturedChunks++;
+    }
+    return {
+        hgtAvailable: availableHgtFiles.size,
+        hgtLoaded: Object.keys(hgtFiles).length,
+        hgtPending: hgtLoadingInProgress.size + _autoDownloadInProgress.size + hgtParsing,
+        chunksActive,
+        chunksPending: chunkCreationQueue.length + workerPending.size,
+        terrainBaseReady,
+        firstTexturePassStarted,
+        texturedChunks,
+        texturesPending: chunkTextureQueue.length + activeChunkJobs.size +
+            tileDrawQueue.length + textureApplyQueue.length + compressPending.size,
+        tilesQueued: tileLoadQueue.length + currentTileLoads,
+        tilesTotal: totalTilesToLoad,
+        tilesLoaded
+    };
+}
+
 export function getActiveChunks() { return activeChunks; }
 export function getHgtElevationData() { return hgtElevationData; }
 export function getChunkCreationQueue() { return chunkCreationQueue; }
