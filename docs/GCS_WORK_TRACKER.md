@@ -181,6 +181,7 @@ Motivazione: su link ad alta latenza e basso datarate (SiK 19200, LoRa) un
 | Radio ricordata in localStorage per le nuove rotte; operatore e radio salvati con la missione | [x] | js/ui/FlightPlanController.js, js/mission/RouteModel.js |
 | Test offline su terreno sintetico (cresta, curvatura, antenna bassa, cancellazione) | [x] | scripts/test-radio-link.js |
 | Antenne direzionali / pattern | [ ] | oggi omnidirezionali: il guadagno è costante in azimut |
+| Tratte rettilinee tra i waypoint come verità (AGL = quota sul terreno sotto il waypoint); i waypoint intermedi di terrain following diventano opzione di rotta, off di default | [x] | js/mission/RouteCompiler.js, js/mission/RouteModel.js |
 
 ---
 

@@ -160,6 +160,7 @@ export const ZH = {
     'Altitude mode': '高度模式',
     'Default altitude': '默认高度',
     'AGL tolerance': '离地高度容差',
+    'Terrain-following waypoints': '地形跟随航点',
     'Default speed': '默认速度',
     'Automatic take-off': '自动起飞',
     'Take-off altitude': '起飞高度',

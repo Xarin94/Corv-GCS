@@ -48,12 +48,14 @@ The interface is available in **English and Simplified Chinese** (SYS CONFIG →
   (parallel passes along a polyline), **Point of interest** (camera ROI) and **Landing**
 - Pick the tool, click on the map, tune it in the inspector under its card; every segment can carry
   **actions** (camera trigger, photo, gimbal attitude, heading, wait, speed, servo, relay)
-- **Route parameters**: altitude mode **AGL (terrain following) / AMSL / relative**, default altitude and
-  speed, straight or spline turns, automatic take-off, RTL / land / nothing at the end, ceiling and minimum
-  clearance
-- The route is **recalculated automatically** after every edit: terrain-following waypoints within the AGL
-  tolerance, length, flight time, photo count, min/max AGL, and **validation** — a green / amber / red status
-  with the list of problems (path below terrain, clearance, ceiling, missing elevation data, item limit)
+- **Route parameters**: altitude mode **AGL / AMSL / relative**, default altitude and speed, straight or
+  spline turns, automatic take-off, RTL / land / nothing at the end, ceiling and minimum clearance. The
+  vehicle flies **straight from one waypoint to the next** — in AGL mode each waypoint sits at its height
+  above the ground under it — and that is what the profile, the clearance checks and the radio link use;
+  optional **terrain-following waypoints** add intermediate points so the legs stay within an AGL tolerance
+- The route is **recalculated automatically** after every edit: length, flight time, photo count, min/max
+  AGL (the lowest point of a straight leg included), and **validation** — a green / amber / red status with
+  the list of problems (path below terrain, clearance, ceiling, missing elevation data, item limit)
 - Drag vertices, mid-points, the whole figure or a circle's radius on the map; right-click for insert /
   delete; undo/redo; segment cards reorder by drag
 - **Camera & gimbal menu**: camera presets (DJI, Sony, MicaSense…) or custom sensor / focal / pixels, default

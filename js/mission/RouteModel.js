@@ -288,7 +288,8 @@ export function rememberRadio(radio) {
 export const ROUTE_PARAM_FIELDS = [
     { key: 'altMode',      label: 'Altitude mode', type: 'select', options: [['agl', 'AGL — follow terrain'], ['amsl', 'AMSL — constant'], ['rel', 'Relative to take-off']] },
     { key: 'defaultAlt',   label: 'Default altitude', unit: 'm',   type: 'number', min: -500, max: 10000, step: 5 },
-    { key: 'aglTolerance', label: 'AGL tolerance',    unit: 'm',   type: 'number', min: 1, max: 200, step: 1, when: { altMode: 'agl' } },
+    { key: 'terrainWaypoints', label: 'Terrain-following waypoints', type: 'check', when: { altMode: 'agl' }, title: 'Off: the vehicle flies straight from each waypoint to the next, every waypoint at its height above the ground under it. On: intermediate waypoints are added so the straight legs stay within the AGL tolerance of the terrain' },
+    { key: 'aglTolerance', label: 'AGL tolerance',    unit: 'm',   type: 'number', min: 1, max: 200, step: 1, when: { altMode: 'agl', terrainWaypoints: true } },
     { key: 'defaultSpeed', label: 'Default speed',    unit: 'm/s', type: 'number', min: 0, max: 100, step: 0.5, zeroLabel: 'vehicle' },
     { key: 'turnType',     label: 'Turn type',        type: 'select', options: [['straight', 'Straight'], ['spline', 'Spline']] },
     { key: 'takeoff',      label: 'Automatic take-off', type: 'check' },
@@ -309,6 +310,7 @@ export function defaultRouteParams() {
     return {
         altMode: 'agl',
         defaultAlt: 100,
+        terrainWaypoints: false,   // AGL mode: add intermediate waypoints that follow the terrain (off = straight legs)
         aglTolerance: 10,
         defaultSpeed: 10,
         turnType: 'straight',

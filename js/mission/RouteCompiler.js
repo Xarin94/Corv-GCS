@@ -4,11 +4,15 @@
  * This is the "calculate route" step: it expands every segment into navigation
  * points (lawn-mower lanes for an area scan, offset passes for a corridor, a
  * loiter for a circle…), interleaves the DO_/CONDITION_ items the actions ask
- * for, subdivides legs so the straight line between two waypoints never strays
- * more than the AGL tolerance from the terrain-following altitude, and finally
- * resolves every point's AGL / AMSL / relative altitude against the elevation
- * model. It also produces the statistics on the route card and the list of
- * warnings and errors that gate the upload.
+ * for, and resolves every point's AGL / AMSL / relative altitude against the
+ * elevation model. The vehicle flies straight from one waypoint to the next —
+ * in AGL mode each waypoint sits at its height above the ground under it and
+ * the leg between two of them is a straight line, which the profile, the
+ * clearance checks and the radio link all take as the truth. Only when the
+ * route asks for terrain-following waypoints are legs subdivided so the
+ * straight segments stay within the AGL tolerance of the terrain. It also
+ * produces the statistics on the route card and the list of warnings and
+ * errors that gate the upload.
  *
  * Pure function of (route, context) — no DOM, no STATE. The controller feeds it
  * a terrain lookup and the take-off point.
@@ -216,9 +220,9 @@ export function compileRoute(route, ctx) {
         push({ command: 21, lat: lastNav.lat, lng: lastNav.lng, alt: 0, loc: true, segId: null, derived: false, param1: 0, param2: 0, param3: 0, param4: 0, landing: true });
     }
 
-    // ── Terrain-following subdivision (AGL mode only) ─────────────────────────
+    // ── Terrain-following waypoints (AGL mode, opt-in) ────────────────────────
     let items = out;
-    if (P.altMode === 'agl') items = subdivideForTerrain(out, +P.aglTolerance || 10, terrain);
+    if (P.altMode === 'agl' && P.terrainWaypoints) items = subdivideForTerrain(out, +P.aglTolerance || 10, terrain);
 
     // ── Resolve altitudes ─────────────────────────────────────────────────────
     let missingTerrain = 0;
@@ -264,13 +268,14 @@ export function compileRoute(route, ctx) {
         else if (agl < minClear) low.add(it.segId);
         if (maxAgl > 0 && agl > maxAgl) high.add(it.segId);
     }
-    // Legs: the straight line may clip a ridge between two safe points (AMSL / REL
-    // modes have no subdivision, and AGL keeps only within tolerance).
+    // Legs: the straight line between two safe waypoints may clip a ridge
+    let legMinAgl = null;
     for (let i = 1; i < navLocated.length; i++) {
         const a = navLocated[i - 1], b = navLocated[i];
         if (a.landing || b.landing || b.isHome || a.isHome) continue;   // climb-out and descent are vertical
         const hit = legClearance(a, b, terrain);
         if (hit === null) continue;
+        if (legMinAgl === null || hit < legMinAgl) legMinAgl = hit;
         if (hit <= 0) below.add(b.segId);
         else if (hit < minClear) low.add(b.segId);
     }
@@ -304,6 +309,8 @@ export function compileRoute(route, ctx) {
         prev = it;
     }
     const stats = buildStats(route, items, navLocated, segStats, homeElev, home);
+    // The lowest point of the flight can be in the middle of a straight leg, not at a waypoint
+    if (legMinAgl !== null && (stats.minAgl === null || legMinAgl < stats.minAgl)) stats.minAgl = legMinAgl;
 
     return { items, stats, issues, navPath, segStats, home: { ...home, elev: homeElev }, camera };
 }

@@ -685,6 +685,7 @@ function renderRouteCard() {
     const P = getRoute().params;
     const chips = [
         `${{ agl: 'AGL', amsl: 'AMSL', rel: 'REL' }[P.altMode]} ${P.defaultAlt} m`,
+        P.altMode === 'agl' && P.terrainWaypoints ? `terrain WPs ±${P.aglTolerance} m` : null,
         P.defaultSpeed > 0 ? `${P.defaultSpeed} m/s` : 'vehicle speed',
         P.takeoff ? `T/O ${Math.round(P.takeoffAlt)} m` : 'no take-off',
         { rtl: 'RTL', land: 'LAND', none: 'end: nothing' }[P.endAction],
@@ -1435,7 +1436,7 @@ function renderFields(fields, values, prefix) {
             control = `<span class="fp-num"><input type="number" class="gcs-input" id="${id}" data-key="${f.key}" value="${empty ? '' : v}" placeholder="${ph}"${f.title ? ` title="${f.title}"` : ''}
                 ${f.min !== undefined ? `min="${f.min}"` : ''} ${f.max !== undefined ? `max="${f.max}"` : ''} step="${f.step ?? 1}">${f.unit ? `<span class="fp-unit">${f.unit}</span>` : ''}</span>`;
         }
-        return `<div class="fp-field${f.type === 'check' ? ' is-check' : ''}"><label for="${id}">${f.label}</label>${control}</div>`;
+        return `<div class="fp-field${f.type === 'check' ? ' is-check' : ''}"${f.title ? ` title="${f.title}"` : ''}><label for="${id}">${f.label}</label>${control}</div>`;
     }).join('');
 }
 
