@@ -163,10 +163,13 @@ function updateStatus() {
     if (!statusEl) return;
 
     if (!manager.enabled) {
-        statusEl.textContent = 'Disabled';
+        statusEl.textContent = manager.gamepadIndex === null ? 'Disabled - No gamepad (press SCAN)' : 'Disabled';
         statusEl.className = 'cfg-val';
-    } else if (manager.gamepadIndex === null) {
-        statusEl.textContent = 'No Gamepad';
+    } else if (manager.suspended || manager.gamepadIndex === null) {
+        // Channels released; resumes by itself when the pad is readable again
+        statusEl.textContent = manager.gamepadIndex === null
+            ? 'SUSPENDED - gamepad unplugged (channels released)'
+            : 'SUSPENDED - no gamepad data, focus the window (channels released)';
         statusEl.className = 'cfg-val joystick-status-warning';
     } else if (STATE.rcOverrideActive) {
         statusEl.textContent = `SENDING (${manager.sendRateHz}Hz)`;
@@ -198,10 +201,42 @@ function refreshGamepadList() {
         select.appendChild(opt);
     });
 
-    // Restore selection
-    if (prevValue && select.querySelector(`option[value="${prevValue}"]`)) {
-        select.value = prevValue;
+    // Selection: what the manager is actually using wins, then the previous
+    // dropdown value, then the remembered pad id (auto-select after a replug
+    // or an app restart). Setting .value fires no 'change', so the manager is
+    // told explicitly — otherwise the list shows a pad that is not selected
+    // and ENABLE silently does nothing.
+    const wanted = manager.gamepadIndex !== null ? String(manager.gamepadIndex)
+        : (prevValue && select.querySelector(`option[value="${prevValue}"]`)) ? prevValue
+        : (gamepads.find(g => g.id === manager.gamepadId) || {}).index;
+    if (wanted !== undefined && wanted !== '' && select.querySelector(`option[value="${wanted}"]`)) {
+        select.value = String(wanted);
+        if (manager.gamepadIndex !== parseInt(wanted) && manager.selectGamepad(parseInt(wanted))) {
+            renderAxisRows();
+        }
+    } else {
+        select.value = '';
     }
+}
+
+/**
+ * Keep checkbox, dropdown and status in step with the manager. Called by the
+ * manager on every state change (suspend/resume/lost pad/replug/disable), not
+ * only from the polling loop, which is stopped exactly when it matters most.
+ */
+function syncFromManager() {
+    if (!manager) return;
+    const enableCb = document.getElementById('joystick-enable');
+    if (enableCb && enableCb.checked !== manager.enabled) enableCb.checked = manager.enabled;
+    const select = document.getElementById('joystick-gamepad-select');
+    if (select) {
+        const cur = manager.gamepadIndex === null ? '' : String(manager.gamepadIndex);
+        if (select.value !== cur) refreshGamepadList();
+    }
+    if (manager.gamepadIndex !== null && document.querySelectorAll('.joystick-axis-row').length === 0) {
+        renderAxisRows();
+    }
+    updateLivePreview();
 }
 
 let initialized = false;
@@ -220,6 +255,7 @@ export function initJoystick() {
 
     // Live update callback
     manager.onUpdate = updateLivePreview;
+    manager.onStateChange = syncFromManager;
 
     // Build channel preview grid
     renderChannelPreview();
@@ -259,8 +295,16 @@ export function initJoystick() {
             enableCb.addEventListener('change', async (e) => {
                 if (!manager) return;
                 if (e.target.checked) {
-                    if (manager.gamepadIndex === null) {
+                    // Pad picked in the dropdown but not (or no longer) selected
+                    // in the manager — e.g. after an unplug/replug.
+                    const gpSel = document.getElementById('joystick-gamepad-select');
+                    if (manager.gamepadIndex === null && gpSel && gpSel.value !== '') {
+                        manager.selectGamepad(parseInt(gpSel.value));
+                    }
+                    if (manager.gamepadIndex === null && !manager.reselectGamepad()) {
                         e.target.checked = false;
+                        alert('No gamepad selected — press SCAN and pick one');
+                        updateStatus();
                         return;
                     }
                     const confirmed = await confirm(
@@ -271,7 +315,8 @@ export function initJoystick() {
                         e.target.checked = false;
                         return;
                     }
-                    manager.enable();
+                    const ok = await manager.enable();
+                    if (!ok && !manager.enabled) e.target.checked = false;
                 } else {
                     manager.disable();
                 }

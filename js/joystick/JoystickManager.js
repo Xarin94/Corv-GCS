@@ -22,7 +22,14 @@ const DEFAULT_AXIS_MAP = [
 export class JoystickManager {
     constructor() {
         this.gamepadIndex = null;
+        this.gamepadId = null;      // id of the selected pad — used to re-select it after a replug
         this.enabled = false;
+        // enabled but no usable gamepad data (unplugged, or the window lost
+        // focus and Chromium hides the pad): channels released, waiting for
+        // the pad to come back. Cleared automatically when data resumes.
+        this.suspended = false;
+        this.onStateChange = null;  // UI hook: enable/disable/suspend/resume/select
+        this._lastNullWarn = 0;
         this.axisMap = [];
         this.channelValues = new Array(18).fill(RELEASE);
         this.rawAxisValues = [];
@@ -64,6 +71,7 @@ export class JoystickManager {
         if (!gp) return false;
 
         this.gamepadIndex = index;
+        this.gamepadId = gp.id;
         STATE.joystickConnected = true;
 
         // Build axis map for this gamepad's axes count
@@ -83,7 +91,28 @@ export class JoystickManager {
         }
         this.axisMap = newMap;
         this.saveConfig();
+        this._notify();
         return true;
+    }
+
+    /**
+     * Re-select the pad we were using if it is present again (same id), or
+     * the only pad connected when nothing was selected. Returns true if a
+     * pad is selected afterwards.
+     */
+    reselectGamepad() {
+        if (this.gamepadIndex !== null && navigator.getGamepads()[this.gamepadIndex]) return true;
+        const pads = this.detectGamepads();
+        let pick = this.gamepadId ? pads.find(p => p.id === this.gamepadId) : null;
+        if (!pick && pads.length === 1) pick = pads[0];
+        if (!pick) return false;
+        return this.selectGamepad(pick.index);
+    }
+
+    _notify() {
+        if (this.onStateChange) {
+            try { this.onStateChange(); } catch (e) { /* UI must not break the manager */ }
+        }
     }
 
     /**
@@ -91,9 +120,12 @@ export class JoystickManager {
      * Disables RC throttle failsafe so ArduPilot won't disarm without a physical receiver
      */
     async enable() {
-        if (this.gamepadIndex === null) return false;
+        if (this.gamepadIndex === null && !this.reselectGamepad()) return false;
         this.enabled = true;
+        this.suspended = false;
+        this.lastGamepadTimestamp = Date.now(); // grace period before the stale-data failsafe
         STATE.joystickEnabled = true;
+        this._notify();
 
         // Configure ArduPilot to accept RC overrides from this GCS
         try {
@@ -138,8 +170,12 @@ export class JoystickManager {
             console.warn('[Joystick] Could not disable FS_THR_ENABLE:', e.message);
         }
 
+        // The user may have switched it off while the parameter writes above
+        // were in flight — don't start the loops under their feet.
+        if (!this.enabled) return false;
         this._startPolling();
         this._startSending();
+        this._notify();
         return true;
     }
 
@@ -148,7 +184,9 @@ export class JoystickManager {
      * Restores RC throttle failsafe
      */
     disable() {
+        const wasEnabled = this.enabled;
         this.enabled = false;
+        this.suspended = false;
         STATE.joystickEnabled = false;
         STATE.rcOverrideActive = false;
         this._stopSending();
@@ -156,6 +194,8 @@ export class JoystickManager {
         // Release all channels
         this._releaseAllChannels();
         this.channelValues.fill(RELEASE);
+        this.rawAxisValues.fill(0);
+        if (wasEnabled) this._notify();
 
         // Restore original parameters
         if (this._savedSysidMygcs !== undefined && this._savedSysidMygcs !== null) {
@@ -223,13 +263,28 @@ export class JoystickManager {
         const gp = gamepads[this.gamepadIndex];
 
         if (!gp) {
-            // Gamepad API can return null momentarily (focus loss, GC, etc.)
-            // Don't immediately disconnect - let the 500ms failsafe in _sendOverride handle it
-            console.warn('[Joystick] Gamepad read returned null (transient)');
+            // Gamepad API returns null while the window has no focus (Chromium
+            // hides pads from unfocused pages) or right after an unplug. The
+            // 500 ms failsafe in _sendOverride releases the channels; here we
+            // only wait for the pad to come back (same index, or same id on a
+            // replug).
+            const now = Date.now();
+            if (now - this._lastNullWarn > 2000) {
+                this._lastNullWarn = now;
+                console.warn('[Joystick] No gamepad data (window unfocused or pad unplugged)');
+            }
+            if (this.suspended && this.reselectGamepad()) {
+                // reselect swapped the index; data resumes on the next tick
+            }
             return;
         }
 
         this.lastGamepadTimestamp = Date.now();
+        if (this.suspended) {
+            this.suspended = false;
+            console.log('[Joystick] Gamepad data resumed — override active again');
+            this._notify();
+        }
 
         // Reset channel values
         this.channelValues.fill(RELEASE);
@@ -306,10 +361,19 @@ export class JoystickManager {
             return;
         }
 
-        // Failsafe: if no gamepad data for 500ms, release
-        if (Date.now() - this.lastGamepadTimestamp > 500) {
-            this._releaseAllChannels();
-            this.disable();
+        // Failsafe: no gamepad data for 500 ms → release the channels to the
+        // RC receiver and suspend. Stay enabled: the user did not switch the
+        // override off, so sending resumes as soon as the pad is readable
+        // again (focus back, pad replugged).
+        if (this.suspended || Date.now() - this.lastGamepadTimestamp > 500) {
+            if (!this.suspended) {
+                this.suspended = true;
+                STATE.rcOverrideActive = false;
+                this.channelValues.fill(RELEASE);
+                this._releaseAllChannels();
+                console.warn('[Joystick] Gamepad data stale — channels released, override suspended');
+                this._notify();
+            }
             return;
         }
 
@@ -331,6 +395,11 @@ export class JoystickManager {
     _handleGamepadConnected(e) {
         console.log('[Joystick] Gamepad connected:', e.gamepad.id);
         STATE.joystickConnected = true;
+        // Replug of the pad we were using (or first pad seen while nothing is
+        // selected): pick it up again so the override can simply be re-enabled
+        // — or resumes by itself if it is still enabled.
+        if (this.gamepadIndex === null) this.reselectGamepad();
+        this._notify();
         if (this.onUpdate) this.onUpdate();
     }
 
@@ -342,9 +411,17 @@ export class JoystickManager {
     }
 
     _handleLostGamepad() {
-        this.disable();
+        // Keep gamepadId so the same pad is re-selected on replug.
         this.gamepadIndex = null;
         STATE.joystickConnected = false;
+        if (this.enabled && !this.suspended) {
+            this.suspended = true;
+            STATE.rcOverrideActive = false;
+            this.channelValues.fill(RELEASE);
+            this._releaseAllChannels();
+            console.warn('[Joystick] Gamepad lost — channels released, override suspended');
+        }
+        this._notify();
         if (this.onUpdate) this.onUpdate();
     }
 
@@ -353,6 +430,7 @@ export class JoystickManager {
     saveConfig() {
         const config = {
             gamepadIndex: this.gamepadIndex,
+            gamepadId: this.gamepadId,
             sendRateHz: this.sendRateHz,
             axisMap: this.axisMap
         };
@@ -368,6 +446,7 @@ export class JoystickManager {
             const config = JSON.parse(raw);
             // Sanitize persisted values: corrupted/hand-edited config must not
             // produce a 0 ms send interval or NaN PWM (deadzone >= 1 divides by 0)
+            if (typeof config.gamepadId === 'string') this.gamepadId = config.gamepadId;
             if (Number.isFinite(config.sendRateHz)) {
                 this.sendRateHz = Math.max(1, Math.min(50, config.sendRateHz));
             }
