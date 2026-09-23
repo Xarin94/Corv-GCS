@@ -145,7 +145,8 @@ radio that is the difference between two packets and several minutes.
 ## Installation
 
 Installers are on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
-**Windows** `CORV GCS Setup 1.7.1.exe` · **Linux** `CORV GCS-1.7.1.AppImage` or `corv-gcs_1.7.1_amd64.deb`.
+**Windows** `CORV GCS Setup 1.7.2.exe`. The Linux packages (`.AppImage`, `.deb`) are built on a
+Linux host and are not part of this release; `npm run build:linux` produces them there.
 
 To run from source you need [Node.js](https://nodejs.org/) 18 or newer:
 
