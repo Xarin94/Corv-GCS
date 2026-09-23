@@ -17,7 +17,7 @@ import {
 import { initJoystick } from '../joystick/JoystickUI.js';
 import { getTerrainElevationAsync, resetAutoDownloadFailures } from '../terrain/TerrainManager.js';
 import { onFlightPlanShown, onFlightPlanHidden } from './FlightPlanController.js';
-import { activePlatformId, setActivePlatform, getPlatform, missionsSupported } from '../mission/Platforms.js';
+import { activePlatformId, setActivePlatform, getPlatform, missionsSupported, unsupportedReason } from '../mission/Platforms.js';
 
 let currentTab = 'flight-data';
 /**
@@ -101,6 +101,38 @@ function applyPlatform() {
 
     suggestConnection(plat);
     syncMissionTab(plat);
+    syncSetupNav(plat);
+}
+
+/**
+ * Grey out the SETUP entries this stack cannot use — everything that talks
+ * MAVLink to the flight controller is dead weight on an MSP link — and say why
+ * in the tooltip. A group whose entries are all gone is dimmed with them.
+ */
+function syncSetupNav(plat = getPlatform()) {
+    const nav = document.querySelector('.setup-vertical-nav');
+    if (!nav) return;
+    let activeLost = false;
+
+    nav.querySelectorAll('.setup-nav-btn').forEach(btn => {
+        const why = unsupportedReason('setup', btn.dataset.section, plat.id);
+        btn.disabled = !!why;
+        btn.classList.toggle('is-disabled', !!why);
+        if (why) {
+            btn.title = `${plat.label}: ${why}`;
+            if (btn.classList.contains('active')) activeLost = true;
+        } else {
+            btn.title = '';
+        }
+    });
+
+    nav.querySelectorAll('.setup-nav-group').forEach(group => {
+        const items = [...group.querySelectorAll('.setup-nav-btn')];
+        group.classList.toggle('is-disabled', items.length > 0 && items.every(b => b.disabled));
+    });
+
+    // The operator was standing on a page that just disappeared under them
+    if (activeLost) nav.querySelector('.setup-nav-btn[data-section="connection"]')?.click();
 }
 
 /**
@@ -203,6 +235,7 @@ function initSetupVerticalNav() {
     buttons.forEach(btn => {
         btn.addEventListener('click', () => {
             const section = btn.dataset.section;
+            if (btn.disabled) return;           // belt and braces: a disabled button fires nothing
 
             // Deactivate all
             buttons.forEach(b => b.classList.remove('active'));

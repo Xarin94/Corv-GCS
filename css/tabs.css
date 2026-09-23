@@ -921,6 +921,26 @@ body.has-tabs #ui-layer {
     display: inline-block;
 }
 
+/* A SETUP entry the selected flight stack cannot use: visible, so the operator
+   knows the page exists, but dim and unclickable, with the reason in the
+   tooltip (see js/mission/Platforms.js). */
+.setup-nav-btn:disabled,
+.setup-nav-btn.is-disabled {
+    opacity: 0.32;
+    cursor: not-allowed;
+}
+
+.setup-nav-btn:disabled:hover,
+.setup-nav-btn.is-disabled:hover {
+    background: none;
+    color: var(--text-dim);
+    border-left-color: transparent;
+}
+
+.setup-nav-group.is-disabled .setup-nav-group-header {
+    opacity: 0.45;
+}
+
 .setup-nav-btn:hover {
     color: var(--text-main);
     background: rgba(0, 210, 255, 0.04);

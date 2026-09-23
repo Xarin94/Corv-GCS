@@ -25,7 +25,38 @@
  *   action     <type>                                    — an entry of the ACTIONS menu
  *   routeParam <key> | <key>.<option>                    — a route settings field
  *   segField   <segType>.<key> | <segType>.<key>.<option> — an inspector field
+ *   setup      <section>                                   — a SETUP page entry
  */
+
+/**
+ * The SETUP pages that need the MAVLink link to the flight controller: the
+ * parameter protocol, PREFLIGHT_CALIBRATION, RC_CHANNELS_OVERRIDE,
+ * GPS_RTCM_DATA, the VIBRATION message, the ArduPilot SITL binaries. None of
+ * them has an MSP equivalent here, and the settings behind most of them are
+ * edited in the vendor configurator anyway — which is what the tooltip says,
+ * rather than leaving the operator to discover that a button does nothing.
+ *
+ * Deliberately not listed, so they stay available: CONNECTION (it is how you
+ * get a link at all), LIDAR and CORV SETUP (separate hardware, not the flight
+ * stack).
+ */
+function mspSetupLimits(configurator) {
+    return {
+        'tel-forward': 'The telemetry mirror forwards MAVLink packets — an MSP link carries none',
+        'rtk-gps':     'RTCM corrections are injected as MAVLink GPS_RTCM_DATA — feed the base corrections to the receiver directly',
+        calibration:   `Sensor calibration lives in the ${configurator}`,
+        'radio-cal':   `RC calibration lives in the ${configurator}`,
+        joystick:      'The gamepad override sends MAVLink RC_CHANNELS_OVERRIDE',
+        'flight-modes': `Mode switches are set in the ${configurator}`,
+        failsafe:      `Failsafe is configured in the ${configurator}`,
+        'servo-relay': `Outputs are configured in the ${configurator}`,
+        'pid-tuning':  `PID tuning lives in the ${configurator}`,
+        'ext-tuning':  `Tuning lives in the ${configurator}`,
+        vibration:     'The vibration panel reads the MAVLink VIBRATION message, which MSP does not provide',
+        parameters:    `The parameter editor speaks the MAVLink parameter protocol — settings live in the ${configurator} and the CLI`,
+        simulation:    'The SITL launcher runs ArduPilot binaries',
+    };
+}
 
 export const PLATFORM_ORDER = ['ardupilot', 'inav', 'betaflight'];
 
@@ -52,6 +83,7 @@ export const PLATFORMS = {
         blurb: 'Waypoint missions over MSP',
         transport: 'msp',
         missions: true,
+        configurator: 'INAV Configurator',
         // NAV_MAX_WAYPOINTS: 60 on most targets. The board reports its own
         // figure in MSP_WP_GETINFO and that one wins once the link is up.
         itemLimit: 60,
@@ -84,6 +116,7 @@ export const PLATFORMS = {
                 'corridor.trigger':      'INAV missions carry no camera trigger — the passes upload as plain waypoints',
                 'poi.mode.clear':        'INAV cannot cancel a POI from the mission — it holds until the mission ends',
             },
+            setup: mspSetupLimits('INAV Configurator'),
         },
     },
 
@@ -94,11 +127,14 @@ export const PLATFORMS = {
         blurb: 'Acro / racing — no navigation',
         transport: 'msp',
         missions: false,
+        configurator: 'Betaflight Configurator',
         itemLimit: 0,
         connection: { type: 'msp-serial', baud: 115200 },
         hint: 'Betaflight has no navigation stack: telemetry and configuration only, no waypoint missions.',
         noMissionReason: 'Betaflight has no navigation stack — it cannot fly a waypoint mission',
-        unsupported: {},
+        unsupported: {
+            setup: mspSetupLimits('Betaflight Configurator'),
+        },
     },
 };
 
@@ -156,7 +192,9 @@ export function usesMspMissions(id = active) {
  */
 export function unsupportedReason(kind, key, id = active) {
     const p = getPlatform(id);
-    if (!p.missions) return p.noMissionReason || `${p.label} cannot fly missions`;
+    // A stack with no navigation stack cannot fly any part of a mission; the
+    // SETUP page is a separate question and keeps its own table.
+    if (!p.missions && kind !== 'setup') return p.noMissionReason || `${p.label} cannot fly missions`;
     return p.unsupported?.[kind]?.[key] || null;
 }
 
@@ -166,4 +204,9 @@ export function segmentAllowed(type, id = active) {
 
 export function actionAllowed(type, id = active) {
     return !unsupportedReason('action', type, id);
+}
+
+/** Is this SETUP page entry usable on the given stack? */
+export function setupAllowed(section, id = active) {
+    return !unsupportedReason('setup', section, id);
 }
