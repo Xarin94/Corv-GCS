@@ -1,11 +1,13 @@
 # ============================================================
-# Fast plane — ArduPlane SITL defaults for the 'plane-jet' model
-# 22 kg, 20 kgf thrust, cruise 83 m/s (300 km/h), ArduPlane 4.x names
+# Fast plane — ArduPlane SITL defaults for the 'plane-jet:jet600.json' model
+# 22 kg, 20 kgf thrust, low-drag airframe (jet600.json): top speed ~660 km/h,
+# cruise 83 m/s (300 km/h), 600 km/h on command. ArduPlane 4.7 names.
 # ============================================================
 
-# --- Airspeed envelope (m/s): 300 km/h cruise, stall of the jet model ~25 m/s ---
+# --- Airspeed envelope (m/s): 300 km/h cruise, up to 612 km/h commanded
+#     (DO_CHANGE_SPEED / SPD in the command bar), stall of the jet ~25 m/s ---
 AIRSPEED_MIN         32
-AIRSPEED_MAX         115
+AIRSPEED_MAX         170
 AIRSPEED_CRUISE      83
 ARSPD_USE            1
 # Gain scheduling reference — the controllers were tuned at this speed.
@@ -16,7 +18,8 @@ STALL_PREVENTION     1
 # --- Throttle ---
 THR_MIN              0
 THR_MAX              100
-TRIM_THROTTLE        58
+# ~21 % holds 83 m/s with the jet600.json drag (58 % with the stock drag)
+TRIM_THROTTLE        21
 THR_SLEWRATE         40
 THR_PASS_STAB        0
 
@@ -65,7 +68,9 @@ RTL_RADIUS           450
 # --- Take-off / landing ---
 TKOFF_ROTATE_SPD     34
 TKOFF_THR_MAX        100
-TKOFF_THR_MINSPD     20
+# 0: throttle from standstill. The jet has no catapult, and a ground-speed
+# gate (it was 20 m/s) held the throttle at zero forever on the runway.
+TKOFF_THR_MINSPD     0
 TKOFF_LVL_ALT        30
 TKOFF_ALT            120
 TKOFF_PLIM_SEC       3

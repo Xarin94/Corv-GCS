@@ -59,7 +59,7 @@ import { connectSerial } from './serial/SerialHandler.js';
 import { TlogLogger } from './logging/TlogLogger.js';
 
 // UI imports
-import { initRotorLoadPanel, updateRotorLoadPanel } from './ui/RotorLoadPanel.js';
+import { initRotorLoadPanel, updateRotorLoadPanel, setRotorLoadConfig } from './ui/RotorLoadPanel.js';
 import { initAnnunciatorPanel, updateAnnunciatorPanel } from './ui/AnnunciatorPanel.js';
 import { updateUI, toggleConfig, toggleTelemetry, updateOffset, updateAGLDisplay, setStatusMessage, updateFPSDisplay, initMoreMenu, initConfigAutoClose, initHudCells } from './ui/UIController.js';
 
@@ -1992,15 +1992,12 @@ window.toggleADSB = (function(orig) {
     };
 })(window.toggleADSB);
 
-// ROTOR LOAD panel enable/disable toggle.
-// Hiding the wrapper is enough to idle the widget: its draw loop bails out
-// as soon as the canvas reports a zero client width.
+// ROTOR LOAD on/off from the sidebar. Same setting as SYS CONFIG > ROTOR LOAD
+// (RotorLoadPanel persists it and keeps both checkboxes in step): the two used
+// to be independent, and turning the SYS CONFIG one off hid the gauges while
+// the caption stayed on screen over the panels below.
 window.toggleRotorLoad = function(enabled) {
-    const panel = document.querySelector('.bottom-bar-rotor');
-    if (panel) panel.style.display = enabled ? '' : 'none';
-    const chk = document.getElementById('chk-rotor-load');
-    if (chk) chk.checked = enabled;
-    localStorage.setItem('rotor-load-enabled', enabled ? '1' : '0');
+    setRotorLoadConfig({ enabled: !!enabled });
 };
 
 // Battery voltage-based percentage calculation
@@ -2042,10 +2039,11 @@ window.updateBatteryVoltageRange = function() {
         if (adsbPollTimer) { clearInterval(adsbPollTimer); adsbPollTimer = null; }
     }
 
-    // ROTOR LOAD panel toggle
+    // ROTOR LOAD: fold the old separate sidebar switch into the shared setting
     if (localStorage.getItem('rotor-load-enabled') === '0') {
         window.toggleRotorLoad(false);
     }
+    localStorage.removeItem('rotor-load-enabled');
 
     // GCS Mute
     const muteSaved = localStorage.getItem('gcs-muted');

@@ -176,6 +176,8 @@ function zoneColor(pwm) {
 let canvas = null;
 let ctx = null;
 let panelEl = null;
+let wrapEl = null;     // caption + schematic, shown and hidden together
+let visible = null;    // last applied visibility (null: not applied yet)
 let dpr = 1;
 
 const GAUGE_START = Math.PI * 0.75;   // lower-left
@@ -307,14 +309,19 @@ function draw() {
 function applyVisibility() {
     if (!panelEl) return;
     const show = cfg.enabled && !isHiddenVehicle();
-    panelEl.style.display = show ? '' : 'none';
+    if (show === visible) return;
+    visible = show;
+    // The caption goes with the schematic: hiding the canvas alone left
+    // "ROTOR LOAD" sitting on the position / traffic panels below it, which
+    // read as the gauges being covered by them.
+    (wrapEl || panelEl).style.display = show ? '' : 'none';
 }
 
 /** Redraw the schematic — called from the render loop on the flight data tab. */
 export function updateRotorLoadPanel() {
     if (!ctx || !panelEl) return;
     applyVisibility();
-    if (panelEl.style.display === 'none') return;
+    if (!visible) return;
     if (!resizeCanvas()) return;
     draw();
 }
@@ -339,6 +346,9 @@ function syncConfigInputs() {
         if (kind === 'bool') el.checked = !!cfg[key];
         else el.value = cfg[key];
     }
+    // The sidebar's SHOW ROTOR LOAD drives the same setting (window.toggleRotorLoad)
+    const sidebarChk = document.getElementById('chk-rotor-load');
+    if (sidebarChk) sidebarChk.checked = !!cfg.enabled;
 }
 
 function bindConfigInputs() {
@@ -358,6 +368,7 @@ function bindConfigInputs() {
 export function initRotorLoadPanel() {
     loadConfig();
     panelEl = document.getElementById('rotor-load-panel');
+    wrapEl = panelEl ? panelEl.closest('.bottom-bar-rotor') : null;
     canvas = document.getElementById('rotor-load-canvas');
     ctx = canvas ? canvas.getContext('2d') : null;
     syncConfigInputs();

@@ -20,10 +20,11 @@ const VEHICLE_MAP = {
     // Physics (mass, battery, thrust) come from tri12s.json.
     tri12s: { binary: 'arducopter', model: 'tri:tri12s.json' },
     // plane-jet: ArduPilot's heavy jet variant of the SITL plane — 22 kg, 20 kgf
-    // of thrust, level flight around 100 m/s. The stock 'plane' is a 2 kg foamie
-    // that tops out near 35 m/s, so a 300 km/h cruise target just pins the
-    // throttle at 100 %. Tuning comes from default_params_plane.parm.
-    plane:   { binary: 'arduplane',   model: 'plane-jet' },
+    // of thrust. The stock 'plane' is a 2 kg foamie that tops out near 35 m/s,
+    // and plane-jet itself levels off around 100 m/s; jet600.json lowers its
+    // parasitic drag so it reaches ~660 km/h (600 km/h at ~82 % throttle).
+    // Tuning comes from default_params_plane.parm.
+    plane:   { binary: 'arduplane',   model: 'plane-jet:jet600.json' },
     rover:   { binary: 'ardurover',   model: 'rover' },
     sub:     { binary: 'ardusub',     model: 'vectored' },
     heli:    { binary: 'arducopter',  model: 'heli' },
@@ -31,6 +32,24 @@ const VEHICLE_MAP = {
 };
 
 const VERSIONS = ['stable', 'beta', 'latest'];
+
+// Models that need a newer SITL build than one downloaded earlier may be:
+// ArduPlane reads plane-jet:<file>.json aero coefficients from 4.7 on, and
+// older builds silently ignore the file (the jet would top out at ~100 m/s).
+// The marker is a string only builds with that support contain.
+const MODEL_BINARY_MARKERS = {
+    plane: 'Loaded plane aero coefficients'
+};
+
+function binarySupportsModel(vehicle, binPath) {
+    const marker = MODEL_BINARY_MARKERS[vehicle];
+    if (!marker) return true;
+    try {
+        return fs.readFileSync(binPath).includes(marker);
+    } catch (e) {
+        return false;
+    }
+}
 
 const isWindows = process.platform === 'win32';
 
@@ -156,10 +175,11 @@ function initSITLHandlers(win) {
         };
     });
 
-    // Check if a SITL binary is already downloaded
+    // Check if a usable SITL binary is already downloaded. A binary too old for
+    // the vehicle's model counts as missing, so the launcher downloads it again.
     ipcMain.handle('sitl-check-binary', (event, vehicle, version) => {
         const binPath = getBinaryPath(vehicle, version);
-        return binPath && fs.existsSync(binPath);
+        return !!binPath && fs.existsSync(binPath) && binarySupportsModel(vehicle, binPath);
     });
 
     // Download SITL binary
@@ -195,6 +215,9 @@ function initSITLHandlers(win) {
         const binPath = getBinaryPath(vehicle, version);
         if (!binPath || !fs.existsSync(binPath)) {
             throw new Error('SITL binary not found. Download it first.');
+        }
+        if (!binarySupportsModel(vehicle, binPath)) {
+            throw new Error(`This ${version} SITL build is too old for the ${vehicle} model — download it again.`);
         }
 
         // Refresh bundled frame models / default params in the SITL dir

@@ -1,0 +1,4 @@
+{
+    "_comment": "Aero coefficients for the SITL plane-jet (22 kg, fixed 308 N thrust), loaded as --model plane-jet:jet600.json (ArduPlane 4.7+). Only the parasitic drag differs from the stock model: 0.033 instead of 0.1 moves level top speed from ~106 to ~184 m/s EAS (~660 km/h), so 600 km/h holds at ~82 % throttle and a 300 km/h cruise needs ~21 %.",
+    "c_drag_p": 0.033
+}
