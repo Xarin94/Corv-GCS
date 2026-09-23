@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.1-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.7.2-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"/>
   <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
   <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
@@ -45,6 +45,22 @@ warnings from the top, amber cautions from the bottom. They are the same conditi
 checks — GPS quality, compass and IMU health, vibration, EKF variance, radio signal, failsafes —
 each shown with its own icon and the number behind it (satellites and HDOP under the GPS flag, RSSI
 under the link one).
+
+## Flight stack
+
+**SYS CONFIG → FLIGHT STACK** tells the GCS which firmware it is talking to: **ArduPilot**,
+**INAV** or **Betaflight**. That one choice pre-selects the right link on the connection page
+(MAVLink serial at 57600, MSP at 115200) and decides what the rest of the app offers.
+
+On INAV the mission is planned exactly the same way and uploaded over MSP as an INAV waypoint
+list — navigation and hold points, POI, heading, speed, landing and return to home, with the
+altitudes the terrain model worked out. What the INAV format has no room for is greyed out while
+you plan, with the reason on the control itself rather than an error at upload time: no loiter
+circles, no spline legs, no take-off waypoint, no camera, gimbal, servo or relay actions, and a
+budget of 60 waypoints — the board's own figure once it is connected. Betaflight has no
+navigation stack, so the Flight Plan page is greyed out entirely. On either of them the setup
+screens that only speak MAVLink — parameters, calibration, tuning, failsafe, RTK inject — are
+greyed out too, each one saying where that setting actually lives.
 
 ## Mission planning
 
@@ -162,7 +178,7 @@ models (`.glb` / `.gltf`) go in `models/`.
 | Serial | MAVLink 2 | USB telemetry radio (SiK, RFD900…) | 57600 baud |
 | UDP | MAVLink 2 | MAVProxy, MAVLink router | `127.0.0.1:14550` |
 | TCP | MAVLink 2 | SITL, also through WSL on Windows | `127.0.0.1:5760` |
-| Serial / TCP | MSP / MSP2 | INAV or Betaflight controller, telemetry only | 115200 baud |
+| Serial / TCP | MSP / MSP2 | INAV or Betaflight controller — telemetry, and waypoint missions on INAV | 115200 baud |
 | Serial | CORV binary | Onboard CORV autopilot over USB | 460800 baud |
 
 ## Documentation
