@@ -63,14 +63,14 @@ CORV GCS is a desktop Ground Control Station for ArduPilot-based UAVs. It provid
 - **Trajectory prediction** — Physics-based 5–20s flight path prediction (bank angle, vertical speed)
 - **Safety corridor** — Translucent corridor around predicted path
 - **ADS-B traffic** — 3D markers for nearby aircraft
-- **Sun lighting** — Directional light with 4096x4096 shadow map, real sun position
+- **Sun lighting** — Directional light from the real sun position; terrain hillshade computed in the shader (no shadow map)
 
-### 3.3 Web Workers (4 dedicated)
+### 3.3 Web Workers
 | Worker | Function |
 |--------|----------|
-| TerrainWorker | Mesh geometry generation from HGT elevation data |
+| TerrainWorker | Chunk elevation samples (Int16) from HGT data; the GPU rebuilds the mesh from them |
 | TileWorker | Satellite tile download and image decoding |
-| HillshadeWorker | Normal computation + sun position shading |
+| TextureCompressWorker (×2) | BC1 compression + mip chain of each chunk texture |
 | TextureCullWorker | Camera frustum culling for texture load priority |
 
 ---
@@ -250,7 +250,7 @@ CORV GCS is a desktop Ground Control Station for ArduPilot-based UAVs. It provid
 ## 12. FPV Camera
 
 - **RTSP streaming** — Supports SIYI HM30 and generic RTSP cameras
-- **ffmpeg backend** — RTSP → MJPEG conversion in main process
+- **Native RTSP + WebCodecs** — the main process pulls the H.264/H.265 stream itself and the renderer decodes it in hardware; VLC RTSP → MJPEG only as a fallback
 - **Frame extraction** — SOI/EOI JPEG frame parsing
 - **Overlay display** — Semi-transparent overlay on 3D view
 - **Settings dialog** — Camera IP, port, stream path configuration

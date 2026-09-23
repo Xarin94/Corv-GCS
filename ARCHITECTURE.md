@@ -31,7 +31,7 @@ Three link protocols are supported, all normalised to MAVLink before they reach 
 │     ├── log-replay-bin-parser.js ── ArduPilot DataFlash .bin parser  │
 │     ├── sitl-manager.js ── SITL binary download & process spawn      │
 │     ├── rtk-manager.js  ── RTCM3 parse + GPS_RTCM_DATA injection     │
-│     ├── fpv-manager.js  ── ffmpeg RTSP → MJPEG frame extraction      │
+│     ├── fpv-manager.js  ── RTSP → H.264/H.265 AUs (VLC MJPEG fallback)│
 │     ├── telforward-manager.js ── LTM / MAVLink / UDP mirror output    │
 │     ├── msp-manager.js  ── MSP/MSP2 (INAV/Betaflight) → MAVLink      │
 │     ├── lidar-manager.js ── Livox Mid-360 glue → lidar-worker.js     │
@@ -55,7 +55,7 @@ Three link protocols are supported, all normalised to MAVLink before they reach 
 │     │              ConnectionManager                                 │
 │     ├── engine/    Scene3D, TrajectoryPredictor, TrajectoryCorridor, │
 │     │              SunPosition                                       │
-│     ├── terrain/   TerrainManager + 4 Web Workers                    │
+│     ├── terrain/   TerrainManager + 4 Web Worker types               │
 │     ├── hud/       HUDRenderer (Canvas 2D)                           │
 │     ├── maps/      MapEngine, CachedTileLayer, TileCache,            │
 │     │              OfflineDownloader                                  │
@@ -90,7 +90,8 @@ Corv-GCS/
 ├── log-replay-bin-parser.js    ArduPilot DataFlash .bin parser
 ├── sitl-manager.js             ArduPilot SITL simulator launcher
 ├── rtk-manager.js              RTK GNSS base station (RTCM3) + NTRIP client
-├── fpv-manager.js              FPV camera stream (ffmpeg RTSP→MJPEG)
+├── fpv-manager.js              FPV camera stream: native RTSP → WebCodecs, VLC MJPEG fallback
+├── rtsp-client.js              Minimal RTSP/RTP client + H.264/H.265 depacketizer (TCP interleaved or UDP)
 ├── telforward-manager.js       Telemetry forwarding (LTM / MAVLink / UDP mirror)
 ├── msp-manager.js              MSP/MSP2 adapter (INAV, Betaflight) → MAVLink
 ├── lidar-manager.js            Livox Mid-360: main-thread IPC glue, forks the worker
@@ -117,9 +118,9 @@ Corv-GCS/
 │   │   └── SunPosition.js      Solar position for lighting & hillshade
 │   ├── terrain/                Terrain elevation & mesh generation
 │   │   ├── TerrainManager.js   HGT loading, chunked 3D mesh, LOD textures
-│   │   ├── TerrainWorker.js    Web Worker: mesh geometry generation
+│   │   ├── TerrainWorker.js    Web Worker: chunk elevation samples
 │   │   ├── TileWorker.js       Web Worker: satellite tile download
-│   │   ├── HillshadeWorker.js  Web Worker: hillshade computation
+│   │   ├── TextureCompressWorker.js Web Worker: BC1 compression + mips
 │   │   └── TextureCullWorker.js Web Worker: frustum culling
 │   ├── hud/
 │   │   └── HUDRenderer.js      Canvas 2D flight instruments overlay
@@ -226,7 +227,8 @@ Corv-GCS/
 | `preload.js` | Context bridge: `mavlink`, `msp`, `missionStore`, `sitl`, `rtk`, `fpv`, `telForward`, `adsb`, `tlogLogger`, `logReplay`, `lidar`, `corvSerial`, `topography` (load/loadOne/save), `models`, `windowControls`, `devtools` | Secure IPC bridge between main and renderer processes (16 namespaced APIs). `lidar` exposes connect/disconnect/setConfig/clear/saveMap/resync plus the `lidar-points` / `lidar-origin` / `lidar-status` events. Topography API supports load, loadOne, and save for offline SRTM management. `corvSerial` and `msp` expose the non-MAVLink link bridges (`msp` adds `missionInfo` / `missionUpload` / `missionDownload` / `missionLoadStored` plus the `msp-mission-progress` event for INAV waypoint missions); `missionStore` exposes list/load/save/delete/rename plus the data-root path; `logReplay` exposes open-file / play / pause / seek / unload + tick & state events |
 | `sitl-manager.js` | `initSITLHandlers()`, `cleanup()` | Download ArduPilot SITL binaries, spawn process (native Linux or WSL on Windows), TCP 5760 |
 | `rtk-manager.js` | `initRTKHandlers()`, `cleanup()` | RTCM3 frame parsing from serial GPS base station, GPS_RTCM_DATA (ID 233) injection to drone via raw MAVLink v2 packets |
-| `fpv-manager.js` | `initFPVHandlers()`, `cleanupFPV()` | Spawn ffmpeg for RTSP-to-MJPEG conversion, extract JPEG frames (SOI/EOI markers), send base64 frames via IPC |
+| `fpv-manager.js` | `initFPVHandlers()`, `cleanupFPV()` | Starts `rtsp-client.js` and forwards the camera's access units (`fpv-video-config` / `fpv-video-chunk`) for hardware decoding in the renderer. Falls back to VLC (RTSP → MJPEG over local HTTP, JPEG frames on `fpv-frame`) when the renderer has no decoder for the codec, the camera cannot be reached by the native client, no frame arrives within 6 s, or the renderer reports decode failures (`fpv-fallback`) |
+| `rtsp-client.js` | `RtspClient`, `Depacketizer`, `parseSdp()`, `hevcCodecString()` | RTSP 1.0 (OPTIONS / DESCRIBE / SETUP / PLAY, GET_PARAMETER keep-alive, TEARDOWN) without authentication. RTP over TCP interleaved, UDP when the server refuses it (461), with a 32-packet reorder window. RFC 6184 / 7798 depacketization (single NAL, STAP-A / AP, FU-A / FU) into Annex-B access units; parameter sets from the SDP or in-band are prepended to key frames; a packet loss drops frames until the next key frame. Derives the WebCodecs codec string from the SPS |
 | `telforward-manager.js` | `initTelForwardHandlers()`, `cleanup()` | Forward telemetry as LTM protocol (G/A/S/O frames) or MAVLink passthrough to an external serial port, or mirror it over UDP |
 | `msp-manager.js` | `initMSPHandlers()`, `cleanup()`, internal: `encodeRequest()`, `parseBuffer()`, `tick()`, `decode()`, `resolveModeName()`, `emit*()` | MSP/MSP2 adapter for INAV and Betaflight over serial or TCP. Frames both v1 (`$M`, XOR checksum) and v2 (`$X`, CRC8 DVB-S2). MSP is request/response, so a 20 ms scheduler polls a rate table with **one request in flight at a time** (MSP has no sequence numbers). Replies are decoded and re-emitted as synthetic MAVLink (30/74/24/33/27/1/147/65/0) on the same `mavlink-message` channel. Flight mode is resolved from the active mode boxes read once via `MSP_BOXNAMES`. A command unanswered 3× is dropped from the schedule, so an absent sensor cannot starve the poll budget. The same request slot also carries **INAV waypoint missions** (`MSP_WP_GETINFO` / `MSP_SET_WP` / `MSP_WP` / `MSP_WP_MISSION_SAVE`): a transfer is a run of one-shot jobs with their own promise, retried up to 3× each, and telemetry pauses for the second or two it takes |
 | `lidar-manager.js` / `lidar-worker.js` / `lidar-core.js` | `initLidarHandlers()`, `cleanup()`, `onMavlinkMessage()`; core: `bind()`, `commands.{connect,disconnect,setConfig,getStatus,listInterfaces,clear,saveMap,getDir,resync}`, `_test` | Livox Mid-360 / Mid-360S point cloud over a direct IP link (LAN bridge to the aircraft). `lidar-core.js` runs on a **worker thread**: Livox SDK2 UDP protocol (search 56000, config 0x0100 on 56100, point packets to 56301), pose ring buffer fed by the decoded MAVLink tap (ATTITUDE, GLOBAL_POSITION_INT, GPS_RAW_INT, EKF_STATUS_REPORT), packet hold + time interpolation, Livox FLU → mount → body → NED → ENU chain, navigation-quality gate, voxel occupancy hash, chunked map, streaming binary PLY (raw recording + map export). `lidar-manager.js` only relays IPC and forwards pose messages; keeping the 2 kHz socket traffic off the main thread matters because that thread is also Chromium's browser process |
@@ -257,7 +259,7 @@ Corv-GCS/
 
 | File | Key Exports | Purpose |
 |------|-------------|---------|
-| `Scene3D.js` | `init3D()`, `render()`, `updateCamera()`, `updateTrail()`, `resetTrail()`, `setTrailPoints()`, `resize()`, `updateMissionTrajectory()`, `clearMissionTrajectory()`, `updateHomeMarker3D()`, `updateTargetMarker3D()`, `updateTrafficMarkers3D()`, `getScene/Camera/Renderer/SunLight()`, `setSunlightEnabled()` | Three.js scene setup (FOV 60°, exponential fog), camera follow modes, directional sun with 4096² shadow map, flight trail (BufferGeometry, 50k points), 3D mission path, home/target/traffic markers |
+| `Scene3D.js` | `init3D()`, `render()`, `updateCamera()`, `updateTrail()`, `resetTrail()`, `setTrailPoints()`, `resize()`, `updateMissionTrajectory()`, `clearMissionTrajectory()`, `updateHomeMarker3D()`, `updateTargetMarker3D()`, `updateTrafficMarkers3D()`, `getScene/Camera/Renderer/SunLight()`, `setSunlightEnabled()` | Three.js scene setup (FOV 60°, exponential fog), camera follow modes, directional sun (no shadow map), flight trail (BufferGeometry, 50k points, a point every 2 m of movement), 3D mission path, home/target/traffic markers |
 | `TrajectoryPredictor.js` | `computePredictedPath()`, `computePredictedPath2D()` | Physics-based flight path prediction (5–20s ahead). Low-pass filter (α=0.88) on speed/roll/VS, turn radius from bank angle (R = V²/g·tan(roll)), vertical acceleration from NED |
 | `TrajectoryCorridor3D.js` | `initCorridor()`, `updateCorridor()`, `setCorridorVisible()`, `disposeCorridor()`, `getPredictionTime()` | Visual "safety corridor" around predicted path (two border lines + translucent fill, ~1.2m width, green with alpha fade) |
 | `SunPosition.js` | `calculateSunPosition()`, `getSunLightDirection()`, `calculateHillshade()`, `applyHillshade()` | Solar almanac for realistic dynamic lighting and terrain hillshading based on date/time/location |
@@ -267,9 +269,8 @@ Corv-GCS/
 | File | Key Exports | Purpose |
 |------|-------------|---------|
 | `TerrainManager.js` | `initTerrain()`, `updateTerrainChunks()`, `getTerrainElevationCached()`, `getTerrainElevationFromHGT()`, `addHGTFile()`, `updateTerrainHillshading()`, `setMapBrightness()`, `setTerrainSatelliteEnabled()`, `updateWireframeProximity()`, `getMemoryStats()` | Main terrain engine (58KB). Loads SRTM HGT elevation data, generates chunked 3D meshes (5000m × 5000m, 50km visibility radius), dual-zoom LOD satellite textures (zoom 15), frustum culling, LRU texture cache (1500 capacity), max 24 concurrent tile loads |
-| `TerrainWorker.js` | Web Worker | Background mesh geometry generation from elevation data |
+| `TerrainWorker.js` | Web Worker | Extracts a chunk's Int16 elevation samples (and their min / max) from the HGT grid at its LOD step. Positions, normals, hillshade and the height palette are rebuilt from them in the terrain vertex shader |
 | `TileWorker.js` | Web Worker | Satellite tile downloading and image decoding |
-| `HillshadeWorker.js` | Web Worker | Hillshade normal computation from elevation + sun position |
 | `TextureCullWorker.js` | Web Worker | Camera frustum culling for texture loading priority |
 
 ### 3.6 HUD & Maps
@@ -294,7 +295,7 @@ Corv-GCS/
 | `GCSSidebarController.js` | `initGCSSidebar()`, `updateGCSSidebar()`, `getTargetCoords()` | Right sidebar: connection panel (serial/UDP/TCP port selection), SITL launcher, RTK base station, telemetry forwarding config |
 | `ParametersPageController.js` | `initParamsPage()`, `toggleParamsPage()`, `formatParamValue()` | Full ArduPilot parameter editor with search, inline edit, save. Side catalog reads single parameters via `PARAM_REQUEST_READ` (serialized queue + retries) so a slow link never needs the full list |
 | `ParamCatalog.js` | `getCatalog()`, `getGroups()`, `groupOf()`, `learnNames()`, `toggleFavorite()` | Parameter-name catalog per vehicle class: built-in seed + names learned from vehicles/.param files, persisted in localStorage |
-| `FPVController.js` | `initFPV()`, `onFPVButtonClick()`, `setFPVActive()`, `stopFPVStream()`, `resizeFPV()`, `openFPVSettings()` | FPV camera overlay on 3D view. ffmpeg stream controls, SIYI HM30 / generic RTSP settings dialog |
+| `FPVController.js` | `initFPV()`, `onFPVButtonClick()`, `stopFPVStream()`, `resizeFPV()`, `isFPVARMode()`, `isFPVCameraMode()` | FPV camera overlay on 3D view. Probes the H.264 / H.265 decoders once (`VideoDecoder.isConfigSupported`) and passes them with `fpv.start()`; decodes the native stream with a hardware `VideoDecoder` (drops to the next key frame if it falls behind, falls back to VLC on repeated errors) and draws each `VideoFrame`; JPEG frames of the VLC fallback go through `createImageBitmap`. SIYI HM30 / generic RTSP settings. In CAMERA mode the 3D scene is not rendered (it is transparent) |
 | `LidarController.js` | `initLidarController()`, `isLidarEnabled()` | LIDAR section under SETUP → TOOLS (LiDAR/host IP, point format, mount attitude vs the autopilot IMU + lever arm, telemetry lag, range/noise/voxel filters, GPS/EKF gate, live-points TTL, colour mode, raw recording) persisted in localStorage; nav status dot while connected; flight-screen strip with state LED (ACCUMULATING / LIVE ONLY · reason), point count, CLEAR MAP and SAVE; HUD messages on gate transitions; resync on renderer restart |
 | `LoadingOverlay.js` | `showLoadingOverlay()`, `hideLoadingOverlay()`, `checkInitialLoadComplete()`, `scheduleHideLoadingOverlaySoon()` | Animated splash screen with cloud parallax and plane animation, terrain loading progress bar |
 
@@ -406,36 +407,46 @@ TerrainManager.updateTerrainChunks()
     │ determine chunks needed (50km visibility radius)
     │ queue chunk creation
     │
-    ├── TerrainWorker.js       generate mesh geometry from HGT
+    ├── TerrainWorker.js       Int16 elevation samples of each chunk
     ├── TileWorker.js          download satellite tiles
-    ├── HillshadeWorker.js     compute normals + sun shading
+    ├── TextureCompressWorker.js  BC1-compress each chunk texture (+ mip chain)
     └── TextureCullWorker.js   frustum culling for load priority
          │
          ▼
-Three.js Scene ── Mesh(geometry, texture) per chunk
+Elevation: one R16I 2D-array texture per grid size, one layer per chunk
+    │ vertex shader rebuilds position + normal (texelFetch), hillshade,
+    │ height palette; one shared triangle grid per LOD step
+    ▼
+Three.js Scene
+    ├── chunks without a map → one InstancedMesh per grid (per-chunk
+    │   frustum test in updateTerrainInstances(), ~4 draw calls)
+    └── chunks with a satellite map → own Mesh + material (~35 near the aircraft)
     │ LRUCache manages texture memory (cap: 1500)
     ▼
-Rendered at 60 FPS
+Rendered at 60 FPS (30 FPS in eco mode)
 ```
 
 ### 4.5 FPV Camera Pipeline
 
 ```
 Camera (SIYI HM30 or RTSP source)
-    │ RTSP stream (H.264)
+    │ RTSP stream (H.264 / H.265)
     ▼
-fpv-manager.js
-    │ spawn ffmpeg: RTSP → MJPEG pipe
-    │ MJPEGParser: extract JPEG frames (SOI/EOI markers)
-    │ frame.toString('base64')
+fpv-manager.js ── rtsp-client.js: RTP (TCP interleaved or UDP) → Annex-B access units
     ▼
-IPC: 'fpv-frame' (base64 JPEG string)
+IPC: 'fpv-video-config' { codec } + 'fpv-video-chunk' { key, timestamp, data }
     │
     ▼
 FPVController.js
-    │ set <img>.src = 'data:image/jpeg;base64,...'
+    │ VideoDecoder (hardware) → VideoFrame, drawn to the FPV canvas
     ▼
-Rendered as overlay on 3D view
+Rendered under the HUD (the 3D scene is skipped in CAMERA mode)
+
+Fallback (no decoder for the codec, camera unreachable natively, no frame in 6 s,
+repeated decode errors):
+fpv-manager.js ── VLC: RTSP → MJPEG over local HTTP; MJPEGParser (native indexOf)
+    ▼
+IPC: 'fpv-frame' (raw JPEG bytes) → createImageBitmap (off the main thread)
 ```
 
 ### 4.6 Log Replay Pipeline (.tlog / .bin)
@@ -605,7 +616,7 @@ All telemetry flows through the global `STATE` object in `core/state.js`. The 60
 `preload.js` exposes 16 namespaced APIs via `contextBridge.exposeInMainWorld()`: `mavlink`, `msp`, `missionStore`, `sitl`, `rtk`, `fpv`, `telForward`, `adsb`, `tlogLogger`, `logReplay`, `lidar`, `corvSerial`, `topography`, `models`, `windowControls`, `devtools`. All IPC uses `invoke`/`handle` (request-response) or `send`/`on` (events). Security: `contextIsolation: true`, no `nodeIntegration`.
 
 ### 5.3 Web Workers for Heavy Computation
-4 dedicated Web Workers handle terrain processing: mesh generation, tile download, hillshade, frustum culling. Workers communicate via `postMessage` with transferable ArrayBuffers. This keeps the main thread free for 60 FPS rendering.
+Web Workers handle terrain processing: chunk elevation extraction, tile download, BC1 texture compression (two instances) and texture culling. Workers communicate via `postMessage` with transferable ArrayBuffers and ImageBitmaps (a composited chunk texture reaches the compression worker as a transferred bitmap, so the pixel readback happens off the main thread). Hillshade is not a worker job: the terrain shader computes it from the normals, so a sun move is a uniform change. This keeps the main thread free for the render loop, which draws the 3D + HUD at 60 FPS or 30 FPS in eco mode (SYS CONFIG → 3D FRAME RATE).
 
 ### 5.4 RingBuffer for Time-Series
 `dataBuffer` uses RingBuffer (Float64Array, capacity 1200) instead of Array.push/shift. O(1) push, zero GC pressure, binary search for time windows. 8 synchronized channels: timestamps, as, gs, vs, rawAlt, roll, pitch, az.

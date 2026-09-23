@@ -22,8 +22,7 @@ import {
     updateMissionTrajectory, clearMissionTrajectory,
     getScene, getCamera, getRenderer, getSunLight, getAmbientLight,
     getCurrentSunDirection, isSunlightEnabled, setSunlightEnabled,
-    getTimeOverride, setTimeOverride, getShadowChunkSize,
-    getLastShadowChunk, setLastShadowChunk,
+    getTimeOverride, setTimeOverride,
     updateHomeMarker3D,
     updateTrafficMarkers3D,
     updateTargetMarker3D
@@ -36,14 +35,15 @@ import { initCorridor, updateCorridor, setCorridorVisible, getPredictionTime } f
 // Terrain imports
 import {
     initTerrain, getTerrainElevationCached, updateTerrainChunks,
-    updateTerrainHillshading, setHillshadeNeedsUpdate,
-    addHGTFile, getHGTFileCount, getActiveChunks, setAvailableHgtFiles,
+    updateTerrainHillshading,
+    addHGTFile, getHGTFileCount, setAvailableHgtFiles,
     getInitialLoadStatus, setTileNetworkEnabled,
     getTerrainElevationFromHGT, getRunwayObjects,
     refreshNearbyChunkTextures, resetTextureRefreshPosition,
     setMapBrightness,
     getMemoryStats,
-    updateWireframeProximity
+    updateWireframeProximity,
+    updateTerrainInstances
 } from './terrain/TerrainManager.js';
 
 // HUD imports
@@ -82,7 +82,7 @@ import { setTerrainSatelliteEnabled } from './terrain/TerrainManager.js';
 import { initOfflinePanel } from './maps/OfflineDownloader.js';
 
 // FPV imports
-import { initFPV, onFPVButtonClick, saveFPVSettings, resizeFPV, isFPVARMode, stopFPVStream } from './ui/FPVController.js';
+import { initFPV, onFPVButtonClick, saveFPVSettings, resizeFPV, isFPVARMode, isFPVCameraMode, stopFPVStream } from './ui/FPVController.js';
 import { initLidarCloud, updateLidarCloud } from './lidar/LidarCloud.js';
 import { updateLidarDemo } from './lidar/LidarDemo.js';
 import { updateDemoObstacles } from './engine/DemoObstacles.js';
@@ -91,7 +91,7 @@ import { initLidarController } from './ui/LidarController.js';
 // Loading overlay imports
 import {
     showLoadingOverlay, hideLoadingOverlay, scheduleHideLoadingOverlaySoon,
-    checkInitialLoadComplete, setAutoLoadAttempted, setLoadingMessage
+    checkInitialLoadComplete, isInitialLoadDone, setAutoLoadAttempted, setLoadingMessage
 } from './ui/LoadingOverlay.js';
 
 
@@ -346,13 +346,6 @@ async function loadModel(filename) {
                 return;
             }
 
-            model.traverse((obj) => {
-                if (obj && obj.isMesh) {
-                    obj.castShadow = true;
-                    obj.receiveShadow = true;
-                }
-            });
-
             // Adjustments
             model.position.set(0, 0, 0);
             model.rotation.set(0, Math.PI / 2, 0);
@@ -429,31 +422,21 @@ function createPlaceholderModel() {
 
     const fuselage = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.6, 10, 12), bodyMat);
     fuselage.rotation.z = Math.PI / 2;
-    fuselage.castShadow = true;
-    fuselage.receiveShadow = true;
 
     const nose = new THREE.Mesh(new THREE.ConeGeometry(1.2, 3, 12), bodyMat);
     nose.position.x = 6.3;
     nose.rotation.z = -Math.PI / 2;
-    nose.castShadow = true;
-    nose.receiveShadow = true;
 
     const wing = new THREE.Mesh(new THREE.BoxGeometry(10, 0.25, 2.2), darkMat);
     wing.position.x = -0.5;
-    wing.castShadow = true;
-    wing.receiveShadow = true;
 
     const tail = new THREE.Mesh(new THREE.BoxGeometry(3, 0.2, 1.2), darkMat);
     tail.position.x = -5.0;
     tail.position.y = 0.2;
-    tail.castShadow = true;
-    tail.receiveShadow = true;
 
     const fin = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.6, 1.0), darkMat);
     fin.position.x = -5.3;
     fin.position.y = 0.9;
-    fin.castShadow = true;
-    fin.receiveShadow = true;
 
     vehicle.add(fuselage, nose, wing, tail, fin);
 }
@@ -475,10 +458,6 @@ function setCameraMode(mode) {
     if (vehicle) {
         vehicle.visible = (cameraMode === 'THIRD');
     }
-
-    // Engage/disengage the shadow pass immediately on camera mode change
-    const sl = getSunLight();
-    if (sl) sl.castShadow = (cameraMode === 'THIRD') && isSunlightEnabled();
 
     // Hide HUD overlay in 3rd person to avoid clutter.
     const hudCanvas = document.getElementById('hud-canvas');
@@ -625,27 +604,13 @@ function calculateSunPosition(date, lat, lon) {
 function updateSunPosition() {
     const sunLight = getSunLight();
     const ambientLight = getAmbientLight();
-    const camera = getCamera();
     const scene = getScene();
     const currentSunDirection = getCurrentSunDirection();
-    
+
     if (!sunLight || !isSunlightEnabled()) return;
 
-    // Shadows only in 3rd person: the vehicle is the sole shadow caster and is
-    // invisible in 1st person — skip the shadow pass + per-fragment PCF there.
-    sunLight.castShadow = (cameraMode === 'THIRD');
     ambientLight.intensity = 0.6;
-    
-    const SHADOW_CHUNK_SIZE = getShadowChunkSize();
-    const currentChunkX = Math.floor(camera.position.x / SHADOW_CHUNK_SIZE);
-    const currentChunkZ = Math.floor(camera.position.z / SHADOW_CHUNK_SIZE);
-    const lastChunk = getLastShadowChunk();
-    const chunkChanged = (currentChunkX !== lastChunk.x || currentChunkZ !== lastChunk.z);
-    
-    if (chunkChanged) {
-        setLastShadowChunk(currentChunkX, currentChunkZ);
-    }
-    
+
     let now;
     const timeOverride = getTimeOverride();
     if (timeOverride !== null) {
@@ -663,17 +628,11 @@ function updateSunPosition() {
     const z = -sunDist * Math.cos(sunPos.altitude) * Math.cos(sunPos.azimuth);
     
     currentSunDirection.set(x, y, z).normalize();
-    
-    const chunkCenterX = (currentChunkX + 0.5) * SHADOW_CHUNK_SIZE;
-    const chunkCenterZ = (currentChunkZ + 0.5) * SHADOW_CHUNK_SIZE;
-    
-    sunLight.position.set(chunkCenterX + x, Math.max(1000, y), chunkCenterZ + z);
-    sunLight.target.position.set(chunkCenterX, 0, chunkCenterZ);
-    
-    if (chunkChanged) {
-        sunLight.shadow.camera.updateProjectionMatrix();
-    }
-    
+
+    // A directional light only uses position - target as its direction.
+    sunLight.position.set(x, Math.max(1000, y), z);
+    sunLight.target.position.set(0, 0, 0);
+
     const altitudeDeg = sunPos.altitude * 180 / Math.PI;
     
     if (altitudeDeg < -6) {
@@ -706,35 +665,9 @@ function updateSunPosition() {
     updateTerrainHillshading();
 }
 
-// ============== FRUSTUM CULLING ==============
-const frustum = new THREE.Frustum();
-const projScreenMatrix = new THREE.Matrix4();
-
-function updateChunkVisibility() {
-    const camera = getCamera();
-    if (!camera) return;
-
-    camera.updateMatrixWorld();
-    projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-    frustum.setFromProjectionMatrix(projScreenMatrix);
-
-    const activeChunks = getActiveChunks();
-    for (const mesh of Object.values(activeChunks)) {
-        // Recompute bounds if they are missing or known to be stale. The terrain
-        // geometry is built from a 1×1 PlaneGeometry whose vertices are replaced by
-        // real world coordinates, so the original tiny bounding sphere must be
-        // refreshed before frustum culling decisions are made.
-        if (!mesh.geometry.boundingSphere || !mesh.userData || !mesh.userData.boundsValid) {
-            mesh.geometry.computeBoundingSphere();
-            if (mesh.userData) mesh.userData.boundsValid = true;
-        }
-        // Frustum.intersectsObject() uses mesh.matrixWorld; make sure it is current
-        // before testing, otherwise freshly created chunks can be culled with a
-        // stale transform and disappear.
-        mesh.updateMatrixWorld();
-        mesh.visible = frustum.intersectsObject(mesh);
-    }
-}
+// Terrain chunks need no culling pass here: three.js frustum-culls every mesh
+// against its bounding sphere during render(), and the chunk builders compute
+// that sphere from the real world-space vertices.
 
 // Terrain elevation under home, resolved once per home position. getTerrainElevationCached()
 // keeps a single-entry cache shared with the vehicle query, so we memoize here instead of
@@ -866,12 +799,16 @@ function update3DWorld() {
         updateTerrainChunks();
     }
 
-    updateChunkVisibility();
     updateWireframeProximity();
     updateDemoObstacles();     // analytic only — the demo LiDAR's targets, never drawn
     updateLidarDemo();
     updateLidarCloud();
-    render();
+    // FPV camera-only mode keeps the scene at opacity 0 (the WebGL context stays
+    // alive and the world keeps updating), so drawing it would be thrown away.
+    if (!isFPVCameraMode()) {
+        updateTerrainInstances(camera);
+        render();
+    }
 }
 
 // ============== RELOAD MAP AND RUNWAYS ==============
@@ -1038,9 +975,34 @@ function handleResize() {
 let fpsFrameCount = 0;
 let fpsLastTime = performance.now();
 let lastFrameTime = performance.now();
-let lastRenderTime = 0; // Throttle heavy 3D render to TARGET_RENDER_FPS
-const TARGET_RENDER_FPS = 60; // caps render work on >60Hz monitors
-const RENDER_INTERVAL = 1000 / TARGET_RENDER_FPS; // ~16.6ms
+let lastRenderTime = -Infinity; // rAF timestamp of the last 3D + HUD render
+// 3D + HUD frame cap: 60 by default (caps render work on >60 Hz monitors), 30 in
+// eco mode — every frame drawn costs the Chromium compositor a full recomposite,
+// which is what dominates GPU-process CPU on a laptop.
+const RENDER_FPS_KEY = 'renderFpsCap';
+let renderInterval = 1000 / 60;
+// A frame is due once the interval is reached minus this fraction of it. The
+// exact comparison dropped ~40 % of frames on a 60 Hz display (vsync spacing
+// jitters around 16.67 ms), rendering at ~35 fps with an uneven cadence. The
+// slack must stay under half a vsync period so the 30 fps cap never renders
+// on consecutive 60 Hz frames.
+const RENDER_SLACK = 0.15;
+
+function setRenderFpsCap(fps) {
+    const cap = Number(fps) === 30 ? 30 : 60;
+    renderInterval = 1000 / cap;
+    try { localStorage.setItem(RENDER_FPS_KEY, String(cap)); } catch (_) {}
+}
+
+function setupRenderFpsSelect() {
+    const select = document.getElementById('render-fps-select');
+    let saved = 60;
+    try { saved = Number(localStorage.getItem(RENDER_FPS_KEY)) === 30 ? 30 : 60; } catch (_) {}
+    setRenderFpsCap(saved);
+    if (!select) return;
+    select.value = String(saved);
+    select.addEventListener('change', () => setRenderFpsCap(select.value));
+}
 
 // Slow-path update throttles (these don't need to run at monitor refresh rate)
 let lastSunPositionUpdate = 0;     // solar almanac + hillshade check: 1 Hz
@@ -1052,9 +1014,10 @@ let lastTelemetryUiUpdate = 0;     // HUD cells / telemetry panel text: 20 Hz
 // Map reload throttling
 let lastMapReloadAt = 0;
 
-function updateFPS() {
-    fpsFrameCount++;
-    const now = performance.now();
+// Counts rendered 3D frames, not animation-loop ticks: the loop runs at the
+// display rate, so counting ticks showed 60 FPS while the 3D was drawn at 35.
+function updateFPS(now, rendered) {
+    if (rendered) fpsFrameCount++;
     if (now - fpsLastTime >= 1000) {
         updateFPSDisplay(fpsFrameCount);
         fpsFrameCount = 0;
@@ -1114,14 +1077,17 @@ function initDemoCircuit(st, metersPerLat) {
 }
 
 // ============== ANIMATION LOOP ==============
-function animate() {
+function animate(frameTime) {
     requestAnimationFrame(animate);
     
     const now = performance.now();
     const deltaTime = (now - lastFrameTime) / 1000;
     lastFrameTime = now;
+    // rAF hands every callback of a frame the same vsync-aligned timestamp,
+    // which paces renders far more evenly than performance.now() taken after
+    // whatever ran earlier in the frame. The first call comes from init().
+    if (typeof frameTime !== 'number') frameTime = now;
     
-    updateFPS();
     syncModelToVehicleType();
 
     // The sun moves ~0.25°/min: recomputing the solar almanac (new Date() +
@@ -1269,15 +1235,15 @@ function animate() {
         lastTelemetryUiUpdate = now;
         updateUI();
     }
-    // Throttle heavy 3D rendering to 30fps max.
+    // Cap 3D + HUD rendering to the selected rate (60, or 30 in eco mode).
     // The animation loop runs at monitor refresh rate (60-144Hz) but heavy GPU work
-    // (3D render, terrain, frustum culling) is capped to free the main thread
-    // for MAVLink parsing, RC radio input, and UI responsiveness.
+    // (3D render, terrain, HUD) is capped to free the main thread for MAVLink
+    // parsing, RC radio input, and UI responsiveness.
     const onFlightDataTab = getCurrentTab() === 'flight-data';
-    const renderDue = (now - lastRenderTime) >= RENDER_INTERVAL;
+    const renderDue = (frameTime - lastRenderTime) >= renderInterval * (1 - RENDER_SLACK);
 
     if (onFlightDataTab && renderDue) {
-        lastRenderTime = now;
+        lastRenderTime = frameTime;
         // The DISARMED banner is an HTML overlay shown in both camera modes, so
         // it is refreshed outside the first-person-only HUD draw.
         updateArmStateUI();
@@ -1318,7 +1284,13 @@ function animate() {
 
     updateMap();
 
-    checkInitialLoadComplete(getInitialLoadStatus());
+    // getInitialLoadStatus() walks every chunk; once the overlay is gone
+    // nobody needs it, and it was costing ~1.3 % of the main thread per frame.
+    if (!isInitialLoadDone()) {
+        checkInitialLoadComplete(getInitialLoadStatus());
+    }
+
+    updateFPS(now, onFlightDataTab && renderDue);
 }
 
 // ============== MISSION TRAJECTORY 3D ==============
@@ -1361,9 +1333,6 @@ function setSatelliteEnabled(enabled) {
     
     // Apply across terrain + maps
     try { setTerrainSatelliteEnabled(window.satelliteEnabled); } catch (e) {}
-
-    setHillshadeNeedsUpdate();
-    updateTerrainHillshading(true);
 }
 
 function toggleSatellite() {
@@ -1386,23 +1355,18 @@ function toggleSunlight() {
         btn.classList.add('active');
         ambientLight.intensity = 0.6;
         sunLight.intensity = 1.5;
-        sunLight.castShadow = (cameraMode === 'THIRD');
         updateSunPosition();
-        setHillshadeNeedsUpdate();
-        updateTerrainHillshading(true);
     } else {
         btn.classList.remove('active');
         sunLight.position.set(camera.position.x, camera.position.y + 30000, camera.position.z);
         sunLight.target.position.copy(camera.position);
         sunLight.intensity = 0.5;
         sunLight.color.setHex(0xffffff);
-        sunLight.castShadow = false;
         ambientLight.intensity = 0.6;
         scene.background.setHex(0x87ceeb);
         scene.fog.color.setHex(0x87ceeb);
         currentSunDirection.set(0, 1, 0);
-        setHillshadeNeedsUpdate();
-        updateTerrainHillshading(true);
+        updateTerrainHillshading();
     }
 
     updateMapBrightnessVisibility();
@@ -1769,10 +1733,9 @@ function init() {
     initTerrain(scene, renderer, getCurrentSunDirection());
     window.sunlightEnabled = isSunlightEnabled();
 
-    // Realistic sunlight OFF by default at startup: flat lighting is lighter
-    // (no shadow pass, no per-sun hillshade refresh) and more readable.
-    // Going through toggleSunlight() applies the full disable path (button
-    // state, overhead light, hillshade, brightness slider visibility).
+    // Realistic sunlight OFF by default at startup: flat lighting is more
+    // readable. Going through toggleSunlight() applies the full disable path
+    // (button state, overhead light, hillshade, brightness slider visibility).
     if (isSunlightEnabled()) toggleSunlight();
 
     // Initialize HUD
@@ -1786,6 +1749,7 @@ function init() {
     setupTimeSlider();
     setupMapBrightnessSlider();
     setupAttSmoothSlider();
+    setupRenderFpsSelect();
     setupStreamRates();
     setupModelSelector();
 

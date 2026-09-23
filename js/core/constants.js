@@ -15,7 +15,6 @@ export const RAD = 180 / Math.PI;
 export const CHUNKS_PER_FRAME = 3;
 export const CLEANUP_RADIUS = VISIBILITY_RADIUS * 1.2;
 export const MAX_ACTIVE_CHUNKS = 80;
-export const SHADOW_CHUNK_SIZE = 5000;
 
 // Tile system - zoom levels defined in TerrainManager.js (dual-zoom LOD)
 export const MAX_CONCURRENT_LOADS = 6;

@@ -70,6 +70,20 @@ const settings = {
 // Virtual size (updated on resize)
 let size = { width: 800, height: 600 };
 let hudWrapperEl = null; // cached DOM reference
+// Wrapper size, kept current by a ResizeObserver. drawHUD() used to read
+// clientWidth/clientHeight every frame, right after the telemetry panels'
+// DOM writes, which forced a synchronous layout on each frame.
+let hudWrapperW = 0;
+let hudWrapperH = 0;
+
+function observeHudWrapper() {
+    const wrapper = hudWrapperEl || (hudWrapperEl = document.getElementById('hud-wrapper'));
+    if (!wrapper || typeof ResizeObserver === 'undefined') return;
+    new ResizeObserver(() => {
+        hudWrapperW = wrapper.clientWidth;
+        hudWrapperH = wrapper.clientHeight;
+    }).observe(wrapper);
+}
 
 // Cached CSS variables (refreshed on resize, not per-frame)
 const cachedCss = {
@@ -142,6 +156,7 @@ export function initHUD(canvasElement) {
     canvas = canvasElement;
     ctx = canvas ? canvas.getContext('2d') : null;
     hudDPR = window.devicePixelRatio || 1;
+    observeHudWrapper();
 }
 
 /**
@@ -1078,14 +1093,18 @@ export function drawHUD() {
     const dpr = hudDPR;
     const scale = dpr * style.scale * settings.scale;
 
-    let w, h;
-    const wrapper = hudWrapperEl || (hudWrapperEl = document.getElementById('hud-wrapper'));
-    if (wrapper) {
-        w = wrapper.clientWidth;
-        h = wrapper.clientHeight;
-    } else {
-        w = window.innerWidth;
-        h = window.innerHeight;
+    let w = hudWrapperW;
+    let h = hudWrapperH;
+    if (!(w > 0 && h > 0)) {
+        // Observer not reporting yet (or unavailable): measure directly
+        const wrapper = hudWrapperEl || (hudWrapperEl = document.getElementById('hud-wrapper'));
+        if (wrapper) {
+            w = wrapper.clientWidth;
+            h = wrapper.clientHeight;
+        } else {
+            w = window.innerWidth;
+            h = window.innerHeight;
+        }
     }
 
     // Update virtual size

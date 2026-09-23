@@ -23,11 +23,10 @@ let missionAltLines = [];
 
 // Trail limit to prevent memory leak on long sessions
 const MAX_TRAIL_POINTS = 50000;
-
-// Shadow chunk tracking
-const SHADOW_CHUNK_SIZE = 5000;
-let lastShadowChunkX = null;
-let lastShadowChunkZ = null;
+// A trail point is only added once the vehicle has moved this far from the last
+// one. Appending every rendered frame filled the buffer with duplicates while
+// hovering or parked, and hit MAX_TRAIL_POINTS after ~25 min of flight.
+const TRAIL_MIN_STEP_M = 2;
 
 // Sun direction for hillshading
 let currentSunDirection = null;
@@ -54,11 +53,12 @@ export function init3D(container) {
         300000
     );
     
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // No shadow map: the vehicle was the only caster, and over a 6 km shadow
+    // frustum its shadow covered one or two texels — a full extra pass plus PCF
+    // sampling on every terrain fragment for something nobody could see.
     // Prevent canvas from stealing focus from input fields
     renderer.domElement.tabIndex = -1;
     renderer.domElement.style.outline = 'none';
@@ -105,26 +105,9 @@ export function init3D(container) {
  * Initialize scene lighting
  */
 function initLighting() {
-    // Sun directional light with shadows
+    // Sun directional light (no shadows — see init3D)
     sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
     sunLight.position.set(20000, 30000, 10000);
-    sunLight.castShadow = true;
-    // 2048 is plenty: the only shadow caster is the vehicle (terrain has
-    // castShadow=false), and shadows are disabled entirely in first person.
-    sunLight.shadow.mapSize.width = 2048;
-    sunLight.shadow.mapSize.height = 2048;
-    sunLight.shadow.camera.near = 1;
-    sunLight.shadow.camera.far = 50000;
-    // Shadow camera area matches SHADOW_CHUNK_SIZE for better resolution
-    // 5000x5000 area with 2048x2048 map = ~2.4m per pixel
-    const shadowHalfSize = SHADOW_CHUNK_SIZE * 0.6;
-    sunLight.shadow.camera.left = -shadowHalfSize;
-    sunLight.shadow.camera.right = shadowHalfSize;
-    sunLight.shadow.camera.top = shadowHalfSize;
-    sunLight.shadow.camera.bottom = -shadowHalfSize;
-    sunLight.shadow.bias = -0.0005;
-    sunLight.shadow.normalBias = 0.02;
-    sunLight.shadow.radius = 2;
     scene.add(sunLight);
     scene.add(sunLight.target);
 
@@ -170,6 +153,13 @@ function ensureTrailCapacity(pointCount) {
 export function updateTrail(x, y, z) {
     if (!trailLine) return;
     if (trailFrozen) return;  // full trail is pre-drawn during log replay
+
+    if (trailIdx > 0) {
+        const last = trailLine.geometry.attributes.position.array;
+        const o = (trailIdx - 1) * 3;
+        const dx = x - last[o], dy = y - last[o + 1], dz = z - last[o + 2];
+        if (dx * dx + dy * dy + dz * dz < TRAIL_MIN_STEP_M * TRAIL_MIN_STEP_M) return;
+    }
 
     // Check if we've hit the limit - downsample the trail by 2x to free space
     if (trailIdx >= MAX_TRAIL_POINTS) {
@@ -566,8 +556,6 @@ export function getAmbientLight() { return ambientLight; }
 export function getCurrentSunDirection() { return currentSunDirection; }
 export function isSunlightEnabled() { return sunlightEnabled; }
 export function getTimeOverride() { return timeOverride; }
-export function getShadowChunkSize() { return SHADOW_CHUNK_SIZE; }
-export function getLastShadowChunk() { return { x: lastShadowChunkX, z: lastShadowChunkZ }; }
 
 // AR overlay mode: black background (becomes transparent via CSS mix-blend-mode:screen)
 export function setARMode(enabled) {
@@ -585,7 +573,3 @@ export function setARMode(enabled) {
 // Setters
 export function setSunlightEnabled(enabled) { sunlightEnabled = enabled; }
 export function setTimeOverride(time) { timeOverride = time; }
-export function setLastShadowChunk(x, z) { 
-    lastShadowChunkX = x; 
-    lastShadowChunkZ = z; 
-}

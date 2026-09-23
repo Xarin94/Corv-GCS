@@ -230,11 +230,25 @@ function buildMipChain(rgba, width, height) {
     return { mips, padWidth: base.width, padHeight: base.height };
 }
 
+/**
+ * Read the pixels of a transferred ImageBitmap. The main thread hands over its
+ * composited chunk canvas as a bitmap, so the copy out to RGBA happens here and
+ * not on the render thread.
+ */
+function readBitmap(bitmap, width, height) {
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    return ctx.getImageData(0, 0, width, height).data.buffer;
+}
+
 // Guarded so the encoder can also be required from a Node test harness
 if (typeof self !== 'undefined' && typeof self.postMessage === 'function') {
     self.onmessage = function (e) {
-        const { id, rgba, width, height } = e.data;
+        const { id, width, height } = e.data;
         try {
+            const rgba = e.data.bitmap ? readBitmap(e.data.bitmap, width, height) : e.data.rgba;
             const { mips, padWidth, padHeight } = buildMipChain(new Uint8Array(rgba), width, height);
             const transfer = mips.map(m => m.data.buffer);
             self.postMessage({ id, ok: true, mips, padWidth, padHeight, width, height }, transfer);

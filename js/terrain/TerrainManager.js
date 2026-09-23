@@ -37,7 +37,7 @@ function bandForDistance(dist) {
     return ZOOM_BANDS.length - 1;
 }
 import { STATE } from '../core/state.js';
-import { latLonToMeters, calculateDistance, getHeightColor, latLonToTile, tileToBounds } from '../core/utils.js';
+import { latLonToMeters, calculateDistance, latLonToTile, tileToBounds } from '../core/utils.js';
 import { LRUCache } from '../core/LRUCache.js';
 import { getTile as getCachedTile, putTile as putCachedTile } from '../maps/TileCache.js';
 
@@ -65,6 +65,8 @@ export function getMemoryStats() {
         textureApplyQueueLen: textureApplyQueue.length,
         activeChunkJobsCount: activeChunkJobs.size,
         pendingTileCallbacksCount: pendingTileCallbacks.size,
+        heightLayers: [...heightStores.values()].reduce((n, st) => n + st.layers.size, 0),
+        heightMB: +([...heightStores.values()].reduce((n, st) => n + st.capacity * st.geoW * st.geoW * 2, 0) / 1048576).toFixed(1),
         compressedTextures: compressedTexturesBuilt,
         compressedMB: +(compressedBytes / 1048576).toFixed(1),
         compressionActive: compressAvailable
@@ -345,17 +347,12 @@ let terrainBaseReady = false;
 // Flag: initial base textures (zoom 15) loaded, HD upgrades now allowed
 let initialTexturesLoaded = false;
 
-// Hillshading state
-let hillshadeNeedsFullUpdate = true;
-let hillshadeUpdatePending = false;
-let cachedSunDir = null;
-let lastSunDirX = NaN, lastSunDirY = NaN, lastSunDirZ = NaN;
+// Terrain brightness while the sunlight is off (the MAP BRIGHTNESS slider)
 let mapBrightness = 0.85;
 
 // Scene reference (set during init)
 let sceneRef = null;
 let rendererRef = null;
-let currentSunDirectionRef = null;
 
 // Worker-based chunk generation (optional)
 const USE_TERRAIN_WORKER = true;
@@ -370,12 +367,6 @@ const USE_TILE_WORKER = true;
 let tileWorker = null;
 let tileWorkerAvailable = false;
 const pendingTileCallbacks = new Map();
-
-// Worker-based hillshade (optional)
-const USE_HILLSHADE_WORKER = true;
-let hillshadeWorker = null;
-let hillshadeWorkerAvailable = false;
-const hillshadePending = new Map();
 
 // Worker-based texture culling (optional)
 const USE_TEXTURE_CULL_WORKER = true;
@@ -402,39 +393,539 @@ function isChunkInRange(item, radius = VISIBILITY_RADIUS) {
     return getChunkDistanceToPlayer(item) <= radius;
 }
 
-// Shared wireframe material (single instance for all chunks — saves draw-call state switches)
-const sharedWireframeMaterial = new THREE.MeshBasicMaterial({
-    color: 0x000000,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.06,
-    depthWrite: false
-});
+// ============== GPU TERRAIN ==============
+// Chunk geometry lives on the GPU as elevation only. A chunk's samples (Int16,
+// straight from the HGT grid) are one layer of a texture array per grid size,
+// and the vertex shader rebuilds each vertex position and its normal from them
+// with texelFetch. Every chunk built on the same grid shares one triangle list
+// and one UV set.
+//
+// Chunks without a satellite map (everything beyond SATELLITE_RADIUS: ~390 of
+// ~420 resident) are drawn as instances of one InstancedMesh per grid — a
+// handful of draw calls — after a per-chunk frustum test in
+// updateTerrainInstances(). Chunks with a map keep a mesh of their own (the map
+// differs per chunk), on the same shared grid geometry. This replaced ~420
+// meshes, each with its own position and normal buffers, which cost three.js a
+// culling test, a matrix update and a draw call per chunk on every frame.
 
-// Track which chunk currently has the wireframe (only one at a time)
-let wireframeChunkKey = null;
+// Hillshade, and the height palette of chunks without a satellite map, are
+// computed in the same vertex shader. The formula is the one the CPU used to
+// bake into vertex colours:
+//   sunlight on:  0.45 + 1.05 * max(0, N·sun)      sunlight off: map brightness
+// times the height palette when the chunk has no map. It scales the diffuse
+// colour, and MeshLambertMaterial then applies the scene lights.
+const terrainShadingUniforms = {
+    uSunDir: { value: new THREE.Vector3(0, 1, 0) }, // replaced by the scene's sun vector in initTerrain()
+    uSunlightOn: { value: 1 },
+    uBrightness: { value: mapBrightness }
+};
 
-/**
- * Add wireframe overlay to a terrain mesh (triangle grid lines).
- * Shares the same geometry as the solid mesh (zero extra geometry cost).
- * Uses a single shared material for all wireframes (reduces GPU state changes).
- */
-function addWireframeOverlay(mesh) {
-    if (mesh.userData._wireframe) return; // already has one
-    const wire = new THREE.Mesh(mesh.geometry, sharedWireframeMaterial);
-    wire.renderOrder = 1;
-    mesh.add(wire);
-    mesh.userData._wireframe = wire;
+const TERRAIN_VERTEX_PARS = `
+uniform vec3 uSunDir;
+uniform float uSunlightOn;
+uniform float uBrightness;
+uniform highp isampler2DArray uHeights;
+uniform int uGridMax;                 // vertices per side - 1
+#ifdef USE_INSTANCING
+attribute vec4 aChunk;                // x0, z0, dx, dz: world position of grid vertex (0,0), spacing
+attribute float aLayer;
+#else
+uniform vec4 uChunk;
+uniform float uLayer;
+#endif
+varying vec3 vTerrainShade;
+// Same palette as getHeightColor() in core/utils.js
+vec3 terrainHeightColor(float h) {
+    const vec3 G = vec3(0.0431372549, 0.4, 0.137254902);
+    const vec3 Y = vec3(0.902, 0.7647058824, 0.3529411765);
+    const vec3 O = vec3(0.902, 0.494, 0.133);
+    const vec3 R = vec3(0.906, 0.298, 0.235);
+    const vec3 P = vec3(0.608, 0.349, 0.713);
+    const vec3 B = vec3(0.204, 0.596, 0.858);
+    if (h <= -100.0) return vec3(0.0);
+    if (h <= 700.0) return G;
+    if (h <= 1400.0) return mix(G, Y, (h - 700.0) / 700.0);
+    if (h <= 2100.0) return mix(Y, O, (h - 1400.0) / 700.0);
+    if (h <= 2800.0) return mix(O, R, (h - 2100.0) / 700.0);
+    if (h <= 3500.0) return mix(R, P, (h - 2800.0) / 700.0);
+    if (h <= 4000.0) return mix(P, B, (h - 3500.0) / 500.0);
+    return B;
+}
+float terrainHeight(ivec2 g, int layer) {
+    return float(texelFetch(uHeights, ivec3(g, layer), 0).r);
+}
+`;
+
+// Replaces <beginnormal_vertex>. position.xy is the grid vertex (column, row);
+// rows run south, columns east. The normal is the central difference the
+// terrain worker used to compute (one-sided on the chunk edge): n = S × E.
+const TERRAIN_BEGINNORMAL = `
+#ifdef USE_INSTANCING
+vec4 tChunk = aChunk;
+int tLayer = int(aLayer + 0.5);
+#else
+vec4 tChunk = uChunk;
+int tLayer = int(uLayer + 0.5);
+#endif
+ivec2 tG = ivec2(position.xy + 0.5);
+float tH = terrainHeight(tG, tLayer);
+ivec2 tE = ivec2(min(tG.x + 1, uGridMax), tG.y);
+ivec2 tW = ivec2(max(tG.x - 1, 0), tG.y);
+ivec2 tS = ivec2(tG.x, min(tG.y + 1, uGridMax));
+ivec2 tN = ivec2(tG.x, max(tG.y - 1, 0));
+float tEx = float(tE.x - tW.x) * tChunk.z;
+float tEy = terrainHeight(tE, tLayer) - terrainHeight(tW, tLayer);
+float tSz = float(tS.y - tN.y) * tChunk.w;
+float tSy = terrainHeight(tS, tLayer) - terrainHeight(tN, tLayer);
+vec3 objectNormal = normalize(vec3(-tSz * tEy, tSz * tEx, -tSy * tEx));
+`;
+
+// Replaces <begin_vertex>
+const TERRAIN_BEGIN_VERTEX = `
+vec3 transformed = vec3(tChunk.x + float(tG.x) * tChunk.z, tH, tChunk.y + float(tG.y) * tChunk.w);
+float terrainLight = uSunlightOn > 0.5
+    ? 0.45 + 1.05 * max(0.0, dot(objectNormal, uSunDir))
+    : uBrightness;
+#ifdef USE_MAP
+vTerrainShade = vec3(terrainLight);
+#else
+vTerrainShade = terrainHeightColor(tH) * terrainLight;
+#endif
+`;
+
+function applyTerrainShading(shader) {
+    // Shading uniforms are shared by every chunk; the chunk uniforms belong to
+    // this material (a chunk's own mesh, or an instanced batch's grid).
+    Object.assign(shader.uniforms, terrainShadingUniforms, this.userData.terrain);
+    shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\n' + TERRAIN_VERTEX_PARS)
+        .replace('#include <beginnormal_vertex>', TERRAIN_BEGINNORMAL)
+        .replace('#include <begin_vertex>', TERRAIN_BEGIN_VERTEX);
+    shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vTerrainShade;')
+        .replace('#include <color_fragment>', '#include <color_fragment>\n\tdiffuseColor.rgb *= vTerrainShade;');
+}
+
+function createTerrainMaterial(params) {
+    const material = new THREE.MeshLambertMaterial(Object.assign({
+        side: THREE.FrontSide  // heightfield seen from above: backface culling halves rasterization
+    }, params));
+    material.userData.terrain = {
+        uHeights: { value: null },
+        uGridMax: { value: 0 },
+        uChunk: { value: new THREE.Vector4() },
+        uLayer: { value: 0 }
+    };
+    // A single shared function (it reads its uniforms from `this`): three.js keys
+    // its program cache on the callback's source, so every terrain material
+    // compiles to the same few programs.
+    material.onBeforeCompile = applyTerrainShading;
+    return material;
+}
+
+// Material slot of chunks drawn through an instanced batch (no map). It is
+// never rendered itself; a chunk only gets a material of its own while it
+// carries a map. Never disposed.
+const untexturedTerrainMaterial = createTerrainMaterial();
+
+/** Point a non-instanced terrain material at a chunk's elevation layer. */
+function syncChunkUniforms(material, ud) {
+    const t = material.userData.terrain;
+    t.uHeights.value = ud.heightStore.texture;
+    t.uGridMax.value = ud.geoW - 1;
+    t.uChunk.value.set(ud.chunkVec[0], ud.chunkVec[1], ud.chunkVec[2], ud.chunkVec[3]);
+    t.uLayer.value = ud.heightLayer;
 }
 
 /**
- * Remove wireframe overlay from a mesh.
+ * Put a satellite map on a chunk, or remove it (texture = null). The chunk's
+ * previous map is disposed. With a map the chunk is drawn as a mesh of its own;
+ * without one it goes back to its grid's instanced batch.
  */
-function removeWireframeOverlay(mesh) {
-    const w = mesh.userData._wireframe;
-    if (!w) return;
-    mesh.remove(w);
-    mesh.userData._wireframe = null;
+function setChunkMap(mesh, texture) {
+    const own = mesh.material !== untexturedTerrainMaterial ? mesh.material : null;
+    if (own && own.map) {
+        try { own.map.dispose(); texturesDisposed++; } catch (e) {}
+        own.map = null;
+    }
+    if (texture) {
+        const material = own || createTerrainMaterial();
+        material.map = texture;
+        material.needsUpdate = true;
+        if (!own) {
+            syncChunkUniforms(material, mesh.userData);
+            mesh.material = material;
+            if (sceneRef) sceneRef.add(mesh);
+        }
+    } else if (own) {
+        own.dispose();
+        mesh.material = untexturedTerrainMaterial;
+        if (mesh.parent) mesh.parent.remove(mesh);
+    }
+}
+
+// ---- Shared grid geometry -------------------------------------------------
+const gridGeometries = new Map(); // geoW -> BufferGeometry
+
+/**
+ * Grid of geoW x geoW vertices: position = (column, row, 0), same UVs and same
+ * triangle order as the THREE.PlaneGeometry the chunks used to be built from,
+ * so the winding FrontSide culling depends on is unchanged. Never disposed.
+ */
+function getGridGeometry(geoW) {
+    let geometry = gridGeometries.get(geoW);
+    if (geometry) return geometry;
+
+    const seg = geoW - 1;
+    const IndexArray = geoW * geoW > 65535 ? Uint32Array : Uint16Array;
+    const index = new IndexArray(seg * seg * 6);
+    let k = 0;
+    for (let r = 0; r < seg; r++) {
+        for (let c = 0; c < seg; c++) {
+            const a = r * geoW + c;
+            const b = (r + 1) * geoW + c;
+            const cc = (r + 1) * geoW + c + 1;
+            const d = r * geoW + c + 1;
+            index[k++] = a; index[k++] = b; index[k++] = d;
+            index[k++] = b; index[k++] = cc; index[k++] = d;
+        }
+    }
+
+    const position = new Float32Array(geoW * geoW * 3);
+    const uv = new Float32Array(geoW * geoW * 2);
+    for (let r = 0; r < geoW; r++) {
+        for (let c = 0; c < geoW; c++) {
+            const i = r * geoW + c;
+            position[i * 3] = c;
+            position[i * 3 + 1] = r;
+            uv[i * 2] = c / seg;
+            uv[i * 2 + 1] = 1 - r / seg;
+        }
+    }
+
+    geometry = new THREE.BufferGeometry();
+    geometry.setIndex(new THREE.BufferAttribute(index, 1));
+    geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
+    geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    // Grid space, not world space: meshes on it are culled per chunk instead
+    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
+    gridGeometries.set(geoW, geometry);
+    return geometry;
+}
+
+// ---- Elevation texture arrays ----------------------------------------------
+// One R16I 2D-array texture per grid size, one layer per chunk. three.js r128
+// cannot update a single layer of an array texture, so the WebGL texture is
+// managed here and handed to three through its texture properties; layers are
+// written with texSubImage3D. A CPU copy of each layer (2 bytes per sample,
+// ~2 MB in total) lets the array grow by re-uploading.
+const heightStores = new Map(); // geoW -> store
+const HEIGHT_STORE_INITIAL_LAYERS = 32;
+
+function createHeightTexture(geoW, capacity) {
+    const gl = rendererRef.getContext();
+    const glTex = gl.createTexture();
+    rendererRef.state.bindTexture(gl.TEXTURE_2D_ARRAY, glTex);
+    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.R16I, geoW, geoW, capacity);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return glTex;
+}
+
+/**
+ * Hand three.js our WebGL texture for the store's placeholder: with a matching
+ * version three binds it as a sampler2DArray and never tries to upload it.
+ */
+function adoptHeightTexture(store) {
+    const props = rendererRef.properties.get(store.texture);
+    props.__webglInit = true;
+    props.__webglTexture = store.glTex;
+    props.__version = store.texture.version;
+}
+
+function getHeightStore(geoW) {
+    let store = heightStores.get(geoW);
+    if (store) return store;
+    const capacity = HEIGHT_STORE_INITIAL_LAYERS;
+    store = {
+        geoW, capacity,
+        glTex: createHeightTexture(geoW, capacity),
+        texture: new THREE.DataTexture2DArray(null, geoW, geoW, capacity),
+        layers: new Map(), free: [], next: 0
+    };
+    adoptHeightTexture(store);
+    heightStores.set(geoW, store);
+    return store;
+}
+
+/**
+ * After a WebGL context loss and restore, three.js rebuilds its own resources
+ * from their sources, but these textures are ours: recreate them from the CPU
+ * copies. Runs after three's own handler (registered when the renderer was
+ * created), so the renderer state and properties are already the new ones.
+ */
+function restoreHeightStores() {
+    for (const store of heightStores.values()) {
+        store.glTex = createHeightTexture(store.geoW, store.capacity);
+        for (const [layer, heights] of store.layers) uploadHeightLayer(store, layer, heights);
+        adoptHeightTexture(store);
+    }
+}
+
+function uploadHeightLayer(store, layer, heights) {
+    const gl = rendererRef.getContext();
+    rendererRef.state.bindTexture(gl.TEXTURE_2D_ARRAY, store.glTex);
+    // three sets these per upload of its own; a 3D upload rejects FLIP_Y, and
+    // rows of 2-byte samples with odd widths are not 4-byte aligned.
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 2);
+    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, store.geoW, store.geoW, 1,
+        gl.RED_INTEGER, gl.SHORT, heights);
+}
+
+function allocHeightLayer(store, heights) {
+    const layer = store.free.length ? store.free.pop() : store.next++;
+    if (layer >= store.capacity) {
+        // Grow: a new, larger array filled from the CPU copies
+        const old = store.glTex;
+        store.capacity *= 2;
+        store.glTex = createHeightTexture(store.geoW, store.capacity);
+        for (const [l, h] of store.layers) uploadHeightLayer(store, l, h);
+        adoptHeightTexture(store);
+        rendererRef.getContext().deleteTexture(old);
+    }
+    store.layers.set(layer, heights);
+    uploadHeightLayer(store, layer, heights);
+    return layer;
+}
+
+function freeHeightLayer(store, layer) {
+    if (store && store.layers.delete(layer)) store.free.push(layer);
+}
+
+/**
+ * Store a chunk's elevation samples and derive what the shader and the
+ * culling need: grid origin and spacing in world metres, bounding sphere.
+ * Replaces the chunk's previous layer (LOD rebuild).
+ */
+function setChunkHeights(mesh, item, step, heights, minH, maxH) {
+    const ud = mesh.userData;
+    const { cx, cy, latBase, lonBase, size, vertsPerChunk } = item;
+    const geoW = vertsPerChunk / step + 1;
+
+    if (ud.heightStore) freeHeightLayer(ud.heightStore, ud.heightLayer);
+    const store = getHeightStore(geoW);
+    ud.heightStore = store;
+    ud.heightLayer = allocHeightLayer(store, heights);
+    ud.geoW = geoW;
+    ud.lodStep = step;
+
+    // latLonToMeters() is linear in lat/lon, so the grid maps to world space as
+    // an origin plus a constant spacing per row and per column.
+    const startRow = cy * vertsPerChunk;
+    const startCol = cx * vertsPerChunk;
+    const latTop = latBase + 1 - startRow / (size - 1);
+    const lonLeft = lonBase + startCol / (size - 1);
+    const o = latLonToMeters(latTop, lonLeft);
+    const e = latLonToMeters(latTop, lonLeft + step / (size - 1));
+    const s = latLonToMeters(latTop - step / (size - 1), lonLeft);
+    const dx = e.x - o.x, dz = s.z - o.z;
+    ud.chunkVec = [o.x, o.z, dx, dz];
+
+    const halfW = (geoW - 1) * dx / 2;
+    const halfD = (geoW - 1) * dz / 2;
+    const halfH = (maxH - minH) / 2;
+    ud.sphere = {
+        x: o.x + halfW, y: (minH + maxH) / 2, z: o.z + halfD,
+        r: Math.sqrt(halfW * halfW + halfD * halfD + halfH * halfH)
+    };
+
+    mesh.geometry = getGridGeometry(geoW);
+    ud.batch = getInstanceBatch(geoW);
+    if (mesh.material !== untexturedTerrainMaterial) syncChunkUniforms(mesh.material, ud);
+}
+
+/** Int16 elevation samples of one chunk from the parsed HGT tile. */
+function sampleChunkHeights(item, step) {
+    const { cx, cy, size, vertsPerChunk, hgtKey } = item;
+    const cache = hgtElevationData[hgtKey];
+    const geoW = vertsPerChunk / step + 1;
+    const heights = new Int16Array(geoW * geoW);
+    let minH = Infinity, maxH = -Infinity;
+    if (cache) {
+        const startRow = cy * vertsPerChunk;
+        const startCol = cx * vertsPerChunk;
+        for (let r = 0; r < geoW; r++) {
+            const row = (startRow + r * step) * size;
+            for (let c = 0; c < geoW; c++) {
+                const h = cache.data[row + startCol + c * step];
+                heights[r * geoW + c] = h;
+                if (h < minH) minH = h;
+                if (h > maxH) maxH = h;
+            }
+        }
+    }
+    if (minH > maxH) { minH = 0; maxH = 0; }
+    return { heights, minH, maxH };
+}
+
+// ---- Instanced batches (chunks without a map) ------------------------------
+const instanceBatches = new Map(); // geoW -> batch
+const INSTANCE_CAPACITY = 1024;    // > MAX_ACTIVE_CHUNKS
+let chunksVisible = true;
+
+function getInstanceBatch(geoW) {
+    let batch = instanceBatches.get(geoW);
+    if (batch) return batch;
+
+    const grid = getGridGeometry(geoW);
+    const chunkAttr = new THREE.InstancedBufferAttribute(new Float32Array(INSTANCE_CAPACITY * 4), 4);
+    const layerAttr = new THREE.InstancedBufferAttribute(new Float32Array(INSTANCE_CAPACITY), 1);
+    chunkAttr.setUsage(THREE.DynamicDrawUsage);
+    layerAttr.setUsage(THREE.DynamicDrawUsage);
+    // Its own geometry object (the instance attributes are per batch) on the
+    // grid's shared index / position / uv buffers
+    const geometry = new THREE.BufferGeometry();
+    geometry.setIndex(grid.index);
+    geometry.setAttribute('position', grid.attributes.position);
+    geometry.setAttribute('uv', grid.attributes.uv);
+    geometry.setAttribute('aChunk', chunkAttr);
+    geometry.setAttribute('aLayer', layerAttr);
+    geometry.boundingSphere = grid.boundingSphere;
+
+    const material = createTerrainMaterial();
+    material.userData.terrain.uHeights.value = getHeightStore(geoW).texture;
+    material.userData.terrain.uGridMax.value = geoW - 1;
+
+    const mesh = new THREE.InstancedMesh(geometry, material, INSTANCE_CAPACITY);
+    // Vertices come out of the shader in world space: identity instance matrices
+    const m = mesh.instanceMatrix.array;
+    for (let i = 0; i < INSTANCE_CAPACITY; i++) {
+        m[i * 16] = m[i * 16 + 5] = m[i * 16 + 10] = m[i * 16 + 15] = 1;
+    }
+    mesh.frustumCulled = false;   // culled per chunk in updateTerrainInstances()
+    mesh.matrixAutoUpdate = false;
+    mesh.count = 0;
+    mesh.visible = false;
+    if (sceneRef) sceneRef.add(mesh);
+
+    batch = { mesh, chunkAttr, layerAttr, count: 0 };
+    instanceBatches.set(geoW, batch);
+    return batch;
+}
+
+const _frustum = new THREE.Frustum();
+const _projScreenMatrix = new THREE.Matrix4();
+const _planes = new Float64Array(24);   // 6 x (nx, ny, nz, constant)
+
+// Resident chunks as an array for the per-frame pass: iterating activeChunks
+// with for...in (an object whose keys come and go) cost several times more.
+const chunkList = [];
+
+function listChunk(mesh) {
+    mesh.userData.listIndex = chunkList.length;
+    chunkList.push(mesh);
+}
+
+function unlistChunk(mesh) {
+    const i = mesh.userData.listIndex;
+    if (i === undefined || chunkList[i] !== mesh) return;
+    const last = chunkList.pop();
+    if (last !== mesh) {
+        chunkList[i] = last;
+        last.userData.listIndex = i;
+    }
+    mesh.userData.listIndex = undefined;
+}
+
+/**
+ * Per-frame terrain culling, called right before rendering: chunks with a map
+ * get their mesh shown or hidden, chunks without one are packed into their
+ * grid's instanced batch.
+ * @param {THREE.Camera} camera
+ */
+export function updateTerrainInstances(camera) {
+    if (!camera) return;
+    camera.updateMatrixWorld();
+    _projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    _frustum.setFromProjectionMatrix(_projScreenMatrix);
+    for (let p = 0; p < 6; p++) {
+        const plane = _frustum.planes[p];
+        _planes[p * 4] = plane.normal.x;
+        _planes[p * 4 + 1] = plane.normal.y;
+        _planes[p * 4 + 2] = plane.normal.z;
+        _planes[p * 4 + 3] = plane.constant;
+    }
+
+    for (const batch of instanceBatches.values()) batch.count = 0;
+
+    for (let n = 0; n < chunkList.length; n++) {
+        const mesh = chunkList[n];
+        const ud = mesh.userData;
+        const s = ud.sphere;
+        // Sphere against the six frustum planes (same test as Frustum.intersectsSphere)
+        let visible = chunksVisible;
+        for (let p = 0; visible && p < 24; p += 4) {
+            if (_planes[p] * s.x + _planes[p + 1] * s.y + _planes[p + 2] * s.z + _planes[p + 3] < -s.r) visible = false;
+        }
+
+        if (mesh.material !== untexturedTerrainMaterial) {   // own mesh (has a map)
+            mesh.visible = visible;
+            continue;
+        }
+        if (!visible) continue;
+        const batch = ud.batch;
+        if (batch.count >= INSTANCE_CAPACITY) continue;
+        const i = batch.count++;
+        const c = batch.chunkAttr.array;
+        c[i * 4] = ud.chunkVec[0];
+        c[i * 4 + 1] = ud.chunkVec[1];
+        c[i * 4 + 2] = ud.chunkVec[2];
+        c[i * 4 + 3] = ud.chunkVec[3];
+        batch.layerAttr.array[i] = ud.heightLayer;
+    }
+
+    for (const batch of instanceBatches.values()) {
+        batch.mesh.count = batch.count;
+        batch.mesh.visible = batch.count > 0;
+        if (batch.count === 0) continue;
+        batch.chunkAttr.updateRange.offset = 0;
+        batch.chunkAttr.updateRange.count = batch.count * 4;
+        batch.chunkAttr.needsUpdate = true;
+        batch.layerAttr.updateRange.offset = 0;
+        batch.layerAttr.updateRange.count = batch.count;
+        batch.layerAttr.needsUpdate = true;
+    }
+}
+
+// ---- Wireframe overlay --------------------------------------------------------
+// Triangle grid lines on the chunk under the aircraft while satellite imagery is
+// off. One mesh, re-pointed at whichever chunk is nearest.
+let wireframeChunkKey = null;
+let wireframeMesh = null;
+
+function getWireframeMesh() {
+    if (!wireframeMesh) {
+        // Black diffuse stays black whatever the lights: same look as the basic
+        // wireframe material it replaces, with the terrain vertex shader
+        const material = createTerrainMaterial({
+            color: 0x000000,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.06,
+            depthWrite: false
+        });
+        wireframeMesh = new THREE.Mesh(getGridGeometry(2), material);
+        wireframeMesh.renderOrder = 1;
+        wireframeMesh.frustumCulled = false;
+        wireframeMesh.matrixAutoUpdate = false;
+        wireframeMesh.visible = false;
+        if (sceneRef) sceneRef.add(wireframeMesh);
+    }
+    return wireframeMesh;
 }
 
 /**
@@ -443,10 +934,7 @@ function removeWireframeOverlay(mesh) {
  */
 export function updateWireframeProximity() {
     if (window.satelliteEnabled) {
-        // Remove any lingering wireframe when satellite is on
-        if (wireframeChunkKey && activeChunks[wireframeChunkKey]) {
-            removeWireframeOverlay(activeChunks[wireframeChunkKey]);
-        }
+        if (wireframeMesh) wireframeMesh.visible = false;
         wireframeChunkKey = null;
         return;
     }
@@ -456,16 +944,10 @@ export function updateWireframeProximity() {
     let bestDist = Infinity;
 
     for (const key in activeChunks) {
-        const mesh = activeChunks[key];
-        if (!mesh || !mesh.userData) continue;
-        const ud = mesh.userData;
-        if (ud.textureLoaded) continue; // satellite chunk, no wireframe needed
-
-        const centerLat = (ud.chunkLatTop + ud.chunkLatBottom) / 2;
-        const centerLon = (ud.chunkLonLeft + ud.chunkLonRight) / 2;
-        const cw = latLonToMeters(centerLat, centerLon);
-        const dx = cw.x - playerPos.x;
-        const dz = cw.z - playerPos.z;
+        const ud = activeChunks[key].userData;
+        if (ud.textureLoaded || !ud.sphere) continue; // satellite chunk, no wireframe needed
+        const dx = ud.sphere.x - playerPos.x;
+        const dz = ud.sphere.z - playerPos.z;
         const dist = dx * dx + dz * dz; // no sqrt needed for comparison
         if (dist < bestDist) {
             bestDist = dist;
@@ -473,19 +955,17 @@ export function updateWireframeProximity() {
         }
     }
 
-    // Nothing changed
-    if (bestKey === wireframeChunkKey) return;
-
-    // Remove old wireframe
-    if (wireframeChunkKey && activeChunks[wireframeChunkKey]) {
-        removeWireframeOverlay(activeChunks[wireframeChunkKey]);
-    }
-
-    // Add wireframe to closest chunk
     wireframeChunkKey = bestKey;
-    if (bestKey && activeChunks[bestKey]) {
-        addWireframeOverlay(activeChunks[bestKey]);
+    const wire = getWireframeMesh();
+    if (!bestKey) {
+        wire.visible = false;
+        return;
     }
+    // Re-pointed every frame: cheap, and follows LOD rebuilds of that chunk
+    const ud = activeChunks[bestKey].userData;
+    wire.geometry = getGridGeometry(ud.geoW);
+    syncChunkUniforms(wire.material, ud);
+    wire.visible = true;
 }
 
 /**
@@ -497,7 +977,6 @@ export function updateWireframeProximity() {
 export function initTerrain(scene, renderer, sunDirection) {
     sceneRef = scene;
     rendererRef = renderer;
-    currentSunDirectionRef = sunDirection;
 
     // Clamp the texture cap to the GPU's real limit so we never allocate a
     // canvas larger than the hardware can upload as a texture.
@@ -505,11 +984,13 @@ export function initTerrain(scene, renderer, sunDirection) {
     if (gpuMaxTexture > 0) {
         MAX_CANVAS_DIM = Math.min(MAX_CANVAS_DIM, gpuMaxTexture);
     }
-    cachedSunDir = new THREE.Vector3(0, 1, 0);
+    // The scene mutates this vector in place as the sun moves, so the terrain
+    // shader follows the sun without any per-chunk work.
+    if (sunDirection) terrainShadingUniforms.uSunDir.value = sunDirection;
+    renderer.domElement.addEventListener('webglcontextrestored', restoreHeightStores);
 
     initTerrainWorker();
     initTileWorker();
-    initHillshadeWorker();
     initTextureCullWorker();
     initCompressWorkers();
 
@@ -539,32 +1020,20 @@ function initTerrainWorker() {
                 workerInflight = Math.max(0, workerInflight - 1);
                 markChunkActivity();
 
-                // LOD rebuild: swap the old mesh only now that the new one is
-                // ready, so the chunk never disappears for a few frames.
-                if (item.lodRebuild && activeChunks[data.chunkKey]) {
-                    const oldMesh = activeChunks[data.chunkKey];
-                    // Hand the satellite texture over to the rebuilt mesh —
-                    // same geographic area and UV layout, so it's still valid.
-                    // Re-compositing it from tiles made the chunk visibly
-                    // "reload" (texture → green → texture) on every LOD change.
-                    if (oldMesh.material && oldMesh.material.map &&
-                        oldMesh.userData && oldMesh.userData.textureLoaded) {
-                        item.inheritedMap = oldMesh.material.map;
-                        item.inheritedZoom = oldMesh.userData.textureZoom;
-                        item.inheritedBand = oldMesh.userData.textureBand;
-                        oldMesh.material.map = null; // detach so dispose doesn't kill it
+                const existing = activeChunks[data.chunkKey];
+                if (item.lodRebuild) {
+                    // LOD rebuild: the chunk keeps its mesh and its satellite
+                    // texture (same area, same UV layout); only its elevation
+                    // layer and grid change.
+                    if (existing) {
+                        setChunkHeights(existing, item, data.step, data.heights, data.minH, data.maxH);
+                        existing.userData.lodRebuildQueued = false;
                     }
-                    disposeChunk(data.chunkKey, oldMesh);
+                    return;
                 }
-
-                if (!activeChunks[data.chunkKey] && isChunkInRange(item)) {
-                    createSingleChunkFromBuffers(item, data.positions, data.uvs, data.colors, data.normals);
-                }
-                // Rebuilt mesh never got created (chunk left range between
-                // dispose and rebuild) — don't orphan the detached texture.
-                if (item.inheritedMap) {
-                    try { item.inheritedMap.dispose(); texturesDisposed++; } catch (e) {}
-                    item.inheritedMap = null;
+                if (!existing && isChunkInRange(item)) {
+                    addChunkMesh(item, data.step, data.heights, data.minH, data.maxH);
+                    console.debug(`[terrain] Chunk created from worker: ${data.chunkKey} (total=${Object.keys(activeChunks).length})`);
                 }
                 return;
             }
@@ -575,6 +1044,11 @@ function initTerrainWorker() {
                 workerPending.delete(data.chunkKey);
                 workerInflight = Math.max(0, workerInflight - 1);
                 markChunkActivity();
+                if (item.lodRebuild) {
+                    // Keep the current grid; a later pass may retry
+                    if (activeChunks[data.chunkKey]) activeChunks[data.chunkKey].userData.lodRebuildQueued = false;
+                    return;
+                }
                 if (!activeChunks[data.chunkKey] && isChunkInRange(item)) {
                     createSingleChunk(item);
                 }
@@ -650,63 +1124,6 @@ function initTileWorker() {
     } catch (err) {
         tileWorkerAvailable = false;
         tileWorker = null;
-    }
-}
-
-function initHillshadeWorker() {
-    if (!USE_HILLSHADE_WORKER || typeof Worker === 'undefined') return;
-
-    try {
-        hillshadeWorker = new Worker(new URL('./HillshadeWorker.js', import.meta.url), { type: 'module' });
-        hillshadeWorkerAvailable = true;
-
-        hillshadeWorker.onmessage = (e) => {
-            const data = e.data || {};
-            if (data.type !== 'hillshadeComputed') return;
-
-            const mesh = hillshadePending.get(data.meshId);
-            if (!mesh) return;
-            // Stale response: a newer request for this mesh is in flight —
-            // keep the pending entry (it belongs to the newer request) and
-            // drop this result, otherwise old colors overwrite fresh ones
-            // and the fresh response gets discarded.
-            if (data.seq !== undefined && mesh.userData &&
-                mesh.userData.hillshadeSeq !== data.seq) return;
-            hillshadePending.delete(data.meshId);
-            if (!mesh.geometry || !mesh.geometry.attributes || !mesh.geometry.attributes.color) return;
-
-            const colorAttr = mesh.geometry.attributes.color;
-            if (data.colors && data.colors.length === colorAttr.count * 3) {
-                const hasTexture = mesh.userData && mesh.userData.textureLoaded;
-                if (hasTexture) {
-                    // Textured chunk: grayscale intensity lets the texture show through
-                    colorAttr.array.set(data.colors);
-                } else {
-                    // Un-textured chunk: tint the shading with the height-based
-                    // terrain color so it stays green instead of showing white
-                    // before the satellite texture loads.
-                    const posAttr = mesh.geometry.attributes.position;
-                    const arr = colorAttr.array;
-                    for (let i = 0; i < colorAttr.count; i++) {
-                        const intensity = data.colors[i * 3];
-                        const c = getHeightColor(posAttr.getY(i));
-                        arr[i * 3]     = c.r * intensity;
-                        arr[i * 3 + 1] = c.g * intensity;
-                        arr[i * 3 + 2] = c.b * intensity;
-                    }
-                }
-                colorAttr.needsUpdate = true;
-            }
-        };
-
-        hillshadeWorker.onerror = () => {
-            hillshadeWorkerAvailable = false;
-            hillshadeWorker = null;
-            hillshadePending.clear();
-        };
-    } catch (err) {
-        hillshadeWorkerAvailable = false;
-        hillshadeWorker = null;
     }
 }
 
@@ -786,6 +1203,12 @@ function initCompressWorkers() {
 
 /**
  * Hand a finished chunk canvas to a compression worker.
+ *
+ * The canvas is a CPU-backed OffscreenCanvas (see createChunkTexture), so
+ * transferToImageBitmap() hands its pixels over without a copy and the worker
+ * reads them back itself. getImageData() here used to do that readback on the
+ * main thread — from a GPU-backed canvas, a synchronous GPU→CPU copy of up to
+ * 64 MB per chunk.
  * @returns {boolean} false if the caller should fall back to an RGBA texture
  */
 function requestCompressedTexture(mesh, canvas) {
@@ -793,23 +1216,24 @@ function requestCompressedTexture(mesh, canvas) {
     // Below one block per axis there is nothing to gain and the padding would
     // dominate; those textures are negligible anyway.
     if (canvas.width < 8 || canvas.height < 8) return false;
+    // A DOM canvas (built while compression was unavailable) takes the RGBA path
+    if (typeof canvas.transferToImageBitmap !== 'function') return false;
 
-    let imageData;
+    const width = canvas.width, height = canvas.height;
+    let bitmap;
     try {
-        imageData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+        bitmap = canvas.transferToImageBitmap();
     } catch (e) {
         return false;
     }
+    // Unlike a CanvasTexture, a compressed texture owns its pixels: the staging
+    // canvas is done.
+    releaseCanvas(canvas);
 
     const id = ++compressSeq;
-    compressPending.set(id, { mesh, canvas });
+    compressPending.set(id, { mesh });
     const worker = compressWorkers[compressRoundRobin++ % compressWorkers.length];
-    worker.postMessage({
-        id,
-        rgba: imageData.data.buffer,
-        width: canvas.width,
-        height: canvas.height
-    }, [imageData.data.buffer]);
+    worker.postMessage({ id, bitmap, width, height }, [bitmap]);
     return true;
 }
 
@@ -818,12 +1242,8 @@ function onCompressedTexture(msg) {
     if (!pending) return;
     compressPending.delete(msg.id);
 
-    const { mesh, canvas } = pending;
+    const { mesh } = pending;
     const width = msg.width, height = msg.height;
-
-    // The canvas has served its purpose: unlike a CanvasTexture, a compressed
-    // texture owns its pixels, so the backing canvas can be released immediately.
-    releaseCanvas(canvas);
 
     if (!msg.ok || !mesh || (mesh.userData && mesh.userData.disposed) || !window.satelliteEnabled) {
         if (!msg.ok) console.warn('[terrain] Texture compression failed:', msg.error);
@@ -1342,10 +1762,15 @@ function processChunkQueue() {
                 if (!isChunkInRange(item)) {
                     continue;
                 }
-                if (item.lodRebuild && activeChunks[item.chunkKey]) {
-                    disposeChunk(item.chunkKey, activeChunks[item.chunkKey]);
+                const existing = activeChunks[item.chunkKey];
+                if (item.lodRebuild && existing) {
+                    const step = sanitizeLodStep(item.lodStep || 1, item.vertsPerChunk);
+                    const { heights, minH, maxH } = sampleChunkHeights(item, step);
+                    setChunkHeights(existing, item, step, heights, minH, maxH);
+                    existing.userData.lodRebuildQueued = false;
+                } else {
+                    createSingleChunk(item);
                 }
-                createSingleChunk(item);
             }
         }
     }
@@ -1358,178 +1783,41 @@ function processChunkQueue() {
  * @param {Object} item - Chunk creation parameters
  */
 function createSingleChunk(item) {
-    const { cx, cy, chunkKey, latBase, lonBase, size, vertsPerChunk, dataView, hgtKey } = item;
-    const chunksPerAxis = CHUNKS_PER_TILE_AXIS;
-    const step = sanitizeLodStep(item.lodStep || 1, vertsPerChunk);
-
-    const chunkLatTop = latBase + 1 - (cy / chunksPerAxis);
-    const chunkLatBottom = latBase + 1 - ((cy + 1) / chunksPerAxis);
-    const chunkLonLeft = lonBase + (cx / chunksPerAxis);
-    const chunkLonRight = lonBase + ((cx + 1) / chunksPerAxis);
-
-    const geoW = vertsPerChunk / step + 1;
-    const geometry = new THREE.PlaneGeometry(1, 1, geoW - 1, geoW - 1);
-    const posAttr = geometry.attributes.position;
-    const uvAttr = new THREE.BufferAttribute(new Float32Array(posAttr.count * 2), 2);
-    const colAttr = new THREE.BufferAttribute(new Float32Array(posAttr.count * 3), 3);
-    geometry.setAttribute('uv', uvAttr);
-    geometry.setAttribute('color', colAttr);
-
-    const startRow = cy * vertsPerChunk;
-    const startCol = cx * vertsPerChunk;
-
-    const hgtCache = !dataView && hgtKey ? hgtElevationData[hgtKey] : null;
-    for (let r = 0; r < geoW; r++) {
-        for (let c = 0; c < geoW; c++) {
-            const hgtRow = Math.min(startRow + r * step, size - 1);
-            const hgtCol = Math.min(startCol + c * step, size - 1);
-            const height = dataView
-                ? dataView.getInt16((hgtRow * size + hgtCol) * 2, false)
-                : (hgtCache ? hgtCache.data[hgtRow * size + hgtCol] : 0);
-            const nLat = 1.0 - (hgtRow / (size - 1));
-            const nLon = hgtCol / (size - 1);
-            const vertLat = latBase + nLat;
-            const vertLon = lonBase + nLon;
-            const wPos = latLonToMeters(vertLat, vertLon);
-            const vertIdx = r * geoW + c;
-
-            posAttr.setXYZ(vertIdx, wPos.x, height, wPos.z);
-
-            const u = c / (geoW - 1);
-            const v = 1 - (r / (geoW - 1));
-            uvAttr.setXY(vertIdx, u, v);
-
-            const col = getHeightColor(height);
-            colAttr.setXYZ(vertIdx, col.r, col.g, col.b);
-        }
-    }
-
-    geometry.computeVertexNormals();
-    // The PlaneGeometry was created as 1×1 but the vertices were just rewritten
-    // to world coordinates. Three.js keeps the original tiny bounding sphere
-    // unless we recompute it; otherwise manual frustum culling in main.js sees
-    // the chunk as outside the frustum and hides it, leaving holes in the terrain.
-    geometry.computeBoundingSphere();
-    geometry.computeBoundingBox();
-
-    const material = new THREE.MeshLambertMaterial({
-        vertexColors: true,
-        side: THREE.FrontSide  // heightfield seen from above: backface culling halves rasterization
-    });
-
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.castShadow = false;  // terrain doesn't need to cast shadows (saves shadow-map draw calls)
-    mesh.receiveShadow = true;
-    mesh.userData = {
-        chunkLatTop, chunkLatBottom, chunkLonLeft, chunkLonRight,
-        lodStep: step,
-        vertsPerChunk,
-        textureLoaded: false,
-        boundsValid: false
-    };
-
-    sceneRef.add(mesh);
-    activeChunks[chunkKey] = mesh;
-    chunksCreated++;
-    markChunkActivity();
-    console.debug(`[terrain] Chunk created: ${chunkKey} (total=${Object.keys(activeChunks).length})`);
-
-    applyInheritedTexture(item, mesh);
-    applyHillshadeToMesh(mesh);
-    requeueTextureAfterLodRebuild(item, mesh);
-
+    const step = sanitizeLodStep(item.lodStep || 1, item.vertsPerChunk);
+    const { heights, minH, maxH } = sampleChunkHeights(item, step);
     // NON caricare satellite qui - verrà fatto da refreshNearbyChunkTextures
     // dopo che il terreno base è completamente caricato
+    const mesh = addChunkMesh(item, step, heights, minH, maxH);
+    console.debug(`[terrain] Chunk created: ${item.chunkKey} (total=${Object.keys(activeChunks).length})`);
+    return mesh;
 }
 
 /**
- * Attach the satellite texture inherited from the pre-LOD-rebuild mesh (see
- * the terrain worker chunkReady handler). Vertex colors are flattened to a
- * neutral light map right away — the height-tinted greens they start with
- * would tint the satellite texture until the async hillshade result lands.
+ * Register a chunk. It is drawn through its grid's instanced batch until it
+ * gets a satellite map (setChunkMap), so it only joins the scene then.
  */
-function applyInheritedTexture(item, mesh) {
-    if (!item.inheritedMap) return;
-    mesh.material.map = item.inheritedMap;
-    mesh.material.needsUpdate = true;
-    mesh.userData.textureLoaded = true;
-    mesh.userData.textureZoom = item.inheritedZoom || 0;
-    mesh.userData.textureBand = item.inheritedBand ?? BASE_BAND;
-    item.inheritedMap = null;
-
-    const colorAttr = mesh.geometry.attributes.color;
-    if (colorAttr) {
-        const neutral = (window.sunlightEnabled !== false) ? 0.85 : mapBrightness;
-        colorAttr.array.fill(neutral);
-        colorAttr.needsUpdate = true;
-    }
-}
-
-/**
- * After a LOD rebuild, the fresh mesh lost its satellite texture — re-enqueue
- * it right away instead of waiting for the next movement-based refresh.
- * (No-op when the texture was inherited: textureLoaded is already true.)
- */
-function requeueTextureAfterLodRebuild(item, mesh) {
-    if (!item.lodRebuild || !initialTexturesLoaded || !window.satelliteEnabled) return;
-    const dist = getChunkDistanceToPlayer(item);
-    if (dist <= SATELLITE_RADIUS) {
-        enqueueChunkTexture(mesh, mesh.userData, dist);
-    }
-}
-
-function createSingleChunkFromBuffers(item, positions, uvs, colors, normals) {
+function addChunkMesh(item, step, heights, minH, maxH) {
     const { cx, cy, chunkKey, latBase, lonBase, vertsPerChunk } = item;
     const chunksPerAxis = CHUNKS_PER_TILE_AXIS;
-    const step = sanitizeLodStep(item.lodStep || 1, vertsPerChunk);
 
-    const chunkLatTop = latBase + 1 - (cy / chunksPerAxis);
-    const chunkLatBottom = latBase + 1 - ((cy + 1) / chunksPerAxis);
-    const chunkLonLeft = lonBase + (cx / chunksPerAxis);
-    const chunkLonRight = lonBase + ((cx + 1) / chunksPerAxis);
-
-    const geoW = vertsPerChunk / step + 1;
-    const geometry = new THREE.PlaneGeometry(1, 1, geoW - 1, geoW - 1);
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    if (normals && normals.length === positions.length) {
-        // Normals computed in the worker — avoids a 10-30ms main-thread stall per chunk
-        geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
-    } else {
-        geometry.computeVertexNormals();
-    }
-    // Recompute bounds after replacing the 1×1 PlaneGeometry vertices with real world
-    // positions; otherwise the inherited tiny bounding sphere makes the chunk get
-    // culled as soon as the aircraft moves away from the world origin.
-    geometry.computeBoundingSphere();
-    geometry.computeBoundingBox();
-
-    const material = new THREE.MeshLambertMaterial({
-        vertexColors: true,
-        side: THREE.FrontSide  // heightfield seen from above: backface culling halves rasterization
-    });
-
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.castShadow = false;  // terrain doesn't need to cast shadows (saves shadow-map draw calls)
-    mesh.receiveShadow = true;
+    const mesh = new THREE.Mesh(getGridGeometry(vertsPerChunk / step + 1), untexturedTerrainMaterial);
+    mesh.frustumCulled = false;     // culled per chunk in updateTerrainInstances()
+    mesh.matrixAutoUpdate = false;  // vertices come out of the shader in world space
     mesh.userData = {
-        chunkLatTop, chunkLatBottom, chunkLonLeft, chunkLonRight,
-        lodStep: step,
+        chunkLatTop: latBase + 1 - (cy / chunksPerAxis),
+        chunkLatBottom: latBase + 1 - ((cy + 1) / chunksPerAxis),
+        chunkLonLeft: lonBase + (cx / chunksPerAxis),
+        chunkLonRight: lonBase + ((cx + 1) / chunksPerAxis),
         vertsPerChunk,
-        textureLoaded: false,
-        boundsValid: false
+        textureLoaded: false
     };
+    setChunkHeights(mesh, item, step, heights, minH, maxH);
 
-    sceneRef.add(mesh);
     activeChunks[chunkKey] = mesh;
+    listChunk(mesh);
     chunksCreated++;
     markChunkActivity();
-    console.debug(`[terrain] Chunk created from worker: ${chunkKey} (total=${Object.keys(activeChunks).length})`);
-
-    applyInheritedTexture(item, mesh);
-    applyHillshadeToMesh(mesh);
-    requeueTextureAfterLodRebuild(item, mesh);
+    return mesh;
 }
 
 /**
@@ -1605,10 +1893,16 @@ function createChunkTexture(mesh, latTop, latBottom, lonLeft, lonRight) {
     const cropW = Math.max(1, Math.floor((uMax - uMin) * mosaicWidth));
     const cropH = Math.max(1, Math.floor((vMax - vMin) * mosaicHeight));
 
-    const canvas = document.createElement('canvas');
+    // With BC1 compression the canvas is only a staging buffer for the worker:
+    // an OffscreenCanvas with willReadFrequently stays in CPU memory, so the tiles
+    // (CPU ImageBitmaps) are blitted without a GPU round trip and the result can be
+    // transferred to the worker as-is. The RGBA fallback uploads the canvas itself
+    // as a texture, so it keeps a regular (GPU) canvas.
+    const staging = compressAvailable && typeof OffscreenCanvas !== 'undefined';
+    const canvas = staging ? new OffscreenCanvas(cropW, cropH) : document.createElement('canvas');
     canvas.width = cropW;
     canvas.height = cropH;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', staging ? { willReadFrequently: true } : undefined);
     // Fill with a neutral fallback so failed/missing satellite tiles show a solid
     // patch instead of black holes in the texture.
     ctx.fillStyle = '#808080';
@@ -2021,32 +2315,8 @@ function applyCompositeTexture(mesh, canvas) {
  */
 function attachTextureToMesh(mesh, texture) {
     if (mesh && mesh.material) {
-        // First texture on a green (height-tinted) chunk: flatten the vertex
-        // colors to a neutral light map right away, otherwise the satellite
-        // imagery shows green-tinted until the async hillshade result lands.
-        // On re-texture (LOD swap) the colors are already a valid light map.
-        if (!mesh.userData.textureLoaded && mesh.geometry &&
-            mesh.geometry.attributes && mesh.geometry.attributes.color) {
-            const colorAttr = mesh.geometry.attributes.color;
-            const neutral = (window.sunlightEnabled !== false) ? 0.85 : mapBrightness;
-            colorAttr.array.fill(neutral);
-            colorAttr.needsUpdate = true;
-        }
-
-        const prevMaterial = mesh.material;
-        if (prevMaterial.map) {
-            try { prevMaterial.map.dispose(); texturesDisposed++; } catch (e) {}
-            prevMaterial.map = null;
-        }
-        // Reuse material, just update the texture map (avoid allocation + GPU rebind)
-        prevMaterial.map = texture;
-        prevMaterial.needsUpdate = true;
-        mesh.castShadow = false;
-        mesh.receiveShadow = true;
+        setChunkMap(mesh, texture);
         mesh.userData.textureLoaded = true;
-
-        // Apply hillshading
-        applyHillshadeToMesh(mesh);
     }
 }
 
@@ -2075,27 +2345,17 @@ function unloadChunkTexture(mesh) {
 
     abortChunkJob(mesh);
 
-    const hadTexture = !!mesh.material.map;
     if (mesh.material.map) {
-        // The texture's backing canvas is released along with it
-        if (mesh.material.map.image) canvasesReleased++;
-        try { mesh.material.map.dispose(); texturesDisposed++; } catch (e) {}
-        mesh.material.map = null;
-        mesh.material.needsUpdate = true;
+        // A CanvasTexture's backing canvas is released along with it (a
+        // compressed texture's staging canvas was released when it was built)
+        if (mesh.material.map.image && !mesh.material.map.isCompressedTexture) canvasesReleased++;
+        setChunkMap(mesh, null);
     }
     if (mesh.userData) {
         mesh.userData.textureLoaded = false;
         mesh.userData.textureQueued = false;
         mesh.userData.textureZoom = 0;
         mesh.userData.textureBand = undefined;
-    }
-
-    // The vertex colors are still the grayscale "light map" computed for the
-    // textured state — without re-shading, the naked chunk renders white
-    // (visible as white far chunks after the texture cull at high altitude).
-    // Re-apply hillshade so it goes back to the green height-tinted look.
-    if (hadTexture && !(mesh.userData && mesh.userData.disposed)) {
-        applyHillshadeToMesh(mesh);
     }
 }
 
@@ -2139,9 +2399,7 @@ function clearPendingTextureOperations() {
  * @param {boolean} enabled
  */
 export function setTerrainChunksVisible(visible) {
-    for (const key in activeChunks) {
-        if (activeChunks[key]) activeChunks[key].visible = visible;
-    }
+    chunksVisible = !!visible;
 }
 
 export function setTerrainSatelliteEnabled(enabled) {
@@ -2150,23 +2408,17 @@ export function setTerrainSatelliteEnabled(enabled) {
 
     console.log(`[terrain] Satellite ${on ? 'ENABLED' : 'DISABLED'} — activeChunks=${Object.keys(activeChunks).length}, queue=${chunkCreationQueue.length}, workerPending=${workerPending.size}`);
 
-    for (const key in activeChunks) {
-        const mesh = activeChunks[key];
-        if (!mesh || !mesh.material) continue;
-
-        if (!on) {
-            unloadChunkTexture(mesh);
-            continue;
-        }
-
-        // Enabling: schedule satellite textures (wireframe managed by updateWireframeProximity)
-        const ud = mesh.userData || {};
-        if (!ud.textureLoaded && ud.chunkLatTop != null) {
-            createChunkTexture(mesh, ud.chunkLatTop, ud.chunkLatBottom, ud.chunkLonLeft, ud.chunkLonRight);
-        }
-    }
-
+    // Enabling needs no per-chunk pass: refreshNearbyChunkTextures() below
+    // queues the chunks inside SATELLITE_RADIUS, nearest first. Texturing every
+    // resident chunk here (as this loop used to) built ~400 textures for chunks
+    // beyond the radius — tile loads, compositing and BC1 compression — only for
+    // the texture cull to throw them away, every time the satellite came back on
+    // (including on leaving the FPV AR mode).
     if (!on) {
+        for (const key in activeChunks) {
+            const mesh = activeChunks[key];
+            if (mesh && mesh.material) unloadChunkTexture(mesh);
+        }
         clearPendingTextureOperations();
         try { imageLRU.clear(); } catch (e) {}
         tileLoadQueue.length = 0;
@@ -2180,61 +2432,6 @@ export function setTerrainSatelliteEnabled(enabled) {
     resetTextureRefreshPosition();
     updateTerrainChunks();
     refreshNearbyChunkTextures();
-}
-
-/**
- * Apply hillshade to a single mesh
- */
-function applyHillshadeToMesh(mesh) {
-    const geometry = mesh.geometry;
-    const posAttr = geometry.attributes.position;
-    const normalAttr = geometry.attributes.normal;
-    const colorAttr = geometry.attributes.color;
-
-    if (!posAttr || !normalAttr || !colorAttr) return;
-
-    const sunlightEnabled = window.sunlightEnabled !== false;
-    const sunDir = currentSunDirectionRef || new THREE.Vector3(0, 1, 0);
-
-    if (hillshadeWorkerAvailable && hillshadeWorker) {
-        const normalsCopy = new Float32Array(normalAttr.array);
-        // Monotonic per-mesh sequence: lets the response handler drop stale
-        // results when a newer request superseded this one (e.g. texture
-        // applied/unloaded while the previous compute was in flight).
-        const seq = (mesh.userData.hillshadeSeq = (mesh.userData.hillshadeSeq || 0) + 1);
-        hillshadePending.set(mesh.uuid, mesh);
-        hillshadeWorker.postMessage({
-            type: 'computeHillshade',
-            meshId: mesh.uuid,
-            seq,
-            normals: normalsCopy,
-            sunDir: { x: sunDir.x, y: sunDir.y, z: sunDir.z },
-            sunlightEnabled,
-            brightness: mapBrightness
-        }, [normalsCopy.buffer]);
-        return;
-    }
-
-    const hasTexture = mesh.userData && mesh.userData.textureLoaded;
-    const normal = new THREE.Vector3();
-    for (let i = 0; i < posAttr.count; i++) {
-        normal.set(normalAttr.getX(i), normalAttr.getY(i), normalAttr.getZ(i));
-        let intensity = normal.dot(sunDir);
-        if (sunlightEnabled) {
-            intensity = Math.max(0, intensity);
-            intensity = 0.45 + intensity * 1.05;
-        } else {
-            intensity = mapBrightness;
-        }
-        if (hasTexture) {
-            colorAttr.setXYZ(i, intensity, intensity, intensity);
-        } else {
-            // Un-textured chunk: keep the standard green terrain color
-            const c = getHeightColor(posAttr.getY(i));
-            colorAttr.setXYZ(i, c.r * intensity, c.g * intensity, c.b * intensity);
-        }
-    }
-    colorAttr.needsUpdate = true;
 }
 
 /**
@@ -2411,7 +2608,6 @@ function disposeChunk(key, mesh) {
     if (!mesh) return;
 
     if (mesh.userData) mesh.userData.disposed = true;
-    hillshadePending.delete(mesh.uuid);
 
     // Release any pending texture work and map
     unloadChunkTexture(mesh);
@@ -2449,133 +2645,42 @@ function disposeChunk(key, mesh) {
         }
     }
 
-    // Remove wireframe overlay (geometry & material are shared — don't dispose them)
-    if (mesh.userData._wireframe) {
-        mesh.remove(mesh.userData._wireframe);
-        mesh.userData._wireframe = null;
-    }
     if (wireframeChunkKey === key) wireframeChunkKey = null;
 
-    if (mesh.material) {
+    // unloadChunkTexture() above already put the chunk back on the shared
+    // material slot; this only catches a material left without its map
+    if (mesh.material && mesh.material !== untexturedTerrainMaterial) {
         if (mesh.material.map) {
             try { mesh.material.map.dispose(); texturesDisposed++; } catch (e) {}
         }
         try { mesh.material.dispose(); } catch (e) {}
     }
-    if (mesh.geometry) {
-        try { mesh.geometry.dispose(); } catch (e) {}
-    }
-    if (sceneRef) {
-        sceneRef.remove(mesh);
-    }
+    // The grid geometry is shared; the chunk's own data is its elevation layer
+    freeHeightLayer(mesh.userData.heightStore, mesh.userData.heightLayer);
+    mesh.userData.heightStore = null;
+    if (mesh.parent) mesh.parent.remove(mesh);
     delete activeChunks[key];
+    unlistChunk(mesh);
     chunksDisposed++;
 }
 
 /**
- * Update terrain hillshading
- * @param {boolean} forceUpdate - Force full update
+ * Push the sunlight switch to the terrain shader. The sun direction needs no
+ * call: the shader reads the scene's sun vector directly (see initTerrain).
  */
-export function updateTerrainHillshading(forceUpdate = false) {
-    if (!activeChunks) return;
-
-    if (currentSunDirectionRef) {
-        cachedSunDir.copy(currentSunDirectionRef);
-    } else {
-        cachedSunDir.set(0, 1, 0);
-    }
-
-    if (!forceUpdate && !hillshadeNeedsFullUpdate) {
-        const dx = cachedSunDir.x - lastSunDirX;
-        const dy = cachedSunDir.y - lastSunDirY;
-        const dz = cachedSunDir.z - lastSunDirZ;
-        if (dx * dx + dy * dy + dz * dz < 0.0001) return;
-    }
-
-    lastSunDirX = cachedSunDir.x;
-    lastSunDirY = cachedSunDir.y;
-    lastSunDirZ = cachedSunDir.z;
-    hillshadeNeedsFullUpdate = false;
-
-    if (hillshadeUpdatePending) return;
-    hillshadeUpdatePending = true;
-
-    requestAnimationFrame(() => {
-        hillshadeUpdatePending = false;
-        performHillshadeUpdate();
-    });
+export function updateTerrainHillshading() {
+    terrainShadingUniforms.uSunlightOn.value = window.sunlightEnabled !== false ? 1 : 0;
 }
 
 /**
- * Perform the actual hillshade update.
- * Instead of recomputing every vertex of every chunk synchronously (a single
- * multi-hundred-ms main-thread stall when the sun moves), chunks are queued
- * and dispatched a few per frame to the HillshadeWorker via
- * applyHillshadeToMesh(). A new sun update simply refills the queue.
+ * Terrain brightness while the sunlight is off.
+ * @param {number} value 0.3 .. 1.6
  */
-const hillshadeChunkQueue = [];
-let isProcessingHillshadeQueue = false;
-const MAX_HILLSHADE_CHUNKS_PER_FRAME = 3;
-
-function performHillshadeUpdate() {
-    hillshadeChunkQueue.length = 0;
-    for (const key in activeChunks) {
-        hillshadeChunkQueue.push(key);
-    }
-
-    if (!isProcessingHillshadeQueue && hillshadeChunkQueue.length > 0) {
-        isProcessingHillshadeQueue = true;
-        requestAnimationFrame(processHillshadeQueue);
-    }
-}
-
-function processHillshadeQueue() {
-    const sunlightEnabled = window.sunlightEnabled !== false;
-    let processed = 0;
-
-    while (hillshadeChunkQueue.length > 0 && processed < MAX_HILLSHADE_CHUNKS_PER_FRAME) {
-        const key = hillshadeChunkQueue.shift();
-        const mesh = activeChunks[key];
-        if (!mesh || !mesh.geometry) continue;
-
-        if (sunlightEnabled && mesh.material && mesh.material.color) {
-            mesh.material.color.setRGB(1, 1, 1);
-        }
-        applyHillshadeToMesh(mesh);
-        processed++;
-    }
-
-    if (hillshadeChunkQueue.length > 0) {
-        requestAnimationFrame(processHillshadeQueue);
-    } else {
-        isProcessingHillshadeQueue = false;
-    }
-}
-
-/**
- * Set hillshade needs full update flag
- */
-export function setHillshadeNeedsUpdate() {
-    hillshadeNeedsFullUpdate = true;
-}
-
 export function setMapBrightness(value) {
     const v = Number(value);
     if (!Number.isFinite(v)) return;
     mapBrightness = Math.max(0.3, Math.min(1.6, v));
-    if (window.sunlightEnabled === false) {
-        applyMaterialBrightness(mapBrightness);
-    }
-}
-
-function applyMaterialBrightness(scale) {
-    const s = Math.max(0.1, Math.min(2.0, scale));
-    for (const key in activeChunks) {
-        const mesh = activeChunks[key];
-        if (!mesh || !mesh.material || !mesh.material.color) continue;
-        mesh.material.color.setRGB(s, s, s);
-        mesh.material.needsUpdate = true;
-    }
+    terrainShadingUniforms.uBrightness.value = mapBrightness;
 }
 
 // Getters

@@ -81,7 +81,7 @@
 | Task | Stato | File |
 |------|-------|------|
 | Terreno SRTM con LOD a chunk + 4 Web Worker | [x] | js/terrain/ |
-| Hillshade asincrono + sole per ora del giorno | [x] | js/terrain/HillshadeWorker.js, js/engine/SunPosition.js |
+| Hillshade nello shader del terreno + sole per ora del giorno | [x] | js/terrain/TerrainManager.js, js/engine/SunPosition.js |
 | Overhaul prestazioni rendering (LOD, throttle) | [x] | js/terrain/TerrainManager.js, js/engine/Scene3D.js |
 | Simbologia HUD IFR + nastro traiettoria inclinato | [x] | js/hud/HUDRenderer.js |
 | Marker HUD prospettici conformi + FPV air-relative | [x] | js/hud/HUDRenderer.js |
@@ -104,7 +104,7 @@
 | RTK: base seriale F9P + iniezione GPS_RTCM_DATA | [x] | rtk-manager.js |
 | Client NTRIP con sourcetable | [x] | rtk-manager.js |
 | Telemetry forwarding LTM / MAVLink / mirror UDP | [x] | telforward-manager.js |
-| Camera FPV RTSP via ffmpeg → MJPEG | [x] | fpv-manager.js |
+| Camera FPV RTSP nativo → WebCodecs (fallback VLC → MJPEG) | [x] | fpv-manager.js, rtsp-client.js |
 | Pin rate ATTITUDE/VFR_HUD via SET_MESSAGE_INTERVAL | [x] | js/mavlink/CommandSender.js |
 | Traffico ADS-B (OpenSky) | [x] | js/adsb/ADSBManager.js |
 
@@ -193,7 +193,7 @@ Motivazione: su link ad alta latenza e basso datarate (SiK 19200, LoRa) un
 | log-replay-manager.js | Main Process | Motore di replay .tlog/.bin |
 | log-replay-bin-parser.js | Main Process | Parser DataFlash .bin |
 | rtk-manager.js | Main Process | RTCM3 + NTRIP |
-| fpv-manager.js | Main Process | ffmpeg RTSP → MJPEG |
+| fpv-manager.js | Main Process | RTSP nativo → WebCodecs, fallback VLC → MJPEG |
 | telforward-manager.js | Main Process | LTM / MAVLink / mirror UDP |
 | sitl-manager.js | Main Process | Launcher SITL ArduPilot |
 | js/ui/ParamCatalog.js | Renderer | Catalogo nomi parametro + apprendimento |

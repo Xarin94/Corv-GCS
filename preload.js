@@ -200,7 +200,12 @@ contextBridge.exposeInMainWorld('fpv', {
   start: (ip, port, path, options) => ipcRenderer.invoke('fpv-start', ip, port, path, options),
   stop: () => ipcRenderer.invoke('fpv-stop'),
   status: () => ipcRenderer.invoke('fpv-status'),
-  onFrame: (callback) => ipcRenderer.on('fpv-frame', (event, base64) => callback(base64)),
+  // The renderer could not decode the native stream: switch to the VLC MJPEG path
+  fallback: () => ipcRenderer.invoke('fpv-fallback'),
+  onFrame: (callback) => ipcRenderer.on('fpv-frame', (event, jpeg) => callback(jpeg)),
+  // Native path: codec string, then Annex-B access units for WebCodecs
+  onVideoConfig: (callback) => ipcRenderer.on('fpv-video-config', (event, cfg) => callback(cfg)),
+  onVideoChunk: (callback) => ipcRenderer.on('fpv-video-chunk', (event, chunk) => callback(chunk)),
   onError: (callback) => ipcRenderer.on('fpv-error', (event, msg) => callback(msg)),
   onStatus: (callback) => ipcRenderer.on('fpv-status', (event, status) => callback(status))
 });
