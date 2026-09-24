@@ -20,7 +20,9 @@
  *   auth = HMAC-SHA256(key, "CRV2 gcs-auth")  the only value the relay holds
  * AAD is the record header; GCS -> module records also bind the module's
  * current session id, so a command captured in an earlier session is refused.
- * Replay: per session id the counter must strictly increase.
+ * Replay: sliding window of 32 records per session id (as in IPsec), since a
+ * module on UDP can deliver records out of order: each counter is accepted
+ * once, and one more than 32 behind the highest seen is refused.
  *
  * Reference implementation and tests: LTEtelem tools/relay/e2e.py.
  */
@@ -41,6 +43,7 @@ const SID = 8;
 const TAG = 16;
 const MAX_BODY = 1400;
 const MAX_PLAIN = MAX_BODY - SID - 4 - TAG;
+const REPLAY_WINDOW = 32;                   // records a UDP module may deliver out of order
 // MAVLink frames are packed into one record: closed at BATCH_BYTES or
 // BATCH_MS after the first frame, whichever comes first
 const BATCH_BYTES = 800;
@@ -268,7 +271,7 @@ class LteLink extends EventEmitter {
         this.framer = new RecordFramer();
         this.mySid = crypto.randomBytes(SID);   // new session id: the nonce never repeats
         this.myCtr = 0;
-        this.seen = new Map();                  // module session id (hex) -> last counter
+        this.seen = new Map();                  // module session id (hex) -> { top, mask }
         this.airSid = null;
     }
 
@@ -301,13 +304,28 @@ class LteLink extends EventEmitter {
         const sid = nonce.subarray(0, SID);
         const sidHex = sid.toString('hex');
         const ctr = nonce.readUInt32BE(SID);
-        if (ctr <= (this.seen.get(sidHex) || 0)) { this.status.replay++; return null; }
-        this.seen.set(sidHex, ctr);
+        if (!this._acceptCounter(sidHex, ctr)) { this.status.replay++; return null; }
         this.airSid = Buffer.from(sid);         // commands are bound to this session
         this.status.vehicleSession = sidHex;
         this.status.airOnline = true;
         this.status.recordsIn++;
         return plain;
+    }
+
+    /** Anti-replay window: true the first time a counter is seen within the window. */
+    _acceptCounter(sidHex, ctr) {
+        const w = this.seen.get(sidHex) || { top: 0, mask: 0 };
+        if (ctr > w.top) {
+            const shift = ctr - w.top;
+            w.mask = shift < REPLAY_WINDOW ? ((w.mask << shift) | 1) >>> 0 : 1;
+            w.top = ctr;
+        } else {
+            const off = w.top - ctr;
+            if (off >= REPLAY_WINDOW || (w.mask >>> off) & 1) return false;
+            w.mask = (w.mask | (1 << off)) >>> 0;
+        }
+        this.seen.set(sidHex, w);
+        return true;
     }
 
     // ── send ───────────────────────────────────────────────────────────────
