@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.2-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.7.3-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"/>
   <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
   <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
@@ -145,7 +145,7 @@ radio that is the difference between two packets and several minutes.
 ## Installation
 
 Installers are on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
-**Windows** `CORV GCS Setup 1.7.2.exe`. The Linux packages (`.AppImage`, `.deb`) are built on a
+**Windows** `CORV GCS Setup 1.7.3.exe`. The Linux packages (`.AppImage`, `.deb`) are built on a
 Linux host and are not part of this release; `npm run build:linux` produces them there.
 
 To run from source you need [Node.js](https://nodejs.org/) 18 or newer:
