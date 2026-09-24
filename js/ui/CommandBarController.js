@@ -211,6 +211,7 @@ export function initCommandBar() {
         landBtn: document.getElementById('cmd-land'),
         speedInput: document.getElementById('cmd-speed-input'),
         rssi: document.getElementById('cmd-rssi'),
+        signal: document.getElementById('cmd-signal'),
         remRssi: document.getElementById('cmd-remrssi'),
         autoBtn: document.getElementById('cmd-auto'),
         fbwaBtn: document.getElementById('cmd-fbwa'),
@@ -561,8 +562,11 @@ export function updateCommandBar() {
     }
 
     // RSSI — prefer RADIO_STATUS values; fall back to SYS_STATUS linkQuality
+    updateSignalBars();
     if (STATE.rssi !== null) {
-        els.rssi.textContent = STATE.rssi;
+        // The LTE module reports AT+CSQ in the same SiK scale: show it in dBm
+        els.rssi.textContent = STATE.connectionType === 'mavlink-lte'
+            ? `${Math.round(rssiToDbm(STATE.rssi))} dBm` : STATE.rssi;
         if (STATE.remRssi !== null && els.remRssi) {
             els.remRssi.textContent = 'R:' + STATE.remRssi;
             els.remRssi.style.display = '';
@@ -574,6 +578,34 @@ export function updateCommandBar() {
         els.rssi.textContent = lq > 0 ? Math.round(lq) + '%' : '--';
         if (els.remRssi) els.remRssi.style.display = 'none';
     }
+}
+
+// RADIO_STATUS rssi is in SiK units: dBm = rssi / 1.9 - 127 (the LTE module
+// maps its AT+CSQ reading onto the same scale)
+function rssiToDbm(rssi) {
+    return rssi / 1.9 - 127;
+}
+
+// Bar thresholds in dBm: the 3GPP CSQ steps 2 / 6 / 10 / 15 / 20
+const SIGNAL_BARS_DBM = [-109, -101, -93, -83, -73];
+let lastSignal = '';
+
+/** Five signal bars: how many are lit, and green / orange / red by level. */
+function updateSignalBars() {
+    if (!els.signal) return;
+    let bars = -1;                                   // -1 = no reading
+    if (STATE.rssi !== null) {
+        const dbm = Math.round(rssiToDbm(STATE.rssi));  // the scale has ~0.5 dB steps
+        bars = SIGNAL_BARS_DBM.filter(t => dbm >= t).length;
+    } else if (STATE.linkQuality > 0) {
+        bars = Math.min(5, Math.ceil(STATE.linkQuality / 20));
+    }
+    const level = bars < 0 ? '' : bars >= 4 ? 'sig-good' : bars >= 2 ? 'sig-fair' : 'sig-poor';
+    const key = bars + level;
+    if (key === lastSignal) return;
+    lastSignal = key;
+    els.signal.setAttribute('class', `cmd-icon cmd-signal ${level}`.trim());
+    els.signal.querySelectorAll('rect').forEach((r, i) => r.classList.toggle('on', i < bars));
 }
 
 function updateConnectionStatus(state) {

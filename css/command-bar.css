@@ -405,6 +405,18 @@
     background: var(--accent-red);
 }
 
+/* Signal strength: five bars like a phone's; lit bars take the level colour */
+.cmd-signal rect {
+    fill: var(--text-dim);
+    opacity: 0.3;
+    transition: fill 0.3s, opacity 0.3s;
+}
+
+.cmd-signal rect.on { fill: currentColor; opacity: 1; }
+.cmd-signal.sig-good { color: var(--accent-green); }
+.cmd-signal.sig-fair { color: var(--accent-orange); }
+.cmd-signal.sig-poor { color: var(--accent-red); }
+
 /* Speed input inline (next to LAND) */
 .cmd-speed-inline {
     display: flex;
