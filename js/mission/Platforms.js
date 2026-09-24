@@ -43,6 +43,7 @@
 function mspSetupLimits(configurator) {
     return {
         'tel-forward': 'The telemetry mirror forwards MAVLink packets — an MSP link carries none',
+        'lte-link':    'The cellular module relays the MAVLink stream of the flight controller — an MSP link carries none',
         'rtk-gps':     'RTCM corrections are injected as MAVLink GPS_RTCM_DATA — feed the base corrections to the receiver directly',
         calibration:   `Sensor calibration lives in the ${configurator}`,
         'radio-cal':   `RC calibration lives in the ${configurator}`,

@@ -10,6 +10,7 @@ const { initLogReplayHandlers, cleanup: cleanupLogReplay } = require('./log-repl
 const { initMissionStoreHandlers } = require('./mission-store');
 const { initMSPHandlers, cleanup: cleanupMSP } = require('./msp-manager');
 const { initLidarHandlers, cleanup: cleanupLidar, onMavlinkMessage: lidarOnMavlink } = require('./lidar-manager');
+const { initLteKeyHandlers } = require('./lte-link');
 
 // Hide the application menu (will be set when app is ready)
 
@@ -180,6 +181,8 @@ function createWindow() {
 
   // Initialize MAVLink handlers for this window
   initMAVLinkHandlers(win);
+  // Cellular (LTE relay) link: remembered module key, OS-keychain encrypted
+  initLteKeyHandlers();
 
   // Initialize SITL launcher handlers
   initSITLHandlers(win);

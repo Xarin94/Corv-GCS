@@ -423,7 +423,8 @@ export function updateCommandBar() {
         const typeLabel = STATE.linkType || (
             STATE.connectionType === 'corv-binary' ? 'CORV' :
             STATE.connectionType === 'mavlink-udp' ? 'UDP' :
-            STATE.connectionType === 'mavlink-tcp' ? 'TCP' : 'SERIAL');
+            STATE.connectionType === 'mavlink-tcp' ? 'TCP' :
+            STATE.connectionType === 'mavlink-lte' ? 'LTE' : 'SERIAL');
         // Stats arrive at 1 Hz — treat them as stale after 3 s
         const statsFresh = Date.now() - STATE.lastLinkStatsTime < 3000;
         const kbps = statsFresh ? STATE.linkKbps : 0;

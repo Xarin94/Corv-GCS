@@ -483,6 +483,11 @@
                         <span class="nav-btn-desc">Vehicle link &middot; Serial / UDP / TCP</span>
                         <span class="nav-status-dot"></span>
                     </button>
+                    <button class="setup-nav-btn" data-section="lte-link">
+                        <span class="nav-btn-title">CELLULAR LINK</span>
+                        <span class="nav-btn-desc">LTEtelem module &middot; relay &middot; E2E AES-256</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
                     <button class="setup-nav-btn" data-section="tel-forward">
                         <span class="nav-btn-title">TELEMETRY FORWARD</span>
                         <span class="nav-btn-desc">MAVLink mirror &middot; UDP / Serial / LTM</span>
@@ -668,6 +673,63 @@
                         <label>SYSTEM ID</label>
                         <span class="cfg-val" id="setup-sysid">--</span>
                     </div>
+                </div>
+            </div>
+
+            <!-- Sub-tab: Cellular link — LTEtelem module through a CRV2 relay (lte-link.js) -->
+            <div class="sub-tab-content" id="subtab-lte-link">
+                <div class="setup-panel">
+                    <div class="panel-header">CELLULAR MODULE</div>
+                    <div class="cfg-row">
+                        <label>MODULE ID</label>
+                        <input type="text" id="lte-module-id" class="gcs-input" placeholder="CRV-001" autocomplete="off" spellcheck="false">
+                    </div>
+                    <div class="cfg-row">
+                        <label>AES-256 KEY</label>
+                        <input type="password" id="lte-key" class="gcs-input" placeholder="64 hex characters" autocomplete="off" spellcheck="false">
+                        <button class="gcs-btn gcs-btn-sm" id="lte-key-show" title="Show / hide the key">SHOW</button>
+                    </div>
+                    <div class="cfg-row">
+                        <label class="gcs-checkbox" title="Stored encrypted by the operating system keychain, never in plain text">
+                            <input type="checkbox" id="lte-key-remember">
+                            REMEMBER KEY ON THIS COMPUTER
+                        </label>
+                    </div>
+                    <div class="cfg-note" id="lte-key-note">Telemetry and commands are encrypted end to end with this key: the relay cannot read or alter them.</div>
+                    <div class="cfg-row">
+                        <button class="gcs-btn gcs-btn-connect" id="lte-connect">CONNECT</button>
+                        <button class="gcs-btn" id="lte-disconnect">DISCONNECT</button>
+                    </div>
+                </div>
+                <div class="setup-panel">
+                    <div class="panel-header">RELAY</div>
+                    <div class="cfg-row">
+                        <label>HOST</label>
+                        <input type="text" id="lte-relay-host" class="gcs-input" placeholder="relay.example.com" spellcheck="false">
+                    </div>
+                    <div class="cfg-row">
+                        <label>PORT</label>
+                        <input type="number" id="lte-relay-port" class="gcs-input input-narrow" value="5765">
+                    </div>
+                    <div class="cfg-row">
+                        <label>CERT SHA-256</label>
+                        <input type="text" id="lte-relay-cert" class="gcs-input" placeholder="Optional: pin the relay certificate" spellcheck="false">
+                        <button class="gcs-btn gcs-btn-sm" id="lte-cert-pin" title="Pin the certificate the relay presented on the last connection">PIN</button>
+                    </div>
+                    <div class="cfg-note">Relay settings stay on this computer only.</div>
+                </div>
+                <div class="setup-panel">
+                    <div class="panel-header">LINK STATUS</div>
+                    <div class="cfg-row"><label>STATE</label><span class="cfg-val" id="lte-st-state">Not connected</span></div>
+                    <div class="cfg-row"><label>MODULE</label><span class="cfg-val" id="lte-st-air">--</span></div>
+                    <div class="cfg-row"><label>MODULE SESSION</label><span class="cfg-val" id="lte-st-session">--</span></div>
+                    <div class="cfg-row"><label>RELAY TLS</label><span class="cfg-val" id="lte-st-tls">--</span></div>
+                    <div class="cfg-row"><label>RECORDS IN / OUT</label><span class="cfg-val" id="lte-st-records">--</span></div>
+                    <div class="cfg-row"><label>REJECTED</label><span class="cfg-val" id="lte-st-rejected">--</span></div>
+                    <div class="cfg-row"><label>TRAFFIC</label><span class="cfg-val" id="lte-st-traffic">--</span></div>
+                    <div class="cfg-row"><label>LAST DATA</label><span class="cfg-val" id="lte-st-age">--</span></div>
+                    <div class="cfg-row"><label>RECONNECTS</label><span class="cfg-val" id="lte-st-reconnects">--</span></div>
+                    <div class="cfg-row"><label>LAST ERROR</label><span class="cfg-val" id="lte-st-error">--</span></div>
                 </div>
             </div>
 

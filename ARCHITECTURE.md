@@ -25,8 +25,10 @@ Three link protocols are supported, all normalised to MAVLink before they reach 
 │                                                                      │
 │  main.js ── Window lifecycle, IPC handlers, file I/O                 │
 │     │                                                                │
-│     ├── main-mavlink.js ── Serial/UDP/TCP + MAVLink v2 parse/send +  │
-│     │                       CORV binary protocol + .tlog recording   │
+│     ├── main-mavlink.js ── Serial/UDP/TCP/LTE + MAVLink v2 parse/send│
+│     │                       + CORV binary protocol + .tlog recording │
+│     ├── lte-link.js ── Cellular module via relay: TLS, module ID +   │
+│     │                   key challenge, AES-256-GCM end-to-end records│
 │     ├── log-replay-manager.js ── .tlog/.bin replay engine (20 Hz)    │
 │     ├── log-replay-bin-parser.js ── ArduPilot DataFlash .bin parser  │
 │     ├── sitl-manager.js ── SITL binary download & process spawn      │
@@ -84,8 +86,9 @@ Three link protocols are supported, all normalised to MAVLink before they reach 
 ```
 Corv-GCS/
 ├── main.js                     Electron main process entry point
-├── preload.js                  Context bridge (15 IPC API namespaces)
-├── main-mavlink.js             MAVLink serial/UDP/TCP + CORV binary + .tlog rec
+├── preload.js                  Context bridge (16 IPC API namespaces)
+├── main-mavlink.js             MAVLink serial/UDP/TCP/LTE + CORV binary + .tlog rec
+├── lte-link.js                 Cellular link to an LTEtelem module through a CRV2 relay (E2E AES-256-GCM)
 ├── log-replay-manager.js       .tlog / .bin replay engine (main process)
 ├── log-replay-bin-parser.js    ArduPilot DataFlash .bin parser
 ├── sitl-manager.js             ArduPilot SITL simulator launcher
@@ -228,6 +231,7 @@ Corv-GCS/
 | `sitl-manager.js` | `initSITLHandlers()`, `cleanup()` | Download ArduPilot SITL binaries, spawn process (native Linux or WSL on Windows), TCP 5760. Bundled models and defaults come from `sitl-defaults/`: the plane is `plane-jet:jet600.json` (22 kg jet with lowered parasitic drag, ~660 km/h top speed, 300 km/h cruise, 600 km/h on command), which needs ArduPlane 4.7+ — a downloaded binary without plane-coefficient support counts as missing and is fetched again |
 | `rtk-manager.js` | `initRTKHandlers()`, `cleanup()` | RTCM3 frame parsing from serial GPS base station, GPS_RTCM_DATA (ID 233) injection to drone via raw MAVLink v2 packets |
 | `fpv-manager.js` | `initFPVHandlers()`, `cleanupFPV()` | Starts `rtsp-client.js` and forwards the camera's access units (`fpv-video-config` / `fpv-video-chunk`) for hardware decoding in the renderer. Falls back to VLC (RTSP → MJPEG over local HTTP, JPEG frames on `fpv-frame`) when the renderer has no decoder for the codec, the camera cannot be reached by the native client, no frame arrives within 6 s, or the renderer reports decode failures (`fpv-fallback`) |
+| `lte-link.js` | `LteLink`, `RecordFramer`, `deriveKeys()`, `initLteKeyHandlers()` | Cellular link to an LTEtelem module (Teensy + cellular modem on the vehicle) through a CRV2 relay. TLS to the relay GCS port (certificate optionally pinned by SHA-256), then a challenge-response with the module ID and an HMAC of the module's AES-256 key — the relay only holds a derived auth key that cannot decrypt. After the handshake every byte is an AES-256-GCM record, one key per direction, nonce = random session id + counter, strict per-session replay check; commands to the module are bound to the module's current session. Outgoing MAVLink is batched into one record per 20 ms / 800 B. Reconnects by itself (1-2-5-10 s); a refused key or pin stops it. Remembered keys are encrypted with Electron `safeStorage` |
 | `rtsp-client.js` | `RtspClient`, `Depacketizer`, `parseSdp()`, `hevcCodecString()` | RTSP 1.0 (OPTIONS / DESCRIBE / SETUP / PLAY, GET_PARAMETER keep-alive, TEARDOWN) without authentication. RTP over TCP interleaved, UDP when the server refuses it (461), with a 32-packet reorder window. RFC 6184 / 7798 depacketization (single NAL, STAP-A / AP, FU-A / FU) into Annex-B access units; parameter sets from the SDP or in-band are prepended to key frames; a packet loss drops frames until the next key frame. Derives the WebCodecs codec string from the SPS |
 | `telforward-manager.js` | `initTelForwardHandlers()`, `cleanup()` | Forward telemetry as LTM protocol (G/A/S/O frames) or MAVLink passthrough to an external serial port, or mirror it over UDP |
 | `msp-manager.js` | `initMSPHandlers()`, `cleanup()`, internal: `encodeRequest()`, `parseBuffer()`, `tick()`, `decode()`, `resolveModeName()`, `emit*()` | MSP/MSP2 adapter for INAV and Betaflight over serial or TCP. Frames both v1 (`$M`, XOR checksum) and v2 (`$X`, CRC8 DVB-S2). MSP is request/response, so a 20 ms scheduler polls a rate table with **one request in flight at a time** (MSP has no sequence numbers). Replies are decoded and re-emitted as synthetic MAVLink (30/74/24/33/27/1/147/65/0) on the same `mavlink-message` channel. Flight mode is resolved from the active mode boxes read once via `MSP_BOXNAMES`. A command unanswered 3× is dropped from the schedule, so an absent sensor cannot starve the poll budget. The same request slot also carries **INAV waypoint missions** (`MSP_WP_GETINFO` / `MSP_SET_WP` / `MSP_WP` / `MSP_WP_MISSION_SAVE`): a transfer is a run of one-shot jobs with their own promise, retried up to 3× each, and telemetry pauses for the second or two it takes |
@@ -296,6 +300,7 @@ Corv-GCS/
 | `ParametersPageController.js` | `initParamsPage()`, `toggleParamsPage()`, `formatParamValue()` | Full ArduPilot parameter editor with search, inline edit, save. Side catalog reads single parameters via `PARAM_REQUEST_READ` (serialized queue + retries) so a slow link never needs the full list |
 | `ParamCatalog.js` | `getCatalog()`, `getGroups()`, `groupOf()`, `learnNames()`, `toggleFavorite()` | Parameter-name catalog per vehicle class: built-in seed + names learned from vehicles/.param files, persisted in localStorage |
 | `FPVController.js` | `initFPV()`, `onFPVButtonClick()`, `stopFPVStream()`, `resizeFPV()`, `isFPVARMode()`, `isFPVCameraMode()` | FPV camera overlay on 3D view. Probes the H.264 / H.265 decoders once (`VideoDecoder.isConfigSupported`) and passes them with `fpv.start()`; decodes the native stream with a hardware `VideoDecoder` (drops to the next key frame if it falls behind, falls back to VLC on repeated errors) and draws each `VideoFrame`; JPEG frames of the VLC fallback go through `createImageBitmap`. SIYI HM30 / generic RTSP settings. In CAMERA mode the 3D scene is not rendered (it is transparent) |
+| `CellularLinkController.js` | `initCellularLink()` | CELLULAR LINK section under SETUP → COMMS: module ID and AES-256 key (optionally remembered through the OS keychain), relay host/port and certificate pin (PIN copies the fingerprint seen on the last connection) persisted in localStorage — never the key; live link status (state, module online/receiving, module session, TLS, records in/out, rejected records, traffic, reconnects, last error) and nav status dot. Connects through `ConnectionManager` as `mavlink-lte` |
 | `LidarController.js` | `initLidarController()`, `isLidarEnabled()` | LIDAR section under SETUP → TOOLS (LiDAR/host IP, point format, mount attitude vs the autopilot IMU + lever arm, telemetry lag, range/noise/voxel filters, GPS/EKF gate, live-points TTL, colour mode, raw recording) persisted in localStorage; nav status dot while connected; flight-screen strip with state LED (ACCUMULATING / LIVE ONLY · reason), point count, CLEAR MAP and SAVE; HUD messages on gate transitions; resync on renderer restart |
 | `LoadingOverlay.js` | `showLoadingOverlay()`, `hideLoadingOverlay()`, `checkInitialLoadComplete()`, `scheduleHideLoadingOverlaySoon()` | Animated splash screen with cloud parallax and plane animation, terrain loading progress bar |
 

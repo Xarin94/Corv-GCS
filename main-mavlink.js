@@ -1,6 +1,7 @@
 /**
  * main-mavlink.js - MAVLink handler for the Electron main process
- * Manages serial/UDP connections, MAVLink parsing, heartbeat, and IPC forwarding
+ * Manages serial/UDP/TCP/cellular (LTE relay) connections, MAVLink parsing,
+ * heartbeat, and IPC forwarding
  */
 
 const { ipcMain, app } = require('electron');
@@ -411,6 +412,57 @@ function initMAVLinkHandlers(win) {
             console.error('[mavlink] TCP connect failed:', e.message);
             throw e;
         }
+    });
+
+    // Connect to an LTEtelem cellular module through a CRV2 relay (lte-link.js):
+    // TLS to the relay, module ID + key challenge-response, then AES-256-GCM
+    // end-to-end records. The link reconnects by itself after drops, so the
+    // connection state only goes DISCONNECTED on an explicit disconnect.
+    ipcMain.handle('mavlink-connect-lte', async (event, opts) => {
+        await disconnectCurrent();
+        ensureMAVLinkLoaded();
+        const { LteLink } = require('./lte-link');
+        const link = new LteLink(opts || {});
+        const passthrough = new PassThrough();
+        const splitter = new MavLinkPacketSplitter();
+        const tlogTap = createTlogTap();
+        const parser = new MavLinkPacketParser();
+        passthrough.pipe(splitter).pipe(tlogTap).pipe(parser);
+
+        link.on('data', (data) => {
+            linkBytesRx += data.length;
+            passthrough.write(data);
+        });
+        link.on('status', (status) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('lte-status', status);
+            }
+        });
+        parser.on('data', (packet) => handlePacket(packet));
+
+        try {
+            await link.start();
+        } catch (e) {
+            link.stop();
+            passthrough.destroy();
+            console.error('[mavlink] LTE connect failed:', e.message);
+            throw e;
+        }
+
+        activeConnection = {
+            type: 'lte',
+            link,
+            passthrough,
+            splitter,
+            parser,
+            getRemote: () => ({ address: opts.host, port: opts.port }),
+            hasRemote: () => true
+        };
+        startHeartbeat();
+        startLinkStats('LTE');
+        sendConnectionState('CONNECTED');
+        console.log(`[mavlink] LTE connected to module ${opts.moduleId} via ${opts.host}:${opts.port}`);
+        return { success: true };
     });
 
     // Connect CORV binary via serial — parse packets and emit as mavlink-message
@@ -908,6 +960,11 @@ async function sendToConnection(msg) {
         sequenceNumber = sequenceNumber & 0xFF;
         writeTlogPacket(buffer);
         socket.write(buffer);
+    } else if (activeConnection.type === 'lte') {
+        const buffer = protocol.serialize(msg, sequenceNumber++);
+        sequenceNumber = sequenceNumber & 0xFF;
+        writeTlogPacket(buffer);
+        activeConnection.link.write(buffer);
     }
 }
 
@@ -963,6 +1020,9 @@ async function disconnectCurrent() {
         } else if (activeConnection.type === 'tcp') {
             activeConnection.socket.destroy();
             activeConnection.passthrough.destroy();
+        } else if (activeConnection.type === 'lte') {
+            activeConnection.link.stop();
+            activeConnection.passthrough.destroy();
         }
     } catch (e) {
         console.error('[mavlink] Disconnect error:', e.message);
@@ -1005,6 +1065,8 @@ function cleanup() {
                 activeConnection.socket.close();
             } else if (activeConnection.type === 'tcp') {
                 activeConnection.socket.destroy();
+            } else if (activeConnection.type === 'lte') {
+                activeConnection.link.stop();
             }
         } catch (e) {
             // Ignore
@@ -1033,6 +1095,8 @@ function sendRawBuffer(buffer) {
         if (activeConnection.socket) {
             activeConnection.socket.write(buffer);
         }
+    } else if (activeConnection.type === 'lte') {
+        activeConnection.link.write(buffer);
     }
 }
 

@@ -42,7 +42,7 @@ export const STATE = {
     connected: false,
 
     // MAVLink / GCS state
-    connectionType: 'none',  // 'none', 'corv-binary', 'mavlink-serial', 'mavlink-udp', 'mavlink-tcp'
+    connectionType: 'none',  // 'none', 'corv-binary', 'mavlink-serial', 'mavlink-udp', 'mavlink-tcp', 'mavlink-lte'
     linkType: '',            // 'SERIAL' | 'UDP' | 'TCP' | 'CORV' — reported by main process link stats
     linkKbps: 0,             // live RX rate in kilobits/s (1 Hz from main process)
     lastLinkStatsTime: 0,

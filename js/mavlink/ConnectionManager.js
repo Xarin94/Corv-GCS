@@ -4,7 +4,7 @@
  */
 
 import { STATE } from '../core/state.js';
-import { connectMAVLinkSerial, connectMAVLinkUDP, connectMAVLinkTCP, disconnectMAVLink, listSerialPorts, getConnectionState } from './MAVLinkManager.js';
+import { connectMAVLinkSerial, connectMAVLinkUDP, connectMAVLinkTCP, connectMAVLinkLTE, disconnectMAVLink, listSerialPorts, getConnectionState } from './MAVLinkManager.js';
 import { connectSerial } from '../serial/SerialHandler.js';
 import { requestAllDataStreams, requestHomePosition } from './CommandSender.js';
 import { onMessage } from './MAVLinkManager.js';
@@ -57,6 +57,14 @@ export async function connect(type, options = {}) {
                 options.port || 5760
             );
             currentConnection = { type, ...options };
+            setTimeout(() => requestAllDataStreams(), 1000);
+            setTimeout(() => requestHomePosition().catch(() => {}), 3000);
+            break;
+
+        // Cellular module through the relay (SETUP → COMMS → CELLULAR LINK)
+        case 'mavlink-lte':
+            await connectMAVLinkLTE(options);
+            currentConnection = { type, moduleId: options.moduleId, host: options.host };
             setTimeout(() => requestAllDataStreams(), 1000);
             setTimeout(() => requestHomePosition().catch(() => {}), 3000);
             break;

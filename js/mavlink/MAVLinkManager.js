@@ -154,6 +154,26 @@ export async function connectMAVLinkTCP(host = '127.0.0.1', port = 5760) {
 }
 
 /**
+ * Connect to an LTEtelem cellular module through a CRV2 relay
+ * @param {{moduleId:string, keyHex:string, host:string, port:number, certSha256?:string}} opts
+ */
+export async function connectMAVLinkLTE(opts) {
+    if (!window.mavlink?.connectLTE) return;
+    STATE.connectionType = 'mavlink-lte';
+    connectionState = 'CONNECTING';
+    try {
+        await window.mavlink.connectLTE(opts);
+        STATE.connected = true;
+        STATE.mode = 'LIVE';
+        connectionState = 'CONNECTED';
+    } catch (e) {
+        connectionState = 'DISCONNECTED';
+        STATE.connectionType = 'none';
+        throw e;
+    }
+}
+
+/**
  * Disconnect MAVLink
  */
 export async function disconnectMAVLink() {

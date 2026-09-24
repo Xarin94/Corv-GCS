@@ -87,6 +87,7 @@ import { initLidarCloud, updateLidarCloud } from './lidar/LidarCloud.js';
 import { updateLidarDemo } from './lidar/LidarDemo.js';
 import { updateDemoObstacles } from './engine/DemoObstacles.js';
 import { initLidarController } from './ui/LidarController.js';
+import { initCellularLink } from './ui/CellularLinkController.js';
 
 // Loading overlay imports
 import {
@@ -1777,6 +1778,7 @@ function init() {
     // Livox point cloud: geometry in the scene, settings panel + flight strip
     initLidarCloud(scene);
     initLidarController();
+    initCellularLink();
 
     // Listen for mission updates and rebuild 3D trajectory + 2D mini-map overlay
     window.addEventListener('missionUpdated', () => {

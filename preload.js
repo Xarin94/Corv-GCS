@@ -158,6 +158,8 @@ contextBridge.exposeInMainWorld('mavlink', {
   connectSerial: (portPath, baudRate) => ipcRenderer.invoke('mavlink-connect-serial', portPath, baudRate),
   connectUDP: (host, port) => ipcRenderer.invoke('mavlink-connect-udp', host, port),
   connectTCP: (host, port) => ipcRenderer.invoke('mavlink-connect-tcp', host, port),
+  connectLTE: (opts) => ipcRenderer.invoke('mavlink-connect-lte', opts),
+  onLteStatus: (callback) => ipcRenderer.on('lte-status', (event, status) => callback(status)),
   disconnect: () => ipcRenderer.invoke('mavlink-disconnect'),
   sendCommand: (cmd) => ipcRenderer.invoke('mavlink-send-command', cmd),
   sendMessage: (msg) => ipcRenderer.invoke('mavlink-send-message', msg),
@@ -166,6 +168,14 @@ contextBridge.exposeInMainWorld('mavlink', {
   onConnectionState: (callback) => ipcRenderer.on('mavlink-connection-state', (event, state) => callback(state)),
   onLinkStats: (callback) => ipcRenderer.on('mavlink-link-stats', (event, stats) => callback(stats)),
   listPorts: () => ipcRenderer.invoke('serial-list-ports')
+});
+
+// Cellular link module key, kept encrypted by the OS keychain (lte-link.js)
+contextBridge.exposeInMainWorld('lteKey', {
+  available: () => ipcRenderer.invoke('lte-key-available'),
+  save: (keyHex) => ipcRenderer.invoke('lte-key-save', keyHex),
+  load: () => ipcRenderer.invoke('lte-key-load'),
+  forget: () => ipcRenderer.invoke('lte-key-forget')
 });
 
 // MSP / MSP2 API bridge (INAV, Betaflight). Telemetry arrives on the same
