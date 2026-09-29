@@ -613,7 +613,10 @@ function mapAdsbVehicle(data) {
     if (Math.abs(lat) < 0.01 && Math.abs(lon) < 0.01) return;
 
     const now = Date.now();
-    const entry = { icao24, callsign, lat, lon, alt, velocity, heading, vertRate, onGround: false, _ts: now };
+    // tslc: seconds since the receiver last heard this aircraft
+    const tslc = Number(data.tslc);
+    const posTs = Number.isFinite(tslc) && tslc > 0 && tslc < 60 ? now - tslc * 1000 : now;
+    const entry = { icao24, callsign, lat, lon, alt, velocity, heading, vertRate, onGround: false, _ts: now, posTs };
 
     // O(1) update or insert using Map index
     const idx = trafficIndex.get(icao24);

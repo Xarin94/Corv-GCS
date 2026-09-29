@@ -30,6 +30,7 @@
 import { STATE } from '../core/state.js';
 import { ORIGIN } from '../core/constants.js';
 import { latLonToMeters } from '../core/utils.js';
+import { OVERLAY_LAYER } from '../engine/Layers.js';
 
 const CHUNK = 262144;                  // points per BufferGeometry
 const HIST_MIN = -1000, HIST_MAX = 3000, HIST_BINS = 4000;   // 1 m bins, relative to the origin altitude
@@ -175,6 +176,7 @@ export function initLidarCloud(scene) {
     geo.setDrawRange(0, 0);
     const pts = new THREE.Points(geo, liveMaterial);
     pts.frustumCulled = false;
+    pts.layers.set(OVERLAY_LAYER);     // not outlined by the schematic view
     liveGroup.add(pts);
 }
 
@@ -246,6 +248,7 @@ function newChunk() {
     const points = new THREE.Points(geo, material);
     points.frustumCulled = false;      // bounds grow with every batch; culling 16 objects buys nothing
     points.renderOrder = newChunk._renderOrder || 0;
+    points.layers.set(OVERLAY_LAYER);  // every point would be an edge to the schematic outline pass
     group.add(points);
     const c = { points, posAttr, intAttr, n: 0 };
     chunks.push(c);

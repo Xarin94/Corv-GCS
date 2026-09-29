@@ -115,7 +115,11 @@ Corv-GCS/
 │   │   ├── i18n.js             UI language switch (EN/ZH): DOM text swap + MutationObserver
 │   │   └── lang-zh.js          Simplified Chinese dictionary, keyed by English UI string
 │   ├── engine/                 3D rendering engine
-│   │   ├── Scene3D.js          Three.js scene, camera, lighting, trail
+│   │   ├── Scene3D.js          Three.js scene, camera, lighting, overlays, schematic outline pass
+│   │   ├── ThickLine.js        Screen-space thick lines (trail, route, corridor edges)
+│   │   ├── SymbolLayer.js      Pixel-sized map symbols + text labels (waypoints, home)
+│   │   ├── Traffic3D.js        ADS-B traffic: circles, labels, curved trails
+│   │   ├── Layers.js           World / overlay render layers
 │   │   ├── TrajectoryPredictor.js  Physics-based flight path prediction
 │   │   ├── TrajectoryCorridor3D.js Visual safety corridor
 │   │   └── SunPosition.js      Solar position for lighting & hillshade
@@ -263,16 +267,20 @@ Corv-GCS/
 
 | File | Key Exports | Purpose |
 |------|-------------|---------|
-| `Scene3D.js` | `init3D()`, `render()`, `updateCamera()`, `updateTrail()`, `resetTrail()`, `setTrailPoints()`, `resize()`, `updateMissionTrajectory()`, `clearMissionTrajectory()`, `updateHomeMarker3D()`, `updateTargetMarker3D()`, `updateTrafficMarkers3D()`, `getScene/Camera/Renderer/SunLight()`, `setSunlightEnabled()` | Three.js scene setup (FOV 60°, exponential fog), camera follow modes, directional sun (no shadow map), flight trail (BufferGeometry, 50k points, a point every 2 m of movement), 3D mission path, home/target/traffic markers |
+| `Scene3D.js` | `init3D()`, `render()`, `updateCamera()`, `updateTrail()`, `resetTrail()`, `setTrailPoints()`, `resize()`, `updateMissionTrajectory()`, `clearMissionTrajectory()`, `setMissionActiveSeq()`, `updateHomeMarker3D()`, `updateOwnshipMarker()`, `updateTargetMarker3D()`, `updateTrafficMarkers3D()`, `setSkyColor()`, `setSchematicView()`, `setLightTheme()`, `setOutlineBrightness()`, `setARMode()`, `getScene/Camera/Renderer/SunLight()`, `setSunlightEnabled()` | Three.js scene setup (FOV 60°, exponential fog), camera follow modes, directional sun (no shadow map). One place decides the backdrop: sky colour with satellite imagery, black sky and fog in the schematic view (light UI theme: a pale blue gradient sky computed per pixel from the view ray in the outline pass, fog in its horizon colour), black and fog-free in AR. Overlay colours come from a dark or a light palette; switching to the light-theme schematic look emits `sceneLightChange`, on which main.js sets `body.scene-light` (dark blue readouts) and the blue HUD. Overlays: flight trail (thick red line, 50k points, a point every 2 m of movement), mission route with waypoint symbols, labels (sequence number + AGL), drop lines and the active leg highlighted, home (ground ring, pole, symbol), a ring around the aircraft in the chase view, target/traffic markers. Schematic view renders in three passes: world layer to a target with a float depth texture, a full-screen pass that draws the colour plus a line on the near side of every depth discontinuity (ridge profiles; skyline brighter and thicker; 1-px chunk cracks filled) and writes the depth back, then the overlay layer on top |
+| `ThickLine.js` | `ThickLine`, `flushThickLines()` | Screen-space thick lines: each segment an instanced quad widened in the vertex shader to a width in pixels, round caps, near-plane trimming, 'strip' or 'pairs' mode, optional RGBA per point. Optional ghost pass drawn only where the line is hidden (depth GREATER). Translucent passes touch each pixel once through the stencil buffer. Edits are uploaded as dirty ranges by `flushThickLines()` before each frame |
+| `SymbolLayer.js` | `SymbolLayer`, `SHAPE`, `makeLabel()`, `fitLabel()`, `disposeLabel()` | Point-sprite symbols whose shape is computed in the fragment shader (square, diamond, circle, home, dot, triangle) with a dark halo, sized in pixels between a near and a far size, plus a faint pass where hidden by terrain. Labels are canvas sprites kept at a fixed pixel height beside their anchor |
+| `Traffic3D.js` | `initTraffic3D()`, `updateTraffic3D()`, `animateTraffic3D()`, `resizeTraffic3D()`, `setTrafficColor()` | ADS-B traffic in 3D (the 8 nearest): a red circle sized by distance, a label with callsign, height relative to the aircraft and a climb/descent arrow, and a trail fading over 180 s. Reports are sparse (OpenSky every 30 s, ADSB_VEHICLE ~1 Hz), so the trail is a cubic Hermite curve through them with each report's velocity as tangent (chord when missing or implausible); the circle is dead-reckoned from the last report's time of position (`posTs`) for up to 30 s. Circles move every frame, trails are rebuilt at 10 Hz |
+| `Layers.js` | `WORLD_LAYER`, `OVERLAY_LAYER`, `toOverlayLayer()` | Render layers: overlays (lines, symbols, labels, corridor, target/traffic, LiDAR) are kept out of the outlined world pass |
 | `TrajectoryPredictor.js` | `computePredictedPath()`, `computePredictedPath2D()` | Physics-based flight path prediction (5–20s ahead). Low-pass filter (α=0.88) on speed/roll/VS, turn radius from bank angle (R = V²/g·tan(roll)), vertical acceleration from NED |
-| `TrajectoryCorridor3D.js` | `initCorridor()`, `updateCorridor()`, `setCorridorVisible()`, `disposeCorridor()`, `getPredictionTime()` | Visual "safety corridor" around predicted path (two border lines + translucent fill, ~1.2m width, green with alpha fade) |
+| `TrajectoryCorridor3D.js` | `initCorridor()`, `updateCorridor()`, `setCorridorVisible()`, `disposeCorridor()`, `getPredictionTime()` | Visual "safety corridor" around predicted path (two 3 px border lines + translucent fill, widening from ~2 m at the aircraft to 12 m at the end of the prediction, a bar every 5 s, green with alpha fade) |
 | `SunPosition.js` | `calculateSunPosition()`, `getSunLightDirection()`, `calculateHillshade()`, `applyHillshade()` | Solar almanac for realistic dynamic lighting and terrain hillshading based on date/time/location |
 
 ### 3.5 Terrain (`js/terrain/`)
 
 | File | Key Exports | Purpose |
 |------|-------------|---------|
-| `TerrainManager.js` | `initTerrain()`, `updateTerrainChunks()`, `getTerrainElevationCached()`, `getTerrainElevationFromHGT()`, `addHGTFile()`, `updateTerrainHillshading()`, `setMapBrightness()`, `setTerrainSatelliteEnabled()`, `updateWireframeProximity()`, `getMemoryStats()` | Main terrain engine (58KB). Loads SRTM HGT elevation data, generates chunked 3D meshes (5000m × 5000m, 50km visibility radius), dual-zoom LOD satellite textures (zoom 15), frustum culling, LRU texture cache (1500 capacity), max 24 concurrent tile loads |
+| `TerrainManager.js` | `initTerrain()`, `updateTerrainChunks()`, `getTerrainElevationCached()`, `getTerrainElevationFromHGT()`, `addHGTFile()`, `updateTerrainHillshading()`, `setMapBrightness()`, `setTerrainSatelliteEnabled()`, `updateTerrainInstances()`, `getMemoryStats()`, `SCHEMATIC_RADIUS` | Main terrain engine (58KB). Loads SRTM HGT elevation data, generates chunked 3D meshes (5000m × 5000m, 50km visibility radius), dual-zoom LOD satellite textures (zoom 15), frustum culling, LRU texture cache (1500 capacity), max 24 concurrent tile loads. With the satellite imagery off the terrain shader draws the schematic style: near-black ground with a fixed north-west hillshade (green ground and dark lines with the light UI theme, `setTerrainSchematicLight()`), isolines every 10 / 50 / 250 m that fade out level by level where they would crowd closer than a few pixels (fwidth), a faint 1 km grid, and nothing beyond `SCHEMATIC_RADIUS` (30 km) from the camera |
 | `TerrainWorker.js` | Web Worker | Extracts a chunk's Int16 elevation samples (and their min / max) from the HGT grid at its LOD step. Positions, normals, hillshade and the height palette are rebuilt from them in the terrain vertex shader |
 | `TileWorker.js` | Web Worker | Satellite tile downloading and image decoding |
 | `TextureCullWorker.js` | Web Worker | Camera frustum culling for texture loading priority |
@@ -310,7 +318,7 @@ Corv-GCS/
 |------|-------------|---------|
 | `lidar/LidarDemo.js` + `engine/DemoObstacles.js` | `startLidarDemo()`, `stopLidarDemo()`, `resetLidarDemo()`, `configureLidarDemo()`, `updateLidarDemo()`; `updateDemoObstacles()`, `DEMO_OBSTACLES` | Synthetic scan for the demo flight (50 m AGL circuit): per frame, rays in a Mid-360 pattern with the spin axis along the fuselage are marched against the SRTM heightfield and tested analytically against a seeded field of trees (cylinder + sphere), hangars and pylons (boxes) that are never rendered; airframe false echoes at 0.5–2.4 m demonstrate MIN RANGE; voxel-decimated and fed to LidarCloud through the same origin/batch API as the real link, within a 2.5 ms per-frame budget |
 | `lidar/LidarCloud.js` | `initLidarCloud()`, `setLidarOrigin()`, `appendLidarPoints()`, `appendLiveLidarPoints()`, `clearLidarCloud()`, `clearLiveLidarPoints()`, `setLidarCloudVisible()`, `setLidarColorMode()`, `setLidarPointSize()`, `setLidarMaxPoints()`, `setLidarOverTerrain()`, `updateLidarCloud()`, `getLidarPointCount()` | Point cloud in the scene: one group at the cloud origin (scaled to the app's flat-earth convention), points appended into 262 144-point `THREE.Points` chunks with partial buffer uploads, ShaderMaterial colouring by height (Turbo ramp auto-ranged on the 2–98th percentile through a histogram) or reflectivity, optional draw-through-terrain (SRTM is coarser than the LiDAR). Second, transient layer for the non-georeferenced LIVE points: vehicle-relative ring buffer with a birth-time attribute, clipped and faded by the shader after the TTL |
-| `adsb/ADSBManager.js` | `fetchADSBData()`, `getNearestTraffic(n)`, `downloadTrafficCSV()` | OpenSky Network ADS-B traffic polling (50km radius, via main process for CORS bypass). Rate limited (10s), stale entry removal (60s), CSV export |
+| `adsb/ADSBManager.js` | `fetchADSBData()`, `getNearestTraffic(n)`, `downloadTrafficCSV()` | OpenSky Network ADS-B traffic polling (50km radius, via main process for CORS bypass). Rate limited (10s), stale entry removal (60s), CSV export. Each entry carries `posTs`, when its position was measured (OpenSky `time_position`; `ADSB_VEHICLE` `tslc`), for the 3D dead reckoning |
 | `joystick/JoystickManager.js` | `JoystickManager` class | Gamepad API polling at 25 Hz. Axis mapping (roll/pitch/yaw/throttle), deadzone, expo, inversion config. Sends RC_CHANNELS_OVERRIDE (1000–2000 PWM). Config persisted to localStorage |
 | `joystick/JoystickUI.js` | `initJoystick()` | Joystick configuration UI: gamepad selection, axis live display, channel mapping |
 | `logging/TlogLogger.js` | `TlogLogger` class | `.tlog` flight recording (raw MAVLink v2 packet capture). Auto-starts on MAVLink connect, auto-stops on disconnect — the actual file write happens in `main-mavlink.js`; this class is a renderer-side controller over IPC |
@@ -421,6 +429,7 @@ TerrainManager.updateTerrainChunks()
 Elevation: one R16I 2D-array texture per grid size, one layer per chunk
     │ vertex shader rebuilds position + normal (texelFetch), hillshade,
     │ height palette; one shared triangle grid per LOD step
+    │ satellite off: fragment shader draws isolines + grid instead (schematic)
     ▼
 Three.js Scene
     ├── chunks without a map → one InstancedMesh per grid (per-chunk
@@ -429,6 +438,7 @@ Three.js Scene
     │ LRUCache manages texture memory (cap: 1500)
     ▼
 Rendered at 60 FPS (30 FPS in eco mode)
+    └── schematic view: world → depth target → outline pass → overlays
 ```
 
 ### 4.5 FPV Camera Pipeline

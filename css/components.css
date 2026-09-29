@@ -688,6 +688,13 @@ button.ui-btn.recording {
     background: var(--bg-scene);
 }
 
+/* The satellite layer is drawn at 60 % opacity (MapEngine): over black it is
+   the dimmed, clear map of the dark theme; over the light theme's grey scene
+   colour it turned milky. Same black backing in both themes. */
+[data-theme="light"] #mini-map {
+    background: #000;
+}
+
 /* ── Swapped state: 2D map becomes main, 3D shrinks to corner ── */
 body.minimap-swapped #mini-map-container {
     left: 0;

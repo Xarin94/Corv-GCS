@@ -52,17 +52,17 @@ CORV GCS is a desktop Ground Control Station for ArduPilot-based UAVs. It provid
 - **Hillshading** — Solar position-based dynamic lighting and terrain shading
 - **Frustum culling** — Only loads textures visible to the camera
 - **LRU texture cache** — 1500 capacity, auto-evicts least-recently-used textures
-- **Wireframe proximity** — Terrain mesh wireframe overlay near aircraft for depth reference
+- **Schematic view** — With the satellite imagery off (M): black sky, isolines every 10 / 50 / 250 m, a line on every ridge profile and a brighter one on the horizon, terrain out to 30 km (the look of the mission simulations in *Top Gun: Maverick*). Light theme: green relief under a pale blue gradient sky, dark lines, readouts / HUD / labels in dark blue
 
 ### 3.2 3D Scene Elements
-- **Aircraft model** — GLB 3D model positioned by GPS + attitude
-- **Flight trail** — 50,000-point BufferGeometry trail with color coding
-- **Home marker** — Orange pole + sphere at ground level (always at terrain elevation)
+- **Aircraft model** — GLB 3D model positioned by GPS + attitude; a ring marks it in the chase view
+- **Flight trail** — 50,000-point trail drawn as a thick red line, fainter where terrain hides it
+- **Home marker** — Orange ring on the ground, pole and "H" symbol with label (always at terrain elevation); the mission take-off point until the vehicle reports a home
 - **Target marker** — Red marker at guided target location
-- **Mission trajectory** — 3D path visualization of uploaded mission waypoints
+- **Mission trajectory** — Route through every located mission item, waypoint symbols with sequence number and height above ground, drop lines to the ground, the leg being flown highlighted
 - **Trajectory prediction** — Physics-based 5–20s flight path prediction (bank angle, vertical speed)
-- **Safety corridor** — Translucent corridor around predicted path
-- **ADS-B traffic** — 3D markers for nearby aircraft
+- **Safety corridor** — Translucent corridor around predicted path, widening with prediction time, a bar every 5 s
+- **ADS-B traffic** — red circles sized by distance, callsign and height relative to the aircraft (with climb/descent arrow), a fading trail curved through the reported positions along each report's own track; dead-reckoned between reports
 - **Sun lighting** — Directional light from the real sun position; terrain hillshade computed in the shader (no shadow map)
 
 ### 3.3 Web Workers

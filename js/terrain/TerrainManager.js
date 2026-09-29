@@ -23,6 +23,10 @@ const ZOOM_BANDS = [
     { maxDist: Infinity, zoom: 13, maxDim: 256 },
 ];
 const BASE_BAND = 2;        // zoom used for the first pass, before the aircraft has a position
+// Terrain radius of the schematic view (satellite imagery off). Chunks exist
+// out to VISIBILITY_RADIUS around the aircraft, which leaves room for the
+// chase camera to sit up to 2.5 km away from it.
+export const SCHEMATIC_RADIUS = 30000;
 const TILE_ZOOM = ZOOM_BANDS[BASE_BAND].zoom;
 // Absolute ceiling, clamped to the GPU's real maxTextureSize in initTerrain() so
 // weak GPUs (4096 limit) degrade instead of crashing.
@@ -414,10 +418,25 @@ function isChunkInRange(item, radius = VISIBILITY_RADIUS) {
 //   sunlight on:  0.45 + 1.05 * max(0, N·sun)      sunlight off: map brightness
 // times the height palette when the chunk has no map. It scales the diffuse
 // colour, and MeshLambertMaterial then applies the scene lights.
+//
+// With the satellite imagery off the palette gives way to the schematic style
+// (uSchematic): near-black ground with a faint hillshade — green with the
+// light UI theme — isolines every 10 m and index isolines every 50 / 250 m,
+// the look of the mission simulations in Top Gun: Maverick. It is written
+// over the final colour, so scene lights and sunlight play no part in it.
 const terrainShadingUniforms = {
     uSunDir: { value: new THREE.Vector3(0, 1, 0) }, // replaced by the scene's sun vector in initTerrain()
     uSunlightOn: { value: 1 },
-    uBrightness: { value: mapBrightness }
+    uBrightness: { value: mapBrightness },
+    uSchematic: { value: 0 },
+    // The schematic world ends on a circle this far from the camera; its rim
+    // is the horizon line the schematic view outlines (Scene3D). The centre is
+    // set every frame in updateTerrainInstances(): three only uploads its own
+    // cameraPosition for a few material types, and Lambert is not one of them.
+    uSchematicRadius: { value: SCHEMATIC_RADIUS },
+    uSchematicCenter: { value: new THREE.Vector2() },
+    // Light UI theme: green ground and dark lines instead of dark ground and light lines
+    uSchematicLight: { value: 0 }
 };
 
 const TERRAIN_VERTEX_PARS = `
@@ -434,6 +453,9 @@ uniform vec4 uChunk;
 uniform float uLayer;
 #endif
 varying vec3 vTerrainShade;
+varying float vTerrainH;
+varying vec2 vTerrainXZ;
+varying float vSchemShade;
 // Same palette as getHeightColor() in core/utils.js
 vec3 terrainHeightColor(float h) {
     const vec3 G = vec3(0.0431372549, 0.4, 0.137254902);
@@ -473,11 +495,17 @@ ivec2 tE = ivec2(min(tG.x + 1, uGridMax), tG.y);
 ivec2 tW = ivec2(max(tG.x - 1, 0), tG.y);
 ivec2 tS = ivec2(tG.x, min(tG.y + 1, uGridMax));
 ivec2 tN = ivec2(tG.x, max(tG.y - 1, 0));
+float tHE = terrainHeight(tE, tLayer), tHW = terrainHeight(tW, tLayer);
+float tHS = terrainHeight(tS, tLayer), tHN = terrainHeight(tN, tLayer);
 float tEx = float(tE.x - tW.x) * tChunk.z;
-float tEy = terrainHeight(tE, tLayer) - terrainHeight(tW, tLayer);
+float tEy = tHE - tHW;
 float tSz = float(tS.y - tN.y) * tChunk.w;
-float tSy = terrainHeight(tS, tLayer) - terrainHeight(tN, tLayer);
+float tSy = tHS - tHN;
 vec3 objectNormal = normalize(vec3(-tSz * tEy, tSz * tEx, -tSy * tEx));
+// Height the schematic isolines follow: lightly smoothed, so the metre-level
+// noise of SRTM on flat ground does not break a level into dozens of rings.
+// On an even slope the neighbours cancel out and it equals tH.
+float tHiso = 0.5 * tH + 0.125 * (tHE + tHW + tHS + tHN);
 `;
 
 // Replaces <begin_vertex>
@@ -491,6 +519,90 @@ vTerrainShade = vec3(terrainLight);
 #else
 vTerrainShade = terrainHeightColor(tH) * terrainLight;
 #endif
+vTerrainH = tHiso;
+vTerrainXZ = transformed.xz;
+// Cartographic hillshade for the schematic style: light from the north-west,
+// 45° up (x east, z south), whatever the sun is doing.
+vSchemShade = max(0.0, dot(objectNormal, vec3(-0.5, 0.70710678, -0.5)));
+`;
+
+const TERRAIN_FRAGMENT_PARS = `
+varying vec3 vTerrainShade;
+varying float vTerrainH;
+varying vec2 vTerrainXZ;
+varying float vSchemShade;
+uniform float uSchematic;
+uniform float uSchematicRadius;
+uniform vec2 uSchematicCenter;
+uniform float uSchematicLight;
+uniform float uBrightness;
+
+// Isolines of height h every 'interval' metres, 'widthPx' wide on screen.
+// fwidth() gives the spacing of neighbouring lines in pixels: where they would
+// crowd closer than 'minSpacingPx' (far away, steep slopes seen edge-on) the
+// level fades out, so the next, coarser level takes over instead of the
+// lines merging into a grey smear.
+// Levels sit half a metre off the round figure: SRTM heights are whole
+// metres, so a flat area at exactly 580 m would lie on the 580 line
+// everywhere and be painted solid.
+float schematicIsoline(float h, float interval, float widthPx, float minSpacingPx) {
+    float x = (h - 0.5) / interval;
+    float fw = max(fwidth(x), 1e-5);
+    float distPx = abs(fract(x + 0.5) - 0.5) / fw;
+    float line = 1.0 - smoothstep(widthPx * 0.5 - 0.5, widthPx * 0.5 + 0.5, distPx);
+    return line * smoothstep(minSpacingPx, minSpacingPx * 2.5, 1.0 / fw);
+}
+
+// Kilometre grid on the ground: on a flat valley floor there are no isolines,
+// and the grid is what still shows scale and ground speed.
+float schematicGrid(vec2 p, float cell, float widthPx) {
+    vec2 x = p / cell;
+    vec2 fw = max(fwidth(x), vec2(1e-5));
+    vec2 distPx = abs(fract(x + 0.5) - 0.5) / fw;
+    vec2 line = 1.0 - smoothstep(vec2(widthPx * 0.5 - 0.5), vec2(widthPx * 0.5 + 0.5), distPx);
+    vec2 keep = smoothstep(vec2(6.0), vec2(16.0), 1.0 / fw);
+    return max(line.x * keep.x, line.y * keep.y);
+}
+
+// Three levels, as on a topographic chart: faint 10 m lines, stronger 50 m
+// index lines, and 250 m lines that stay when the others have faded.
+// Dark theme: grey ground shaded from black, light lines, amber 250 m lines.
+// Light theme: the same hillshade in greens, dark green lines, burnt orange.
+vec3 schematicTerrainColor() {
+    float grid = schematicGrid(vTerrainXZ, 1000.0, 1.0);
+    float minor = schematicIsoline(vTerrainH, 10.0, 1.0, 3.5);
+    float index = schematicIsoline(vTerrainH, 50.0, 1.4, 3.5);
+    float major = schematicIsoline(vTerrainH, 250.0, 2.0, 3.0);
+    vec3 col;
+    if (uSchematicLight > 0.5) {
+        col = mix(vec3(0.31, 0.48, 0.28), vec3(0.80, 0.89, 0.67), vSchemShade);
+        col = mix(col, vec3(0.27, 0.43, 0.39), grid * 0.35);
+        col = mix(col, vec3(0.22, 0.37, 0.20), minor * 0.4);
+        col = mix(col, vec3(0.12, 0.25, 0.12), index * 0.65);
+        col = mix(col, vec3(0.62, 0.30, 0.05), major * 0.9);
+    } else {
+        col = vec3(0.022, 0.028, 0.034) + vec3(0.115, 0.125, 0.135) * vSchemShade;
+        col = mix(col, vec3(0.12, 0.24, 0.28), grid * 0.7);
+        col = mix(col, vec3(0.38, 0.43, 0.47), minor * 0.75);
+        col = mix(col, vec3(0.74, 0.79, 0.82), index * 0.85);
+        col = mix(col, vec3(1.00, 0.60, 0.16), major);
+    }
+    // The MAP BRIGHTNESS slider (default 0.85) scales the whole drawing
+    return col * (uBrightness / 0.85);
+}
+`;
+
+// Replaces <fog_fragment>: the schematic colour replaces the lit one, then the
+// (black) scene fog fades it with distance. The colour is computed before the
+// radius test so its fwidth() calls run on every fragment of the quad.
+const TERRAIN_FOG_FRAGMENT = `
+#ifndef USE_MAP
+if (uSchematic > 0.5) {
+    gl_FragColor.rgb = schematicTerrainColor();
+    if (length(vTerrainXZ - uSchematicCenter) > uSchematicRadius) discard;
+}
+#endif
+#include <fog_fragment>
 `;
 
 function applyTerrainShading(shader) {
@@ -502,8 +614,9 @@ function applyTerrainShading(shader) {
         .replace('#include <beginnormal_vertex>', TERRAIN_BEGINNORMAL)
         .replace('#include <begin_vertex>', TERRAIN_BEGIN_VERTEX);
     shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vTerrainShade;')
-        .replace('#include <color_fragment>', '#include <color_fragment>\n\tdiffuseColor.rgb *= vTerrainShade;');
+        .replace('#include <common>', '#include <common>\n' + TERRAIN_FRAGMENT_PARS)
+        .replace('#include <color_fragment>', '#include <color_fragment>\n\tdiffuseColor.rgb *= vTerrainShade;')
+        .replace('#include <fog_fragment>', TERRAIN_FOG_FRAGMENT);
 }
 
 function createTerrainMaterial(params) {
@@ -862,12 +975,18 @@ export function updateTerrainInstances(camera) {
 
     for (const batch of instanceBatches.values()) batch.count = 0;
 
+    // Schematic view: chunks wholly outside its radius would only be discarded
+    // pixel by pixel in the fragment shader
+    const clipRadius = terrainShadingUniforms.uSchematic.value > 0.5 ? SCHEMATIC_RADIUS : Infinity;
+    const cx = camera.position.x, cz = camera.position.z;
+    terrainShadingUniforms.uSchematicCenter.value.set(cx, cz);
+
     for (let n = 0; n < chunkList.length; n++) {
         const mesh = chunkList[n];
         const ud = mesh.userData;
         const s = ud.sphere;
         // Sphere against the six frustum planes (same test as Frustum.intersectsSphere)
-        let visible = chunksVisible;
+        let visible = chunksVisible && Math.hypot(s.x - cx, s.z - cz) - s.r <= clipRadius;
         for (let p = 0; visible && p < 24; p += 4) {
             if (_planes[p] * s.x + _planes[p + 1] * s.y + _planes[p + 2] * s.z + _planes[p + 3] < -s.r) visible = false;
         }
@@ -899,73 +1018,6 @@ export function updateTerrainInstances(camera) {
         batch.layerAttr.updateRange.count = batch.count;
         batch.layerAttr.needsUpdate = true;
     }
-}
-
-// ---- Wireframe overlay --------------------------------------------------------
-// Triangle grid lines on the chunk under the aircraft while satellite imagery is
-// off. One mesh, re-pointed at whichever chunk is nearest.
-let wireframeChunkKey = null;
-let wireframeMesh = null;
-
-function getWireframeMesh() {
-    if (!wireframeMesh) {
-        // Black diffuse stays black whatever the lights: same look as the basic
-        // wireframe material it replaces, with the terrain vertex shader
-        const material = createTerrainMaterial({
-            color: 0x000000,
-            wireframe: true,
-            transparent: true,
-            opacity: 0.06,
-            depthWrite: false
-        });
-        wireframeMesh = new THREE.Mesh(getGridGeometry(2), material);
-        wireframeMesh.renderOrder = 1;
-        wireframeMesh.frustumCulled = false;
-        wireframeMesh.matrixAutoUpdate = false;
-        wireframeMesh.visible = false;
-        if (sceneRef) sceneRef.add(wireframeMesh);
-    }
-    return wireframeMesh;
-}
-
-/**
- * Update wireframe: only the single closest chunk (without satellite texture)
- * gets the wireframe overlay. Called from the render loop.
- */
-export function updateWireframeProximity() {
-    if (window.satelliteEnabled) {
-        if (wireframeMesh) wireframeMesh.visible = false;
-        wireframeChunkKey = null;
-        return;
-    }
-
-    const playerPos = latLonToMeters(STATE.lat, STATE.lon);
-    let bestKey = null;
-    let bestDist = Infinity;
-
-    for (const key in activeChunks) {
-        const ud = activeChunks[key].userData;
-        if (ud.textureLoaded || !ud.sphere) continue; // satellite chunk, no wireframe needed
-        const dx = ud.sphere.x - playerPos.x;
-        const dz = ud.sphere.z - playerPos.z;
-        const dist = dx * dx + dz * dz; // no sqrt needed for comparison
-        if (dist < bestDist) {
-            bestDist = dist;
-            bestKey = key;
-        }
-    }
-
-    wireframeChunkKey = bestKey;
-    const wire = getWireframeMesh();
-    if (!bestKey) {
-        wire.visible = false;
-        return;
-    }
-    // Re-pointed every frame: cheap, and follows LOD rebuilds of that chunk
-    const ud = activeChunks[bestKey].userData;
-    wire.geometry = getGridGeometry(ud.geoW);
-    syncChunkUniforms(wire.material, ud);
-    wire.visible = true;
 }
 
 /**
@@ -2392,19 +2444,33 @@ function clearPendingTextureOperations() {
     textureApplyQueue.length = 0;
 }
 
-/**
- * Enable/disable satellite textures on existing terrain chunks.
- * When disabling, removes any already-applied textures so the overlay actually disappears.
- * When enabling, schedules texture generation for chunks that don't have it yet.
- * @param {boolean} enabled
- */
 export function setTerrainChunksVisible(visible) {
     chunksVisible = !!visible;
 }
 
+/**
+ * Palette of the schematic terrain: green ground with dark lines (light UI
+ * theme) or dark ground with light lines.
+ * @param {boolean} light
+ */
+export function setTerrainSchematicLight(light) {
+    terrainShadingUniforms.uSchematicLight.value = light ? 1 : 0;
+}
+
+/**
+ * Enable/disable satellite textures on existing terrain chunks.
+ * When disabling, removes any already-applied textures so the overlay actually disappears,
+ * and the bare terrain switches to the schematic isoline style.
+ * When enabling, schedules texture generation for chunks that don't have it yet.
+ * @param {boolean} enabled
+ */
 export function setTerrainSatelliteEnabled(enabled) {
     const on = !!enabled;
     if (!activeChunks) return;
+
+    // Chunks beyond the satellite radius keep the height palette while the
+    // imagery is on; with it off every chunk is drawn schematic.
+    terrainShadingUniforms.uSchematic.value = on ? 0 : 1;
 
     console.log(`[terrain] Satellite ${on ? 'ENABLED' : 'DISABLED'} — activeChunks=${Object.keys(activeChunks).length}, queue=${chunkCreationQueue.length}, workerPending=${workerPending.size}`);
 
@@ -2644,8 +2710,6 @@ function disposeChunk(key, mesh) {
             }
         }
     }
-
-    if (wireframeChunkKey === key) wireframeChunkKey = null;
 
     // unloadChunkTexture() above already put the chunk back on the shared
     // material slot; this only catches a material left without its map

@@ -22,6 +22,17 @@ export function purgeStaleTraffic() {
 }
 
 /**
+ * When the reported position was measured (ms). OpenSky's time_position is
+ * often several seconds older than the fetch; the 3D view dead-reckons from
+ * it. Kept only when it is plausible for this clock (not in the future, not
+ * older than the purge age), otherwise the reception time.
+ */
+function positionTime(timePositionS, received) {
+    const t = Number(timePositionS) * 1000;
+    return Number.isFinite(t) && t <= received && received - t < ADSB_MAX_AGE ? t : received;
+}
+
+/**
  * Compute distance in meters between two lat/lon points (Haversine)
  */
 function haversineM(lat1, lon1, lat2, lon2) {
@@ -61,9 +72,10 @@ export async function fetchADSBData() {
     }
 
     // OpenSky state vector columns:
-    // 0=icao24, 1=callsign, 2=origin_country, 5=longitude, 6=latitude,
-    // 7=baro_altitude, 8=on_ground, 9=velocity, 10=true_track,
+    // 0=icao24, 1=callsign, 2=origin_country, 3=time_position, 5=longitude,
+    // 6=latitude, 7=baro_altitude, 8=on_ground, 9=velocity, 10=true_track,
     // 11=vertical_rate, 13=geo_altitude
+    const received = Date.now();
     const fetched = (data.states || []).map(s => ({
         icao24: s[0],
         callsign: (s[1] || '').trim(),
@@ -75,7 +87,8 @@ export async function fetchADSBData() {
         heading: s[10],
         vertRate: s[11],
         onGround: s[8],
-        _ts: Date.now()
+        _ts: received,
+        posTs: positionTime(s[3], received)
     })).filter(t => t.lat !== null && t.lon !== null);
 
     // Merge into STATE.traffic (replace by icao24, add new)

@@ -38,6 +38,14 @@ over it. Speed, altitude, heading, vertical speed and G-load are drawn the way a
 flight display draws them — the pitch ladder, the flight-path marker and the bank arc follow the
 same conventions as a Garmin or Boeing HUD, so the picture reads at a glance.
 
+Turn the satellite imagery off (**M**) and the terrain becomes a schematic chart, in the style of
+the mission simulations in *Top Gun: Maverick*: black sky, contour lines every 10 m with brighter
+ones every 50 m and amber ones every 250 m, and a white line along every ridge that hides the ground
+behind it and along the horizon, out to 30 km. The route with its numbered waypoints, home, the
+predicted path and the trail already flown are drawn over it in bold, at a size that stays readable
+from any distance. With the light theme the same chart is drawn as green relief under a pale blue
+sky, with the readouts and the HUD in dark blue.
+
 <p align="center"><img src="screenshots/annunciators.png" width="370" alt="Health annunciators"/></p>
 
 A column of **annunciators** beside the speed tape flags anything wrong with the vehicle: red
@@ -137,7 +145,7 @@ radio that is the difference between two packets and several minutes.
 - **FPV video**: an RTSP camera stream (SIYI HM30 and similar) shown over the 3D view.
 - **Joystick**: fly with a gamepad through RC override, with per-axis calibration.
 - **Telemetry forwarding**: mirror the link over UDP or output MAVLink / LTM to an antenna tracker.
-- **ADS-B traffic**: nearby aircraft on the map.
+- **ADS-B traffic**: nearby aircraft on the map, and in 3D as red circles with callsign and relative height, trailing the path they flew.
 - **Offline maps**: satellite tiles and elevation data cached on disk, so the app starts and works without a network.
 
 ---

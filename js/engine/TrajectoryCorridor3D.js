@@ -4,12 +4,26 @@
  * The ribbon cross-section rolls with the predicted bank angle, so the two
  * border lines trace the predicted wingtip paths (twisting through turns).
  * Length scales with speed.
+ *
+ * The ribbon widens with prediction time, from about the wingspan at the
+ * aircraft to several metres at the end: the further ahead, the less certain
+ * the prediction — and a 1.2 m ribbon was invisible from the chase camera.
+ * Borders are screen-space lines a few pixels wide, and a bar across the
+ * ribbon marks every 5 s of predicted flight.
  */
 
+import { ThickLine } from './ThickLine.js';
+import { OVERLAY_LAYER } from './Layers.js';
+
 const MAX_POINTS = 50;
-const CORRIDOR_HALF_WIDTH = 0.6; // metres – half-width (~1.2m total, drone wingspan +20%)
+const HALF_WIDTH_NEAR = 1.0;     // metres – half-width at the aircraft (~wingspan)
+const HALF_WIDTH_FAR = 6.0;      // metres – half-width at the end of the prediction
 const ALT_DROP = 1.2;            // metres – slight drop below aircraft altitude (near wing plane)
 const START_OFFSET = -8;         // metres – push corridor start well behind the aircraft
+const TICK_INTERVAL_S = 5;       // seconds between the bars across the ribbon
+const BORDER_ALPHA = 0.95;
+const FILL_ALPHA = 0.28;
+const END_ALPHA = 0.35;          // fraction of the alpha left at the far end
 
 // Speed-based prediction time: faster → longer corridor
 const MIN_PRED_TIME = 5;   // seconds at MIN_SPEED
@@ -19,17 +33,27 @@ const MAX_SPEED_REF = 60;  // m/s
 
 let leftLine = null;
 let rightLine = null;
+let ticks = null;
 let fillMesh = null;
-let leftGeo = null;
-let rightGeo = null;
 let fillGeo = null;
-let leftPosAttr = null;
-let rightPosAttr = null;
-let leftColorAttr = null;
-let rightColorAttr = null;
 let fillPosAttr = null;
 let fillColorAttr = null;
 let sceneRef = null;
+let borderColors = null;   // RGBA per point, shared by both borders
+let tickColors = null;
+let lineColor = 0x1aff33;
+const fillRGB = [0.1, 0.9, 0.15];
+
+/**
+ * Corridor colour (the scene's palette follows the view and the UI theme).
+ * @param {number} hex
+ */
+export function setCorridorColor(hex) {
+    lineColor = hex;
+    for (const line of [leftLine, rightLine, ticks]) if (line) line.setColor(hex);
+    const c = new THREE.Color(hex);
+    fillRGB[0] = c.r; fillRGB[1] = c.g; fillRGB[2] = c.b;
+}
 
 /**
  * Compute prediction time scaled by groundspeed.
@@ -50,39 +74,12 @@ export function getPredictionTime(gs) {
 export function initCorridor(scene) {
     sceneRef = scene;
 
-    // ── Border lines ──
-    const makeLine = () => {
-        const geo = new THREE.BufferGeometry();
-        const positions = new Float32Array(MAX_POINTS * 3);
-        const colors = new Float32Array(MAX_POINTS * 4);
-        const pAttr = new THREE.BufferAttribute(positions, 3);
-        const cAttr = new THREE.BufferAttribute(colors, 4);
-        geo.setAttribute('position', pAttr);
-        geo.setAttribute('color', cAttr);
-        geo.setDrawRange(0, 0);
-
-        const mat = new THREE.LineBasicMaterial({
-            vertexColors: true,
-            transparent: true,
-            linewidth: 1,
-            depthWrite: false
-        });
-
-        const line = new THREE.Line(geo, mat);
-        line.frustumCulled = false;
-        line.renderOrder = 3;
-        line.visible = false;
-        scene.add(line);
-        return { line, geo, pAttr, cAttr };
-    };
-
-    const left = makeLine();
-    leftLine = left.line; leftGeo = left.geo;
-    leftPosAttr = left.pAttr; leftColorAttr = left.cAttr;
-
-    const right = makeLine();
-    rightLine = right.line; rightGeo = right.geo;
-    rightPosAttr = right.pAttr; rightColorAttr = right.cAttr;
+    // ── Border lines and 5 s bars ──
+    leftLine = new ThickLine({ color: lineColor, width: 3, vertexColors: true, renderOrder: 3 }).addTo(scene);
+    rightLine = new ThickLine({ color: lineColor, width: 3, vertexColors: true, renderOrder: 3 }).addTo(scene);
+    ticks = new ThickLine({ mode: 'pairs', color: lineColor, width: 2.5, vertexColors: true, renderOrder: 3 }).addTo(scene);
+    borderColors = new Float32Array(MAX_POINTS * 4);
+    tickColors = new Float32Array(2 * Math.ceil(MAX_PRED_TIME / TICK_INTERVAL_S) * 4);
 
     // ── Fill mesh (translucent green strip between borders) ──
     fillGeo = new THREE.BufferGeometry();
@@ -117,30 +114,35 @@ export function initCorridor(scene) {
     fillMesh.frustumCulled = false;
     fillMesh.renderOrder = 2;
     fillMesh.visible = false;
+    fillMesh.layers.set(OVERLAY_LAYER);
     scene.add(fillMesh);
+
+    setCorridorVisible(false);
 }
 
 /**
  * Update corridor from predicted path points.
- * @param {Array<{x:number, y:number, z:number}>} points
+ * @param {Array<{x:number, y:number, z:number, t?:number, bank?:number}>} points
  */
 export function updateCorridor(points) {
     if (!leftLine || !points || points.length < 2) {
         if (leftLine) {
-            leftGeo.setDrawRange(0, 0);
-            rightGeo.setDrawRange(0, 0);
+            leftLine.clear();
+            rightLine.clear();
+            ticks.clear();
             fillGeo.setDrawRange(0, 0);
         }
         return;
     }
 
     const n = Math.min(points.length, MAX_POINTS);
-    const lPos = leftPosAttr.array;
-    const rPos = rightPosAttr.array;
-    const lCol = leftColorAttr.array;
-    const rCol = rightColorAttr.array;
+    const left = [];
+    const right = [];
     const fPos = fillPosAttr.array;
     const fCol = fillColorAttr.array;
+    const tickPts = [];
+    let tickN = 0;
+    let nextTick = TICK_INTERVAL_S;
 
     // Compute backward offset direction from first segment
     let backDx = 0, backDz = 0;
@@ -178,11 +180,13 @@ export function updateCorridor(points) {
 
         // Roll the cross-section by the predicted bank angle: the ribbon
         // twists like wingtip trails (right bank → starboard edge drops).
+        const along = i / (n - 1);
+        const halfWidth = HALF_WIDTH_NEAR + (HALF_WIDTH_FAR - HALF_WIDTH_NEAR) * along;
         const bank = p.bank || 0;
         const cb = Math.cos(bank);
         const sb = Math.sin(bank);
-        const wH = CORRIDOR_HALF_WIDTH * cb; // horizontal component
-        const wV = CORRIDOR_HALF_WIDTH * sb; // vertical component
+        const wH = halfWidth * cb; // horizontal component
+        const wV = halfWidth * sb; // vertical component
 
         const lx = cx + px * wH;             // starboard edge
         const lz = cz + pz * wH;
@@ -192,18 +196,16 @@ export function updateCorridor(points) {
         const ry = y + wV;
 
         // ── Border lines ──
-        const vi = i * 3;
-        lPos[vi] = lx; lPos[vi + 1] = ly; lPos[vi + 2] = lz;
-        rPos[vi] = rx; rPos[vi + 1] = ry; rPos[vi + 2] = rz;
+        left.push({ x: lx, y: ly, z: lz });
+        right.push({ x: rx, y: ry, z: rz });
 
-        // Fade-out toward tail + fade-in from start (masks origin behind aircraft)
-        const fadeOut = 1 - (i / (n - 1));
+        // Fade toward the tail + fade-in from start (masks origin behind aircraft)
+        const fadeOut = 1 - (1 - END_ALPHA) * along;
         const fadeIn = Math.min(i / 4, 1);   // ramp up over first 4 points
         const fade = fadeOut * fadeIn;
-        const borderAlpha = 0.8 * fade;
         const ci = i * 4;
-        lCol[ci] = 0.1; lCol[ci + 1] = 1.0; lCol[ci + 2] = 0.2; lCol[ci + 3] = borderAlpha;
-        rCol[ci] = 0.1; rCol[ci + 1] = 1.0; rCol[ci + 2] = 0.2; rCol[ci + 3] = borderAlpha;
+        borderColors[ci] = 1; borderColors[ci + 1] = 1; borderColors[ci + 2] = 1;
+        borderColors[ci + 3] = BORDER_ALPHA * fade;
 
         // ── Fill mesh (starboard vertex, port vertex) ──
         const fli = (i * 2) * 3;
@@ -211,25 +213,35 @@ export function updateCorridor(points) {
         const fri = (i * 2 + 1) * 3;
         fPos[fri] = rx; fPos[fri + 1] = ry; fPos[fri + 2] = rz;
 
-        const fillAlpha = 0.18 * fadeOut * fadeIn;
+        const fillAlpha = FILL_ALPHA * fade;
         const fci = (i * 2) * 4;
-        fCol[fci] = 0.1; fCol[fci + 1] = 0.9; fCol[fci + 2] = 0.15; fCol[fci + 3] = fillAlpha;
+        fCol[fci] = fillRGB[0]; fCol[fci + 1] = fillRGB[1]; fCol[fci + 2] = fillRGB[2]; fCol[fci + 3] = fillAlpha;
         const rci = (i * 2 + 1) * 4;
-        fCol[rci] = 0.1; fCol[rci + 1] = 0.9; fCol[rci + 2] = 0.15; fCol[rci + 3] = fillAlpha;
+        fCol[rci] = fillRGB[0]; fCol[rci + 1] = fillRGB[1]; fCol[rci + 2] = fillRGB[2]; fCol[rci + 3] = fillAlpha;
+
+        // ── A bar across the ribbon at every whole TICK_INTERVAL_S ──
+        if (Number.isFinite(p.t) && p.t >= nextTick - 1e-6) {
+            tickPts.push({ x: lx, y: ly, z: lz }, { x: rx, y: ry, z: rz });
+            for (let k = 0; k < 2; k++) {
+                const o = (tickN * 2 + k) * 4;
+                tickColors[o] = 1; tickColors[o + 1] = 1; tickColors[o + 2] = 1;
+                tickColors[o + 3] = BORDER_ALPHA * fade;
+            }
+            tickN++;
+            nextTick += TICK_INTERVAL_S;
+        }
     }
 
-    leftGeo.setDrawRange(0, n);
-    rightGeo.setDrawRange(0, n);
+    leftLine.setPoints(left);
+    rightLine.setPoints(right);
+    leftLine.setColors(borderColors.subarray(0, n * 4));
+    rightLine.setColors(borderColors.subarray(0, n * 4));
+    ticks.setPoints(tickPts);
+    ticks.setColors(tickColors.subarray(0, tickN * 2 * 4));
     fillGeo.setDrawRange(0, (n - 1) * 6);
 
-    leftPosAttr.needsUpdate = true;
-    rightPosAttr.needsUpdate = true;
-    leftColorAttr.needsUpdate = true;
-    rightColorAttr.needsUpdate = true;
     fillPosAttr.needsUpdate = true;
     fillColorAttr.needsUpdate = true;
-    leftGeo.computeBoundingSphere();
-    rightGeo.computeBoundingSphere();
     fillGeo.computeBoundingSphere();
 }
 
@@ -238,8 +250,9 @@ export function updateCorridor(points) {
  * @param {boolean} visible
  */
 export function setCorridorVisible(visible) {
-    if (leftLine) leftLine.visible = visible;
-    if (rightLine) rightLine.visible = visible;
+    if (leftLine) leftLine.setVisible(visible);
+    if (rightLine) rightLine.setVisible(visible);
+    if (ticks) ticks.setVisible(visible);
     if (fillMesh) fillMesh.visible = visible;
 }
 
@@ -247,16 +260,17 @@ export function setCorridorVisible(visible) {
  * Dispose corridor resources.
  */
 export function disposeCorridor() {
-    const cleanup = (obj, geo) => {
-        if (obj && sceneRef) {
-            sceneRef.remove(obj);
-            geo.dispose();
-            obj.material.dispose();
+    for (const line of [leftLine, rightLine, ticks]) {
+        if (line && sceneRef) {
+            line.removeFrom(sceneRef);
+            line.dispose();
         }
-    };
-    cleanup(leftLine, leftGeo);
-    cleanup(rightLine, rightGeo);
-    cleanup(fillMesh, fillGeo);
-    leftLine = rightLine = fillMesh = null;
-    leftGeo = rightGeo = fillGeo = null;
+    }
+    if (fillMesh && sceneRef) {
+        sceneRef.remove(fillMesh);
+        fillGeo.dispose();
+        fillMesh.material.dispose();
+    }
+    leftLine = rightLine = ticks = fillMesh = null;
+    fillGeo = null;
 }

@@ -39,7 +39,9 @@
     /* Separation from the image is a hard 1px stroke, NOT a glow. A blurred
        halo bleeds into the thin strokes of 9-14px type and the whole label
        reads as out of focus; an outline keeps every glyph edge sharp. No
-       blur radius also means these are cheap to repaint every frame. */
+       blur radius also means these are cheap to repaint every frame.
+       The one exception is the light-theme schematic view, where the image
+       itself is light: see body.scene-light below. */
     --text-outline:
         1px 0 0 rgba(0, 0, 0, 0.92), -1px 0 0 rgba(0, 0, 0, 0.92),
         0 1px 0 rgba(0, 0, 0, 0.92), 0 -1px 0 rgba(0, 0, 0, 0.92);
@@ -194,6 +196,22 @@
     --border-input: rgba(0, 0, 0, 0.15);
     --border-section: rgba(0, 120, 160, 0.3);
     --border-section-mid: rgba(0, 120, 160, 0.5);
+}
+
+/* Light-theme schematic 3D view (satellite imagery off): the image under the
+   over-scene readouts is pale sky and light green ground, where the white
+   type above washes out. Dark blue with a light black edge instead. Set on
+   <body> by main.js; over satellite imagery the readouts stay white. */
+body.scene-light {
+    --hud-text: #0a37a6;
+    --hud-text-sub: #0f45bb;
+    --hud-text-lbl: #173f94;
+    --text-outline:
+        1px 0 0 rgba(0, 0, 0, 0.45), -1px 0 0 rgba(0, 0, 0, 0.45),
+        0 1px 0 rgba(0, 0, 0, 0.45), 0 -1px 0 rgba(0, 0, 0, 0.45);
+    --text-outline-strong:
+        1px 0 0 rgba(0, 0, 0, 0.6), -1px 0 0 rgba(0, 0, 0, 0.6),
+        0 1px 0 rgba(0, 0, 0, 0.6), 0 -1px 0 rgba(0, 0, 0, 0.6);
 }
 
 /* Chinese UI: the Latin faces have no CJK glyphs, so name the system CJK

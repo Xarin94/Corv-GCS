@@ -31,10 +31,15 @@ for (let i = 0; i < GLOAD_POOL_SIZE; i++) {
     gLoadPointPool[i] = { x: 0, y: 0 };
 }
 
+// Symbology colour: HUD green, or dark blue over the light-theme schematic
+// view, whose pale sky and light green ground swallow the green
+const HUD_GREEN = 'rgba(0, 255, 127, 1)';
+const HUD_BLUE = 'rgba(10, 55, 166, 1)';
+
 // Style configuration (origin/main style)
 const style = {
     lineWidth: 2,
-    color: 'rgba(0, 255, 127, 1)',
+    color: HUD_GREEN,
     font: {
         style: 'normal',
         variant: 'normal',
@@ -116,6 +121,15 @@ function getCssVar(name, fallback) {
     } catch (_) {
         return fallback;
     }
+}
+
+/**
+ * Light-theme schematic view underneath: draw the HUD in dark blue. The
+ * dark drop shadow every stroke already gets is its black edge.
+ * @param {boolean} light
+ */
+export function setHudLightScene(light) {
+    style.color = light ? HUD_BLUE : HUD_GREEN;
 }
 
 /**

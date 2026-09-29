@@ -839,7 +839,7 @@ export const ZH = {
     // ── Header tooltips ────────────────────────────────────────────────
     'FPV Camera (enable/disable stream)': 'FPV 相机 (启用/禁用视频流)',
     'FPV Camera': 'FPV 相机',
-    'Satellite overlay (M)': '卫星图层 (M)',
+    'Satellite imagery (M) — off: schematic isoline view': '卫星影像 (M) — 关闭：等高线示意视图',
     'Toggle realistic sunlight (L)': '切换真实光照 (L)',
     'Toggle 1st/3rd person camera': '切换第一/第三人称视角',
     'Horizon-lock view — pitch always level (T)': '地平线锁定视图 — 俯仰始终水平 (T)',

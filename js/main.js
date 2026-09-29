@@ -25,7 +25,9 @@ import {
     getTimeOverride, setTimeOverride,
     updateHomeMarker3D,
     updateTrafficMarkers3D,
-    updateTargetMarker3D
+    updateTargetMarker3D,
+    setSkyColor, setSchematicView, setOutlineBrightness, setLightTheme,
+    setMissionActiveSeq, updateOwnshipMarker
 } from './engine/Scene3D.js';
 
 // Trajectory corridor imports
@@ -42,12 +44,11 @@ import {
     refreshNearbyChunkTextures, resetTextureRefreshPosition,
     setMapBrightness,
     getMemoryStats,
-    updateWireframeProximity,
     updateTerrainInstances
 } from './terrain/TerrainManager.js';
 
 // HUD imports
-import { initHUD, drawHUD, resizeHUD, pushHudMessage, setHudPitchLocked, updateArmStateUI } from './hud/HUDRenderer.js';
+import { initHUD, drawHUD, resizeHUD, pushHudMessage, setHudPitchLocked, updateArmStateUI, setHudLightScene } from './hud/HUDRenderer.js';
 
 // Map imports
 import { initMap, updateMap, invalidateSize as invalidateMapSize, updateMissionOverlay, updateTrafficOverlay, resetMapTrail } from './maps/MapEngine.js';
@@ -162,6 +163,7 @@ const orbit = {
 let isOrbitDragging = false;
 let orbitLastX = 0;
 let orbitLastY = 0;
+const CHASE_CAM_CLEARANCE_M = 30;   // chase camera never closer to the ground than this
 
 // Ace Combat-style look-around for the first-person camera: holding an arrow
 // snaps the view toward a fixed offset (90° up/down, 110° left/right) and
@@ -605,7 +607,6 @@ function calculateSunPosition(date, lat, lon) {
 function updateSunPosition() {
     const sunLight = getSunLight();
     const ambientLight = getAmbientLight();
-    const scene = getScene();
     const currentSunDirection = getCurrentSunDirection();
 
     if (!sunLight || !isSunlightEnabled()) return;
@@ -636,31 +637,27 @@ function updateSunPosition() {
 
     const altitudeDeg = sunPos.altitude * 180 / Math.PI;
     
+    // The sky colour is only shown with the satellite imagery on: the
+    // schematic view keeps its black backdrop (Scene3D decides).
     if (altitudeDeg < -6) {
         sunLight.intensity = 0.0;
         sunLight.color.setHex(0x223344);
-        scene.background.setHex(0x0a1020);
-        scene.fog.color.setHex(0x0a1020);
+        setSkyColor(0x0a1020);
     } else if (altitudeDeg < 0) {
         const t = (altitudeDeg + 6) / 6;
         sunLight.intensity = t * 1.0;
         sunLight.color.setHex(0xff8844);
-        const skyColor = lerpColor(0x0a1020, 0x553322, t);
-        scene.background.setHex(skyColor);
-        scene.fog.color.setHex(skyColor);
+        setSkyColor(lerpColor(0x0a1020, 0x553322, t));
     } else if (altitudeDeg < 15) {
         const t = altitudeDeg / 15;
         sunLight.intensity = 1.0 + t * 0.5;
         const sunColor = lerpColor(0xff6622, 0xffeedd, t);
         sunLight.color.setHex(sunColor);
-        const skyColor = lerpColor(0x553322, 0x87ceeb, t);
-        scene.background.setHex(skyColor);
-        scene.fog.color.setHex(skyColor);
+        setSkyColor(lerpColor(0x553322, 0x87ceeb, t));
     } else {
         sunLight.intensity = 1.5;
         sunLight.color.setHex(0xffffff);
-        scene.background.setHex(0x87ceeb);
-        scene.fog.color.setHex(0x87ceeb);
+        setSkyColor(0x87ceeb);
     }
     
     updateTerrainHillshading();
@@ -676,14 +673,34 @@ function updateSunPosition() {
 let homeTerrainElev = null;
 let homeTerrainKey = null;
 
-function getHomeTerrainElevation() {
-    if (STATE.homeLat === null || STATE.homeLon === null) return null;
-    const key = `${STATE.homeLat},${STATE.homeLon}`;
+function getTerrainUnderHome(lat, lon) {
+    const key = `${lat},${lon}`;
     if (key !== homeTerrainKey || homeTerrainElev === null) {
         homeTerrainKey = key;
-        homeTerrainElev = getTerrainElevationCached(STATE.homeLat, STATE.homeLon);
+        homeTerrainElev = getTerrainElevationCached(lat, lon);
     }
     return homeTerrainElev;
+}
+
+// Take-off point of the loaded mission (item 0), set by buildMissionTrajectory3D()
+let missionHome = null;
+
+/**
+ * Where the 3D home marker goes: the vehicle's HOME_POSITION, or — before a
+ * vehicle has reported one, e.g. while planning — the mission's take-off
+ * point, the same one the mini-map marks as home.
+ * @returns {{lat:number, lon:number, ground:number}|null}
+ */
+function getHomeForMarker() {
+    let lat = STATE.homeLat, lon = STATE.homeLon, fallback = STATE.homeAlt;
+    if (lat === null || lon === null) {
+        if (!missionHome) return null;
+        lat = missionHome.lat;
+        lon = missionHome.lng;
+        fallback = missionHome.altMsl;
+    }
+    const ground = getTerrainUnderHome(lat, lon);
+    return { lat, lon, ground: ground !== null ? ground : (Number.isFinite(fallback) ? fallback : 0) };
 }
 
 // ============== 3D WORLD UPDATE ==============
@@ -744,6 +761,14 @@ function update3DWorld() {
         const offZ = r * cosPitch * cosYaw;
 
         camera.position.set(target.x + offX, target.y + offY, target.z + offZ);
+        // Orbiting kilometres out from a valley put the camera inside the
+        // mountains around it, looking at the terrain from underneath
+        const camGround = getTerrainElevationFromHGT(
+            ORIGIN.lat - camera.position.z / 111320,
+            ORIGIN.lon + camera.position.x / (111320 * Math.cos(ORIGIN.lat * Math.PI / 180)));
+        if (camGround !== null && camera.position.y < camGround + CHASE_CAM_CLEARANCE_M) {
+            camera.position.y = camGround + CHASE_CAM_CLEARANCE_M;
+        }
         camera.lookAt(target.x, target.y + orbit.height * 0.2, target.z);
     } else {
         // First-person camera (existing behavior)
@@ -762,6 +787,9 @@ function update3DWorld() {
             camera.quaternion.multiply(look._q);
         }
     }
+
+    // Chase view: a ring marks the aircraft; close in, the model is big enough to find
+    updateOwnshipMarker(cameraMode === 'THIRD' && vehicle && orbit.distance > 120 ? vehicle.position : null);
 
     // Update predicted trajectory corridor (throttled to every 3rd frame)
     if (trajectoryEnabled) {
@@ -800,7 +828,6 @@ function update3DWorld() {
         updateTerrainChunks();
     }
 
-    updateWireframeProximity();
     updateDemoObstacles();     // analytic only — the demo LiDAR's targets, never drawn
     updateLidarDemo();
     updateLidarCloud();
@@ -1255,7 +1282,7 @@ function animate(frameTime) {
         }
         updateLookAround();
         update3DWorld();
-        updateHomeMarker3D(getHomeTerrainElevation());
+        updateHomeMarker3D(getHomeForMarker());
 
         // Check if nearby chunks need high-res textures (skip in AR mode — terrain is hidden)
         if (!isFPVARMode()) {
@@ -1270,6 +1297,7 @@ function animate(frameTime) {
         updateCommandBar();
         updateGCSSidebar();
         updateAnnunciatorPanel();
+        setMissionActiveSeq(STATE.missionCurrentSeq);
         const tc = getTargetCoords();
         if (tc) {
             const tElev = getTerrainElevationCached(tc.lat, tc.lon);
@@ -1280,7 +1308,7 @@ function animate(frameTime) {
     // ADS-B data refreshes every ~10 s — 2 Hz is plenty for the 3D markers
     if (now - lastTrafficMarkersUpdate >= 500) {
         lastTrafficMarkersUpdate = now;
-        updateTrafficMarkers3D(getNearestTraffic(4));
+        updateTrafficMarkers3D(getNearestTraffic(8));
     }
 
     updateMap();
@@ -1295,10 +1323,28 @@ function animate(frameTime) {
 }
 
 // ============== MISSION TRAJECTORY 3D ==============
-const NAV_CMDS_3D = [16, 17, 18, 19, 21, 22, 82];
+// Located navigation commands: WAYPOINT, LOITER_UNLIM/TURNS/TIME, LAND, TAKEOFF,
+// LOITER_TO_ALT, SPLINE_WAYPOINT, VTOL_TAKEOFF, VTOL_LAND
+const NAV_CMDS_3D = [16, 17, 18, 19, 21, 22, 31, 82, 84, 85];
+
+/** What the 3D scene draws for a mission item: route vertex only, or which symbol. */
+function missionItemKind(item, index) {
+    if (item.isHome || (index === 0 && item.frame === 0 && item.command === 16)) return 'home';
+    if (item.command === 22 || item.command === 84) return 'takeoff';
+    if (item.command === 21 || item.command === 85 || item.landing) return 'land';
+    if (item.command === 17 || item.command === 18 || item.command === 19 || item.command === 31) return 'loiter';
+    return 'wp';
+}
 
 function buildMissionTrajectory3D() {
-    const items = STATE.missionItems.filter(it => NAV_CMDS_3D.includes(it.command));
+    missionHome = null;
+    const items = [];
+    STATE.missionItems.forEach((it, i) => {
+        if (!NAV_CMDS_3D.includes(it.command) || (!it.lat && !it.lng)) return;
+        const kind = missionItemKind(it, i);
+        if (kind === 'home') missionHome = it;
+        items.push({ it, seq: Number.isFinite(it.seq) ? it.seq : i, kind });
+    });
     if (items.length === 0) {
         clearMissionTrajectory();
         return;
@@ -1311,19 +1357,25 @@ function buildMissionTrajectory3D() {
     // a live vehicle connection.
     const offset = STATE.offsetAlt || 0;
 
-    const points = items.map(item => {
-        const pos = latLonToMeters(item.lat, item.lng);
+    const points = items.map(({ it, seq, kind }) => {
+        const pos = latLonToMeters(it.lat, it.lng);
         // WP alt is always AGL: terrain elevation + specified altitude
-        const terrainElev = getTerrainElevationCached(item.lat, item.lng);
+        const terrainElev = getTerrainElevationCached(it.lat, it.lng);
         const baseAlt = terrainElev !== null ? terrainElev : (STATE.homeAlt || STATE.rawAlt || 0);
-        const worldY = baseAlt + (item.alt || 0) + offset;
-        return { x: pos.x, y: worldY, z: pos.z };
+        const worldY = baseAlt + (it.alt || 0) + offset;
+        return {
+            x: pos.x, y: worldY, z: pos.z,
+            ground: terrainElev !== null ? terrainElev + offset : null,
+            seq, kind, alt: it.alt || 0, derived: !!it.derived
+        };
     });
 
     updateMissionTrajectory(points);
 }
 
 // ============== SATELLITE/SUNLIGHT TOGGLES ==============
+// Satellite imagery off is the schematic view: black sky, terrain drawn as
+// isolines (TerrainManager), route and trail as bold overlays on top.
 function setSatelliteEnabled(enabled) {
     window.satelliteEnabled = !!enabled;
     const btn = document.getElementById('btn-sat');
@@ -1331,9 +1383,11 @@ function setSatelliteEnabled(enabled) {
         if (window.satelliteEnabled) btn.classList.add('active');
         else btn.classList.remove('active');
     }
-    
+
     // Apply across terrain + maps
+    setSchematicView(!window.satelliteEnabled);
     try { setTerrainSatelliteEnabled(window.satelliteEnabled); } catch (e) {}
+    updateMapBrightnessVisibility();
 }
 
 function toggleSatellite() {
@@ -1349,9 +1403,8 @@ function toggleSunlight() {
     const sunLight = getSunLight();
     const ambientLight = getAmbientLight();
     const camera = getCamera();
-    const scene = getScene();
     const currentSunDirection = getCurrentSunDirection();
-    
+
     if (enabled) {
         btn.classList.add('active');
         ambientLight.intensity = 0.6;
@@ -1364,8 +1417,7 @@ function toggleSunlight() {
         sunLight.intensity = 0.5;
         sunLight.color.setHex(0xffffff);
         ambientLight.intensity = 0.6;
-        scene.background.setHex(0x87ceeb);
-        scene.fog.color.setHex(0x87ceeb);
+        setSkyColor(0x87ceeb);
         currentSunDirection.set(0, 1, 0);
         updateTerrainHillshading();
     }
@@ -1379,6 +1431,8 @@ function toggleTheme() {
     const isLight = html.getAttribute('data-theme') === 'light';
     html.setAttribute('data-theme', isLight ? 'dark' : 'light');
     document.getElementById('btn-theme').classList.toggle('active', !isLight);
+    // The schematic 3D view follows: pale blue sky and green ground when light
+    setLightTheme(!isLight);
 }
 
 // ============== TRAJECTORY CORRIDOR TOGGLE ==============
@@ -1394,7 +1448,7 @@ function toggleTrajectory() {
 // Single-key quick toggles for the 3D view. Active only on the Flight Data
 // tab and ignored while typing in a field or with a modifier held.
 //   T = toggle horizon-lock view             P = predicted trajectory corridor
-//   M = satellite map overlay               L = realistic sunlight
+//   M = satellite imagery / schematic view  L = realistic sunlight
 function initViewShortcuts() {
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey || e.altKey || e.metaKey) return;
@@ -1546,16 +1600,19 @@ function setupMapBrightnessSlider() {
         const value = parseFloat(slider.value);
         display.textContent = value.toFixed(2);
         setMapBrightness(value);
+        setOutlineBrightness(value);
     };
 
     slider.addEventListener('input', apply);
     apply();
 }
 
+// The brightness applies whenever the sun does not light the terrain: sunlight
+// off, or the schematic view, which ignores the sun.
 function updateMapBrightnessVisibility() {
     const row = document.getElementById('map-brightness-row');
     if (!row) return;
-    row.style.display = isSunlightEnabled() ? 'none' : '';
+    row.style.display = (isSunlightEnabled() && window.satelliteEnabled !== false) ? 'none' : '';
 }
 
 // ============== ATTITUDE SMOOTHING SLIDER ==============
@@ -1702,7 +1759,7 @@ function enterCacheOnlyMode(reason) {
     if (cacheOnlyMode) return;
     cacheOnlyMode = true;
     setStatusMessage(`${reason} — CACHED MAPS ONLY`, '#ff8800');
-    pushHudMessage(`[WARNING] ${reason} — satellite from offline cache only, uncached areas shown as wireframe`, 'warning');
+    pushHudMessage(`[WARNING] ${reason} — satellite from offline cache only, uncached areas shown without imagery`, 'warning');
 }
 
 function leaveCacheOnlyMode() {
@@ -1874,6 +1931,17 @@ function init() {
 
     // Initialize trajectory corridor (hidden by default)
     initCorridor(getScene());
+
+    // Over the light-theme schematic view the image is light: the readouts
+    // over the scene turn dark blue (body.scene-light) and so does the HUD
+    window.addEventListener('sceneLightChange', (e) => {
+        const light = !!e.detail?.light;
+        document.body.classList.toggle('scene-light', light);
+        setHudLightScene(light);
+    });
+
+    // Schematic 3D palette for the UI theme the page starts in
+    setLightTheme(document.documentElement.getAttribute('data-theme') === 'light');
 
     // Show loading and start auto-load
     showLoadingOverlay('Loading terrain...');
