@@ -15,6 +15,8 @@
  *
  * `ghost` adds a second, fainter pass drawn only where the line is hidden
  * (depth test GREATER), so a path behind a ridge still reads as a path.
+ * `dash` cuts the line into dashes measured in screen pixels, restarting at
+ * every segment: the pattern stays the same from any distance.
  * Translucent passes use the stencil buffer to touch each pixel once: the round
  * caps of neighbouring segments overlap, and blending them twice would bead
  * the line at every joint.
@@ -57,6 +59,10 @@ attribute vec3 instanceEnd;
 attribute vec4 instanceColorStart;
 attribute vec4 instanceColorEnd;
 varying vec4 vLineColor;
+#endif
+#ifdef USE_DASH
+varying float vAlongW;
+varying float vW;
 #endif
 varying vec2 vUv;
 
@@ -107,6 +113,15 @@ void main() {
     // uWidth px across: each side is half of it, and NDC spans 2 per viewport
     offset *= uWidth / uResolution.y;
     vec4 clip = (position.y < 0.5) ? clipStart : clipEnd;
+#ifdef USE_DASH
+    // Distance along the segment in device pixels, from its start. Varyings
+    // are interpolated perspective-correct; carrying it times w, and w itself,
+    // lets the fragment recover the linear screen-space value.
+    float segPx = length((ndcEnd - ndcStart) * 0.5 * uResolution);
+    float along = position.y < 0.0 ? -0.5 * uWidth : position.y > 1.0 ? segPx + 0.5 * uWidth : position.y * segPx;
+    vAlongW = along * clip.w;
+    vW = clip.w;
+#endif
     offset *= clip.w;
     clip.xy += offset;
     gl_Position = clip;
@@ -119,6 +134,11 @@ uniform float uOpacity;
 #ifdef USE_LINE_COLORS
 varying vec4 vLineColor;
 #endif
+#ifdef USE_DASH
+uniform vec2 uDash;           // dash, gap in device pixels
+varying float vAlongW;
+varying float vW;
+#endif
 varying vec2 vUv;
 
 void main() {
@@ -128,6 +148,9 @@ void main() {
         float b = (vUv.y > 0.0) ? vUv.y - 1.0 : vUv.y + 1.0;
         if (a * a + b * b > 1.0) discard;
     }
+#ifdef USE_DASH
+    if (mod(vAlongW / vW, uDash.x + uDash.y) > uDash.x) discard;
+#endif
     vec4 color = vec4(uColor, uOpacity);
 #ifdef USE_LINE_COLORS
     color *= vLineColor;
@@ -139,14 +162,15 @@ void main() {
 
 const _size = new THREE.Vector2();
 
-function makeMaterial({ color, width, opacity, vertexColors, depthTest, depthFunc, translucent, depthPull }) {
+function makeMaterial({ color, width, opacity, vertexColors, dash, depthTest, depthFunc, translucent, depthPull }) {
     const material = new THREE.ShaderMaterial({
         uniforms: {
             uResolution: { value: new THREE.Vector2(1, 1) },
             uWidth: { value: width },
             uColor: { value: new THREE.Color(color) },
             uOpacity: { value: opacity },
-            uDepthPull: { value: depthPull }
+            uDepthPull: { value: depthPull },
+            uDash: { value: new THREE.Vector2(1, 0) }
         },
         vertexShader: VERTEX_SHADER,
         fragmentShader: FRAGMENT_SHADER,
@@ -155,7 +179,10 @@ function makeMaterial({ color, width, opacity, vertexColors, depthTest, depthFun
         depthWrite: !translucent,
         depthFunc
     });
-    if (vertexColors) material.defines = { USE_LINE_COLORS: '' };
+    material.defines = {};
+    if (vertexColors) material.defines.USE_LINE_COLORS = '';
+    if (dash) material.defines.USE_DASH = '';
+    material.userData.cssDash = dash || null;
     if (translucent) {
         material.stencilWrite = true;
         material.stencilRef = takeStencilRef();
@@ -171,6 +198,8 @@ function syncViewport(renderer, scene, camera, geometry, material) {
     renderer.getDrawingBufferSize(_size);
     material.uniforms.uResolution.value.copy(_size);
     material.uniforms.uWidth.value = material.userData.cssWidth * renderer.getPixelRatio();
+    const dash = material.userData.cssDash;
+    if (dash) material.uniforms.uDash.value.set(dash[0], dash[1]).multiplyScalar(renderer.getPixelRatio());
 }
 
 export class ThickLine {
@@ -181,6 +210,7 @@ export class ThickLine {
      * @param {number} [opts.width=3]        CSS pixels
      * @param {number} [opts.opacity=1]      below 1 the line is blended
      * @param {boolean} [opts.vertexColors]  RGBA per point, multiplied with color/opacity
+     * @param {[number, number]} [opts.dash] dash and gap in CSS pixels (default: solid)
      * @param {boolean} [opts.depthTest=true]
      * @param {object|null} [opts.ghost]     { width, opacity } of the pass drawn where the line is hidden
      * @param {number} [opts.depthPull=0.002] fraction of the eye distance the line is pulled forward
@@ -201,14 +231,15 @@ export class ThickLine {
         const depthTest = opts.depthTest !== false;
         const depthPull = opts.depthPull ?? 0.002;
         const translucent = opacity < 1 || this.vertexColors;
+        const dash = opts.dash || null;
         this.material = makeMaterial({
             color: opts.color ?? 0xffffff, width: opts.width ?? 3, opacity,
-            vertexColors: this.vertexColors, depthTest, depthFunc: THREE.LessEqualDepth,
+            vertexColors: this.vertexColors, dash, depthTest, depthFunc: THREE.LessEqualDepth,
             translucent, depthPull
         });
         this.ghostMaterial = opts.ghost ? makeMaterial({
             color: opts.color ?? 0xffffff, width: opts.ghost.width ?? 2, opacity: opts.ghost.opacity ?? 0.3,
-            vertexColors: this.vertexColors, depthTest: true, depthFunc: THREE.GreaterDepth,
+            vertexColors: this.vertexColors, dash, depthTest: true, depthFunc: THREE.GreaterDepth,
             translucent: true, depthPull
         }) : null;
 

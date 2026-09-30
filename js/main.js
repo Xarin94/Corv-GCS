@@ -1326,6 +1326,14 @@ function animate(frameTime) {
 // Located navigation commands: WAYPOINT, LOITER_UNLIM/TURNS/TIME, LAND, TAKEOFF,
 // LOITER_TO_ALT, SPLINE_WAYPOINT, VTOL_TAKEOFF, VTOL_LAND
 const NAV_CMDS_3D = [16, 17, 18, 19, 21, 22, 31, 82, 84, 85];
+const LOITER_CMDS_3D = [17, 18, 19, 31];
+const CMD_RTL = 20;
+const CMD_ROI = 201;
+
+/** MAV_TYPE of an aircraft that lands on a glide slope: fixed wing, and the VTOL types' NAV_LAND. */
+function landsOnGlide(mavType) {
+    return mavType === 1 || (mavType >= 19 && mavType <= 25);
+}
 
 /** What the 3D scene draws for a mission item: route vertex only, or which symbol. */
 function missionItemKind(item, index) {
@@ -1336,41 +1344,59 @@ function missionItemKind(item, index) {
     return 'wp';
 }
 
+/**
+ * World position of a located mission item. In the 3D world the terrain mesh
+ * Y is MSL elevation (HGT data); the route compiler has already resolved every
+ * item's altitude against the same elevation model (altMsl), whatever the
+ * altitude mode, so the route here and the profile on the plan page agree.
+ */
+function missionItemWorld(it) {
+    const offset = STATE.offsetAlt || 0;
+    const pos = latLonToMeters(it.lat, it.lng);
+    const terrainElev = Number.isFinite(it.terrain) ? it.terrain : getTerrainElevationCached(it.lat, it.lng);
+    const msl = Number.isFinite(it.altMsl)
+        ? it.altMsl
+        : (terrainElev !== null ? terrainElev : (STATE.homeAlt || STATE.rawAlt || 0)) + (it.alt || 0);
+    return { x: pos.x, y: msl + offset, z: pos.z, ground: terrainElev !== null ? terrainElev + offset : null };
+}
+
+/** Loiter radius, turns and direction of a loiter item, null without a radius. */
+function missionItemLoiter(it) {
+    if (!LOITER_CMDS_3D.includes(it.command)) return null;
+    const signed = it.command === 31 ? it.param2 : it.param3;   // LOITER_TO_ALT keeps its radius in param 2
+    const r = it.loiter?.r ?? Math.abs(signed || 0);
+    if (!(r > 0)) return null;
+    const turns = it.loiter?.turns ?? (it.command === 18 ? Math.max(1, Math.round(it.param1 || 1)) : 1);
+    return { r, turns, ccw: (signed || 0) < 0 };
+}
+
 function buildMissionTrajectory3D() {
     missionHome = null;
-    const items = [];
+    const glide = landsOnGlide(STATE.vehicleType);
+    const points = [], pois = [];
+    let rtlSeq = null;
     STATE.missionItems.forEach((it, i) => {
+        const seq = Number.isFinite(it.seq) ? it.seq : i;
+        if (it.command === CMD_RTL) { rtlSeq = seq; return; }
+        if (it.command === CMD_ROI && (it.lat || it.lng)) { pois.push({ ...missionItemWorld(it), seq }); return; }
         if (!NAV_CMDS_3D.includes(it.command) || (!it.lat && !it.lng)) return;
+        rtlSeq = null;   // a return to launch closes the route only when nothing is flown after it
         const kind = missionItemKind(it, i);
         if (kind === 'home') missionHome = it;
-        items.push({ it, seq: Number.isFinite(it.seq) ? it.seq : i, kind });
+        points.push({
+            ...missionItemWorld(it),
+            seq, kind, alt: it.alt || 0, derived: !!it.derived,
+            segId: it.segId ?? null, segType: it.segType ?? null,
+            loiter: missionItemLoiter(it),
+            glide: kind === 'land' && it.command === 21 && glide,
+            hold: (it.command === 16 || it.command === 82) ? (it.param1 || 0) : 0
+        });
     });
-    if (items.length === 0) {
+    if (points.length === 0) {
         clearMissionTrajectory();
         return;
     }
-
-    // In the 3D world, terrain mesh Y = MSL elevation (from HGT data).
-    // Waypoints with frame 3 (GLOBAL_RELATIVE_ALT) have alt relative to home.
-    // To position them correctly above terrain, use terrain elevation at each WP
-    // as base, then add the relative altitude. This works both with and without
-    // a live vehicle connection.
-    const offset = STATE.offsetAlt || 0;
-
-    const points = items.map(({ it, seq, kind }) => {
-        const pos = latLonToMeters(it.lat, it.lng);
-        // WP alt is always AGL: terrain elevation + specified altitude
-        const terrainElev = getTerrainElevationCached(it.lat, it.lng);
-        const baseAlt = terrainElev !== null ? terrainElev : (STATE.homeAlt || STATE.rawAlt || 0);
-        const worldY = baseAlt + (it.alt || 0) + offset;
-        return {
-            x: pos.x, y: worldY, z: pos.z,
-            ground: terrainElev !== null ? terrainElev + offset : null,
-            seq, kind, alt: it.alt || 0, derived: !!it.derived
-        };
-    });
-
-    updateMissionTrajectory(points);
+    updateMissionTrajectory({ points, pois, rtlSeq });
 }
 
 // ============== SATELLITE/SUNLIGHT TOGGLES ==============

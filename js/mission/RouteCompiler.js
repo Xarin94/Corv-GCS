@@ -19,7 +19,8 @@
  *
  * Output items keep the legacy shape consumed by the 3D scene, the mini-map and
  * the library (`alt` = height above ground) and add `altMsl` / `altRel` plus a
- * `segId` back-reference so the map can highlight the selected segment.
+ * `segId` back-reference so the map can highlight the selected segment, and a
+ * `segType` so the 3D scene can draw a pattern or a circle as one figure.
  *
  * The items are MAVLink-shaped whatever the target stack: when the mission is
  * bound for INAV the same list is re-encoded into waypoint records at the end
@@ -207,7 +208,7 @@ export function compileRoute(route, ctx) {
         // distance therefore starts at the first lane point, not on the transit leg.
         navPts.forEach((np, i) => {
             const it = push({
-                command: np.command, lat: np.lat, lng: np.lng, alt: np.alt, loc: true, segId: seg.id, derived: false,
+                command: np.command, lat: np.lat, lng: np.lng, alt: np.alt, loc: true, segId: seg.id, segType: seg.type, derived: false,
                 param1: np.param1 || 0, param2: np.param2 || 0, param3: np.param3 || 0, param4: np.param4 || 0,
                 loiter: np.loiter, landing: np.landing, segIdx: i, lane: np.lane,
                 gimbal: { ...gimbal }, roiTarget: roiActive ? roiTarget : null, trigger: navPts.trigger || 0,

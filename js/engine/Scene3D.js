@@ -13,6 +13,7 @@ import { SymbolLayer, SHAPE, makeLabel, fitLabel, disposeLabel, setSymbolHalo, s
 import { WORLD_LAYER, OVERLAY_LAYER, toOverlayLayer } from './Layers.js';
 import { setCorridorColor } from './TrajectoryCorridor3D.js';
 import { initTraffic3D, updateTraffic3D, animateTraffic3D, resizeTraffic3D, setTrafficColor } from './Traffic3D.js';
+import { initMission3D, updateMission3D, setMission3DActiveSeq, clearMission3D, setMission3DPalette, resizeMission3D } from './Mission3D.js';
 
 // Module-level references
 let scene, camera, renderer;
@@ -34,22 +35,25 @@ const TRAIL_MIN_STEP_M = 2;
 // light-theme schematic view the ground is pale green: the greens deepen (the
 // light UI theme's own accent green), the others darken a little, symbol
 // halos turn white, and every label is dark blue with a thin black edge, like
-// the readouts over the scene (body.scene-light).
+// the readouts over the scene (body.scene-light). Circles, patterns and POIs
+// take their segment colour from the flight plan page (RouteModel), a shade
+// darker over the light ground.
 const PALETTE_DARK = {
     trail: 0xff3b30, route: 0x44ff44, activeLeg: 0xd8ffd0, home: 0xff8800,
     ownship: 0xffffff, traffic: 0xff2a2a,
+    circle: 0x4488ff, area: 0xff6600, corridor: 0xcc44ff, perimeter: 0xffaa00, poi: 0xff66aa,
     halo: [0, 0, 0, 0.6], label: null, labelHalo: 'rgba(0, 0, 0, 0.85)', labelHaloPx: 3.5
 };
 const PALETTE_LIGHT = {
     trail: 0xe3261c, route: 0x0a8f2a, activeLeg: 0x05561b, home: 0xd96a00,
     ownship: 0x10324a, traffic: 0xe3261c,
+    circle: 0x1c5fd8, area: 0xd65400, corridor: 0x9a2ccc, perimeter: 0xb87800, poi: 0xd02c78,
     halo: [1, 1, 1, 0.8], label: 0x0a37a6, labelHalo: 'rgba(0, 0, 0, 0.6)', labelHaloPx: 1.6
 };
 let palette = PALETTE_DARK;
 
 const HOME_POLE_M = 100;       // home symbol height above the ground
 const HOME_RING_M = 25;        // radius of the ring around home on the ground
-const MAX_WP_LABELS = 60;      // survey missions have hundreds of waypoints
 
 // Sun direction for hillshading
 let currentSunDirection = null;
@@ -76,15 +80,8 @@ const pooledGeo = {};
 const pooledMat = {};
 let timeOverride = null;
 
-// Overlays (created in init3D)
+// Overlays (created in init3D; the mission route lives in Mission3D.js)
 let trail = null;
-let routeLine = null;       // mission path through every located nav item
-let activeLeg = null;       // the leg being flown, over the route
-let dropLines = null;       // waypoint → ground
-let wpSymbols = null;
-let wpLabels = [];
-let missionPoints = [];     // last points given to updateMissionTrajectory()
-let activeSeq = null;
 let homePole = null;
 let homeRing = null;
 let homeSymbol = null;
@@ -168,10 +165,7 @@ function initLighting() {
 function initOverlays() {
     trail = new ThickLine({ color: palette.trail, width: 3.5, ghost: { width: 2, opacity: 0.35 }, renderOrder: 5 }).addTo(scene);
 
-    routeLine = new ThickLine({ color: palette.route, width: 3, ghost: { width: 2, opacity: 0.35 }, renderOrder: 4 }).addTo(scene);
-    activeLeg = new ThickLine({ mode: 'pairs', color: palette.activeLeg, width: 4.5, renderOrder: 6 }).addTo(scene);
-    dropLines = new ThickLine({ mode: 'pairs', color: palette.route, width: 1.5, opacity: 0.5, renderOrder: 3 }).addTo(scene);
-    wpSymbols = new SymbolLayer({ sizeNear: 30, sizeFar: 18, nearDist: 300, farDist: 6000, ghostOpacity: 0.45, renderOrder: 10 }).addTo(scene);
+    initMission3D(scene, camera, renderer, palette);
 
     homePole = new ThickLine({ mode: 'pairs', color: palette.home, width: 3, ghost: { width: 2, opacity: 0.4 }, renderOrder: 5 }).addTo(scene);
     homeRing = new ThickLine({ color: palette.home, width: 3, ghost: { width: 2, opacity: 0.4 }, renderOrder: 5 }).addTo(scene);
@@ -240,16 +234,13 @@ function applyPalette() {
     setSymbolHalo(...palette.halo);
     setLabelHalo(palette.labelHalo, palette.labelHaloPx);
     trail.setColor(palette.trail);
-    routeLine.setColor(palette.route);
-    dropLines.setColor(palette.route);
-    activeLeg.setColor(palette.activeLeg);
     homePole.setColor(palette.home);
     homeRing.setColor(palette.home);
     ownship.setSymbols([{ x: 0, y: 0, z: 0, shape: SHAPE.CIRCLE, color: palette.ownship }]);
     setCorridorColor(palette.route);
     setTrafficColor(palette.traffic, palette.label ?? palette.traffic);
-    // Symbols and labels carry their colour: build them again
-    if (missionPoints.length) updateMissionTrajectory(missionPoints);
+    setMission3DPalette(palette);
+    // The home label carries its colour: build it again
     if (homeLabel) {
         disposeLabel(homeLabel);
         homeLabel = null;
@@ -371,97 +362,25 @@ export function setTrailPoints(points) {
 
 // ============== MISSION ==============
 
-const WP_SHAPES = { takeoff: SHAPE.TRIANGLE, land: SHAPE.DIAMOND, loiter: SHAPE.CIRCLE, wp: SHAPE.SQUARE };
-const WP_TAGS = { takeoff: 'T/O', land: 'LAND', loiter: 'LOIT' };
-
 /**
- * Update mission trajectory 3D visualization: the route through every located
- * navigation item, a symbol, label and drop line to the ground per waypoint.
- * @param {Array<{x:number, y:number, z:number, ground?:number, seq?:number,
- *   kind?:'home'|'takeoff'|'land'|'loiter'|'wp', alt?:number, derived?:boolean}>} points
- *   World-space positions in mission order. `ground` is the terrain height
- *   under the point, `derived` marks terrain-following points the compiler
- *   inserted (route vertex only, no symbol).
+ * Draw the mission route (see Mission3D.js for how each kind of item looks).
+ * @param {{points: Array, pois?: Array, rtlSeq?: number|null}} mission
  */
-export function updateMissionTrajectory(points) {
-    if (!scene || !routeLine) return;
-
-    clearMissionTrajectory();
-    if (!points || points.length === 0) return;
-    missionPoints = points;
-
-    routeLine.setPoints(points);
-
-    const marked = points.filter(p => p.kind !== 'home' && !p.derived);
-    const symbols = [];
-    const drops = [];
-    for (const p of marked) {
-        symbols.push({ x: p.x, y: p.y, z: p.z, shape: WP_SHAPES[p.kind] ?? SHAPE.SQUARE, color: palette.route });
-    }
-    // Foot of each drop line: a small dot on the ground, the waypoint's shadow
-    for (const p of marked) {
-        if (!Number.isFinite(p.ground) || p.y - p.ground < 1) continue;
-        drops.push(p.x, p.y, p.z, p.x, p.ground, p.z);
-        symbols.push({ x: p.x, y: p.ground, z: p.z, shape: SHAPE.DOT, color: palette.route, scale: 0.3 });
-    }
-    wpSymbols.setSymbols(symbols);
-    dropLines.setPoints(drops, drops.length / 3);
-
-    // Labels: sequence number as the command bar shows it, and height above
-    // ground. A dense survey gets every n-th one so the screen stays legible.
-    const every = Math.max(1, Math.ceil(marked.length / MAX_WP_LABELS));
-    const viewportH = renderer ? renderer.getSize(new THREE.Vector2()).y : 0;
-    marked.forEach((p, i) => {
-        if (i % every !== 0 && i !== marked.length - 1) return;
-        const tag = WP_TAGS[p.kind];
-        const main = Number.isFinite(p.seq) ? String(p.seq) + (tag ? ' ' + tag : '') : (tag || 'WP');
-        const sub = Number.isFinite(p.alt) && p.kind !== 'land' ? `${Math.round(p.alt)} m` : '';
-        const label = makeLabel(main, sub, palette.label ?? palette.route);
-        label.position.set(p.x, p.y, p.z);
-        fitLabel(label, camera, viewportH, 17);
-        scene.add(label);
-        wpLabels.push(label);
-    });
-
-    setMissionActiveSeq(activeSeq, true);
+export function updateMissionTrajectory(mission) {
+    updateMission3D(mission);
 }
 
 /**
- * Highlight the waypoint being flown (MISSION_CURRENT) and the leg leading to it.
+ * Highlight the item being flown (MISSION_CURRENT) and the path leading to it.
  * @param {number|null} seq mission sequence number, null for none
- * @param {boolean} [force] re-apply even if unchanged (after a rebuild)
  */
-export function setMissionActiveSeq(seq, force = false) {
-    if (!wpSymbols) return;
-    if (seq === activeSeq && !force) return;
-    activeSeq = seq;
-
-    const marked = missionPoints.filter(p => p.kind !== 'home' && !p.derived);
-    for (let i = 0; i < marked.length; i++) {
-        const active = marked[i].seq === seq;
-        wpSymbols.setEmphasis(i, active ? 1.35 : 1, active);
-    }
-
-    const idx = missionPoints.findIndex(p => p.seq === seq && p.kind !== 'home');
-    if (idx > 0) {
-        const a = missionPoints[idx - 1], b = missionPoints[idx];
-        activeLeg.setPoints([a, b]);
-    } else {
-        activeLeg.clear();
-    }
+export function setMissionActiveSeq(seq) {
+    setMission3DActiveSeq(seq);
 }
 
-/**
- * Clear entire mission trajectory (line, symbols, labels)
- */
+/** Clear the entire mission route (lines, symbols, labels). */
 export function clearMissionTrajectory() {
-    missionPoints = [];
-    if (routeLine) routeLine.clear();
-    if (activeLeg) activeLeg.clear();
-    if (dropLines) dropLines.clear();
-    if (wpSymbols) wpSymbols.setSymbols([]);
-    for (const label of wpLabels) disposeLabel(label);
-    wpLabels = [];
+    clearMission3D();
 }
 
 /**
@@ -744,7 +663,7 @@ export function resize(width, height) {
         setLodViewParams(camera ? camera.fov : 60, renderer.domElement.height);
     }
     // Labels are sized in pixels of the viewport
-    for (const label of wpLabels) fitLabel(label, camera, height, 17);
+    resizeMission3D(camera, height);
     if (homeLabel) fitLabel(homeLabel, camera, height, 26);
     resizeTraffic3D(camera, height);
 }

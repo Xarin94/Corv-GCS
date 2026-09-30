@@ -15,7 +15,7 @@
 
 import { OVERLAY_LAYER } from './Layers.js';
 
-export const SHAPE = { SQUARE: 0, DIAMOND: 1, CIRCLE: 2, HOME: 3, DOT: 4, TRIANGLE: 5 };
+export const SHAPE = { SQUARE: 0, DIAMOND: 1, CIRCLE: 2, HOME: 3, DOT: 4, TRIANGLE: 5, TARGET: 6 };
 
 // One halo colour for every symbol layer (the uniform object is shared)
 const haloUniform = { value: new THREE.Vector4(0, 0, 0, 0.6) };
@@ -97,6 +97,11 @@ void main() {
         mark = min(bars, sdBox(p, vec2(0.26, 0.0)));
     } else if (shape == 4) {
         d = length(p) - 0.45;
+    } else if (shape == 6) {
+        // Target: a ring with four ticks, the planner's POI glyph
+        d = length(p) - 0.32;
+        mark = min(min(sdBox(p - vec2(0.0, 0.58), vec2(0.0, 0.12)), sdBox(p + vec2(0.0, 0.58), vec2(0.0, 0.12))),
+                   min(sdBox(p - vec2(0.58, 0.0), vec2(0.12, 0.0)), sdBox(p + vec2(0.58, 0.0), vec2(0.12, 0.0))));
     } else {
         // Triangle, apex up
         vec2 q = vec2(abs(p.x), p.y + 0.18);

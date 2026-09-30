@@ -1661,7 +1661,7 @@ function renderMap() {
         const lls = seg.points.map(p => [p.lat, p.lng]);
         const base = { color: def.color, weight: isSel ? 2.5 : 1.5, opacity: isSel ? 1 : 0.75 };
         const onSel = (e) => { L.DomEvent.stop(e); if (tool === 'select') selectSegment(seg.id, { scroll: true }); };
-        const rec = { fig: null, axis: null, points: [], label: null };
+        const rec = { fig: null, axis: null, arrows: null, points: [], label: null };
         figures.set(seg.id, rec);
         switch (seg.type) {
             case 'area':
@@ -1678,6 +1678,10 @@ function renderMap() {
             }
             case 'circle':
                 rec.fig = L.circle(lls[0], { radius: +seg.params.radius || 50, ...base, fillOpacity: isSel ? 0.08 : 0.03, fillColor: def.color });
+                rec.arrows = circleArrowPoses(seg).map(({ ll, heading }) => L.marker(ll, {
+                    icon: L.divIcon({ html: `<div class="fp-arrow" style="border-bottom-color:${def.color};transform:rotate(${heading}deg)"></div>`, className: 'vehicle-map-marker', iconSize: [12, 12], iconAnchor: [6, 6] }),
+                    interactive: false, pane: 'fpLabels',
+                }).addTo(layers.segments));
                 break;
         }
         if (rec.fig) {
@@ -1938,6 +1942,23 @@ function labelPoint(seg) {
     return seg.points[0];
 }
 
+/**
+ * Where the direction-of-turn arrows of a circle go: evenly around the rim,
+ * each pointing along the turn (the 3D view draws the same four).
+ * @returns {Array<{ll: [number, number], heading: number}>}
+ */
+function circleArrowPoses(seg) {
+    const c = seg.points[0];
+    if (!c) return [];
+    const r = +seg.params.radius || 50;
+    const f = localFrame(c);
+    const turn = seg.params.direction === 'ccw' ? -90 : 90;
+    return [45, 135, 225, 315].map(a => {
+        const ll = f.toLL({ x: r * Math.sin(a * Math.PI / 180), y: r * Math.cos(a * Math.PI / 180) });
+        return { ll: [ll.lat, ll.lng], heading: (a + turn + 360) % 360 };
+    });
+}
+
 /** Move a segment's drawn figure to follow its points — used while dragging, before the recompile. */
 function updateFigure(seg) {
     const rec = figures.get(seg.id);
@@ -1949,6 +1970,7 @@ function updateFigure(seg) {
         else rec.fig.setLatLngs(lls);
     }
     if (rec.axis) rec.axis.setLatLngs(lls);
+    if (rec.arrows) circleArrowPoses(seg).forEach((p, i) => rec.arrows[i]?.setLatLng(p.ll));
     rec.points.forEach((m, i) => { if (lls[i]) m.setLatLng(lls[i]); });
     if (rec.glyph) rec.glyph.setLatLng(lls[0]);
     const lp = labelPoint(seg);
