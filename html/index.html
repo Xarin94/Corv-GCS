@@ -211,18 +211,19 @@
                 </div>
 
                 <!-- Position / Nav data -->
+                <!-- In the relative navigation mode: VX / VY / VZ (NED velocity) instead -->
                 <div class="bottom-bar">
                     <div class="stat-item">
-                        <div class="stat-lbl">LATITUDE</div>
-                        <div class="stat-val" id="disp-lat">--.----</div>
+                        <div class="stat-lbl" id="disp-lat-lbl">LATITUDE</div>
+                        <div class="stat-val"><span id="disp-lat">--.----</span><span class="stat-unit" id="disp-lat-unit"></span></div>
                     </div>
                     <div class="stat-item">
-                        <div class="stat-lbl">LONGITUDE</div>
-                        <div class="stat-val" id="disp-lon">--.----</div>
+                        <div class="stat-lbl" id="disp-lon-lbl">LONGITUDE</div>
+                        <div class="stat-val"><span id="disp-lon">--.----</span><span class="stat-unit" id="disp-lon-unit"></span></div>
                     </div>
                     <div class="stat-item">
-                        <div class="stat-lbl">RADAR ALT</div>
-                        <div class="stat-val"><span id="disp-ralt">---</span><span class="stat-unit">m</span></div>
+                        <div class="stat-lbl" id="disp-ralt-lbl">RADAR ALT</div>
+                        <div class="stat-val"><span id="disp-ralt">---</span><span class="stat-unit" id="disp-ralt-unit">m</span></div>
                     </div>
                 </div>
 
@@ -1353,7 +1354,8 @@
                             <option value="plane">Plane</option>
                             <option value="quadplane">QuadPlane</option>
                             <option value="rover">Rover</option>
-                            <option value="sub">Sub</option>
+                            <option value="sub">ROV &middot; Sub (BlueROV2, vectored)</option>
+                            <option value="subnogps">ROV &middot; no GPS (dead reckoning)</option>
                         </select>
                     </div>
                     <div class="cfg-row">
@@ -2025,6 +2027,44 @@
                     <span class="cfg-val" id="syscfg-platform-link">--</span>
                 </div>
                 <div class="cfg-note" id="syscfg-platform-hint"></div>
+            </div>
+            <div class="setup-panel">
+                <div class="panel-header">NAVIGATION</div>
+                <div class="cfg-row">
+                    <label>POSITION</label>
+                    <select id="syscfg-nav-position" class="cfg-select" title="Relative: for a vehicle that has never had a GPS (a ROV, a flight with no GNSS). Position from the vehicle's local frame when it sends one, otherwise dead-reckoned here; no map or terrain, a plane at zero">
+                        <option value="absolute">GPS &middot; absolute, map and terrain</option>
+                        <option value="relative">Relative &middot; no GPS, plane at zero</option>
+                    </select>
+                </div>
+                <div class="cfg-row">
+                    <label>DEAD-RECKONING TRACK</label>
+                    <select id="syscfg-nav-dr" class="cfg-select" title="Draw, dashed, the position integrated from velocity alone — next to the real track it shows how far dead reckoning drifts">
+                        <option value="off">Off</option>
+                        <option value="on">Estimate from velocity</option>
+                    </select>
+                </div>
+                <div class="cfg-row">
+                    <label>VELOCITY SOURCE</label>
+                    <select id="syscfg-nav-vel" class="cfg-select" title="Auto: a fixed wing's airspeed along the heading, else the vehicle's local or EKF velocity, else ground speed along the heading">
+                        <option value="auto">Auto</option>
+                        <option value="air">Airspeed + heading</option>
+                        <option value="ground">Ground speed + heading</option>
+                        <option value="ekf">EKF / local velocity</option>
+                    </select>
+                </div>
+                <div class="cfg-row">
+                    <label>WATER (DEPTH SENSOR)</label>
+                    <select id="syscfg-nav-water" class="cfg-select" title="Density used to turn a sub's pressure reading into depth in the relative mode">
+                        <option value="fresh">Fresh water</option>
+                        <option value="salt">Sea water</option>
+                    </select>
+                </div>
+                <div class="cfg-row">
+                    <label>ESTIMATE</label>
+                    <span class="cfg-val" id="syscfg-nav-status">--</span>
+                    <button id="syscfg-nav-reset" class="file-upload-btn" type="button" title="Start the relative position and the dead-reckoned track again from zero">RESET</button>
+                </div>
             </div>
             <div class="setup-panel">
                 <div class="panel-header">SYSTEM CONFIG</div>

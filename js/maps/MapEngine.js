@@ -30,6 +30,10 @@ let targetMarkerOuter = null;
 // ADS-B traffic markers on mini-map
 const trafficMarkersMap = new Map(); // icao24 → L.CircleMarker
 
+// Relative navigation frame: positions are metres from a synthetic origin,
+// so the imagery and the real traffic around that origin would lie
+let relativeFrame = false;
+
 /**
  * Initialize the mini-map
  * @param {string} containerId - DOM element ID for map container
@@ -141,7 +145,7 @@ export function updateMap() {
 export function updateTrafficOverlay() {
     if (!map) return;
 
-    if (!STATE.traffic || STATE.traffic.length === 0) {
+    if (relativeFrame || !STATE.traffic || STATE.traffic.length === 0) {
         // Remove all markers
         for (const m of trafficMarkersMap.values()) map.removeLayer(m);
         trafficMarkersMap.clear();
@@ -184,6 +188,19 @@ export function updateTrafficOverlay() {
             trafficMarkersMap.delete(icao);
         }
     }
+}
+
+/**
+ * Relative navigation frame on or off: without it the mini-map keeps only the
+ * track, home and the vehicle, on a blank background.
+ * @param {boolean} on
+ */
+export function setMapRelativeFrame(on) {
+    relativeFrame = !!on;
+    if (!map || !satelliteLayer) return;
+    if (relativeFrame) map.removeLayer(satelliteLayer);
+    else if (!map.hasLayer(satelliteLayer)) satelliteLayer.addTo(map);
+    updateTrafficOverlay();
 }
 
 /**

@@ -14,6 +14,8 @@ import {
 import { isHeartbeatAlive } from '../mavlink/ConnectionManager.js';
 import { onMessage } from '../mavlink/MAVLinkManager.js';
 
+const GPS_STALE_MS = 5000;   // GPS_RAW_INT older than this: no GPS
+
 // Simple input dialog replacement for prompt() (not supported in sandboxed Electron)
 function showInputDialog(message, defaultValue = '') {
     return new Promise((resolve) => {
@@ -444,16 +446,19 @@ export function updateCommandBar() {
         els.batBar.className = 'cmd-bat-bar-fill' + (pct < 20 ? ' critical' : pct < 40 ? ' low' : '');
     }
 
-    // GPS with RTK color coding
-    els.gpsFix.textContent = getGPSFixName(STATE.gpsFix);
-    els.gpsSat.textContent = STATE.gpsNumSat + ' sat';
-    if (els.gpsHdop) els.gpsHdop.textContent = STATE.gpsHdop < 99 ? 'HDOP ' + STATE.gpsHdop.toFixed(1) : '';
+    // GPS with RTK color coding. A vehicle with no GPS sends no GPS_RAW_INT at
+    // all, so a fix older than a few seconds (a previous connection's) is none.
+    const gpsFresh = STATE.gpsDataTime > 0 && Date.now() - STATE.gpsDataTime < GPS_STALE_MS;
+    const gpsFix = gpsFresh ? STATE.gpsFix : 0;
+    els.gpsFix.textContent = getGPSFixName(gpsFix);
+    els.gpsSat.textContent = (gpsFresh ? STATE.gpsNumSat : 0) + ' sat';
+    if (els.gpsHdop) els.gpsHdop.textContent = gpsFresh && STATE.gpsHdop < 99 ? 'HDOP ' + STATE.gpsHdop.toFixed(1) : '';
     // Color: RTK Fixed=green, RTK Float=yellow, 3D Fix=cyan, DGPS=cyan, <=2D=red
-    if (STATE.gpsFix === 6) {
+    if (gpsFix === 6) {
         els.gpsFix.style.color = '#00ff7f'; // RTK Fixed
-    } else if (STATE.gpsFix === 5) {
+    } else if (gpsFix === 5) {
         els.gpsFix.style.color = '#ffcc00'; // RTK Float
-    } else if (STATE.gpsFix >= 3) {
+    } else if (gpsFix >= 3) {
         els.gpsFix.style.color = '#00d2ff'; // 3D Fix / DGPS
     } else {
         els.gpsFix.style.color = '#ff3333'; // No fix / 2D

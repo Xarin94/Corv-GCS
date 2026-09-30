@@ -6,6 +6,8 @@
 import { STATE, currentGLoad } from '../core/state.js';
 import { RAD } from '../core/constants.js';
 import { getNearestTraffic } from '../adsb/ADSBManager.js';
+import { isRelativeMode } from '../core/RelativeNav.js';
+import { t } from '../core/i18n.js';
 
 // Cached DOM references for high-frequency updates (avoids ~29 queries/frame)
 let domCache = null;
@@ -81,6 +83,9 @@ function ensureDomCache() {
         dispLon: document.getElementById('disp-lon'),
         dispAb: document.getElementById('disp-ab'),
         dispRalt: document.getElementById('disp-ralt'),
+        // Labels and units of that table, relabelled in the relative mode
+        navLabels: ['disp-lat-lbl', 'disp-lon-lbl', 'disp-ralt-lbl'].map(id => document.getElementById(id)),
+        navUnits: ['disp-lat-unit', 'disp-lon-unit', 'disp-ralt-unit'].map(id => document.getElementById(id)),
 
         // Telemetry panel elements
         telemetryPanel: document.getElementById('telemetry-panel'),
@@ -119,6 +124,21 @@ function ensureDomCache() {
     return domCache;
 }
 
+const NAV_TABLE = {
+    absolute: { labels: ['LATITUDE', 'LONGITUDE', 'RADAR ALT'], units: ['', '', 'm'] },
+    relative: { labels: ['VX · NORTH', 'VY · EAST', 'VZ · DOWN'], units: ['m/s', 'm/s', 'm/s'] }
+};
+let navTableRelative = null;
+
+/** Position table labels for the navigation mode (only rewritten when it changes). */
+function setNavTableMode(dom, relative) {
+    if (relative === navTableRelative) return;
+    navTableRelative = relative;
+    const table = relative ? NAV_TABLE.relative : NAV_TABLE.absolute;
+    dom.navLabels.forEach((el, i) => { if (el) el.textContent = t(table.labels[i]); });
+    dom.navUnits.forEach((el, i) => { if (el) el.textContent = table.units[i]; });
+}
+
 /**
  * Update all UI displays
  */
@@ -126,11 +146,22 @@ export function updateUI() {
     const dom = ensureDomCache();
     if (!hudCellConfig) loadHudCellConfig();
 
-    // Non-customizable display updates
-    if (dom.dispRalt) dom.dispRalt.textContent = STATE.rangefinderDist != null ? STATE.rangefinderDist.toFixed(1) : '---';
+    // Non-customizable display updates. In the relative navigation mode lat/lon
+    // are synthetic (metres around the world origin): the table shows the
+    // velocity instead, north / east / down as in LOCAL_POSITION_NED.
+    const relative = isRelativeMode();
+    setNavTableMode(dom, relative);
+    if (relative) {
+        const fmt = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2);
+        if (dom.dispLat) dom.dispLat.textContent = fmt(STATE.vn || 0);
+        if (dom.dispLon) dom.dispLon.textContent = fmt(STATE.ve || 0);
+        if (dom.dispRalt) dom.dispRalt.textContent = fmt(STATE.vd || 0);
+    } else {
+        if (dom.dispRalt) dom.dispRalt.textContent = STATE.rangefinderDist != null ? STATE.rangefinderDist.toFixed(1) : '---';
+        if (dom.dispLat) dom.dispLat.textContent = STATE.lat.toFixed(5);
+        if (dom.dispLon) dom.dispLon.textContent = STATE.lon.toFixed(5);
+    }
     if (dom.dispVs) dom.dispVs.textContent = STATE.vs.toFixed(1);
-    if (dom.dispLat) dom.dispLat.textContent = STATE.lat.toFixed(5);
-    if (dom.dispLon) dom.dispLon.textContent = STATE.lon.toFixed(5);
     if (dom.dispAb) dom.dispAb.textContent = `${(STATE.aoa * RAD).toFixed(1)}° / ${(STATE.ssa * RAD).toFixed(1)}°`;
 
     // Customizable HUD cells (config-driven loop)

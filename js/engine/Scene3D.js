@@ -14,6 +14,7 @@ import { WORLD_LAYER, OVERLAY_LAYER, toOverlayLayer } from './Layers.js';
 import { setCorridorColor } from './TrajectoryCorridor3D.js';
 import { initTraffic3D, updateTraffic3D, animateTraffic3D, resizeTraffic3D, setTrafficColor } from './Traffic3D.js';
 import { initMission3D, updateMission3D, setMission3DActiveSeq, clearMission3D, setMission3DPalette, resizeMission3D } from './Mission3D.js';
+import { initWater3D, updateWater3D } from './Water3D.js';
 
 // Module-level references
 let scene, camera, renderer;
@@ -28,6 +29,10 @@ const MAX_TRAIL_POINTS = 50000;
 // one. Appending every rendered frame filled the buffer with duplicates while
 // hovering or parked, and hit MAX_TRAIL_POINTS after ~25 min of flight.
 const TRAIL_MIN_STEP_M = 2;
+// A jump farther than this is not flight — a new connection after the demo,
+// another vehicle, a log loaded: the trail starts again instead of drawing a
+// line across the country.
+const TRAIL_MAX_JUMP_M = 2000;
 
 // Overlay colours: the same meaning as on the 2D mini-map (red trail and
 // traffic, green route and waypoints, orange home), bright to hold up on
@@ -40,13 +45,13 @@ const TRAIL_MIN_STEP_M = 2;
 // darker over the light ground.
 const PALETTE_DARK = {
     trail: 0xff3b30, route: 0x44ff44, activeLeg: 0xd8ffd0, home: 0xff8800,
-    ownship: 0xffffff, traffic: 0xff2a2a,
+    ownship: 0xffffff, traffic: 0xff2a2a, drTrail: 0x00e5ff,
     circle: 0x4488ff, area: 0xff6600, corridor: 0xcc44ff, perimeter: 0xffaa00, poi: 0xff66aa,
     halo: [0, 0, 0, 0.6], label: null, labelHalo: 'rgba(0, 0, 0, 0.85)', labelHaloPx: 3.5
 };
 const PALETTE_LIGHT = {
     trail: 0xe3261c, route: 0x0a8f2a, activeLeg: 0x05561b, home: 0xd96a00,
-    ownship: 0x10324a, traffic: 0xe3261c,
+    ownship: 0x10324a, traffic: 0xe3261c, drTrail: 0x0077b6,
     circle: 0x1c5fd8, area: 0xd65400, corridor: 0x9a2ccc, perimeter: 0xb87800, poi: 0xd02c78,
     halo: [1, 1, 1, 0.8], label: 0x0a37a6, labelHalo: 'rgba(0, 0, 0, 0.6)', labelHaloPx: 1.6
 };
@@ -82,6 +87,8 @@ let timeOverride = null;
 
 // Overlays (created in init3D; the mission route lives in Mission3D.js)
 let trail = null;
+let drTrail = null;         // dead-reckoned track, from velocities only (RelativeNav)
+let groundGrid = null;      // reference grid at 0 m under the terrain
 let homePole = null;
 let homeRing = null;
 let homeSymbol = null;
@@ -121,8 +128,8 @@ export function init3D(container) {
     initLighting();
 
     // Grid helper
-    const grid = new THREE.GridHelper(50000, 500, 0x333333, 0x111111);
-    scene.add(grid);
+    groundGrid = new THREE.GridHelper(50000, 500, 0x333333, 0x111111);
+    scene.add(groundGrid);
 
     initOverlays();
 
@@ -164,6 +171,8 @@ function initLighting() {
  */
 function initOverlays() {
     trail = new ThickLine({ color: palette.trail, width: 3.5, ghost: { width: 2, opacity: 0.35 }, renderOrder: 5 }).addTo(scene);
+    drTrail = new ThickLine({ color: palette.drTrail, width: 2.5, dash: [8, 5], ghost: { width: 1.5, opacity: 0.3 }, renderOrder: 5 }).addTo(scene);
+    initWater3D(scene);
 
     initMission3D(scene, camera, renderer, palette);
 
@@ -234,6 +243,7 @@ function applyPalette() {
     setSymbolHalo(...palette.halo);
     setLabelHalo(palette.labelHalo, palette.labelHaloPx);
     trail.setColor(palette.trail);
+    drTrail.setColor(palette.drTrail);
     homePole.setColor(palette.home);
     homeRing.setColor(palette.home);
     ownship.setSymbols([{ x: 0, y: 0, z: 0, shape: SHAPE.CIRCLE, color: palette.ownship }]);
@@ -297,7 +307,9 @@ export function updateTrail(x, y, z) {
         const last = trail.positions;
         const o = (n - 1) * 3;
         const dx = x - last[o], dy = y - last[o + 1], dz = z - last[o + 2];
-        if (dx * dx + dy * dy + dz * dz < TRAIL_MIN_STEP_M * TRAIL_MIN_STEP_M) return;
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < TRAIL_MIN_STEP_M * TRAIL_MIN_STEP_M) return;
+        if (d2 > TRAIL_MAX_JUMP_M * TRAIL_MAX_JUMP_M) trail.clear();
     }
 
     // Check if we've hit the limit - downsample the trail by 2x to free space
@@ -358,6 +370,31 @@ export function setTrailPoints(points) {
         return;
     }
     trail.setPoints(points);
+}
+
+/**
+ * The dead-reckoned track (dashed), or nothing.
+ * @param {Float32Array|null} xyz world x, y, z per point
+ * @param {number} [count] points in use
+ */
+export function setDeadReckoningTrail(xyz, count = 0) {
+    if (!drTrail) return;
+    if (!xyz || count < 2) drTrail.clear();
+    else drTrail.setPoints(xyz, count);
+}
+
+/** The reference grid at 0 m, shown where no terrain covers it; the relative mode draws its own. */
+export function setGroundGridVisible(visible) {
+    if (groundGrid) groundGrid.visible = !!visible;
+}
+
+/**
+ * Water surface grid and underwater particles for this frame (see Water3D.js).
+ * @param {object} view plane and underwaterLevel, as updateWater3D() takes them
+ */
+export function updateWaterView(view) {
+    if (!camera || !renderer) return;
+    updateWater3D({ camera, pixelRatio: renderer.getPixelRatio(), ...view });
 }
 
 // ============== MISSION ==============
@@ -426,7 +463,10 @@ export function render() {
 //      that depth, and multisampled, unlike the render target
 //
 // Overlays stay out of pass 1 so they are not outlined themselves: every
-// LiDAR point would otherwise become an edge.
+// LiDAR point would otherwise become an edge. A water surface (marked by the
+// terrain with alpha 0) writes no depth in pass 2, so what is under the water
+// — route, trail, the vehicle, drawn again in the overlay layer — shows in
+// full instead of as a faint ghost.
 
 const OUTLINE_VERTEX = `
 varying vec2 vUv;
@@ -473,6 +513,10 @@ float invDepth(float d) {
 void main() {
     vec4 color = texture2D(tColor, vUv);
     float dc = texture2D(tDepth, vUv).r;
+    // The terrain marks a water surface with alpha 0: its depth is not
+    // written back, so the overlays under the water are drawn in full
+    float waterSurface = color.a < 0.5 ? 1.0 : 0.0;
+    color.a = 1.0;
     if (dc >= 1.0) {
         // Sky — unless it is a crack between two terrain chunks of different
         // detail, one pixel wide: ground on both sides of it horizontally or
@@ -482,17 +526,17 @@ void main() {
         float u = texture2D(tDepth, vUv + dy).r, d = texture2D(tDepth, vUv - dy).r;
         if (max(r, l) < 1.0) {
             gl_FragDepth = max(r, l);
-            gl_FragColor = texture2D(tColor, vUv + dx);
+            gl_FragColor = vec4(texture2D(tColor, vUv + dx).rgb, 1.0);
         } else if (max(u, d) < 1.0) {
             gl_FragDepth = max(u, d);
-            gl_FragColor = texture2D(tColor, vUv + dy);
+            gl_FragColor = vec4(texture2D(tColor, vUv + dy).rgb, 1.0);
         } else {
             gl_FragDepth = dc;
             gl_FragColor = vec4(skyColor(), 1.0);
         }
         return;
     }
-    gl_FragDepth = dc;
+    gl_FragDepth = waterSurface > 0.5 ? 1.0 : dc;
     float ic = invDepth(dc);
     float profile = 0.0;
     float skyline = 0.0;

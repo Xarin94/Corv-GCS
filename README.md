@@ -43,8 +43,11 @@ the mission simulations in *Top Gun: Maverick*: black sky, contour lines every 1
 ones every 50 m and amber ones every 250 m, and a white line along every ridge that hides the ground
 behind it and along the horizon, out to 30 km. The route with its numbered waypoints, home, the
 predicted path and the trail already flown are drawn over it in bold, at a size that stays readable
-from any distance. With the light theme the same chart is drawn as green relief under a pale blue
-sky, with the readouts and the HUD in dark blue.
+from any distance — a survey as dashed passes in its own colour, a loiter circle as the ring it is
+with arrows for the direction of turn, a landing straight down, the return to launch dashed. Below
+200 m a faint grid of 25 m triangles on the ground around the aircraft shows how high it is. With
+the light theme the same chart is drawn as green relief under a pale blue sky, with the readouts and
+the HUD in dark blue.
 
 <p align="center"><img src="screenshots/annunciators.png" width="370" alt="Health annunciators"/></p>
 
@@ -130,6 +133,21 @@ by height; the map can be saved as a `.ply` file for other software.
 
 ![LiDAR](screenshots/lidar.jpg)
 
+## Under water, and without GPS
+
+Lakes and seas are found in the elevation data and drawn as a blue surface; a ROV is placed at its
+depth under the water it dives in, stays visible under the surface, and from under it the surface
+is a grid overhead with particles drifting past. With no GPS at all, **SYS CONFIG → NAVIGATION**
+switches to a relative frame — the vehicle's local position, or one dead-reckoned from its velocity,
+over a plane at zero — and can draw the dead-reckoned track next to the real one to show its drift.
+The simulator has a ROV on Lake Garda, with and without GPS. The picture is a real BlueROV2 dive
+replayed from its log.
+
+![ROV dive](screenshots/rov-real-log.jpg)
+
+All of it, with what ArduSub and ArduPlane actually send without GPS, is in
+[docs/3D-NAVIGATION.md](docs/3D-NAVIGATION.md).
+
 ## Setup and parameters
 
 The vehicle connects over a USB telemetry radio, UDP or TCP, and a built-in **ArduPilot simulator**
@@ -193,7 +211,8 @@ models (`.glb` / `.gltf`) go in `models/`.
 ## Documentation
 
 [ARCHITECTURE.md](ARCHITECTURE.md) describes every module and data flow; [docs/LIDAR.md](docs/LIDAR.md)
-covers the Livox setup. Bug reports and feature requests are welcome in the
+covers the Livox setup; [docs/3D-NAVIGATION.md](docs/3D-NAVIGATION.md) the mission in 3D, the
+low-altitude grid, water, ROVs and navigation without GPS. Bug reports and feature requests are welcome in the
 [issues](https://github.com/Xarin94/Corv-GCS/issues).
 
 ## License

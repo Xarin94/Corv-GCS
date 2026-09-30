@@ -27,8 +27,14 @@ import {
     updateTrafficMarkers3D,
     updateTargetMarker3D,
     setSkyColor, setSchematicView, setOutlineBrightness, setLightTheme,
-    setMissionActiveSeq, updateOwnshipMarker
+    setMissionActiveSeq, updateOwnshipMarker,
+    setDeadReckoningTrail, setGroundGridVisible, updateWaterView, isSchematicView
 } from './engine/Scene3D.js';
+import { OVERLAY_LAYER } from './engine/Layers.js';
+import {
+    isRelativeMode, applyRelativeToState, isDeadReckoningTrack, resetRelNav,
+    deadReckoningWorld, deadReckoningVersion, DR_TRACK_CAPACITY
+} from './core/RelativeNav.js';
 
 // Trajectory corridor imports
 import { computePredictedPath } from './engine/TrajectoryPredictor.js';
@@ -44,14 +50,15 @@ import {
     refreshNearbyChunkTextures, resetTextureRefreshPosition,
     setMapBrightness,
     getMemoryStats,
-    updateTerrainInstances
+    updateTerrainInstances,
+    getWaterSurfaceAt, lowAltGridStrength, LOW_ALT_GRID, setTerrainChunksVisible, setTerrainSubWater
 } from './terrain/TerrainManager.js';
 
 // HUD imports
 import { initHUD, drawHUD, resizeHUD, pushHudMessage, setHudPitchLocked, updateArmStateUI, setHudLightScene } from './hud/HUDRenderer.js';
 
 // Map imports
-import { initMap, updateMap, invalidateSize as invalidateMapSize, updateMissionOverlay, updateTrafficOverlay, resetMapTrail } from './maps/MapEngine.js';
+import { initMap, updateMap, invalidateSize as invalidateMapSize, updateMissionOverlay, updateTrafficOverlay, resetMapTrail, setMapRelativeFrame } from './maps/MapEngine.js';
 
 // Serial imports
 import { connectSerial } from './serial/SerialHandler.js';
@@ -79,7 +86,7 @@ import { initLogReplay } from './logging/LogReplayController.js';
 import { initTabs, getCurrentTab } from './ui/TabController.js';
 import { initParametersPanel } from './ui/ParametersPageController.js';
 
-import { setTerrainSatelliteEnabled } from './terrain/TerrainManager.js';
+import { setTerrainSatelliteEnabled, setTerrainLowAltGrid } from './terrain/TerrainManager.js';
 import { initOfflinePanel } from './maps/OfflineDownloader.js';
 
 // FPV imports
@@ -370,6 +377,7 @@ async function loadModel(filename) {
             }
             loadedModel = model;
             vehicle.add(model);
+            drawOverWater(model);
             
             console.log('Model loaded:', filename);
         }, (error) => {
@@ -442,6 +450,16 @@ function createPlaceholderModel() {
     fin.position.y = 0.9;
 
     vehicle.add(fuselage, nose, wing, tail, fin);
+    drawOverWater(vehicle);
+}
+
+/**
+ * The vehicle is drawn again in the overlay layer: the schematic view writes
+ * no depth for a water surface there, so a vehicle under water stays visible
+ * instead of being hidden by the surface (Scene3D).
+ */
+function drawOverWater(object) {
+    object.traverse(o => o.layers.enable(OVERLAY_LAYER));
 }
 
 function setCameraMode(mode) {
@@ -692,6 +710,8 @@ let missionHome = null;
  * @returns {{lat:number, lon:number, ground:number}|null}
  */
 function getHomeForMarker() {
+    // The relative frame's zero, on the zero plane
+    if (isRelativeMode()) return { lat: ORIGIN.lat, lon: ORIGIN.lon, ground: 0 };
     let lat = STATE.homeLat, lon = STATE.homeLon, fallback = STATE.homeAlt;
     if (lat === null || lon === null) {
         if (!missionHome) return null;
@@ -703,18 +723,139 @@ function getHomeForMarker() {
     return { lat, lon, ground: ground !== null ? ground : (Number.isFinite(fallback) ? fallback : 0) };
 }
 
+// ============== WATER, RELATIVE FRAME, DEAD RECKONING ==============
+const WATER_PLANE_COLOR = 0x2a7fff;
+const ZERO_PLANE_COLOR = 0x8fb4c4;
+const ZERO_PLANE_RADIUS_M = 3000;    // the relative frame's only reference: wide
+const ZERO_PLANE_CELL_M = 50;
+const SUB_MAV_TYPE = 12;
+let drTrailBuffer = null;
+let drTrailDrawn = -1;               // track version / offset last drawn
+let drTrailOffset = null;
+
+/**
+ * Surface grid and underwater particles, and the dead-reckoned track, for
+ * this frame. The water surface grid is drawn as a plane only where the
+ * terrain shader cannot: seen from under the surface, and over the open sea,
+ * where the terrain is the sea bed. Particles show while the camera is under
+ * a surface — a lake or the sea, or zero in the relative frame.
+ */
+function updateWaterAndDeadReckoning(camera, planePos, totalAlt, water, relative) {
+    const offset = STATE.offsetAlt || 0;
+    let plane = null, underwaterLevel = null;
+    if (relative) {
+        plane = {
+            level: offset, x: camera.position.x, z: camera.position.z,
+            radius: ZERO_PLANE_RADIUS_M, cell: ZERO_PLANE_CELL_M, triangles: false,
+            color: ZERO_PLANE_COLOR, opacity: 0.45
+        };
+        if (camera.position.y < offset) underwaterLevel = offset;
+    } else {
+        const camLat = ORIGIN.lat - camera.position.z / 111320;
+        const camLon = ORIGIN.lon + camera.position.x / (111320 * Math.cos(ORIGIN.lat * Math.PI / 180));
+        const camWater = waterAt(camLat, camLon);
+        if (camWater && camera.position.y < camWater.level) underwaterLevel = camWater.level;
+        if (water && isSchematicView()) {
+            const strength = lowAltGridStrength(totalAlt - water.level);
+            if (strength > 0 && (underwaterLevel !== null || water.bed !== null || water.synthetic)) {
+                plane = {
+                    level: water.level, x: planePos.x, z: planePos.z,
+                    radius: LOW_ALT_GRID.radiusM, cell: LOW_ALT_GRID.cellM, triangles: true,
+                    color: WATER_PLANE_COLOR, opacity: 0.6 * strength
+                };
+            }
+        }
+    }
+    updateWaterView({ plane, underwaterLevel });
+
+    // Dead-reckoned track: rebuilt only when it grew or the offset changed
+    if (!isDeadReckoningTrack()) {
+        if (drTrailDrawn !== -1) { setDeadReckoningTrail(null); drTrailDrawn = -1; }
+        return;
+    }
+    const version = deadReckoningVersion();
+    if (version === drTrailDrawn && offset === drTrailOffset) return;
+    if (!drTrailBuffer) drTrailBuffer = new Float32Array(DR_TRACK_CAPACITY * 3);
+    const n = deadReckoningWorld(latLonToMeters, offset, drTrailBuffer);
+    setDeadReckoningTrail(drTrailBuffer, n);
+    drTrailDrawn = version;
+    drTrailOffset = offset;
+}
+
+/**
+ * The relative frame has no terrain: chunks and imagery are hidden, the view
+ * is the schematic one (the black sky), and the zero plane replaces the grid
+ * at 0 m. Leaving it restores the chosen view.
+ */
+function applyRelativeFrame() {
+    const relative = isRelativeMode();
+    setTerrainChunksVisible(!relative);
+    setGroundGridVisible(!relative);
+    setSchematicView(relative || !window.satelliteEnabled);
+    setMapRelativeFrame(relative);
+    resetTrail();
+    resetMapTrail();
+}
+
+/**
+ * The surface a sub's depth is measured from (STATE.subSurfaceAlt): ArduSub
+ * puts its origin, on the surface, at 0 m — a real BlueROV log and the SITL
+ * both report altitudes from 0 down to minus the depth. The surface is the
+ * lake or sea level at home, else the ground there (a quarry the elevation
+ * data does not flatten). Recomputed when home moves or the data arrives.
+ */
+let subSurfaceKey = null;
+
+/**
+ * Water at a point: from the elevation data, or — for a sub, which is in water
+ * wherever it goes — the surface it started on where the data shows none (a
+ * quarry or a small lake SRTM does not flatten). `synthetic` marks the latter:
+ * the terrain shader does not know it is water, so the plane draws its grid.
+ */
+function waterAt(lat, lon) {
+    const w = getWaterSurfaceAt(lat, lon);
+    if (w) return w;
+    if (STATE.vehicleType === SUB_MAV_TYPE && STATE.subSurfaceAlt !== null) {
+        return { level: STATE.subSurfaceAlt, bed: null, synthetic: true };
+    }
+    return null;
+}
+
+function updateSubSurface(relative) {
+    if (STATE.vehicleType !== SUB_MAV_TYPE || relative) {
+        STATE.subSurfaceAlt = null;
+        subSurfaceKey = null;
+        return;
+    }
+    const lat = STATE.homeLat ?? STATE.lat, lon = STATE.homeLon ?? STATE.lon;
+    if (!lat && !lon) return;
+    const key = `${lat.toFixed(6)},${lon.toFixed(6)}`;
+    if (key === subSurfaceKey && STATE.subSurfaceAlt !== null) return;
+    const water = getWaterSurfaceAt(lat, lon);
+    const surface = water ? water.level : getTerrainElevationFromHGT(lat, lon);
+    if (surface === null) return;   // elevation tile not loaded yet
+    STATE.subSurfaceAlt = surface;
+    subSurfaceKey = key;
+}
+
 // ============== 3D WORLD UPDATE ==============
 function update3DWorld() {
     const camera = getCamera();
     if (!camera) return;
-    
+
+    // Relative mode: the position is the local / dead-reckoned one, there is
+    // no terrain, and zero is a plane
+    const relative = isRelativeMode();
+    if (relative) applyRelativeToState();
+    updateSubSurface(relative);
+
     const planePos = latLonToMeters(STATE.lat, STATE.lon);
     let totalAlt = STATE.rawAlt + STATE.offsetAlt;
 
     // Periodic terrain refresh: HGT files can be lazy-loaded or the worker can
     // be slow to answer. Re-calling updateTerrainChunks() keeps chunk creation
     // moving even when the aircraft is not moving.
-    if (getHGTFileCount() > 0) {
+    if (getHGTFileCount() > 0 && !relative) {
         const now = performance.now();
         if (!update3DWorld._lastTerrainRefresh || now - update3DWorld._lastTerrainRefresh > 1000) {
             update3DWorld._lastTerrainRefresh = now;
@@ -725,21 +866,33 @@ function update3DWorld() {
     // Update smoothed attitude for jitter-free rendering
     updateSmoothedAttitude();
 
-    const terrHeight = getTerrainElevationCached(STATE.lat, STATE.lon);
+    // Relative mode: the "ground" is the zero plane
+    const terrHeight = relative ? 0 : getTerrainElevationCached(STATE.lat, STATE.lon);
+    // Water under the vehicle: its surface is no floor (a boat sits on it, a
+    // ROV dives under it); the sea bed is, when the data has one
+    const water = relative ? null : waterAt(STATE.lat, STATE.lon);
+    setTerrainSubWater(water && water.synthetic ? { x: planePos.x, z: planePos.z, level: water.level } : null);
+    // Same height above ground as the AGL readout: the schematic view's
+    // triangle grid shows around the aircraft below 200 m
+    setTerrainLowAltGrid(!relative && terrHeight !== null ? totalAlt - terrHeight : null, planePos.x, planePos.z);
     if (terrHeight !== null) {
         STATE.terrainHeight = terrHeight;
         // Ensure vehicle renders above terrain (visual clamp only, doesn't modify STATE.rawAlt)
-        if (window._groundClampEnabled !== false && totalAlt < terrHeight + 0.5) {
-            totalAlt = terrHeight + 0.5;
+        const floor = relative ? null : water ? water.bed : terrHeight;
+        if (window._groundClampEnabled !== false && floor !== null && totalAlt < floor + 0.5) {
+            totalAlt = floor + 0.5;
         }
     }
-    
+
     updateAGLDisplay(terrHeight);
+    // Above land the camera and the model never go below 1 m MSL; over water
+    // and in the relative frame they follow the vehicle down
+    const minY = (relative || water) ? -Infinity : 1;
 
     // Ensure vehicle exists and follows the same state as the (old) 1st-person camera.
     initVehicle();
     if (vehicle) {
-        vehicle.position.set(planePos.x, Math.max(totalAlt, 1), planePos.z);
+        vehicle.position.set(planePos.x, Math.max(totalAlt, minY), planePos.z);
         vehicle.rotation.order = 'YXZ';
         vehicle.rotation.x = smoothAtt.pitch;
         vehicle.rotation.z = -smoothAtt.roll;
@@ -763,16 +916,21 @@ function update3DWorld() {
         camera.position.set(target.x + offX, target.y + offY, target.z + offZ);
         // Orbiting kilometres out from a valley put the camera inside the
         // mountains around it, looking at the terrain from underneath
-        const camGround = getTerrainElevationFromHGT(
-            ORIGIN.lat - camera.position.z / 111320,
-            ORIGIN.lon + camera.position.x / (111320 * Math.cos(ORIGIN.lat * Math.PI / 180)));
-        if (camGround !== null && camera.position.y < camGround + CHASE_CAM_CLEARANCE_M) {
-            camera.position.y = camGround + CHASE_CAM_CLEARANCE_M;
+        // (over water the floor is the sea bed, if the data has one: the
+        // camera may follow a ROV under the surface)
+        if (!relative) {
+            const camLat = ORIGIN.lat - camera.position.z / 111320;
+            const camLon = ORIGIN.lon + camera.position.x / (111320 * Math.cos(ORIGIN.lat * Math.PI / 180));
+            const camWater = waterAt(camLat, camLon);
+            const camGround = camWater ? camWater.bed : getTerrainElevationFromHGT(camLat, camLon);
+            if (camGround !== null && camera.position.y < camGround + CHASE_CAM_CLEARANCE_M) {
+                camera.position.y = camGround + CHASE_CAM_CLEARANCE_M;
+            }
         }
         camera.lookAt(target.x, target.y + orbit.height * 0.2, target.z);
     } else {
         // First-person camera (existing behavior)
-        camera.position.set(planePos.x, Math.max(totalAlt, 1), planePos.z);
+        camera.position.set(planePos.x, Math.max(totalAlt, minY), planePos.z);
         camera.rotation.order = 'YXZ';
         camera.rotation.x = horizonLocked ? 0 : smoothAtt.pitch;
         camera.rotation.z = -smoothAtt.roll;
@@ -802,6 +960,7 @@ function update3DWorld() {
     }
 
     updateTrail(planePos.x, totalAlt, planePos.z);
+    updateWaterAndDeadReckoning(camera, planePos, totalAlt, water, relative);
 
     if (STATE.connected && STATE.lastReloadPos.lat) {
         const distFromLastReload = calculateDistance(
@@ -1284,8 +1443,9 @@ function animate(frameTime) {
         update3DWorld();
         updateHomeMarker3D(getHomeForMarker());
 
-        // Check if nearby chunks need high-res textures (skip in AR mode — terrain is hidden)
-        if (!isFPVARMode()) {
+        // Check if nearby chunks need high-res textures (skip in AR mode and
+        // in the relative frame — terrain is hidden)
+        if (!isFPVARMode() && !isRelativeMode()) {
             refreshNearbyChunkTextures();
         }
     }
@@ -1308,7 +1468,7 @@ function animate(frameTime) {
     // ADS-B data refreshes every ~10 s — 2 Hz is plenty for the 3D markers
     if (now - lastTrafficMarkersUpdate >= 500) {
         lastTrafficMarkersUpdate = now;
-        updateTrafficMarkers3D(getNearestTraffic(8));
+        updateTrafficMarkers3D(isRelativeMode() ? [] : getNearestTraffic(8));
     }
 
     updateMap();
@@ -1410,8 +1570,8 @@ function setSatelliteEnabled(enabled) {
         else btn.classList.remove('active');
     }
 
-    // Apply across terrain + maps
-    setSchematicView(!window.satelliteEnabled);
+    // Apply across terrain + maps (the relative frame stays schematic: no terrain)
+    setSchematicView(!window.satelliteEnabled || isRelativeMode());
     try { setTerrainSatelliteEnabled(window.satelliteEnabled); } catch (e) {}
     updateMapBrightnessVisibility();
 }
@@ -1862,6 +2022,19 @@ function init() {
     initLidarCloud(scene);
     initLidarController();
     initCellularLink();
+
+    // Relative navigation (SYS CONFIG): terrain off and a zero plane while it is on
+    window.addEventListener('relNavChanged', applyRelativeFrame);
+    if (isRelativeMode()) applyRelativeFrame();
+
+    // A vehicle connecting: the demo's trail (or the last vehicle's) is not
+    // its own, and a relative frame starts at its position
+    window.addEventListener('mavlinkConnectionState', (e) => {
+        if (e.detail?.state !== 'CONNECTED') return;
+        resetTrail();
+        resetMapTrail();
+        resetRelNav();
+    });
 
     // Listen for mission updates and rebuild 3D trajectory + 2D mini-map overlay
     window.addEventListener('missionUpdated', () => {

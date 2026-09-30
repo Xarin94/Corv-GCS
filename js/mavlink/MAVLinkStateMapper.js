@@ -5,6 +5,7 @@
 
 import { STATE, pushGHistory } from '../core/state.js';
 import { purgeStaleTraffic } from '../adsb/ADSBManager.js';
+import { relNavOnMessage, isRelativeMode } from '../core/RelativeNav.js';
 
 let vibHistoryIdx = 0; // circular index for vibHistory
 
@@ -132,6 +133,9 @@ export function getVehicleTypeName(vehicleType) {
  * @param {object} data - Parsed message fields
  */
 export function mapMessageToState(msgId, data) {
+    // Relative navigation / dead reckoning sees every message first; in the
+    // relative mode it owns the position (lat, lon, altitude, home)
+    relNavOnMessage(msgId, data);
     switch (msgId) {
         case 0: mapHeartbeat(data); break;
         case 1: mapSysStatus(data); break;
@@ -272,6 +276,7 @@ function mapGpsRawInt(data) {
     // Fallback path: only use raw GPS for position/velocity when no
     // GLOBAL_POSITION_INT has arrived recently (otherwise EKF data wins).
     if (Date.now() - _lastGlobalPosTs <= GLOBAL_POS_STALE_MS) return;
+    if (isRelativeMode()) return;
 
     // Reject boot-time nulls: the autopilot emits exact-zero raw integers
     // ((0,0), (0,X), (X,0)) before the GPS has a fix. Checking the raw int for
@@ -341,11 +346,19 @@ function mapGlobalPositionInt(data) {
     // Reject boot-time nulls: exact-zero raw integers ((0,0), (0,X), (X,0))
     // before the GPS has a fix. Exact-int check keeps real fixes near the
     // equator / Greenwich meridian working (a ±0.1° band would reject them).
-    if (data.lat !== 0 && data.lon !== 0) {
-        STATE.lat = data.lat / 1e7;
-        STATE.lon = data.lon / 1e7;
+    if (!isRelativeMode()) {
+        if (data.lat !== 0 && data.lon !== 0) {
+            STATE.lat = data.lat / 1e7;
+            STATE.lon = data.lon / 1e7;
+        }
+        // A sub reports its depth below the surface it started on (its origin
+        // is at 0 m, see STATE.subSurfaceAlt), not a height above the sea
+        if (SUB_TYPES.includes(STATE.vehicleType) && Number.isFinite(STATE.subSurfaceAlt) && Number.isFinite(data.relativeAlt)) {
+            STATE.rawAlt = STATE.subSurfaceAlt + data.relativeAlt / 1000;
+        } else if (Number.isFinite(data.alt)) {
+            STATE.rawAlt = data.alt / 1000; // mm -> m
+        }
     }
-    if (Number.isFinite(data.alt)) STATE.rawAlt = data.alt / 1000; // mm -> m
     const vz = Number.isFinite(data.vz) ? data.vz : 0;
     STATE.vs = -vz / 100;           // cm/s -> m/s, NED to Up
 
@@ -578,6 +591,7 @@ function mapHomePosition(data) {
     if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
     // (0,0) means "home not set yet" — don't plant a marker in the Atlantic
     if (Math.abs(lat) < 0.01 && Math.abs(lon) < 0.01) return;
+    if (isRelativeMode()) return;   // home is the zero of the local frame
 
     STATE.homeLat = lat;
     STATE.homeLon = lon;

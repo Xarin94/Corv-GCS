@@ -436,13 +436,35 @@ const terrainShadingUniforms = {
     uSchematicRadius: { value: SCHEMATIC_RADIUS },
     uSchematicCenter: { value: new THREE.Vector2() },
     // Light UI theme: green ground and dark lines instead of dark ground and light lines
-    uSchematicLight: { value: 0 }
+    uSchematicLight: { value: 0 },
+    // Triangle grid (setTerrainLowAltGrid): strength 0..1 from the aircraft's
+    // height above the ground, and the aircraft's world x/z it is centred on
+    uTriGrid: { value: 0 },
+    uTriCenter: { value: new THREE.Vector2() },
+    // A sub in water the elevation data does not show (a quarry, a small
+    // lake): x, z, surface height, radius — ground at that height within the
+    // radius is its water (setTerrainSubWater). Radius 0: off.
+    uSubWater: { value: new THREE.Vector4(0, 0, 0, 0) }
 };
+
+// Triangle grid of the schematic view, flying low: TRI_GRID_CELL_M triangles
+// within TRI_GRID_RADIUS_M of the aircraft, in full up to TRI_GRID_FULL_AGL
+// above the ground and gone at TRI_GRID_MAX_AGL. Low down the isolines are few
+// and far apart, and a flat valley floor has none: triangles of a fixed size
+// are what shows how high the aircraft is, growing on screen as it descends.
+// Everywhere else the shader skips it.
+const TRI_GRID_CELL_M = 25;
+const TRI_GRID_RADIUS_M = 500;
+const TRI_GRID_FULL_AGL = 150;
+const TRI_GRID_MAX_AGL = 200;
 
 const TERRAIN_VERTEX_PARS = `
 uniform vec3 uSunDir;
 uniform float uSunlightOn;
 uniform float uBrightness;
+uniform float uSchematic;
+uniform vec4 uSubWater;
+varying float vTerrainWater;
 uniform highp isampler2DArray uHeights;
 uniform int uGridMax;                 // vertices per side - 1
 #ifdef USE_INSTANCING
@@ -506,6 +528,23 @@ vec3 objectNormal = normalize(vec3(-tSz * tEy, tSz * tEx, -tSy * tEx));
 // noise of SRTM on flat ground does not break a level into dozens of rings.
 // On an even slope the neighbours cancel out and it equals tH.
 float tHiso = 0.5 * tH + 0.125 * (tHE + tHW + tHS + tHN);
+// Water surface (schematic view only): SRTM flattens every lake to one height
+// and the sea to 0, while real ground is never flat to the metre across a
+// dozen samples — the same test as getWaterSurfaceAt(). Below 0 the data is
+// bathymetry, the sea bed, which is ground.
+float tWater = 0.0;
+if (uSchematic > 0.5 && tH >= 0.0 && tHE == tH && tHW == tH && tHS == tH && tHN == tH) {
+    int tX0 = max(tG.x - 1, 0), tX1 = min(tG.x + 1, uGridMax);
+    int tY0 = max(tG.y - 1, 0), tY1 = min(tG.y + 1, uGridMax);
+    bool tFlat =
+        terrainHeight(ivec2(tX1, tY0), tLayer) == tH && terrainHeight(ivec2(tX0, tY0), tLayer) == tH &&
+        terrainHeight(ivec2(tX1, tY1), tLayer) == tH && terrainHeight(ivec2(tX0, tY1), tLayer) == tH &&
+        terrainHeight(ivec2(min(tG.x + 2, uGridMax), tG.y), tLayer) == tH &&
+        terrainHeight(ivec2(max(tG.x - 2, 0), tG.y), tLayer) == tH &&
+        terrainHeight(ivec2(tG.x, min(tG.y + 2, uGridMax)), tLayer) == tH &&
+        terrainHeight(ivec2(tG.x, max(tG.y - 2, 0)), tLayer) == tH;
+    tWater = tFlat ? 1.0 : 0.0;
+}
 `;
 
 // Replaces <begin_vertex>
@@ -521,6 +560,8 @@ vTerrainShade = terrainHeightColor(tH) * terrainLight;
 #endif
 vTerrainH = tHiso;
 vTerrainXZ = transformed.xz;
+if (uSchematic > 0.5 && uSubWater.w > 0.0 && tH <= uSubWater.z + 1.5 && length(transformed.xz - uSubWater.xy) < uSubWater.w) tWater = 1.0;
+vTerrainWater = tWater;
 // Cartographic hillshade for the schematic style: light from the north-west,
 // 45° up (x east, z south), whatever the sun is doing.
 vSchemShade = max(0.0, dot(objectNormal, vec3(-0.5, 0.70710678, -0.5)));
@@ -531,11 +572,15 @@ varying vec3 vTerrainShade;
 varying float vTerrainH;
 varying vec2 vTerrainXZ;
 varying float vSchemShade;
+varying float vTerrainWater;
 uniform float uSchematic;
 uniform float uSchematicRadius;
 uniform vec2 uSchematicCenter;
 uniform float uSchematicLight;
 uniform float uBrightness;
+uniform float uTriGrid;
+uniform vec2 uTriCenter;
+uniform vec4 uSubWater;
 
 // Isolines of height h every 'interval' metres, 'widthPx' wide on screen.
 // fwidth() gives the spacing of neighbouring lines in pixels: where they would
@@ -564,25 +609,68 @@ float schematicGrid(vec2 p, float cell, float widthPx) {
     return max(line.x * keep.x, line.y * keep.y);
 }
 
+// Distance of p along the normals of the triangle grid's three line families
+// (60° apart, meeting at the same vertices), in line spacings. Linear in p.
+vec3 triGridCoords(vec2 p) {
+    return vec3(p.y, 0.8660254 * p.x - 0.5 * p.y, 0.8660254 * p.x + 0.5 * p.y)
+        / (${TRI_GRID_CELL_M.toFixed(1)} * 0.8660254);
+}
+
+// Equilateral triangles laid flat in world space and draped over the relief,
+// out to the grid radius around the aircraft with a soft edge. dpx / dpy are
+// the screen derivatives of p, taken by the caller: this runs in a branch that
+// differs from pixel to pixel, where derivatives are undefined, and the
+// coordinates being linear in p, theirs follow. The three families fade
+// together, from the most crowded, so the grid thins out as triangles and not
+// as streaks where the ground is seen at a grazing angle.
+float schematicTriGrid(vec2 p, vec2 dpx, vec2 dpy, float widthPx) {
+    float r = length(p - uTriCenter);
+    if (r >= ${TRI_GRID_RADIUS_M.toFixed(1)}) return 0.0;
+    vec3 x = triGridCoords(p);
+    vec3 fw = max(abs(triGridCoords(dpx)) + abs(triGridCoords(dpy)), vec3(1e-5));
+    vec3 distPx = abs(fract(x + 0.5) - 0.5) / fw;
+    vec3 line = 1.0 - smoothstep(vec3(widthPx * 0.5 - 0.5), vec3(widthPx * 0.5 + 0.5), distPx);
+    float keep = smoothstep(2.5, 6.0, 1.0 / max(fw.x, max(fw.y, fw.z)));
+    float edge = 1.0 - smoothstep(${(TRI_GRID_RADIUS_M * 0.8).toFixed(1)}, ${TRI_GRID_RADIUS_M.toFixed(1)}, r);
+    return max(line.x, max(line.y, line.z)) * keep * edge;
+}
+
 // Three levels, as on a topographic chart: faint 10 m lines, stronger 50 m
 // index lines, and 250 m lines that stay when the others have faded.
 // Dark theme: grey ground shaded from black, light lines, amber 250 m lines.
 // Light theme: the same hillshade in greens, dark green lines, burnt orange.
+// Flying low, a faint triangle grid lies under the isolines around the aircraft.
+// Water (a lake, or the sea where the data flattens it to 0) is dark blue with
+// the triangle grid in blue, marking the surface; the sea bed (bathymetry,
+// below 0) is ground tinted blue, its isolines the depth contours.
 vec3 schematicTerrainColor() {
     float grid = schematicGrid(vTerrainXZ, 1000.0, 1.0);
+    vec2 dpx = dFdx(vTerrainXZ), dpy = dFdy(vTerrainXZ);
+    float tri = uTriGrid > 0.001 ? schematicTriGrid(vTerrainXZ, dpx, dpy, 1.0) * uTriGrid : 0.0;
     float minor = schematicIsoline(vTerrainH, 10.0, 1.0, 3.5);
     float index = schematicIsoline(vTerrainH, 50.0, 1.4, 3.5);
     float major = schematicIsoline(vTerrainH, 250.0, 2.0, 3.0);
+    float water = smoothstep(0.5, 0.95, vTerrainWater);
+    float bed = (1.0 - water) * smoothstep(0.0, -2.0, vTerrainH);
+    // A sub's own water where the data shows none: its surface grid is the
+    // plane's (Water3D), level — the ground under it is only roughly flat
+    if (uSubWater.w > 0.0) tri *= 1.0 - water;
     vec3 col;
     if (uSchematicLight > 0.5) {
         col = mix(vec3(0.31, 0.48, 0.28), vec3(0.80, 0.89, 0.67), vSchemShade);
+        col = mix(col, col * vec3(0.72, 0.86, 1.15), bed);
+        col = mix(col, vec3(0.62, 0.76, 0.90), water);
         col = mix(col, vec3(0.27, 0.43, 0.39), grid * 0.35);
+        col = mix(col, mix(vec3(0.25, 0.41, 0.30), vec3(0.10, 0.33, 0.72), water), tri * mix(0.18, 0.4, water));
         col = mix(col, vec3(0.22, 0.37, 0.20), minor * 0.4);
         col = mix(col, vec3(0.12, 0.25, 0.12), index * 0.65);
         col = mix(col, vec3(0.62, 0.30, 0.05), major * 0.9);
     } else {
         col = vec3(0.022, 0.028, 0.034) + vec3(0.115, 0.125, 0.135) * vSchemShade;
+        col = mix(col, col * vec3(0.70, 0.90, 1.35), bed);
+        col = mix(col, vec3(0.015, 0.045, 0.085), water);
         col = mix(col, vec3(0.12, 0.24, 0.28), grid * 0.7);
+        col = mix(col, mix(vec3(0.20, 0.32, 0.35), vec3(0.16, 0.42, 0.85), water), tri * mix(0.3, 0.55, water));
         col = mix(col, vec3(0.38, 0.43, 0.47), minor * 0.75);
         col = mix(col, vec3(0.74, 0.79, 0.82), index * 0.85);
         col = mix(col, vec3(1.00, 0.60, 0.16), major);
@@ -599,6 +687,9 @@ const TERRAIN_FOG_FRAGMENT = `
 #ifndef USE_MAP
 if (uSchematic > 0.5) {
     gl_FragColor.rgb = schematicTerrainColor();
+    // Alpha 0 marks a water surface for the outline pass (Scene3D), which
+    // then lets whatever is under the water show through it
+    gl_FragColor.a = vTerrainWater > 0.5 ? 0.0 : 1.0;
     if (length(vTerrainXZ - uSchematicCenter) > uSchematicRadius) discard;
 }
 #endif
@@ -1337,6 +1428,8 @@ function releaseCanvas(canvas) {
  * @param {number} lon - Longitude
  * @returns {number|null} Elevation in meters or null
  */
+const HGT_VOID = -12000;   // at or below: no data (SRTM voids are -32768)
+
 export function getTerrainElevationFromHGT(lat, lon) {
     const latBase = Math.floor(lat);
     const lonBase = Math.floor(lon);
@@ -1362,11 +1455,63 @@ export function getTerrainElevationFromHGT(lat, lon) {
     const h10 = data[r1 * size + c0];
     const h11 = data[r1 * size + c1];
     
-    if (h00 < -1000) return 0; // Filter voids
+    // Voids are SRTM's -32768; anything above is real, down to ocean trench depths
+    if (h00 <= HGT_VOID) return 0;
     
     const h0 = h00 * (1 - fc) + h01 * fc;
     const h1 = h10 * (1 - fc) + h11 * fc;
     return h0 * (1 - fr) + h1 * fr;
+}
+
+// Samples around a point that must all equal it for the point to be water:
+// the 3 x 3 block and the four at distance 2 (the terrain shader tests the same).
+const WATER_FLAT_OFFSETS = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1], [0, 2], [0, -2], [2, 0], [-2, 0]];
+
+/**
+ * Water under a point, from the elevation data alone. SRTM flattens every lake
+ * to a single height and the sea to 0 — ground is never flat to the metre
+ * across a dozen samples, so that marks a water surface. Below 0 the tiles
+ * carry bathymetry: the sea bed, with the surface at 0.
+ * Not handled: land below sea level (Dead Sea shore, polders) reads as sea,
+ * and the Caspian Sea as a surface at 0 instead of −28 m.
+ * @returns {{level:number, bed:number|null}|null} surface height (MSL) and the
+ *   bed under it when the data has one; null over land or without data
+ */
+export function getWaterSurfaceAt(lat, lon) {
+    const latBase = Math.floor(lat);
+    const lonBase = Math.floor(lon);
+    const cached = hgtElevationData[`${latBase}_${lonBase}`];
+    if (!cached) return null;
+    const { data, size } = cached;
+    const r = Math.round((1 - (lat - latBase)) * (size - 1));
+    const c = Math.round((lon - lonBase) * (size - 1));
+    const at = (dr, dc) => data[Math.min(size - 1, Math.max(0, r + dr)) * size + Math.min(size - 1, Math.max(0, c + dc))];
+    const h = at(0, 0);
+    if (h <= HGT_VOID) return null;
+    if (h < 0) return { level: 0, bed: getTerrainElevationFromHGT(lat, lon) };
+    for (const [dr, dc] of WATER_FLAT_OFFSETS) if (at(dr, dc) !== h) return null;
+    return { level: h, bed: null };
+}
+
+/**
+ * A sub in water the elevation data does not show — a flooded quarry, a lake
+ * SRTM leaves unflattened: around it, ground at its surface height (within
+ * 1.5 m) is drawn and treated as that water, so it does not hide the vehicle.
+ * @param {{x:number, z:number, level:number}|null} water world position and
+ *   surface height, null to switch it off
+ */
+export function setTerrainSubWater(water) {
+    const u = terrainShadingUniforms.uSubWater.value;
+    if (water) u.set(water.x, water.z, water.level, TRI_GRID_RADIUS_M);
+    else u.w = 0;
+}
+
+/** The triangle grid's cell and radius, for the water plane drawn at the same lattice (Water3D). */
+export const LOW_ALT_GRID = { cellM: TRI_GRID_CELL_M, radiusM: TRI_GRID_RADIUS_M };
+
+/** Current strength (0..1) of the triangle grid and the point it is centred on. */
+export function getLowAltGridState() {
+    return { strength: terrainShadingUniforms.uTriGrid.value, center: terrainShadingUniforms.uTriCenter.value };
 }
 
 /**
@@ -2455,6 +2600,30 @@ export function setTerrainChunksVisible(visible) {
  */
 export function setTerrainSchematicLight(light) {
     terrainShadingUniforms.uSchematicLight.value = light ? 1 : 0;
+}
+
+/**
+ * Strength (0..1) of the low-altitude grid at a height above the surface
+ * under it: 1 up to TRI_GRID_FULL_AGL, 0 from TRI_GRID_MAX_AGL, null → 0.
+ */
+export function lowAltGridStrength(height) {
+    if (!Number.isFinite(height)) return 0;
+    const t = Math.max(0, Math.min(1, (height - TRI_GRID_FULL_AGL) / (TRI_GRID_MAX_AGL - TRI_GRID_FULL_AGL)));
+    return 1 - t * t * (3 - 2 * t);
+}
+
+/**
+ * Aircraft position for the triangle grid of the schematic view: centred on
+ * it, at full strength up to TRI_GRID_FULL_AGL above the ground, gone at
+ * TRI_GRID_MAX_AGL.
+ * @param {number|null} agl metres above the ground, null when unknown (no grid)
+ * @param {number} x world x of the aircraft
+ * @param {number} z world z of the aircraft
+ */
+export function setTerrainLowAltGrid(agl, x, z) {
+    const s = lowAltGridStrength(agl);
+    terrainShadingUniforms.uTriGrid.value = s;
+    if (s > 0) terrainShadingUniforms.uTriCenter.value.set(x, z);
 }
 
 /**

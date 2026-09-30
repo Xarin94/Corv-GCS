@@ -22,6 +22,10 @@ export const STATE = {
     lon: ORIGIN.lon,
     rawAlt: 0,
     offsetAlt: 0,
+    // A sub's altitude is its depth below the water it dives in — ArduSub puts
+    // its origin, on the surface, at 0 m. The height of that surface (MSL),
+    // from the elevation data at home; the mapper adds the depth to it.
+    subSurfaceAlt: null,
     as: 0,
     gs: 0,
     vs: 0,
@@ -254,7 +258,7 @@ export function resetReplayState() {
     STATE.roll = 0; STATE.pitch = 0; STATE.yaw = 0;
     STATE.aoa = 0; STATE.ssa = 0; STATE.gamma = 0; STATE.track = 0;
     STATE.lat = ORIGIN.lat; STATE.lon = ORIGIN.lon;
-    STATE.rawAlt = 0; STATE.offsetAlt = 0;
+    STATE.rawAlt = 0; STATE.offsetAlt = 0; STATE.subSurfaceAlt = null;
     STATE.as = 0; STATE.gs = 0; STATE.vs = 0;
     STATE.ax = 0; STATE.ay = 0; STATE.az = 0;
     STATE.rollRate = 0; STATE.pitchRate = 0; STATE.yawRate = 0;

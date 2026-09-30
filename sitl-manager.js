@@ -26,7 +26,13 @@ const VEHICLE_MAP = {
     // Tuning comes from default_params_plane.parm.
     plane:   { binary: 'arduplane',   model: 'plane-jet:jet600.json' },
     rover:   { binary: 'ardurover',   model: 'rover' },
+    // ROV: ArduSub on the vectored BlueROV2 frame. Its simulator keeps the
+    // water surface at 0 m MSL whatever the home altitude, so the launcher
+    // starts it at 0 and lifts it onto the real lake with the GCS altitude
+    // offset. subnogps is the same ROV with no GPS at all
+    // (default_params_subnogps.parm), for the relative navigation mode.
     sub:     { binary: 'ardusub',     model: 'vectored' },
+    subnogps: { binary: 'ardusub',    model: 'vectored' },
     heli:    { binary: 'arducopter',  model: 'heli' },
     quadplane: { binary: 'arduplane', model: 'quadplane' }
 };
@@ -59,7 +65,7 @@ function getFirmwareUrl(vehicle, version) {
     const pathMap = {
         copter: 'Copter', copter12s: 'Copter', tri12s: 'Copter',
         plane: 'Plane', rover: 'Rover',
-        sub: 'Sub', heli: 'Copter', quadplane: 'Plane'
+        sub: 'Sub', subnogps: 'Sub', heli: 'Copter', quadplane: 'Plane'
     };
     const fwPath = pathMap[vehicle] || 'Copter';
     // ArduPilot only provides Linux x86_64 SITL binaries

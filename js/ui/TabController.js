@@ -18,6 +18,7 @@ import { initJoystick } from '../joystick/JoystickUI.js';
 import { getTerrainElevationAsync, resetAutoDownloadFailures } from '../terrain/TerrainManager.js';
 import { onFlightPlanShown, onFlightPlanHidden } from './FlightPlanController.js';
 import { activePlatformId, setActivePlatform, getPlatform, missionsSupported, unsupportedReason } from '../mission/Platforms.js';
+import { getRelNavSettings, setRelNavSetting, resetRelNav, relativeSource, deadReckoningSource } from '../core/RelativeNav.js';
 
 let currentTab = 'flight-data';
 /**
@@ -71,6 +72,46 @@ export function initTabs() {
 
     // Flight stack selector (SYS CONFIG): link suggestion + mission gating
     initPlatformSelector();
+    // Relative navigation / dead-reckoning track (SYS CONFIG)
+    initNavigationPanel();
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+// The settings live in RelativeNav.js; this binds the NAVIGATION panel to them
+// and shows, twice a second, where the position is coming from.
+
+const VELOCITY_SOURCE_LABEL = { air: 'airspeed + heading', ground: 'ground speed + heading', ekf: 'EKF velocity', local: 'local frame velocity' };
+
+function initNavigationPanel() {
+    const bound = [];
+    const bind = (id, key, toValue, fromValue) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.value = fromValue(getRelNavSettings()[key]);
+        el.addEventListener('change', () => setRelNavSetting(key, toValue(el.value)));
+        bound.push(() => { el.value = fromValue(getRelNavSettings()[key]); });
+    };
+    bind('syscfg-nav-position', 'relative', v => v === 'relative', v => (v ? 'relative' : 'absolute'));
+    bind('syscfg-nav-dr', 'drTrack', v => v === 'on', v => (v ? 'on' : 'off'));
+    bind('syscfg-nav-vel', 'velSource', v => v, v => v);
+    bind('syscfg-nav-water', 'water', v => v, v => v);
+    document.getElementById('syscfg-nav-reset')?.addEventListener('click', () => resetRelNav());
+    // Settings also change from elsewhere (a ROV launched in the simulator)
+    window.addEventListener('relNavChanged', () => bound.forEach(sync => sync()));
+
+    const status = document.getElementById('syscfg-nav-status');
+    if (!status) return;
+    setInterval(() => {
+        const cfg = getRelNavSettings();
+        const vel = VELOCITY_SOURCE_LABEL[deadReckoningSource()] || 'no velocity yet';
+        const parts = [];
+        const rel = relativeSource();
+        if (rel === 'local') parts.push('relative · vehicle local frame');
+        else if (rel) parts.push(`relative · dead reckoning (${vel})`);
+        else parts.push('absolute · GPS');
+        if (cfg.drTrack && rel !== 'dead-reckoning') parts.push(`track: ${vel}`);
+        status.textContent = parts.join(' — ');
+    }, 500);
 }
 
 // ── Flight stack ──────────────────────────────────────────────────────────────
@@ -962,11 +1003,64 @@ function updateExtTuningSlider(paramId, value) {
     });
 }
 
+// ── ROV simulation ────────────────────────────────────────────────────────────
+// ArduSub's simulator keeps the water surface at 0 m MSL whatever the home
+// altitude: launched at a lake's own height the vehicle floats in the air and
+// cannot dive. A ROV is launched at 0 m, like a real one whose origin is on
+// the surface; the GCS puts that 0 on the water under home (subSurfaceAlt in
+// main.js). Without a GPS it has no absolute position, so its launch also
+// switches the relative navigation mode and the dead-reckoning track on;
+// STOP puts them back.
+const ROV_SITL = new Set(['sub', 'subnogps']);
+const LAND_HOME = { lat: 47.2603, lon: 11.3439 };
+const ROV_HOME = { lat: 45.60319, lon: 10.67127 };   // centre of Lake Garda
+let rovSession = null;                                // what a ROV launch changed
+
+function sameHome(latEl, lonEl, home) {
+    return Math.abs(parseFloat(latEl.value) - home.lat) < 1e-6 && Math.abs(parseFloat(lonEl.value) - home.lon) < 1e-6;
+}
+
+/** A ROV starts on the water, anything else on land — unless the operator typed a home of their own. */
+function suggestSitlHome(vehicle) {
+    const latEl = document.getElementById('sitl-home-lat');
+    const lonEl = document.getElementById('sitl-home-lon');
+    if (!latEl || !lonEl) return;
+    const rov = ROV_SITL.has(vehicle);
+    const from = rov ? LAND_HOME : ROV_HOME, to = rov ? ROV_HOME : LAND_HOME;
+    if (latEl.value === '' || sameHome(latEl, lonEl, from)) {
+        latEl.value = String(to.lat);
+        lonEl.value = String(to.lon);
+    }
+}
+
+/** Before a ROV launch: relative navigation for the one without a GPS. */
+function beginRovSession(vehicle) {
+    endRovSession();
+    if (vehicle !== 'subnogps') return;
+    const nav = getRelNavSettings();
+    rovSession = { relative: nav.relative, drTrack: nav.drTrack };
+    setRelNavSetting('relative', true);
+    setRelNavSetting('drTrack', true);
+}
+
+function endRovSession() {
+    if (!rovSession) return;
+    setRelNavSetting('relative', rovSession.relative);
+    setRelNavSetting('drTrack', rovSession.drTrack);
+    rovSession = null;
+}
+
 /**
  * Initialize Simulation tab
  */
 function initSimulationTab() {
     const statusEl = document.getElementById('sitl-status');
+
+    const vehicleSel = document.getElementById('sitl-vehicle');
+    if (vehicleSel) {
+        vehicleSel.addEventListener('change', () => suggestSitlHome(vehicleSel.value));
+        suggestSitlHome(vehicleSel.value);
+    }
 
     // SITL status updates from main process
     if (window.sitl && window.sitl.onStatusUpdate) {
@@ -1008,8 +1102,11 @@ function initSimulationTab() {
             // Get terrain elevation at home position — allow retry if a prior attempt failed
             resetAutoDownloadFailures();
             const terrainElev = await getTerrainElevationAsync(homeLat, homeLon);
-            const homeAlt = (terrainElev !== null && terrainElev > 0) ? terrainElev : 0;
+            const rov = ROV_SITL.has(vehicle);
+            const homeAlt = !rov && terrainElev !== null && terrainElev > 0 ? terrainElev : 0;
             console.log(`[sitl] Home: ${homeLat}, ${homeLon}, terrain=${terrainElev}, homeAlt=${homeAlt}`);
+            if (rov) beginRovSession(vehicle);
+            else endRovSession();
 
             launchBtn.disabled = true;
             launchBtn.textContent = 'STARTING...';
@@ -1045,6 +1142,7 @@ function initSimulationTab() {
                 launchBtn.textContent = 'LAUNCH & CONNECT';
                 launchBtn.disabled = false;
             } catch (e) {
+                endRovSession();
                 if (statusEl) statusEl.textContent = 'Launch failed: ' + e.message;
                 launchBtn.textContent = 'LAUNCH & CONNECT';
                 launchBtn.disabled = false;
@@ -1059,6 +1157,7 @@ function initSimulationTab() {
             try {
                 await disconnect();
                 await window.sitl.stop();
+                endRovSession();
                 if (statusEl) statusEl.textContent = 'SITL stopped';
             } catch (e) {
                 if (statusEl) statusEl.textContent = 'Stop error: ' + e.message;

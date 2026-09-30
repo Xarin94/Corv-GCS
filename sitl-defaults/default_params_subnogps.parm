@@ -1,0 +1,8 @@
+# ROV (ArduSub, vectored BlueROV2) with no GPS at all, from boot: the EKF has
+# no position source and runs in constant-position mode, depth comes from the
+# pressure sensor. The GCS dead-reckons (SYS CONFIG > NAVIGATION > Relative).
+# Old and new parameter names both, for stable, beta and latest builds.
+GPS1_TYPE 0
+GPS_TYPE 0
+SIM_GPS1_TYPE 0
+SIM_GPS_DISABLE 1
