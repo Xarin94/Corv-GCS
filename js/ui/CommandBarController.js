@@ -188,9 +188,11 @@ const MODE_CATEGORIES = {
     CIRCLE: 'assisted', GUIDED: 'assisted', SPORT: 'assisted',
     FLOWHOLD: 'assisted', FOLLOW: 'assisted', ZIGZAG: 'assisted',
     // Auto modes (green)
-    AUTO: 'auto', AUTOTUNE: 'auto', SMARTRTL: 'auto', BRAKE: 'auto',
-    // Emergency/return modes (orange)
+    AUTO: 'auto', AUTOTUNE: 'auto', BRAKE: 'auto',
+    // Emergency/return modes (orange). ArduPilot names them SMART_RTL and
+    // AUTO_RTL; a sub's return is SURFACE.
     RTL: 'emergency', LAND: 'emergency', QRTL: 'emergency', QLAND: 'emergency',
+    SMART_RTL: 'emergency', AUTO_RTL: 'emergency', SURFACE: 'emergency',
 };
 
 /**

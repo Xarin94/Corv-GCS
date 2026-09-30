@@ -17,7 +17,7 @@ const ARDUPILOT_COPTER_MODES = {
     15: 'AUTOTUNE', 16: 'POSHOLD', 17: 'BRAKE', 18: 'THROW',
     19: 'AVOID_ADSB', 20: 'GUIDED_NOGPS', 21: 'SMART_RTL',
     22: 'FLOWHOLD', 23: 'FOLLOW', 24: 'ZIGZAG', 25: 'SYSTEMID',
-    26: 'AUTOROTATE', 27: 'AUTO_RTL'
+    26: 'AUTOROTATE', 27: 'AUTO_RTL', 28: 'TURTLE'
 };
 
 // ArduPilot Plane flight mode mapping
@@ -28,13 +28,13 @@ const ARDUPILOT_PLANE_MODES = {
     13: 'TAKEOFF', 14: 'AVOID_ADSB', 15: 'GUIDED',
     17: 'QSTABILIZE', 18: 'QHOVER', 19: 'QLOITER',
     20: 'QLAND', 21: 'QRTL', 22: 'QAUTOTUNE', 23: 'QACRO',
-    24: 'THERMAL', 25: 'LOITER_ALT_QLAND'
+    24: 'THERMAL', 25: 'LOITER_ALT_QLAND', 26: 'AUTOLAND'
 };
 
 // ArduPilot Rover flight mode mapping
 const ARDUPILOT_ROVER_MODES = {
     0: 'MANUAL', 1: 'ACRO', 3: 'STEERING', 4: 'HOLD',
-    5: 'LOITER', 6: 'FOLLOW', 7: 'SIMPLE',
+    5: 'LOITER', 6: 'FOLLOW', 7: 'SIMPLE', 8: 'DOCK', 9: 'CIRCLE',
     10: 'AUTO', 11: 'RTL', 12: 'SMART_RTL',
     15: 'GUIDED'
 };
@@ -43,7 +43,8 @@ const ARDUPILOT_ROVER_MODES = {
 const ARDUPILOT_SUB_MODES = {
     0: 'STABILIZE', 1: 'ACRO', 2: 'ALT_HOLD',
     3: 'AUTO', 4: 'GUIDED', 7: 'CIRCLE',
-    9: 'SURFACE', 16: 'POSHOLD', 19: 'MANUAL'
+    9: 'SURFACE', 16: 'POSHOLD', 19: 'MANUAL',
+    20: 'MOTOR_DETECT', 21: 'SURFTRAK'
 };
 
 // INAV / Betaflight flight modes. These are not a firmware enum — the MSP adapter
