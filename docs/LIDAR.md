@@ -1,3 +1,9 @@
+---
+title: LiDAR point cloud
+nav_order: 10
+description: Livox Mid-360 point cloud mapped live from the telemetry, saved as .ply
+---
+
 # Livox Mid-360 point cloud in Corv-GCS
 
 Live 3D map of what the LiDAR sees, built on the ground station from the raw

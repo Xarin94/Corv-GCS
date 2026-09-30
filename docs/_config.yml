@@ -1,0 +1,41 @@
+title: CORV GCS
+description: User guide of CORV GCS, a 3D ground control station for ArduPilot, INAV and Betaflight
+url: https://xarin94.github.io
+baseurl: /Corv-GCS
+logo: /images/logo.png
+
+remote_theme: just-the-docs/just-the-docs@v0.10.1
+color_scheme: dark
+search_enabled: true
+heading_anchors: true
+back_to_top: true
+back_to_top_text: Back to top
+
+aux_links:
+  Download: https://github.com/Xarin94/Corv-GCS/releases/latest
+  GitHub: https://github.com/Xarin94/Corv-GCS
+aux_links_new_tab: true
+
+gh_edit_link: true
+gh_edit_link_text: Edit this page on GitHub
+gh_edit_repository: https://github.com/Xarin94/Corv-GCS
+gh_edit_branch: main
+gh_edit_source: docs
+gh_edit_view_mode: tree
+
+footer_content: >-
+  CORV GCS is open source under the
+  <a href="https://github.com/Xarin94/Corv-GCS/blob/main/LICENSE">Apache License 2.0</a>.
+  ArduPilot documentation linked from this guide belongs to the ArduPilot project.
+
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+  - jekyll-relative-links
+
+relative_links:
+  enabled: true
+  collections: false
+
+exclude:
+  - GCS_WORK_TRACKER.md

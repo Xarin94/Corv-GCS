@@ -1,3 +1,9 @@
+---
+title: 3D view, water and ROVs
+nav_order: 7
+description: The mission in 3D, the low-altitude grid, lakes and seas, ROVs, and navigation without GPS
+---
+
 # 3D view: missions, low flying, water, ROVs and navigation without GPS
 
 What the 3D view draws for a mission, for an aircraft close to the ground, for a vehicle on or under
@@ -24,7 +30,7 @@ is where a grid, a water surface and a zero plane can be drawn without hiding an
 The 3D view draws the mission the way the Flight Plan page does, in the same colours, so the two
 read alike. A survey is one figure, not three hundred waypoints.
 
-![Mission in the 3D view](../screenshots/3d-mission.jpg)
+![Mission in the 3D view](images/3d-mission.jpg)
 
 | Item | Drawn as |
 |------|----------|
@@ -36,12 +42,12 @@ read alike. A survey is one figure, not three hundred waypoints.
 | Return to launch (end of mission) | A **dashed green line** back over home at the last height, then down, labelled `RTL`. |
 | Point of interest | A **pink target** at the height the camera aims at, on a pole from the ground. |
 
-![Circle being flown](../screenshots/3d-mission-circle.jpg)
+![Circle being flown](images/3d-mission-circle.jpg)
 
 The item being flown (`MISSION_CURRENT`) is highlighted: its symbol is filled and the path leading
 to it is drawn over in pale green — for a circle, the approach and the whole ring.
 
-<p align="center"><img src="../screenshots/plan-circle.png" width="300" alt="Circle arrows on the plan"/></p>
+<p align="center"><img src="images/plan-circle.png" width="300" alt="Circle arrows on the plan"/></p>
 
 The Flight Plan page draws the same four arrows on its circles, at the same bearings.
 
@@ -55,7 +61,7 @@ screen says how high the aircraft is. Below 200 m above the ground the schematic
 grid of **equilateral triangles, 25 m a side**, on the terrain within **500 m of the aircraft**.
 Triangles of a fixed size grow on the screen as the aircraft descends — the height cue.
 
-![Triangle grid, first person at 40 m AGL](../screenshots/low-alt-grid.jpg)
+![Triangle grid, first person at 40 m AGL](images/low-alt-grid.jpg)
 
 - In full up to **150 m** above the ground, fading out to nothing at **200 m**, with the same
   height the AGL readout shows.
@@ -65,7 +71,7 @@ Triangles of a fixed size grow on the screen as the aircraft descends — the he
   together, so the grid fades as triangles and never turns into streaks.
 - Above 200 m, and anywhere beyond 500 m, the shader skips it altogether.
 
-![The 500 m disc from above](../screenshots/low-alt-grid-top.jpg)
+![The 500 m disc from above](images/low-alt-grid-top.jpg)
 
 ## 3. Water
 
@@ -97,9 +103,9 @@ goes down to −4 900 m). There the terrain drawn is the bed and the surface is 
   vehicle is no longer held above the "ground" (a boat sits on the surface, a ROV dives under it);
   where the data has a sea bed, that is the floor. The chase camera can follow under the surface.
 
-![A ROV under Lake Garda, seen from above the surface](../screenshots/underwater-chase.jpg)
+![A ROV under Lake Garda, seen from above the surface](images/underwater-chase.jpg)
 
-![First person, 7 m under the surface](../screenshots/underwater-fpv.jpg)
+![First person, 7 m under the surface](images/underwater-fpv.jpg)
 
 ### Limitations
 
@@ -127,7 +133,7 @@ and treated as that water, with the surface grid and no clipping.
 
 ### A real dive
 
-![Real BlueROV2 dive replayed](../screenshots/rov-real-log.jpg)
+![Real BlueROV2 dive replayed](images/rov-real-log.jpg)
 
 A BlueROV2 Heavy (ArduSub 4.7.1, Cerulean Tracker 650 USBL, Ping360) diving a flooded quarry to
 21.7 m, from logs its operator shared on the
@@ -166,7 +172,7 @@ then `LOCAL_POSITION_NED` is the position.
 
 ### SYS CONFIG → NAVIGATION
 
-<p align="center"><img src="../screenshots/syscfg-navigation.png" width="350" alt="NAVIGATION panel"/></p>
+<p align="center"><img src="images/syscfg-navigation.png" width="350" alt="NAVIGATION panel"/></p>
 
 | Setting | |
 |---------|---|
@@ -180,7 +186,7 @@ The settings are kept between sessions.
 
 ### Relative mode
 
-![Relative mode: ROV with no GPS, 19 m below zero](../screenshots/relative-mode.jpg)
+![Relative mode: ROV with no GPS, 19 m below zero](images/relative-mode.jpg)
 
 - **Position**: `LOCAL_POSITION_NED` when the vehicle sends one; otherwise dead-reckoned by the GCS
   from the chosen velocity.
@@ -218,7 +224,7 @@ is drift, so the track is only indicative; a plane on airspeed drifts with the w
 
 ## 6. ROV in the simulator
 
-<p align="center"><img src="../screenshots/sitl-rov.png" width="350" alt="SITL launcher with the ROV"/></p>
+<p align="center"><img src="images/sitl-rov.png" width="350" alt="SITL launcher with the ROV"/></p>
 
 **SETUP → SIMULATION → VEHICLE TYPE** offers two ROVs, both ArduSub on the vectored BlueROV2 frame
 (the binary is downloaded on first launch):
@@ -252,5 +258,22 @@ SITL port (TCP 5762). ArduSub only accepts `MANUAL_CONTROL` from its own GCS sys
 | Trail | restarts on a jump of more than 2 km (a new connection, a log loaded) |
 | GPS in the command bar | a fix older than 5 s is shown as no GPS |
 
-The modules are described in [ARCHITECTURE.md](../ARCHITECTURE.md): `Mission3D.js`, `Water3D.js`,
+The modules are described in [ARCHITECTURE.md](https://github.com/Xarin94/Corv-GCS/blob/main/ARCHITECTURE.md): `Mission3D.js`, `Water3D.js`,
 `RelativeNav.js`, and the water and grid parts of `TerrainManager.js`.
+
+## ArduPilot references
+
+- [Non-GPS navigation](https://ardupilot.org/copter/docs/common-non-gps-navigation-landing-page.html) —
+  the position sources an EKF can use instead of GPS; [EKF source selection](https://ardupilot.org/copter/docs/common-ekf-sources.html);
+  [moving between non-GPS and GPS](https://ardupilot.org/copter/docs/common-non-gps-to-gps.html).
+- [Extended Kalman Filter](https://ardupilot.org/copter/docs/common-apm-navigation-extended-kalman-filter-overview.html)
+  and its [tuning](https://ardupilot.org/dev/docs/extended-kalman-filter.html).
+- [Dead-reckoning failsafe](https://ardupilot.org/copter/docs/deadreckoning-failsafe.html) (Copter) —
+  what the vehicle does when it loses its GPS in flight.
+- [Sub flight modes](https://ardupilot.org/sub/docs/modes.html), with what each needs (depth sensor,
+  position, rangefinder); [Sub failsafes](https://ardupilot.org/sub/docs/failsafe-landing-page.html).
+- [Terrain following](https://ardupilot.org/copter/docs/terrain-following.html) on the vehicle.
+- [SITL](https://ardupilot.org/dev/docs/sitl-simulator-software-in-the-loop.html), the simulator used
+  for the measurements in this chapter; the [ROV discussion](https://discuss.ardupilot.org/t/rov-position-hold-and-non-gps-navigation/53131)
+  on the ArduPilot forum on position hold without GPS.
+- See also [Flight modes](flight-modes.md) for which modes need a position.

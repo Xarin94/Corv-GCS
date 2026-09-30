@@ -15,6 +15,14 @@
   <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
   <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey" alt="Platform"/>
+  <a href="https://xarin94.github.io/Corv-GCS/"><img src="https://img.shields.io/badge/docs-user%20guide-2ea44f" alt="User guide"/></a>
+</p>
+
+<p align="center">
+  <a href="https://xarin94.github.io/Corv-GCS/"><b>User guide</b></a> ·
+  <a href="https://github.com/Xarin94/Corv-GCS/releases/latest"><b>Download</b></a> ·
+  <a href="https://xarin94.github.io/Corv-GCS/getting-started.html">Getting started</a> ·
+  <a href="https://xarin94.github.io/Corv-GCS/flight-modes.html">Flight modes</a>
 </p>
 
 ---
@@ -27,7 +35,7 @@ built from the same elevation data used by mapping services, with satellite imag
 It also reads INAV / Betaflight controllers over **MSP** and the onboard CORV autopilot over its
 binary protocol; the interface is in **English and Simplified Chinese**.
 
-![Flight screen](screenshots/flight-hud.jpg)
+![Flight screen](docs/images/flight-hud.jpg)
 
 ---
 
@@ -49,7 +57,7 @@ with arrows for the direction of turn, a landing straight down, the return to la
 the light theme the same chart is drawn as green relief under a pale blue sky, with the readouts and
 the HUD in dark blue.
 
-<p align="center"><img src="screenshots/annunciators.png" width="370" alt="Health annunciators"/></p>
+<p align="center"><img src="docs/images/annunciators.png" width="370" alt="Health annunciators"/></p>
 
 A column of **annunciators** beside the speed tape flags anything wrong with the vehicle: red
 warnings from the top, amber cautions from the bottom. They are the same conditions Mission Planner
@@ -81,9 +89,9 @@ look at, a landing. The route between them is calculated for you a moment after 
 an area scan the parallel lanes come from the camera model, so a DJI Mavic 3 at 100 m gives 49 m
 between lanes, a photo every 26 m and 2.7 cm per pixel on the ground.
 
-![Mission planning](screenshots/mission-planning.jpg)
+![Mission planning](docs/images/mission-planning.jpg)
 
-<p align="center"><img src="screenshots/camera-footprint.png" width="300" alt="Camera footprint"/></p>
+<p align="center"><img src="docs/images/camera-footprint.png" width="300" alt="Camera footprint"/></p>
 
 Every planned photo is a red dot on the route; hover one and the rectangle it will cover on the
 ground appears. The **elevation profile** along the bottom shows the ground under the whole route
@@ -100,9 +108,9 @@ the **LINK** layer on: the map shows in light green where the link will be good,
 the terrain degrades it, in red where it will work but with too little margin, and nothing where
 it will not work at all.
 
-![Radio link](screenshots/radio-link.jpg)
+![Radio link](docs/images/radio-link.jpg)
 
-<p align="center"><img src="screenshots/link-profile.png" width="620" alt="Link profile"/></p>
+<p align="center"><img src="docs/images/link-profile.png" width="620" alt="Link profile"/></p>
 
 The check is the one an RF planner would do: a straight line of sight from the antenna to the
 aircraft, the **first Fresnel zone** around it (the radio needs that ellipse clear, not just the
@@ -117,9 +125,9 @@ command bar keeps the flight mode, battery, GPS quality and the waypoint being f
 ARM, TAKEOFF, RTL, AUTO and LAND at hand — the picture is a simulated copter flying the plan above,
 on waypoint 4 of 54.
 
-![Flying the mission](screenshots/mission-auto.jpg)
+![Flying the mission](docs/images/mission-auto.jpg)
 
-![Command bar](screenshots/command-bar.png)
+![Command bar](docs/images/command-bar.png)
 
 Every flight is recorded as a `.tlog` from the moment the link comes up, and both `.tlog` and
 ArduPilot `.bin` logs can be replayed on the same screen, with a timeline to scrub through.
@@ -131,7 +139,7 @@ screen. The scanner sends its points over the network link and CORV GCS places e
 from the aircraft position and attitude in the telemetry — about 170,000 points in the picture, coloured
 by height; the map can be saved as a `.ply` file for other software.
 
-![LiDAR](screenshots/lidar.jpg)
+![LiDAR](docs/images/lidar.jpg)
 
 ## Under water, and without GPS
 
@@ -143,7 +151,7 @@ over a plane at zero — and can draw the dead-reckoned track next to the real o
 The simulator has a ROV on Lake Garda, with and without GPS. The picture is a real BlueROV2 dive
 replayed from its log.
 
-![ROV dive](screenshots/rov-real-log.jpg)
+![ROV dive](docs/images/rov-real-log.jpg)
 
 All of it, with what ArduSub and ArduPlane actually send without GPS, is in
 [docs/3D-NAVIGATION.md](docs/3D-NAVIGATION.md).
@@ -155,7 +163,7 @@ The vehicle connects over a USB telemetry radio, UDP or TCP, and a built-in **Ar
 reads a single parameter on request instead of the full list of a thousand — on a slow long-range
 radio that is the difference between two packets and several minutes.
 
-![Parameters](screenshots/parameters.jpg)
+![Parameters](docs/images/parameters.jpg)
 
 ## Also on board
 
@@ -209,6 +217,20 @@ models (`.glb` / `.gltf`) go in `models/`.
 | Serial | CORV binary | Onboard CORV autopilot over USB | 460800 baud |
 
 ## Documentation
+
+The **[user guide](https://xarin94.github.io/Corv-GCS/)** covers every screen and feature, with
+the ArduPilot documentation page for each flight mode, mission command, failsafe and calibration:
+[getting started](https://xarin94.github.io/Corv-GCS/getting-started.html),
+[flight screen](https://xarin94.github.io/Corv-GCS/flight-screen.html),
+[flight modes](https://xarin94.github.io/Corv-GCS/flight-modes.html),
+[mission planning](https://xarin94.github.io/Corv-GCS/mission-planning.html),
+[radio link](https://xarin94.github.io/Corv-GCS/radio-link.html),
+[3D view, water and ROVs](https://xarin94.github.io/Corv-GCS/3D-NAVIGATION.html),
+[vehicle setup](https://xarin94.github.io/Corv-GCS/setup.html),
+[simulator](https://xarin94.github.io/Corv-GCS/simulator.html),
+[LiDAR](https://xarin94.github.io/Corv-GCS/LIDAR.html),
+[keyboard shortcuts](https://xarin94.github.io/Corv-GCS/shortcuts.html).
+Its source is the [docs/](docs/) folder.
 
 [ARCHITECTURE.md](ARCHITECTURE.md) describes every module and data flow; [docs/LIDAR.md](docs/LIDAR.md)
 covers the Livox setup; [docs/3D-NAVIGATION.md](docs/3D-NAVIGATION.md) the mission in 3D, the
