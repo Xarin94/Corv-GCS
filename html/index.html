@@ -2038,19 +2038,12 @@
                     </select>
                 </div>
                 <div class="cfg-row">
-                    <label>DEAD-RECKONING TRACK</label>
-                    <select id="syscfg-nav-dr" class="cfg-select" title="Draw, dashed, the position integrated from velocity alone — next to the real track it shows how far dead reckoning drifts">
-                        <option value="off">Off</option>
-                        <option value="on">Estimate from velocity</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
                     <label>VELOCITY SOURCE</label>
-                    <select id="syscfg-nav-vel" class="cfg-select" title="Auto: a fixed wing's airspeed along the heading, else the vehicle's local or EKF velocity, else ground speed along the heading">
+                    <select id="syscfg-nav-vel" class="cfg-select" title="What the GCS dead-reckons on when the vehicle sends no local position of its own. Auto: a fixed wing's airspeed along the heading, else the EKF velocity, else ground speed along the heading">
                         <option value="auto">Auto</option>
                         <option value="air">Airspeed + heading</option>
                         <option value="ground">Ground speed + heading</option>
-                        <option value="ekf">EKF / local velocity</option>
+                        <option value="ekf">EKF velocity</option>
                     </select>
                 </div>
                 <div class="cfg-row">

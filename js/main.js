@@ -28,13 +28,10 @@ import {
     updateTargetMarker3D,
     setSkyColor, setSchematicView, setOutlineBrightness, setLightTheme,
     setMissionActiveSeq, updateOwnshipMarker,
-    setDeadReckoningTrail, setGroundGridVisible, updateWaterView, isSchematicView
+    setGroundGridVisible, updateWaterView, isSchematicView
 } from './engine/Scene3D.js';
 import { OVERLAY_LAYER } from './engine/Layers.js';
-import {
-    isRelativeMode, applyRelativeToState, isDeadReckoningTrack, resetRelNav,
-    deadReckoningWorld, deadReckoningVersion, DR_TRACK_CAPACITY
-} from './core/RelativeNav.js';
+import { isRelativeMode, applyRelativeToState, resetRelNav } from './core/RelativeNav.js';
 
 // Trajectory corridor imports
 import { computePredictedPath } from './engine/TrajectoryPredictor.js';
@@ -723,24 +720,21 @@ function getHomeForMarker() {
     return { lat, lon, ground: ground !== null ? ground : (Number.isFinite(fallback) ? fallback : 0) };
 }
 
-// ============== WATER, RELATIVE FRAME, DEAD RECKONING ==============
+// ============== WATER, RELATIVE FRAME ==============
 const WATER_PLANE_COLOR = 0x2a7fff;
 const ZERO_PLANE_COLOR = 0x8fb4c4;
 const ZERO_PLANE_RADIUS_M = 3000;    // the relative frame's only reference: wide
 const ZERO_PLANE_CELL_M = 50;
 const SUB_MAV_TYPE = 12;
-let drTrailBuffer = null;
-let drTrailDrawn = -1;               // track version / offset last drawn
-let drTrailOffset = null;
 
 /**
- * Surface grid and underwater particles, and the dead-reckoned track, for
- * this frame. The water surface grid is drawn as a plane only where the
+ * Surface grid and underwater particles for this frame. The water surface
+ * grid is drawn as a plane only where the
  * terrain shader cannot: seen from under the surface, and over the open sea,
  * where the terrain is the sea bed. Particles show while the camera is under
  * a surface — a lake or the sea, or zero in the relative frame.
  */
-function updateWaterAndDeadReckoning(camera, planePos, totalAlt, water, relative) {
+function updateWaterView3D(camera, planePos, totalAlt, water, relative) {
     const offset = STATE.offsetAlt || 0;
     let plane = null, underwaterLevel = null;
     if (relative) {
@@ -767,19 +761,6 @@ function updateWaterAndDeadReckoning(camera, planePos, totalAlt, water, relative
         }
     }
     updateWaterView({ plane, underwaterLevel });
-
-    // Dead-reckoned track: rebuilt only when it grew or the offset changed
-    if (!isDeadReckoningTrack()) {
-        if (drTrailDrawn !== -1) { setDeadReckoningTrail(null); drTrailDrawn = -1; }
-        return;
-    }
-    const version = deadReckoningVersion();
-    if (version === drTrailDrawn && offset === drTrailOffset) return;
-    if (!drTrailBuffer) drTrailBuffer = new Float32Array(DR_TRACK_CAPACITY * 3);
-    const n = deadReckoningWorld(latLonToMeters, offset, drTrailBuffer);
-    setDeadReckoningTrail(drTrailBuffer, n);
-    drTrailDrawn = version;
-    drTrailOffset = offset;
 }
 
 /**
@@ -960,7 +941,7 @@ function update3DWorld() {
     }
 
     updateTrail(planePos.x, totalAlt, planePos.z);
-    updateWaterAndDeadReckoning(camera, planePos, totalAlt, water, relative);
+    updateWaterView3D(camera, planePos, totalAlt, water, relative);
 
     if (STATE.connected && STATE.lastReloadPos.lat) {
         const distFromLastReload = calculateDistance(
@@ -1476,7 +1457,9 @@ function animate(frameTime) {
     // getInitialLoadStatus() walks every chunk; once the overlay is gone
     // nobody needs it, and it was costing ~1.3 % of the main thread per frame.
     if (!isInitialLoadDone()) {
-        checkInitialLoadComplete(getInitialLoadStatus());
+        // The relative frame draws no terrain: nothing to wait for
+        if (isRelativeMode()) scheduleHideLoadingOverlaySoon();
+        else checkInitialLoadComplete(getInitialLoadStatus());
     }
 
     updateFPS(now, onFlightDataTab && renderDue);

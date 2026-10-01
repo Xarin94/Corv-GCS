@@ -12,18 +12,20 @@
  * position. ArduPlane dead-reckons on airspeed and the wind estimate after a
  * GPS loss, but with no GPS ever it has no origin either.
  *
- * So the GCS does what it can here:
- *   - Relative mode (SYS CONFIG): the view works in a local frame. The
- *     position is LOCAL_POSITION_NED when the vehicle sends it, otherwise it
- *     is dead-reckoned from a velocity. Height: LOCAL_POSITION_NED, else the
- *     relative altitude of a real fix, else the pressure sensor relative to
- *     its first reading (water depth on a sub, the barometer otherwise). The
- *     frame is laid around the world origin as synthetic lat/lon, so the rest
- *     of the GCS keeps working unchanged; the 3D view hides the terrain and
- *     draws a plane at zero instead.
- *   - Dead-reckoning track (SYS CONFIG): a position integrated from velocity
- *     alone — airspeed or ground speed along the heading, or the EKF / local
- *     velocity — drawn dashed next to the real track, so its drift shows.
+ * So in relative mode (SYS CONFIG) the view works in a local frame. The
+ * position is LOCAL_POSITION_NED whenever the vehicle sends it: its EKF
+ * already integrates its velocity sources (a DVL, visual odometry) better
+ * than the GCS could from telemetry — measured on a DVL-fed ArduSub SITL
+ * down to 150 m, the EKF averaged 1–3 m from the truth where the GCS
+ * integrating the same velocities at 5 Hz averaged 3–7 m and reached 11 m.
+ * Only when the vehicle sends no local position does the GCS dead-reckon
+ * one from a velocity, starting from the last local position if there was
+ * one (measured: 1.9 m behind the EKF after 18 m with the stream cut). Height:
+ * LOCAL_POSITION_NED, else the relative altitude of a real fix, else the
+ * pressure sensor relative to its first reading (water depth on a sub, the
+ * barometer otherwise). The frame is laid around the world origin as
+ * synthetic lat/lon, so the rest of the GCS keeps working unchanged; the 3D
+ * view hides the terrain and draws a plane at zero instead.
  *
  * Integration runs on the autopilot's ATTITUDE timestamps (time_boot_ms), so
  * a log replayed faster than real time integrates the same way.
@@ -37,15 +39,16 @@ const FIXED_WING = new Set([1, 16, 19, 20, 21, 22, 23, 24, 25]);
 const SUBMARINE = 12;
 const FRESH_MS = 2000;
 const MAX_STEP_S = 0.5;          // longer gaps (a stalled link) are not integrated
-const TRACK_STEP_M = 0.5;
-const MAX_TRACK = 20000;
 const WATER_DENSITY = { fresh: 997, salt: 1025 };
 const STANDARD_HPA = 1013.25;
 const SURFACE_MAX_HPA = 1100;
 const M_PER_DEG = 111320;
 
-const settings = { relative: false, drTrack: false, velSource: 'auto', water: 'fresh' };
-try { Object.assign(settings, JSON.parse(localStorage.getItem(STORE_KEY) || '{}')); } catch (e) { /* defaults */ }
+const settings = { relative: false, velSource: 'auto', water: 'fresh' };
+try {
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+    for (const key of Object.keys(settings)) if (key in saved) settings[key] = saved[key];
+} catch (e) { /* defaults */ }
 
 // Latest inputs
 let yaw = null;                  // rad
@@ -56,35 +59,31 @@ let fix = null;                  // { relAlt, t } while GLOBAL_POSITION_INT has 
 let vfr = null;                  // { airspeed, groundspeed, heading, climb, t }
 let pAir0 = null, pAir = null, pWater0 = null, pWater = null;
 
-// Dead-reckoned position, metres north/east/down from its anchor
-const dr = { n: 0, e: 0, d: 0, anchor: null, src: null };
-const track = { ned: new Float32Array(MAX_TRACK * 3), count: 0, version: 0 };
+// Relative position, metres north/east/down from zero: the vehicle's local
+// position while it sends one, dead-reckoned from there when it stops
+const dr = { n: 0, e: 0, d: 0, src: null };
 
 export function getRelNavSettings() { return { ...settings }; }
 export function isRelativeMode() { return settings.relative; }
-export function isDeadReckoningTrack() { return settings.drTrack; }
 
 /**
- * Change a setting (relative, drTrack, velSource, water); raises 'relNavChanged'.
- * Switching the relative mode (either way) or the track on starts a fresh estimate.
+ * Change a setting (relative, velSource, water); raises 'relNavChanged'.
+ * Switching the relative mode (either way) starts a fresh estimate.
  */
 export function setRelNavSetting(key, value) {
     if (!(key in settings) || settings[key] === value) return;
     settings[key] = value;
     try { localStorage.setItem(STORE_KEY, JSON.stringify(settings)); } catch (e) { /* not persisted */ }
-    // The track is anchored in one frame or the other: a new frame, a new track
-    if (key === 'relative' || (key === 'drTrack' && value)) resetRelNav();
+    if (key === 'relative') resetRelNav();
     window.dispatchEvent(new CustomEvent('relNavChanged', { detail: { ...settings } }));
 }
 
-/** Start again from zero: position, pressure reference and track. */
+/** Start again from zero: position and pressure reference. */
 export function resetRelNav() {
     dr.n = dr.e = dr.d = 0;
-    dr.anchor = null;
+    dr.src = null;
     pAir0 = pAir = pWater0 = pWater = null;
     bootMs = null;
-    track.count = 0;
-    track.version++;
 }
 
 /** Feed every MAVLink message (called by the state mapper before its own mapping). */
@@ -126,24 +125,23 @@ export function relNavOnMessage(msgId, d) {
 const fresh = (o) => o && Date.now() - o.t < FRESH_MS;
 
 /**
- * Velocity to dead-reckon on (m/s, NED), per the chosen source. 'auto': a
- * fixed wing's airspeed along the heading when it has one, else the local
- * frame's velocity, else the EKF's, else the ground speed along the heading.
+ * Velocity to dead-reckon on (m/s, NED), per the chosen source — only asked
+ * for while there is no local position. 'auto': a fixed wing's airspeed along
+ * the heading when it has one, else the EKF's velocity, else the ground speed
+ * along the heading.
  */
 function pickVelocity() {
     const hdg = yaw !== null ? yaw : (fresh(vfr) && Number.isFinite(vfr.heading) ? vfr.heading * Math.PI / 180 : null);
-    const vd = fresh(local) ? local.vz : fresh(ekf) ? ekf.vd : fresh(vfr) && Number.isFinite(vfr.climb) ? -vfr.climb : 0;
+    const vd = fresh(ekf) ? ekf.vd : fresh(vfr) && Number.isFinite(vfr.climb) ? -vfr.climb : 0;
     const along = (speed, src) => (hdg !== null && Number.isFinite(speed))
         ? { vn: speed * Math.cos(hdg), ve: speed * Math.sin(hdg), vd, src } : null;
     switch (settings.velSource) {
         case 'air':    return fresh(vfr) ? along(vfr.airspeed, 'air') : null;
         case 'ground': return fresh(vfr) ? along(vfr.groundspeed, 'ground') : null;
         case 'ekf':
-            if (fresh(local)) return { vn: local.vx, ve: local.vy, vd: local.vz, src: 'local' };
             return fresh(ekf) ? { vn: ekf.vn, ve: ekf.ve, vd: ekf.vd, src: 'ekf' } : null;
         default:
             if (FIXED_WING.has(STATE.vehicleType) && fresh(vfr) && vfr.airspeed > 3) return along(vfr.airspeed, 'air');
-            if (fresh(local)) return { vn: local.vx, ve: local.vy, vd: local.vz, src: 'local' };
             if (fresh(ekf)) return { vn: ekf.vn, ve: ekf.ve, vd: ekf.vd, src: 'ekf' };
             return fresh(vfr) ? along(vfr.groundspeed, 'ground') : null;
     }
@@ -152,41 +150,22 @@ function pickVelocity() {
 function step(t) {
     const prev = bootMs;
     bootMs = t;
-    if (!settings.relative && !settings.drTrack) return;
+    if (!settings.relative) return;
+    // The vehicle's EKF has a position: nothing to integrate, just follow it
+    if (fresh(local)) {
+        dr.n = local.x; dr.e = local.y; dr.d = local.z;
+        dr.src = null;
+        return;
+    }
     if (prev === null || t <= prev) return;           // first sample, or the autopilot rebooted
     const dt = (t - prev) / 1000;
     if (dt > MAX_STEP_S) return;
     const v = pickVelocity();
     if (!v) return;
     dr.src = v.src;
-    if (!dr.anchor) {
-        // Relative mode: the local frame's zero. Otherwise the vehicle's
-        // position when the track starts.
-        if (settings.relative) dr.anchor = { lat: ORIGIN.lat, lon: ORIGIN.lon, alt: 0 };
-        else if (STATE.lat || STATE.lon) dr.anchor = { lat: STATE.lat, lon: STATE.lon, alt: STATE.rawAlt || 0 };
-        else return;
-    }
     dr.n += v.vn * dt;
     dr.e += v.ve * dt;
     dr.d += v.vd * dt;
-    appendTrack();
-}
-
-function appendTrack() {
-    const a = track.ned;
-    let n = track.count;
-    if (n > 0) {
-        const o = (n - 1) * 3;
-        if (Math.hypot(dr.n - a[o], dr.e - a[o + 1], dr.d - a[o + 2]) < TRACK_STEP_M) return;
-    }
-    if (n >= MAX_TRACK) {
-        // Keep every other point
-        for (let r = 0, w = 0; r < n; r += 2, w++) { a[w * 3] = a[r * 3]; a[w * 3 + 1] = a[r * 3 + 1]; a[w * 3 + 2] = a[r * 3 + 2]; }
-        n = Math.ceil(n / 2);
-    }
-    a[n * 3] = dr.n; a[n * 3 + 1] = dr.e; a[n * 3 + 2] = dr.d;
-    track.count = n + 1;
-    track.version++;
 }
 
 /** Height (m, up) in the relative frame, and where it came from. */
@@ -232,31 +211,5 @@ export function relativeSource() {
     return fresh(local) ? 'local' : 'dead-reckoning';
 }
 
-/** Velocity source the dead reckoning is using ('air', 'ground', 'ekf', 'local'), null before the first step. */
+/** Velocity source the dead reckoning is using ('air', 'ground', 'ekf'), null while it is not integrating. */
 export function deadReckoningSource() { return dr.src; }
-
-/**
- * The dead-reckoned track in world coordinates.
- * @param {(lat:number, lon:number) => {x:number, z:number}} toWorld latLonToMeters
- * @param {number} offsetAlt the altitude offset every vehicle height gets in the scene
- * @param {Float32Array} out receives x, y, z per point (at least MAX_TRACK * 3)
- * @returns {number} points written
- */
-export function deadReckoningWorld(toWorld, offsetAlt, out) {
-    if (!dr.anchor || track.count < 2) return 0;
-    const { lat, lon, alt } = dr.anchor;
-    const kLon = M_PER_DEG * Math.cos(lat * Math.PI / 180);
-    const a = track.ned;
-    for (let i = 0; i < track.count; i++) {
-        const w = toWorld(lat + a[i * 3] / M_PER_DEG, lon + a[i * 3 + 1] / kLon);
-        out[i * 3] = w.x;
-        out[i * 3 + 1] = alt - a[i * 3 + 2] + offsetAlt;
-        out[i * 3 + 2] = w.z;
-    }
-    return track.count;
-}
-
-/** Changes whenever the track does (to rebuild its drawing only then). */
-export function deadReckoningVersion() { return track.version; }
-
-export const DR_TRACK_CAPACITY = MAX_TRACK;

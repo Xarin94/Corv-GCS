@@ -119,7 +119,7 @@ A Livox Mid-360 point cloud mapped live from the telemetry — see [LiDAR point 
 | Panel | |
 |-------|---|
 | **FLIGHT STACK** | ArduPilot, INAV or Betaflight — see [Getting started](getting-started.md#choose-the-flight-stack) |
-| **NAVIGATION** | Absolute or relative position, the dead-reckoning track, its velocity source, fresh or sea water — see [Navigation without GPS](3D-NAVIGATION.md#5-navigation-without-gps) |
+| **NAVIGATION** | Absolute or relative position, the velocity dead reckoning uses, fresh or sea water — see [Navigation without GPS](3D-NAVIGATION.md#5-navigation-without-gps) |
 | **SYSTEM CONFIG** | Language (English, 中文), altitude offset, terrain folder, 3D model and its scale, time of day, map brightness, attitude smoothing, 3D frame rate (60 or 30 to save battery), DevTools |
 | **GCS OPTIONS** | ADS-B traffic overlay, ground clamp (keep the model on the terrain surface), battery voltage range and cells for the percentage when the vehicle does not report one |
 | **ROTOR LOAD** | A schematic of the motors coloured by their output, for multirotors: frame, PWM scale and the green / orange / red thresholds |

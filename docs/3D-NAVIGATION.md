@@ -16,7 +16,7 @@ water, and what the GCS does when the vehicle has no GPS at all. Everything here
 | [2. Low-altitude grid](#2-low-altitude-grid) | triangles on the ground under 200 m, the height cue |
 | [3. Water](#3-water) | lakes and seas found in the elevation data, the surface, under the surface |
 | [4. Subs and ROVs](#4-subs-and-rovs) | depth, the water a ROV dives in, a real BlueROV2 dive |
-| [5. Navigation without GPS](#5-navigation-without-gps) | relative mode, dead-reckoning track, what ArduPilot sends |
+| [5. Navigation without GPS](#5-navigation-without-gps) | relative mode, dead reckoning, what ArduPilot sends |
 | [6. ROV in the simulator](#6-rov-in-the-simulator) | ArduSub SITL on Lake Garda, with and without GPS |
 | [7. Reference](#7-reference) | every threshold and size in one table |
 
@@ -148,8 +148,7 @@ What the vehicle sent over 1 h 40 min:
   (`SCALED_PRESSURE2`) went from 1 017 to 3 131 hPa — 21.6 m of fresh water.
 - A downward sonar altimeter (`DISTANCE_SENSOR`, orientation 25) read 0.3–34 m.
 
-In the picture the red trail is the EKF position (USBL-aided) and the dashed cyan line the position
-integrated from velocity alone, starting together and drifting apart — see the next section.
+In the picture the red trail is the EKF position, aided by the USBL.
 
 ## 5. Navigation without GPS
 
@@ -177,8 +176,7 @@ then `LOCAL_POSITION_NED` is the position.
 | Setting | |
 |---------|---|
 | **POSITION** | *GPS · absolute* (map and terrain) or *Relative · no GPS* (a plane at zero). |
-| **DEAD-RECKONING TRACK** | *Estimate from velocity*: draw, dashed in cyan, the position integrated from velocity alone. |
-| **VELOCITY SOURCE** | What the dead reckoning integrates (below). |
+| **VELOCITY SOURCE** | What the GCS integrates when the vehicle sends no position of its own (below). |
 | **WATER (DEPTH SENSOR)** | Fresh (997 kg/m³) or sea (1 025 kg/m³) water, to turn a sub's pressure into depth. |
 | **ESTIMATE** | Where the position comes from right now, and **RESET** to start again from zero. |
 
@@ -186,10 +184,10 @@ The settings are kept between sessions.
 
 ### Relative mode
 
-![Relative mode: ROV with no GPS, 19 m below zero](images/relative-mode.jpg)
+![Relative mode: ROV with a DVL and no GPS, back up to 124 m after a dive to 150 m](images/relative-mode.jpg)
 
-- **Position**: `LOCAL_POSITION_NED` when the vehicle sends one; otherwise dead-reckoned by the GCS
-  from the chosen velocity.
+- **Position**: `LOCAL_POSITION_NED` when the vehicle sends one — its EKF already integrates a DVL,
+  a USBL or visual odometry; otherwise dead-reckoned by the GCS from the chosen velocity.
 - **Height**: `LOCAL_POSITION_NED`, else the relative altitude of a real fix, else the pressure
   sensor against its first reading — water depth from `SCALED_PRESSURE2` on a sub, the barometer
   otherwise. If the GCS connects during a dive (first reading above 1 100 hPa), standard sea-level
@@ -202,25 +200,28 @@ The settings are kept between sessions.
   latitude, longitude and radar altitude.
 - Works the same on a live link and on a replayed `.tlog` / `.bin`.
 
-### Dead-reckoning track
+### Dead reckoning
 
-A position integrated from velocity alone, drawn dashed in cyan next to the real trail — in the
-relative mode, or on top of a GPS flight to see how far dead reckoning drifts.
+The GCS integrates a velocity into a position only when the vehicle sends no local position. While
+`LOCAL_POSITION_NED` arrives it integrates nothing: the vehicle's EKF already fuses its own sensors
+(a DVL, a USBL, visual odometry) at full rate, and does it better. On a DVL-fed ArduSub SITL, in
+dives to 50 and 150 m, the EKF position averaged 1–3 m from the true one, while the same velocities
+integrated by the GCS from 5 Hz telemetry averaged 3–7 m off and reached 11 m. If the local position stops arriving during a
+dive, dead reckoning carries on from the last one.
 
 | Velocity source | Integrates |
 |-----------------|------------|
-| **Auto** | a fixed wing's airspeed along the heading when it is flying; else the vehicle's local-frame velocity; else the EKF velocity; else ground speed along the heading |
+| **Auto** | a fixed wing's airspeed along the heading when it is flying; else the EKF velocity; else ground speed along the heading |
 | Airspeed + heading | `VFR_HUD.airspeed` along `ATTITUDE.yaw` — a plane without GPS (the wind is not known, so it drifts with it) |
 | Ground speed + heading | `VFR_HUD.groundspeed` along the heading |
-| EKF / local velocity | `LOCAL_POSITION_NED` velocity, else `GLOBAL_POSITION_INT` velocity |
+| EKF velocity | `GLOBAL_POSITION_INT` velocity |
 
 It integrates on the autopilot's `ATTITUDE.time_boot_ms`, so a log replayed at any speed gives the
-same track; gaps over half a second (a stalled link) are not integrated. Up to 20 000 points, one
-every 0.5 m. Connecting a vehicle, switching the mode or pressing RESET starts it again.
+same position; gaps over half a second (a stalled link) are not integrated. Connecting a vehicle,
+switching the mode or pressing RESET starts it again from zero.
 
-What to expect: with GPS or a USBL the track follows the real one for a while and then drifts
-(picture in section 4); a sub without DVL has no real horizontal velocity at all — its EKF velocity
-is drift, so the track is only indicative; a plane on airspeed drifts with the wind.
+What to expect: a sub without DVL has no real horizontal velocity at all — its EKF velocity is
+drift, so the position is only indicative; a plane on airspeed drifts with the wind.
 
 ## 6. ROV in the simulator
 
@@ -231,14 +232,15 @@ is drift, so the track is only indicative; a plane on airspeed drifts with the w
 
 - **ROV · Sub (BlueROV2, vectored)** — with GPS, as at the surface or with a USBL.
 - **ROV · no GPS (dead reckoning)** — `GPS1_TYPE 0` and no simulated GPS
-  (`sitl-defaults/default_params_subnogps.parm`). Launching it switches the relative mode and the
-  dead-reckoning track on; **STOP** puts them back as they were.
+  (`sitl-defaults/default_params_subnogps.parm`). Launching it switches the relative mode on;
+  **STOP** puts it back as it was.
 
 Choosing a ROV moves the home to the **centre of Lake Garda (45.60319, 10.67127)**, unless you typed
 a home of your own. The simulator is always launched at **0 m**: ArduSub's simulator keeps the water
 surface at 0 m MSL whatever the home altitude — launched at the lake's own height (62 m in the
 data) the vehicle floats in the air and cannot dive (measured: thrusters at full, depth unchanged). The GCS then puts that 0 on
-the lake surface, as for a real ROV (section 4).
+the lake surface, as for a real ROV (section 4). The simulator also has a flat bottom 50 m under the
+surface: the ROV cannot dive deeper there.
 
 To drive it: a joystick through the GCS, or `MANUAL_CONTROL` from another program on the second
 SITL port (TCP 5762). ArduSub only accepts `MANUAL_CONTROL` from its own GCS system ID
@@ -253,7 +255,7 @@ SITL port (TCP 5762). ArduSub only accepts `MANUAL_CONTROL` from its own GCS sys
 | Sub's own water | ground within 1.5 m of the sub's surface, 500 m around it |
 | Surface plane | the triangle grid's lattice, 500 m around the vehicle; zero plane in relative mode: 50 m squares, 3 km |
 | Particles | 2 500 in a 60 m cube around the camera, shown under a surface |
-| Dead-reckoning track | 20 000 points, one per 0.5 m, steps longer than 0.5 s skipped |
+| Dead reckoning | only while no `LOCAL_POSITION_NED` arrives; steps longer than 0.5 s skipped |
 | Pressure to depth | fresh 997 / sea 1 025 kg/m³; first reading > 1 100 hPa → 1 013.25 hPa taken as the surface |
 | Trail | restarts on a jump of more than 2 km (a new connection, a log loaded) |
 | GPS in the command bar | a fix older than 5 s is shown as no GPS |

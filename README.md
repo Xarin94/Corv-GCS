@@ -146,8 +146,8 @@ by height; the map can be saved as a `.ply` file for other software.
 Lakes and seas are found in the elevation data and drawn as a blue surface; a ROV is placed at its
 depth under the water it dives in, stays visible under the surface, and from under it the surface
 is a grid overhead with particles drifting past. With no GPS at all, **SYS CONFIG → NAVIGATION**
-switches to a relative frame — the vehicle's local position, or one dead-reckoned from its velocity,
-over a plane at zero — and can draw the dead-reckoned track next to the real one to show its drift.
+switches to a relative frame over a plane at zero — the vehicle's own local position (a DVL, a
+USBL), or one dead-reckoned from its velocity when it has none.
 The simulator has a ROV on Lake Garda, with and without GPS. The picture is a real BlueROV2 dive
 replayed from its log.
 

@@ -50,8 +50,9 @@ for a real ROV — the depth then reads correctly and the 3D view shows the vehi
 
 **ROV · no GPS** starts ArduSub with the GPS driver and the simulated GPS off
 (`default_params_subnogps.parm`): the autopilot has no position at all, as a ROV without DVL or USBL.
-Launching it switches the [relative navigation mode](3D-NAVIGATION.md#5-navigation-without-gps) and the
-dead-reckoning track on; **STOP** puts both back as they were.
+Launching it switches the [relative navigation mode](3D-NAVIGATION.md#5-navigation-without-gps) on;
+**STOP** puts it back as it was. ArduSub's simulator has a flat bottom 50 m under the surface, so
+neither ROV dives deeper.
 
 Driving a ROV: a gamepad in [SETUP → Joystick](setup.md#joystick), or `MANUAL_CONTROL` from another
 program on the simulator's second port (TCP 5762). ArduSub only takes pilot input from its own GCS

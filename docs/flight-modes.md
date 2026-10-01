@@ -105,8 +105,8 @@ take-off) — see [Flight screen](flight-screen.md#command-bar).
 | 26 | AUTOLAND | cyan | **yes** | [Autoland](https://ardupilot.org/plane/docs/mode_autoland.html) |
 
 Without GPS a plane can still be flown in the manual and stabilised modes; the GCS can then only
-estimate its track from airspeed and heading — see
-[dead-reckoning track](3D-NAVIGATION.md#dead-reckoning-track). Measured in SITL, an ArduPlane that
+estimate its position from airspeed and heading — see
+[dead reckoning](3D-NAVIGATION.md#dead-reckoning). Measured in SITL, an ArduPlane that
 never had a GPS does not start its EKF at all (DCM only), as also discussed on the
 [ArduPilot forum](https://discuss.ardupilot.org/t/ekf3-and-ekf2-do-not-work-without-gps-in-arduplane-20769/85511).
 

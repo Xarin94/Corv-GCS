@@ -72,7 +72,7 @@ export function initTabs() {
 
     // Flight stack selector (SYS CONFIG): link suggestion + mission gating
     initPlatformSelector();
-    // Relative navigation / dead-reckoning track (SYS CONFIG)
+    // Relative navigation (SYS CONFIG)
     initNavigationPanel();
 }
 
@@ -80,7 +80,7 @@ export function initTabs() {
 // The settings live in RelativeNav.js; this binds the NAVIGATION panel to them
 // and shows, twice a second, where the position is coming from.
 
-const VELOCITY_SOURCE_LABEL = { air: 'airspeed + heading', ground: 'ground speed + heading', ekf: 'EKF velocity', local: 'local frame velocity' };
+const VELOCITY_SOURCE_LABEL = { air: 'airspeed + heading', ground: 'ground speed + heading', ekf: 'EKF velocity' };
 
 function initNavigationPanel() {
     const bound = [];
@@ -92,7 +92,6 @@ function initNavigationPanel() {
         bound.push(() => { el.value = fromValue(getRelNavSettings()[key]); });
     };
     bind('syscfg-nav-position', 'relative', v => v === 'relative', v => (v ? 'relative' : 'absolute'));
-    bind('syscfg-nav-dr', 'drTrack', v => v === 'on', v => (v ? 'on' : 'off'));
     bind('syscfg-nav-vel', 'velSource', v => v, v => v);
     bind('syscfg-nav-water', 'water', v => v, v => v);
     document.getElementById('syscfg-nav-reset')?.addEventListener('click', () => resetRelNav());
@@ -102,15 +101,11 @@ function initNavigationPanel() {
     const status = document.getElementById('syscfg-nav-status');
     if (!status) return;
     setInterval(() => {
-        const cfg = getRelNavSettings();
-        const vel = VELOCITY_SOURCE_LABEL[deadReckoningSource()] || 'no velocity yet';
-        const parts = [];
         const rel = relativeSource();
-        if (rel === 'local') parts.push('relative · vehicle local frame');
-        else if (rel) parts.push(`relative · dead reckoning (${vel})`);
-        else parts.push('absolute · GPS');
-        if (cfg.drTrack && rel !== 'dead-reckoning') parts.push(`track: ${vel}`);
-        status.textContent = parts.join(' — ');
+        const vel = VELOCITY_SOURCE_LABEL[deadReckoningSource()] || 'no velocity yet';
+        if (rel === 'local') status.textContent = 'relative · vehicle EKF position';
+        else if (rel) status.textContent = `relative · dead reckoning (${vel})`;
+        else status.textContent = 'absolute · GPS';
     }, 500);
 }
 
@@ -1009,8 +1004,7 @@ function updateExtTuningSlider(paramId, value) {
 // cannot dive. A ROV is launched at 0 m, like a real one whose origin is on
 // the surface; the GCS puts that 0 on the water under home (subSurfaceAlt in
 // main.js). Without a GPS it has no absolute position, so its launch also
-// switches the relative navigation mode and the dead-reckoning track on;
-// STOP puts them back.
+// switches the relative navigation mode on; STOP puts it back.
 const ROV_SITL = new Set(['sub', 'subnogps']);
 const LAND_HOME = { lat: 47.2603, lon: 11.3439 };
 const ROV_HOME = { lat: 45.60319, lon: 10.67127 };   // centre of Lake Garda
@@ -1038,15 +1032,13 @@ function beginRovSession(vehicle) {
     endRovSession();
     if (vehicle !== 'subnogps') return;
     const nav = getRelNavSettings();
-    rovSession = { relative: nav.relative, drTrack: nav.drTrack };
+    rovSession = { relative: nav.relative };
     setRelNavSetting('relative', true);
-    setRelNavSetting('drTrack', true);
 }
 
 function endRovSession() {
     if (!rovSession) return;
     setRelNavSetting('relative', rovSession.relative);
-    setRelNavSetting('drTrack', rovSession.drTrack);
     rovSession = null;
 }
 

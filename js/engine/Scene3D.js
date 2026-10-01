@@ -45,13 +45,13 @@ const TRAIL_MAX_JUMP_M = 2000;
 // darker over the light ground.
 const PALETTE_DARK = {
     trail: 0xff3b30, route: 0x44ff44, activeLeg: 0xd8ffd0, home: 0xff8800,
-    ownship: 0xffffff, traffic: 0xff2a2a, drTrail: 0x00e5ff,
+    ownship: 0xffffff, traffic: 0xff2a2a,
     circle: 0x4488ff, area: 0xff6600, corridor: 0xcc44ff, perimeter: 0xffaa00, poi: 0xff66aa,
     halo: [0, 0, 0, 0.6], label: null, labelHalo: 'rgba(0, 0, 0, 0.85)', labelHaloPx: 3.5
 };
 const PALETTE_LIGHT = {
     trail: 0xe3261c, route: 0x0a8f2a, activeLeg: 0x05561b, home: 0xd96a00,
-    ownship: 0x10324a, traffic: 0xe3261c, drTrail: 0x0077b6,
+    ownship: 0x10324a, traffic: 0xe3261c,
     circle: 0x1c5fd8, area: 0xd65400, corridor: 0x9a2ccc, perimeter: 0xb87800, poi: 0xd02c78,
     halo: [1, 1, 1, 0.8], label: 0x0a37a6, labelHalo: 'rgba(0, 0, 0, 0.6)', labelHaloPx: 1.6
 };
@@ -87,7 +87,6 @@ let timeOverride = null;
 
 // Overlays (created in init3D; the mission route lives in Mission3D.js)
 let trail = null;
-let drTrail = null;         // dead-reckoned track, from velocities only (RelativeNav)
 let groundGrid = null;      // reference grid at 0 m under the terrain
 let homePole = null;
 let homeRing = null;
@@ -171,7 +170,6 @@ function initLighting() {
  */
 function initOverlays() {
     trail = new ThickLine({ color: palette.trail, width: 3.5, ghost: { width: 2, opacity: 0.35 }, renderOrder: 5 }).addTo(scene);
-    drTrail = new ThickLine({ color: palette.drTrail, width: 2.5, dash: [8, 5], ghost: { width: 1.5, opacity: 0.3 }, renderOrder: 5 }).addTo(scene);
     initWater3D(scene);
 
     initMission3D(scene, camera, renderer, palette);
@@ -243,7 +241,6 @@ function applyPalette() {
     setSymbolHalo(...palette.halo);
     setLabelHalo(palette.labelHalo, palette.labelHaloPx);
     trail.setColor(palette.trail);
-    drTrail.setColor(palette.drTrail);
     homePole.setColor(palette.home);
     homeRing.setColor(palette.home);
     ownship.setSymbols([{ x: 0, y: 0, z: 0, shape: SHAPE.CIRCLE, color: palette.ownship }]);
@@ -370,17 +367,6 @@ export function setTrailPoints(points) {
         return;
     }
     trail.setPoints(points);
-}
-
-/**
- * The dead-reckoned track (dashed), or nothing.
- * @param {Float32Array|null} xyz world x, y, z per point
- * @param {number} [count] points in use
- */
-export function setDeadReckoningTrail(xyz, count = 0) {
-    if (!drTrail) return;
-    if (!xyz || count < 2) drTrail.clear();
-    else drTrail.setPoints(xyz, count);
 }
 
 /** The reference grid at 0 m, shown where no terrain covers it; the relative mode draws its own. */
