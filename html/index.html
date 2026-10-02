@@ -274,6 +274,15 @@
             <button class="lidar-strip-btn" id="lidar-strip-clear" type="button" title="Clear the accumulated map">CLEAR MAP</button>
             <button class="lidar-strip-btn" id="lidar-strip-save" type="button" title="Save the map as .ply">SAVE</button>
         </div>
+        <div id="ros-strip" class="lidar-strip ros-strip hidden">
+            <span class="lidar-strip-led"></span>
+            <span class="lidar-strip-title">ROS</span>
+            <span class="lidar-strip-state" id="ros-strip-state">OFF</span>
+            <span class="lidar-strip-count" id="ros-strip-grid">&mdash;</span>
+            <button class="lidar-strip-btn ros-strip-color" id="ros-strip-color" type="button" title="Colour: grey, or red (near) to blue (far) by distance from the vehicle">GRAY</button>
+            <button class="lidar-strip-btn" id="ros-strip-view" type="button" title="Show or hide the surface (it keeps accumulating)">VIEW ON</button>
+            <button class="lidar-strip-btn" id="ros-strip-clear" type="button" title="Clear the averaged surface">CLEAR</button>
+        </div>
 
         <!-- Annunciator glyph sheet: 24x24 stroke-only symbols, coloured
              through currentColor by the .annun-warn / .annun-caut classes -->
@@ -599,6 +608,11 @@
                     <button class="setup-nav-btn" data-section="lidar">
                         <span class="nav-btn-title">LIDAR</span>
                         <span class="nav-btn-desc">Livox Mid-360 &middot; point cloud</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                    <button class="setup-nav-btn" data-section="ros">
+                        <span class="nav-btn-title">ROS</span>
+                        <span class="nav-btn-desc">rosbridge &middot; averaged surface</span>
                         <span class="nav-status-dot"></span>
                     </button>
                 </div>
@@ -1922,6 +1936,143 @@
                     </div>
                     <div class="cfg-row" style="opacity:0.6;font-size:11px;line-height:1.4;">
                         <span>Angles are ZYX Euler of the LiDAR body relative to the aircraft body (FRD). The Mid-360 sees 360&deg; &times; (-7&deg;&hellip;+52&deg;): mounted flat under the belly it is blind straight down, tilt it to close the gap.</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sub-tab: ROS (rosbridge → averaged surface mesh) — driven by js/ui/RosController.js -->
+            <div class="sub-tab-content" id="subtab-ros">
+                <div class="setup-panel" id="ros-panel">
+                    <div class="panel-header">ROS &middot; ROSBRIDGE</div>
+                    <div class="cfg-row">
+                        <label>SURFACE FROM ROS</label>
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="ros-enable">
+                            <span>Connect to rosbridge and build the averaged surface mesh</span>
+                        </label>
+                    </div>
+                    <div class="cfg-row">
+                        <label>ROSBRIDGE URL / TRANSPORT</label>
+                        <div class="cfg-row-inline">
+                            <input type="text" id="ros-url" class="failsafe-input" style="flex:1;" value="ws://127.0.0.1:9090" placeholder="ws://companion:9090">
+                            <select id="ros-transport" class="cfg-select" title="CBOR sends binary arrays as they are; JSON inflates them by a third (base64)">
+                                <option value="cbor">CBOR</option>
+                                <option value="json">JSON</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>TOPIC</label>
+                        <div class="cfg-row-inline">
+                            <select id="ros-topic" class="cfg-select" style="flex:1;">
+                                <option value="">&mdash; connect to list the topics &mdash;</option>
+                            </select>
+                            <button class="gcs-btn" id="ros-topics-refresh" type="button" title="Ask rosapi for the topics again">REFRESH</button>
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>SENSOR</label>
+                        <select id="ros-profile" class="cfg-select" title="Choosing one fills in its usual mount, range, sampling and cell size">
+                            <option value="aerial">Aerial LiDAR &middot; terrain under the aircraft</option>
+                            <option value="seabed">Sea bed &middot; echo sounder or sonar on a boat / ROV</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>SURFACES</label>
+                        <select id="ros-layers" class="cfg-select" title="A height per cell holds one surface: right for terrain and sea bed. In a cave the returns are fused into a 3D volume and meshed where it meets the rock">
+                            <option value="floor">Floor only (terrain, sea bed)</option>
+                            <option value="cave">3D: caves, shafts, overhangs (signed-distance volume)</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>POINTS FRAME</label>
+                        <select id="ros-frame" class="cfg-select">
+                            <option value="auto">Auto (from header.frame_id)</option>
+                            <option value="sensor">Sensor on the vehicle &middot; placed with the telemetry pose</option>
+                            <option value="world">World &middot; ENU from the EKF origin (map, odom)</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>MAX RATE (Hz) / POINTS PER MESSAGE</label>
+                        <div class="cfg-row-inline">
+                            <input type="number" id="ros-rate" class="failsafe-input" value="5" step="1" min="0.5" max="50" title="rosbridge sends at most this many messages a second (throttle_rate), only the newest">
+                            <input type="number" id="ros-max-points" class="failsafe-input" value="5000" step="500" min="1" max="20000" title="Points sampled from each message; the rest are not used">
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <div class="gcs-btn-row">
+                            <button class="gcs-btn gcs-btn-half" id="ros-clear-btn" type="button">CLEAR SURFACE</button>
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>STATUS</label>
+                        <div class="lidar-status" id="ros-status-text">OFF</div>
+                    </div>
+                    <div class="cfg-row" style="opacity:0.6;font-size:11px;line-height:1.4;">
+                        <span>sensor_msgs PointCloud2, LaserScan and Range, ROS 1 or ROS 2, through rosbridge_server with rosapi (ros2 launch rosbridge_server rosbridge_websocket_launch.xml). Points are not kept: each message moves the mean height of the cells it falls in.</span>
+                    </div>
+                </div>
+                <div class="setup-panel">
+                    <div class="panel-header">MOUNT &amp; MESH</div>
+                    <div class="cfg-row">
+                        <label>MOUNT ATTITUDE VS IMU (ROLL / PITCH / YAW &deg;)</label>
+                        <div class="cfg-row-inline">
+                            <input type="number" id="ros-mount-roll" class="failsafe-input" value="0" step="0.1" min="-180" max="180" title="Roll">
+                            <input type="number" id="ros-mount-pitch" class="failsafe-input" value="0" step="0.1" min="-90" max="90" title="Pitch">
+                            <input type="number" id="ros-mount-yaw" class="failsafe-input" value="0" step="0.1" min="-180" max="180" title="Yaw">
+                        </div>
+                        <select id="ros-mount-preset" class="cfg-select" style="margin-top:6px;">
+                            <option value="">Preset&hellip;</option>
+                            <option value="0,-90,0">Looking down (x down): echo sounder, altimeter, push-broom scanner</option>
+                            <option value="180,0,0">Inverted under the belly (Livox Mid-360)</option>
+                            <option value="0,0,0">Upright, x forward</option>
+                            <option value="0,-45,0">Upright, nose-down 45&deg;</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>LEVER ARM IMU &rarr; SENSOR (X FWD / Y RIGHT / Z DOWN, m)</label>
+                        <div class="cfg-row-inline">
+                            <input type="number" id="ros-lever-x" class="failsafe-input" value="0" step="0.01" title="X forward">
+                            <input type="number" id="ros-lever-y" class="failsafe-input" value="0" step="0.01" title="Y right">
+                            <input type="number" id="ros-lever-z" class="failsafe-input" value="0" step="0.01" title="Z down (a transducer's draft)">
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>RANGE WINDOW (m)</label>
+                        <div class="cfg-row-inline">
+                            <input type="number" id="ros-min-range" class="failsafe-input" value="2.5" step="0.1" min="0" max="100" title="Minimum range: closer returns (the airframe, the hull) are dropped">
+                            <input type="number" id="ros-max-range" class="failsafe-input" value="100" step="1" min="1" max="1000" title="Maximum range">
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>TIME OF THE POINTS / LAG (ms)</label>
+                        <div class="cfg-row-inline">
+                            <select id="ros-time-base" class="cfg-select" style="flex:1;" title="The pose is projected to this time with the gyro rates and the velocity">
+                                <option value="arrival">Arrival &minus; lag</option>
+                                <option value="stamp">header.stamp + lag (clocks synced)</option>
+                            </select>
+                            <input type="number" id="ros-lag" class="failsafe-input" value="0" step="10" min="-2000" max="2000" title="Arrival: how much later than the telemetry the points reach the GCS. Stamp: how late the telemetry reaches the GCS">
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>MIN CELL (m) / MIN SAMPLES / MEMORY (samples) / MAX TILES</label>
+                        <div class="cfg-row-inline">
+                            <input type="number" id="ros-cell" class="failsafe-input" value="0.3" step="0.05" min="0.05" max="10" title="Finest cell: the mesh is this fine where the data allow; changing it clears the surface">
+                            <input type="number" id="ros-min-samples" class="failsafe-input" value="1" step="0.5" min="0.3" max="20" title="Samples a cell needs to be drawn at its own size; with fewer the mesh there is drawn coarser (60 cm, 1.2 m, 2.4 m, 4.8 m)">
+                            <input type="number" id="ros-grid-memory" class="failsafe-input" value="20" step="1" min="1" max="1000" title="A cell averages over at most this many samples (messages), then follows a moving average">
+                            <input type="number" id="ros-max-tiles" class="failsafe-input" value="2048" step="256" min="16" max="16384" title="Tiles of 30 × 30 cells kept; past this the farthest from the vehicle are dropped (2048 ≈ 16 ha at 30 cm)">
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>TRIANGLE FILL OPACITY (%)</label>
+                        <input type="number" id="ros-fill-opacity" class="failsafe-input" value="10" step="5" min="0" max="60" title="0 = grey lines only">
+                        <label style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+                            <input type="checkbox" id="ros-over-terrain" checked>
+                            <span>Draw through the terrain mesh (SRTM is &plusmn;5 m; a lake's surface covers the sea bed)</span>
+                        </label>
+                    </div>
+                    <div class="cfg-row" style="opacity:0.6;font-size:11px;line-height:1.4;">
+                        <span>Mount angles are ZYX Euler of the sensor frame (REP-103: x forward, y left, z up; Range and LaserScan measure along x) relative to the vehicle body (FRD). The surface is kept in tiles of 30&times;30 cells, made where data arrive; the mesh is as fine as MIN CELL where cells have MIN SAMPLES, coarser where they do not. The pose is projected to the time of the points with the gyro rates and the velocity.</span>
                     </div>
                 </div>
             </div>

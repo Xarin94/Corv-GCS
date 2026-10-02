@@ -442,6 +442,22 @@ MODELS['submarine'] = (P) => {
     }
 };
 
+// --- ROV (MAV_TYPE_SUBMARINE, what ArduSub flies): BlueROV2 class, 0.46 × 0.34 ×
+// 0.25 m. The submarine above is a 4.5 m hull: in a 3 m shaft it filled the shaft.
+MODELS['rov'] = (P) => {
+    for (const s of [1, -1]) box(P.dark, [0, -0.01, s * 0.162], [0.46, 0.20, 0.014]);   // side frame plates
+    for (const x of [-0.17, 0.17]) box(P.dark, [x, -0.11, 0], [0.03, 0.015, 0.31]);   // skids / cross bars
+    for (const s of [1, -1]) box(P.accent, [-0.01, 0.105, s * 0.075], [0.40, 0.06, 0.11]);   // buoyancy foam
+    tube(P.body, { x0: -0.17, x1: 0.13, r0: 0.05, r1: 0.05, seg: 14, y: 0.0 });          // electronics tube
+    tube(P.glass, { x0: 0.13, x1: 0.20, r0: 0.05, r1: 0.015, seg: 14, y: 0.0 });          // camera dome
+    tube(P.metal, { x0: -0.13, x1: 0.11, r0: 0.033, r1: 0.033, seg: 10, y: -0.075 });     // battery tube
+    // Four vectored thrusters at 45° in the corners, two vertical on the sides
+    for (const [x, z, a] of [[0.17, 0.12, -45], [0.17, -0.12, 45], [-0.17, 0.12, 45], [-0.17, -0.12, -45]]) {
+        tube(P.metal, { x0: -0.035, x1: 0.035, r0: 0.042, r1: 0.042, seg: 10 }, T({ rot: [0, rad(a), 0], pos: [x, -0.04, z] }));
+    }
+    for (const s of [1, -1]) disc(P.metal, { r: 0.042, h: 0.06, seg: 10 }, T({ pos: [0.0, 0.05, s * 0.115] }));
+};
+
 // --- Antenna tracker (MAV_TYPE_ANTENNA_TRACKER)
 MODELS['antenna-tracker'] = (P) => {
     // Tripod: each leg splayed outward along its own bearing.

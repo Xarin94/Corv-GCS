@@ -38,6 +38,9 @@ export const STATE = {
     yawRate: 0,
     // NED velocity (m/s) for AoA/SSA computation
     vn: 0, ve: 0, vd: 0,
+    // Arrival time (Date.now()) of the ATTITUDE and GLOBAL_POSITION_INT the
+    // values above come from: what the ROS surface projects the pose from
+    attTime: 0, posTime: 0,
     terrainHeight: null,
     gHistory: new Array(300).fill(1.0),
     lastUpdatePos: { x: 0, z: 0 },
@@ -263,6 +266,7 @@ export function resetReplayState() {
     STATE.ax = 0; STATE.ay = 0; STATE.az = 0;
     STATE.rollRate = 0; STATE.pitchRate = 0; STATE.yawRate = 0;
     STATE.vn = 0; STATE.ve = 0; STATE.vd = 0;
+    STATE.attTime = 0; STATE.posTime = 0;
     STATE.terrainHeight = null;
     STATE.gHistory.fill(1.0);
     _gHistoryBuffer.clear();

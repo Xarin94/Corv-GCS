@@ -92,6 +92,9 @@ import { initLidarCloud, updateLidarCloud } from './lidar/LidarCloud.js';
 import { updateLidarDemo } from './lidar/LidarDemo.js';
 import { updateDemoObstacles } from './engine/DemoObstacles.js';
 import { initLidarController } from './ui/LidarController.js';
+import { initRosMesh, updateRosMesh } from './ros/RosMesh3D.js';
+import { initRosVolume, updateRosVolume } from './ros/RosVolume3D.js';
+import { initRosController } from './ui/RosController.js';
 import { initCellularLink } from './ui/CellularLinkController.js';
 
 // Loading overlay imports
@@ -134,7 +137,7 @@ const MODEL_BY_MAV_TYPE = {
     8: 'airship.glb',           // FREE_BALLOON
     10: 'rover.glb',            // GROUND_ROVER
     11: 'boat.glb',             // SURFACE_BOAT
-    12: 'submarine.glb',        // SUBMARINE
+    12: 'rov.glb',              // SUBMARINE — ArduSub flies ROVs (BlueROV2 class); submarine.glb stays in the list
     13: 'hexacopter.glb',       // HEXAROTOR
     14: 'octocopter.glb',       // OCTOROTOR
     15: 'tricopter.glb',        // TRICOPTER
@@ -158,7 +161,7 @@ const orbit = {
     height: 40,
     minPitch: -1.2,
     maxPitch: 1.2,
-    minDistance: 50,
+    minDistance: 4,          // close enough to follow a ROV down a 3 m shaft
     maxDistance: 2500,
     rotateSpeed: 0.005,
     zoomSpeed: 0.12
@@ -890,8 +893,11 @@ function update3DWorld() {
         const sinYaw = Math.sin(orbit.yaw);
         const cosYaw = Math.cos(orbit.yaw);
 
+        // Under 50 m the height above the target shrinks with the distance, so
+        // a close orbit (a ROV in a cave) looks at it, not down on it
+        const lift = orbit.height * Math.min(1, r / 50);
         const offX = r * cosPitch * sinYaw;
-        const offY = r * sinPitch + orbit.height;
+        const offY = r * sinPitch + lift;
         const offZ = r * cosPitch * cosYaw;
 
         camera.position.set(target.x + offX, target.y + offY, target.z + offZ);
@@ -908,7 +914,7 @@ function update3DWorld() {
                 camera.position.y = camGround + CHASE_CAM_CLEARANCE_M;
             }
         }
-        camera.lookAt(target.x, target.y + orbit.height * 0.2, target.z);
+        camera.lookAt(target.x, target.y + lift * 0.2, target.z);
     } else {
         // First-person camera (existing behavior)
         camera.position.set(planePos.x, Math.max(totalAlt, minY), planePos.z);
@@ -971,6 +977,8 @@ function update3DWorld() {
     updateDemoObstacles();     // analytic only — the demo LiDAR's targets, never drawn
     updateLidarDemo();
     updateLidarCloud();
+    updateRosMesh();
+    updateRosVolume();
     // FPV camera-only mode keeps the scene at opacity 0 (the WebGL context stays
     // alive and the world keeps updating), so drawing it would be thrown away.
     if (!isFPVCameraMode()) {
@@ -2004,6 +2012,10 @@ function init() {
     // Livox point cloud: geometry in the scene, settings panel + flight strip
     initLidarCloud(scene);
     initLidarController();
+    // ROS surface (rosbridge): averaged wireframe in the scene, settings + strip
+    initRosMesh(scene);
+    initRosVolume(scene);
+    initRosController();
     initCellularLink();
 
     // Relative navigation (SYS CONFIG): terrain off and a zero plane while it is on

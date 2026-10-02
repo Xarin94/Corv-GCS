@@ -1,6 +1,6 @@
 ---
 title: Keyboard shortcuts
-nav_order: 11
+nav_order: 12
 description: Every key on the flight screen and in the mission planner
 ---
 

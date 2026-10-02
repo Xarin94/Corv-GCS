@@ -162,10 +162,19 @@ Corv-GCS/
 │   │   ├── ParamCatalog.js      Known-param name catalog (on-demand reads)
 │   │   ├── FPVController.js     FPV camera overlay & settings
 │   │   ├── LidarController.js   LIDAR panel (Sys Config) + flight-screen strip (CLEAR MAP / SAVE)
+│   │   ├── RosController.js     ROS panel (SETUP → TOOLS) + strip (GRAY/DIST, VIEW, CLEAR), pose feed to the worker
 │   │   └── LoadingOverlay.js    Splash screen with loading progress
 │   ├── lidar/
 │   │   ├── LidarCloud.js        Georeferenced point cloud: chunked THREE.Points, shader colour ramps, fading live layer
 │   │   └── LidarDemo.js         Demo flight: synthetic scan of SRTM terrain + DemoObstacles (spin axis along the fuselage)
+│   ├── ros/                     ROS surface (docs/ROS.md)
+│   │   ├── RosWorker.js         Module Web Worker: roslib over rosbridge, sampling, pose projection, averaging
+│   │   ├── RosPoints.js         PointCloud2 / LaserScan / Range decoding, frames, mount → body → ENU, pose projection
+│   │   ├── SurfaceTiles.js      30 cm cells in 30 × 30 tiles, weighted running mean, tile budget
+│   │   ├── SurfaceRaster.js     Adaptive levels, hole interpolation, jump guard, triangles (pure)
+│   │   ├── SurfaceVolume.js     3D mode: TSDF voxels in 16³ chunks, surface-nets meshes (pure)
+│   │   ├── RosMesh3D.js         Height-field surface on the GPU: RG32F blocks, gl_VertexID, shader lines, LOD
+│   │   └── RosVolume3D.js       3D surface: one mesh per chunk, barycentric lines, same look and switches
 │   ├── adsb/
 │   │   └── ADSBManager.js       OpenSky Network ADS-B traffic
 │   ├── joystick/
@@ -636,6 +645,26 @@ and the telemetry rate (SR_POSITION / SR_EXTRA1 at 10 Hz give a visibly sharper
 map than the 3 Hz defaults). `scripts/livox-sim.js` emulates the sensor against
 SITL's second MAVLink port and `scripts/test-lidar-math.js` checks the frame
 chain offline; see `docs/LIDAR.md`.
+
+### 4.10 ROS Surface (rosbridge + roslib.js)
+
+The GCS subscribes to one ROS topic (`sensor_msgs/PointCloud2`, `LaserScan` or
+`Range`) through rosbridge_server, from a module Web Worker
+(`js/ros/RosWorker.js`, roslib 2.1 vendored as one ES module in
+`vendor/roslib/`), and draws what it measures as an averaged mesh.
+
+```
+rosbridge ── CBOR, throttle_rate, queue 1 ──▶ RosWorker ── sample ≤ N points/message
+STATE pose (absolute or relative) + arrival times, body rates, velocity ──▶ projected to the points' time
+   ▼  mount → body → NED → ENU from an anchor
+ floor: SurfaceTiles (30 cm cells, 30×30 tiles) ──'tiles'──▶ RosMesh3D (RG32F blocks, SurfaceRaster levels / jumps)
+ cave:  SurfaceVolume (TSDF 16³ chunks, surface nets) ──'volume'──▶ RosVolume3D (mesh per chunk)
+```
+
+Only changed tiles or chunk meshes leave the worker (≤ 4 Hz). `scripts/rosbridge-sim.js`
+emulates rosbridge with synthetic sensors ray-cast from SITL's true pose;
+`scripts/test-ros-surface.js` and `scripts/test-ros-cave.js` check the chain
+offline. See `docs/ROS.md`.
 
 ## 5. Key Integration Patterns
 

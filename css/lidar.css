@@ -1,5 +1,5 @@
 /**
- * lidar.css - Livox point cloud: Sys Config panel status + flight-screen strip
+ * lidar.css - Livox point cloud and ROS surface: Sys Config panel status + flight-screen strips
  */
 
 /* ============== SYS CONFIG PANEL ============== */
@@ -129,3 +129,28 @@
 }
 
 /* The theme's light mode keeps over-scene elements dark (see variables.css). */
+
+/* ============== ROS SURFACE ============== */
+/* Same strip language for the ROS surface; above the LiDAR strip when both show. */
+.lidar-strip:not(.hidden) ~ .ros-strip {
+    bottom: 50px;
+}
+
+#ros-panel .cfg-row-inline .cfg-select {
+    width: auto;
+}
+
+/* Strip switches: colour by distance (lit), surface hidden (dimmed) */
+.ros-strip .lidar-strip-btn.on {
+    border-color: rgba(120, 140, 255, 0.8);
+    color: #fff;
+    background: linear-gradient(90deg, rgba(255, 56, 41, 0.35), rgba(46, 115, 255, 0.35));
+}
+
+.ros-strip .lidar-strip-btn.off {
+    opacity: 0.55;
+}
+
+.ros-strip-color {
+    min-width: 46px;
+}

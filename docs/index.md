@@ -30,6 +30,7 @@ everything on a **real 3D model of the terrain**. It runs on Windows and Linux.
 | [Vehicle setup](setup.md) | Every SETUP and SYS CONFIG page: links, calibration, failsafes, tuning, parameters, RTK, telemetry forwarding |
 | [Simulator](simulator.md) | ArduPilot SITL with one click, the ROV on Lake Garda, connecting to your own simulator |
 | [LiDAR point cloud](LIDAR.md) | Livox Mid-360 mapping: network, mounting, telemetry lag, saving `.ply` |
+| [ROS surface](ROS.md) | LiDAR, echo sounder and sonar from ROS (rosbridge): an averaged 30 cm mesh, terrain, sea bed and caves in 3D |
 | [Keyboard shortcuts](shortcuts.md) | All keys, on the flight screen and in the planner |
 
 ## Where the ArduPilot documentation fits
