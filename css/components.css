@@ -253,7 +253,7 @@ button.ui-btn.recording {
     gap: 1px;
     width: var(--annun-w);
     pointer-events: auto;
-    cursor: default;
+    cursor: pointer;      /* a click silences it until the next connection */
     line-height: 1;
 }
 

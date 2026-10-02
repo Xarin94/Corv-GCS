@@ -22,6 +22,11 @@
  *
  * In the demo flight (LIVE with no link) a random annunciator lights for a
  * few seconds at a time so the strip is visible in the preview.
+ *
+ * Clicking an annunciator silences it until the next connection: the
+ * operator has seen it and it stops taking the eye. Silencing a warning also
+ * silences its caution twin (the same fault, milder); silencing a caution
+ * does not hide its warning, so an escalation still shows.
  */
 
 import { STATE, isDemoMode } from '../core/state.js';
@@ -120,9 +125,15 @@ const TEXT_RULES = [
 ];
 const TEXT_CLEARED = /cleared|complete|success|ok\b|passed|recovered/i;
 
+// Warning → its caution twin(s): the same condition at a lower level
+const CAUTION_TWINS = {
+    ekf: ['ekfVar'], vibe: ['vibeHi'], gps: ['gps2d', 'hdop'], batt: ['battLow'], linkLost: ['linkWeak'],
+};
+
 // ── State ─────────────────────────────────────────────────────────────────
 let elWarn = null, elCaut = null;
 const timed = new Map();          // alert id → expiry timestamp (STATUSTEXT holds)
+const silenced = new Set();       // alert ids clicked away until the next connection
 let lastClipSum = -1, lastClipChange = 0;
 let lastKey = '';                 // rendered signature, to skip no-op DOM work
 const valEls = new Map();         // alert id → its .annun-val span, for live readouts
@@ -146,6 +157,25 @@ export function initAnnunciatorPanel() {
             }
         }
     });
+
+    const onClick = (e) => {
+        const item = e.target.closest('.annun');
+        if (item) silence(item.dataset.id);
+    };
+    elWarn.addEventListener('click', onClick);
+    elCaut.addEventListener('click', onClick);
+    window.addEventListener('vehicleConnected', () => {
+        silenced.clear();
+        updateAnnunciatorPanel();
+    });
+}
+
+function silence(id) {
+    if (!id) return;
+    silenced.add(id);
+    for (const twin of CAUTION_TWINS[id] || []) silenced.add(twin);
+    if (id === demoId) { demoId = null; demoNextAt = Date.now() + DEMO_OFF_MS; }
+    updateAnnunciatorPanel();
 }
 
 // ── Evaluation ────────────────────────────────────────────────────────────
@@ -169,9 +199,9 @@ function evaluate(now) {
 
     if (isDemoMode()) {
         if (demoId) on.add(demoId);
-        return on;
+        return unsilenced(on);
     }
-    if (!STATE.connected) return on;
+    if (!STATE.connected) return unsilenced(on);
 
     const hbFresh = (now - STATE.lastHeartbeatTime) < HEARTBEAT_LOST_MS;
     if (STATE.lastHeartbeatTime && !hbFresh) on.add('linkLost');
@@ -236,6 +266,11 @@ function evaluate(now) {
     if (on.has('gps'))      { on.delete('gps2d'); on.delete('hdop'); }
     if (on.has('batt'))     on.delete('battLow');
     if (on.has('linkLost')) on.delete('linkWeak');
+    return unsilenced(on);
+}
+
+function unsilenced(on) {
+    for (const id of silenced) on.delete(id);
     return on;
 }
 
@@ -247,10 +282,9 @@ function stepDemo(now) {
         demoNextAt = now + DEMO_OFF_MS;
     }
     if (!demoId && now >= demoNextAt) {
-        let pick;
-        do { pick = ALERTS[Math.floor(Math.random() * ALERTS.length)].id; }
-        while (pick === demoId);
-        demoId = pick;
+        const pool = ALERTS.filter(a => !silenced.has(a.id));
+        if (!pool.length) return;
+        demoId = pool[Math.floor(Math.random() * pool.length)].id;
         demoUntil = now + DEMO_ON_MS;
     }
 }
@@ -261,7 +295,7 @@ function buildItem(def) {
     const item = document.createElement('div');
     item.className = `annun annun-${def.lvl}`;
     item.dataset.id = def.id;
-    item.title = def.title;
+    item.title = `${def.title}\nClick to silence until the next connection`;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
     use.setAttribute('href', `#an-${def.icon}`);

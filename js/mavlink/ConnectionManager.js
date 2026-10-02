@@ -100,6 +100,10 @@ export async function connect(type, options = {}) {
         default:
             throw new Error(`Unknown connection type: ${type}`);
     }
+
+    // Every link the operator opens passes here: what is per-connection
+    // (silenced alarms, the terrain queue) starts over on this event.
+    window.dispatchEvent(new CustomEvent('vehicleConnected', { detail: { type } }));
 }
 
 /** True while the link speaks MSP rather than MAVLink (no params, no mission, no commands). */

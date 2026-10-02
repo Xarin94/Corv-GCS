@@ -86,6 +86,10 @@ conditions Mission Planner checks; the ArduPilot pages on
 [EKF](https://ardupilot.org/copter/docs/common-apm-navigation-extended-kalman-filter-overview.html)
 explain each one.
 
+Click a flag to silence it: it stays hidden until the next connection. Silencing a warning also
+hides its milder caution (EKF, vibration, GPS, battery, link); silencing a caution still lets the
+warning through if the condition gets worse.
+
 ## Command bar
 
 ![Command bar](images/command-bar.png)
