@@ -1431,13 +1431,28 @@ function releaseCanvas(canvas) {
 const HGT_VOID = -12000;   // at or below: no data (SRTM voids are -32768)
 
 export function getTerrainElevationFromHGT(lat, lon) {
+    return sampleHgt(lat, lon, false);
+}
+
+/**
+ * Elevation for the vehicle's own terrain database (MAVLink terrain feed):
+ * null unless the tile is loaded and all four samples around the point are
+ * real. The vehicle flies on what it is sent, so "unknown" must stay unknown
+ * instead of reading as sea level.
+ * @returns {number|null} metres AMSL
+ */
+export function getTerrainElevationChecked(lat, lon) {
+    return sampleHgt(lat, lon, true);
+}
+
+function sampleHgt(lat, lon, strict) {
     const latBase = Math.floor(lat);
     const lonBase = Math.floor(lon);
     const key = `${latBase}_${lonBase}`;
     const cached = hgtElevationData[key];
 
     if (!cached) return null;
-    
+
     const { data, size } = cached;
     const latFrac = lat - latBase;
     const lonFrac = lon - lonBase;
@@ -1449,15 +1464,16 @@ export function getTerrainElevationFromHGT(lat, lon) {
     const c1 = Math.min(c0 + 1, size - 1);
     const fr = row - r0;
     const fc = col - c0;
-    
+
     const h00 = data[r0 * size + c0];
     const h01 = data[r0 * size + c1];
     const h10 = data[r1 * size + c0];
     const h11 = data[r1 * size + c1];
-    
+
     // Voids are SRTM's -32768; anything above is real, down to ocean trench depths
+    if (strict && (h00 <= HGT_VOID || h01 <= HGT_VOID || h10 <= HGT_VOID || h11 <= HGT_VOID)) return null;
     if (h00 <= HGT_VOID) return 0;
-    
+
     const h0 = h00 * (1 - fc) + h01 * fc;
     const h1 = h10 * (1 - fc) + h11 * fc;
     return h0 * (1 - fr) + h1 * fr;

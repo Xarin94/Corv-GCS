@@ -464,6 +464,10 @@ export async function requestAllDataStreams() {
                                //   the G-load indicator; the 4 Hz stream request
                                //   above is ignored when SR*_RAW_SENS is 0
         { id: 241, rate: 2 },  // VIBRATION  (EXTRA3)
+        { id: 133, rate: 1 },  // TERRAIN_REQUEST (EXTRA3) — without it the vehicle
+                               //   never asks for terrain; it paces itself to one
+                               //   request every 2 s and only asks when it lacks data
+        { id: 136, rate: 1 },  // TERRAIN_REPORT  (EXTRA3) — what it has loaded / pending
     ];
     for (const m of messages) {
         try { await setMessageInterval(m.id, m.rate); } catch (e) { /* keep going */ }

@@ -85,6 +85,14 @@ following (with its terrain database) is described in ArduPilot's
 [terrain following](https://ardupilot.org/copter/docs/terrain-following.html) page; the GCS does the
 work in advance, so the mission flies the same with or without it.
 
+When the autopilot's terrain database is on (`TERRAIN_ENABLE`), the vehicle asks the GCS for the
+terrain around it and the GCS answers from the same SRTM tiles, as Mission Planner does — the area
+around the vehicle (9 grids, at the default 100 m spacing) loads in about 40 s. Where a tile is missing or has holes, the GCS
+does not answer rather than send a made-up height; the vehicle keeps asking and shows the terrain as
+pending. If blocks stay pending and the vehicle asks for nothing, it is stuck reading its own SD card
+(missing, full or failing): the HUD shows *TERRAIN: vehicle SD card not readable*, and the GCS cannot
+help until the card is fixed and the autopilot rebooted.
+
 Other route settings: default altitude and speed, turn type (straight or spline), automatic take-off
 and its height, what happens after the last segment (return to launch, land in place, nothing), and
 whether actions run at the segment start or at every point.
