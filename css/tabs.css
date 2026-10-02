@@ -696,72 +696,324 @@ body.has-tabs #ui-layer {
     text-align: center;
 }
 
-/* ============= CALIBRATION WIZARD ============= */
-.cal-wizard-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 8px;
+/* ============= CALIBRATION (CalibrationController.js) ============= */
+.cal-page [hidden] { display: none !important; }
+
+.cal-page .gcs-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
 }
 
-.cal-wizard-btn {
-    flex: 1;
+.cal-actions {
     display: flex;
-    align-items: center;
+    flex-wrap: wrap;
     gap: 8px;
-    justify-content: center;
+    margin-top: 10px;
 }
 
-.cal-icon {
-    font-size: 14px;
-    color: var(--accent-cyan);
+.cal-actions .gcs-btn {
+    width: auto;
+    flex: 1;
 }
 
-.cal-wizard-status {
-    font-family: var(--font-data);
-    font-size: 10px;
-    color: var(--text-dim);
-    min-width: 80px;
-    text-align: right;
-}
-
-.cal-wizard-status.running {
-    color: var(--accent-orange);
-}
-
-.cal-wizard-status.done {
+.cal-primary:not(:disabled) {
+    border-color: var(--accent-green);
     color: var(--accent-green);
 }
 
-.cal-wizard-progress {
-    margin-top: 12px;
-    padding-top: 10px;
-    border-top: 1px solid var(--border-subtle);
+/* CONTINUE: the vehicle is waiting for the operator */
+.cal-primary.is-armed:not(:disabled) {
+    border-color: var(--accent-orange);
+    color: var(--accent-orange);
+    animation: cal-pulse 1.4s ease-in-out infinite;
 }
 
-.cal-progress-bar {
-    height: 6px;
+@keyframes cal-pulse {
+    50% { box-shadow: 0 0 0 3px rgba(255, 170, 0, 0.18); }
+}
+
+/* What to do now, in one line */
+.cal-instruction {
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--text-main);
+    background: var(--glass-panel-input);
+    border-left: 3px solid var(--border-subtle);
+    border-radius: 2px;
+    padding: 8px 10px;
+    margin-top: 12px;
+    white-space: pre-line;
+}
+.cal-instruction.running { border-left-color: var(--accent-orange); }
+.cal-instruction.ok      { border-left-color: var(--accent-green); }
+.cal-instruction.error   { border-left-color: var(--accent-red); color: #ff7070; }
+
+.cal-result {
+    font-family: var(--font-ui);
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--text-dim);
+    margin-top: 8px;
+    min-height: 15px;
+    white-space: pre-line;
+}
+.cal-result.running { color: var(--accent-orange); }
+.cal-result.ok      { color: var(--accent-green); }
+.cal-result.error   { color: #ff7070; }
+
+.setup-panel .gcs-btn + .cal-result { margin-top: 8px; }
+.setup-panel .cfg-note + .gcs-btn { margin-top: 10px; }
+
+/* Autopilot texts during the six positions */
+.cal-log {
+    font-family: var(--font-data);
+    font-size: 10px;
+    line-height: 1.5;
+    color: var(--text-dim);
+    margin-top: 8px;
+    white-space: pre-line;
+}
+
+/* Six positions */
+.accel-steps {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    margin-top: 12px;
+}
+
+@media (max-width: 1150px) {
+    .accel-steps { grid-template-columns: repeat(3, 1fr); }
+}
+
+.accel-step {
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    padding: 6px 6px 8px;
+    text-align: center;
+    color: var(--text-dim);
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.accel-step.current {
+    border-color: var(--accent-cyan);
+    color: var(--text-main);
+    background: rgba(0, 210, 255, 0.07);
+    box-shadow: inset 0 0 0 1px var(--accent-cyan);
+}
+
+.accel-step.sampling {
+    border-color: var(--accent-orange);
+    color: var(--text-main);
+}
+
+.accel-step.done {
+    border-color: rgba(68, 255, 68, 0.35);
+    color: var(--text-main);
+}
+
+.accel-glyph {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.accel-glyph .ground    { stroke: var(--text-dim); stroke-width: 1.2; stroke-dasharray: 3 3; }
+.accel-glyph .body      { fill: rgba(127, 127, 127, 0.15); stroke: currentColor; stroke-width: 1.4; }
+.accel-glyph .nose      { fill: var(--accent-cyan); }
+.accel-glyph .mast      { stroke: currentColor; stroke-width: 1.4; }
+.accel-glyph .mast-top  { fill: currentColor; }
+.accel-glyph .nav-left  { fill: #ff4d4d; }
+.accel-glyph .nav-right { fill: #2fd27a; }
+
+.accel-step-title {
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin-top: 2px;
+}
+
+.accel-step-num {
+    display: inline-block;
+    min-width: 14px;
+    height: 14px;
+    line-height: 14px;
+    border-radius: 7px;
+    margin-right: 5px;
+    font-size: 9px;
+    background: var(--border-subtle);
+}
+
+.accel-step.current .accel-step-num { background: var(--accent-cyan); color: #000; }
+.accel-step.done .accel-step-num    { background: var(--accent-green); color: #000; }
+
+.accel-step-caption {
+    font-family: var(--font-ui);
+    font-size: 9px;
+    line-height: 1.3;
+    opacity: 0.75;
+    margin-top: 2px;
+}
+
+/* Parameter / result tables */
+.cal-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-data);
+    font-size: 10.5px;
+    color: var(--text-main);
+}
+
+.cal-table th {
+    font-family: var(--font-ui);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    text-align: left;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.cal-table td {
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.cal-table .warn { color: var(--accent-orange); }
+.cal-table .dim  { color: var(--text-dim); }
+.cal-table tr.ok td:nth-child(2)  { color: var(--accent-green); }
+.cal-table tr.bad td:nth-child(2) { color: #ff7070; }
+.cal-table input[type="checkbox"] { accent-color: var(--accent-cyan); }
+
+#mag-cal-results { margin-top: 12px; }
+
+/* Compass: controls beside the 3D view */
+.mag-cal-layout {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+.mag-cal-side {
+    width: 280px;
+    flex-shrink: 0;
+}
+
+.mag-cal-view {
+    flex: 1;
+    min-width: 0;
+}
+
+@media (max-width: 1100px) {
+    .mag-cal-layout { flex-direction: column; align-items: stretch; }
+    .mag-cal-side   { width: auto; }
+}
+
+.mag-bar {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    margin: 7px 0;
+}
+
+.mag-bar.idle { opacity: 0.4; }
+
+.mag-bar-name {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    white-space: nowrap;
+}
+
+.mag-bar-track {
+    height: 10px;
     background: var(--glass-panel-input);
     border: 1px solid var(--border-subtle);
-    border-radius: 3px;
+    border-radius: 2px;
     overflow: hidden;
 }
 
-.cal-progress-fill {
+.mag-bar-fill {
     height: 100%;
-    width: 0%;
+    width: 0;
     background: var(--accent-cyan);
-    border-radius: 3px;
     transition: width 0.3s;
 }
 
-.cal-progress-msg {
+.mag-bar.ok .mag-bar-fill  { background: var(--accent-green); }
+.mag-bar.bad .mag-bar-fill { background: var(--accent-red); }
+
+.mag-bar-text {
+    font-family: var(--font-data);
+    font-size: 9.5px;
+    color: var(--text-dim);
+    min-width: 108px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.mag-swatch {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+}
+
+.mag-swatch.square { border-radius: 2px; }
+
+/* The 3D view keeps a dark instrument background in both themes */
+.mag3d-canvas {
+    display: block;
+    width: 100%;
+    height: 400px;
+    background: radial-gradient(circle at 50% 45%, #13202d 0%, #070b10 75%);
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    cursor: grab;
+    touch-action: none;
+}
+
+.mag3d-canvas:active { cursor: grabbing; }
+
+.mag3d-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin-top: 6px;
     font-family: var(--font-ui);
     font-size: 10px;
     color: var(--text-dim);
+}
+
+.mag3d-key {
+    display: inline-flex;
+    align-items: center;
+}
+
+.mag3d-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin-top: 6px;
-    text-align: center;
-    letter-spacing: 0.5px;
+}
+
+.setup-panel .mag3d-toolbar .cfg-select { width: auto; }
+.mag3d-toolbar .gcs-btn { width: auto; padding: 5px 10px; }
+
+.mag3d-stats {
+    flex: 1;
+    font-family: var(--font-data);
+    font-size: 10px;
+    color: var(--text-dim);
 }
 
 /* ============= VIBRATION DISPLAY ============= */

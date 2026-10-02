@@ -570,7 +570,9 @@ const MAV_RESULT_NAMES = {
 const MAV_CMD_NAMES = {
     22: 'TAKEOFF', 21: 'LAND', 176: 'SET_MODE', 400: 'ARM/DISARM',
     178: 'CHANGE_SPEED', 179: 'SET_HOME', 512: 'REQUEST_MESSAGE',
-    246: 'REBOOT', 241: 'CALIBRATION', 20: 'RTL'
+    246: 'REBOOT', 241: 'CALIBRATION', 20: 'RTL',
+    42424: 'START_MAG_CAL', 42425: 'ACCEPT_MAG_CAL', 42426: 'CANCEL_MAG_CAL',
+    42429: 'ACCELCAL_POSITION', 42006: 'FIXED_MAG_CAL_YAW'
 };
 
 function mapCommandAck(data) {
@@ -578,8 +580,9 @@ function mapCommandAck(data) {
     const resultName = MAV_RESULT_NAMES[data.result] || `RESULT_${data.result}`;
     const level = data.result === 0 ? 'info' : 'warning';
     STATE.lastCmdAck = { command: data.command, result: data.result, cmdName, resultName };
-    // Don't show toast for internal polling commands (REQUEST_MESSAGE = 512)
-    if (data.command === 512) return;
+    // Don't show toast for internal polling commands (REQUEST_MESSAGE = 512,
+    // SET_MESSAGE_INTERVAL = 511 — a calibration raises and restores a handful)
+    if (data.command === 512 || data.command === 511) return;
     // Dispatch event so HUD can display it
     window.dispatchEvent(new CustomEvent('commandAck', { detail: { cmdName, resultName, level } }));
 }

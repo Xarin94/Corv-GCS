@@ -40,10 +40,26 @@ received and the vehicle's RTK state (fix, baseline, accuracy). ArduPilot:
 
 ## VEHICLE SETUP
 
-### Calibration
-A wizard for the accelerometers, the compass and the gyros. ArduPilot:
-[accelerometer calibration](https://ardupilot.org/copter/docs/common-accelerometer-calibration.html),
-[compass calibration](https://ardupilot.org/copter/docs/common-compass-calibration-in-mission-planner.html).
+### Accelerometer
+The six-position calibration as Mission Planner runs it: **CALIBRATE ACCEL**, then for each position
+the autopilot asks for (level, left side, right side, nose down, nose up, on its back) hold the vehicle
+still that way and press **CONTINUE**. **CALIBRATE LEVEL** sets the level trim (AHRS_TRIM),
+**SIMPLE ACCEL CAL** is the one-position calibration for vehicles too large to turn over. The stored
+offsets and scale factors are listed underneath. ArduPilot:
+[accelerometer calibration](https://ardupilot.org/copter/docs/common-accelerometer-calibration.html).
+
+### Compass
+Onboard calibration: **START**, then turn the vehicle through every attitude until each compass's bar
+is full; **ACCEPT** saves a result that was not auto-saved, **CANCEL** stops. The 3D view plots every
+magnetometer sample around the vehicle and shades the sphere green where the autopilot has samples:
+turn the vehicle until the white marker reaches the orange patch. Underneath, the compasses in priority
+order and **LARGE VEHICLE MAGCAL**, which calibrates from a known heading without turning the vehicle.
+ArduPilot: [compass calibration](https://ardupilot.org/copter/docs/common-compass-calibration-in-mission-planner.html),
+[large vehicle MagCal](https://ardupilot.org/copter/docs/common-compass-calibration-in-mission-planner.html#large-vehicle-magcal).
+
+### Gyro / Baro
+**CALIBRATE GYROS** measures the gyro offsets with the vehicle still; **CALIBRATE BARO** takes the current
+pressure as ground level.
 
 ### Radio calibration
 Live bars of every RC input channel; **START CALIBRATION**, move every stick and switch to its ends,

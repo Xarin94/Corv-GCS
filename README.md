@@ -169,6 +169,7 @@ radio that is the difference between two packets and several minutes.
 
 - **RTK GPS**: corrections from a base station or an NTRIP caster are forwarded to the drone, for centimetre-level positioning.
 - **FPV video**: an RTSP camera stream (SIYI HM30 and similar) shown over the 3D view.
+- **Sensor calibration**: the six-position accelerometer calibration, level, gyro and baro, and the onboard compass calibration with a 3D sphere of the magnetometer samples that turns green where the autopilot has coverage.
 - **Joystick**: fly with a gamepad through RC override, with per-axis calibration.
 - **Telemetry forwarding**: mirror the link over UDP or output MAVLink / LTM to an antenna tracker.
 - **ADS-B traffic**: nearby aircraft on the map, and in 3D as red circles with callsign and relative height, trailing the path they flew.

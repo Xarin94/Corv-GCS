@@ -263,51 +263,121 @@ export async function rebootAutopilot() {
     });
 }
 
+// ── Calibration ───────────────────────────────────────────────────────────────
+// The commands Mission Planner sends. Every one answers with a COMMAND_ACK, and
+// that answer is the only way to know whether anything started: ArduPilot
+// refuses all of them while armed, and rejects what the firmware lacks.
+
 /**
- * Start accelerometer calibration
+ * Send a COMMAND_LONG and wait for its COMMAND_ACK. The listener goes in before
+ * the command goes out, so a fast answer cannot slip past it.
+ * @returns {Promise<{result:number, resultName:string}>}
+ */
+async function commandWithAck(cmd, timeoutMs = 3000) {
+    const ack = waitForCommandAck(cmd.command, timeoutMs);
+    try {
+        await sendCommand({
+            type: 'COMMAND_LONG',
+            targetSystem: STATE.systemId,
+            targetComponent: STATE.componentId,
+            ...cmd
+        });
+    } catch (e) {
+        ack.catch(() => {});
+        throw e;
+    }
+    return ack;
+}
+
+// MAV_CMD_PREFLIGHT_CALIBRATION blocks while the gyros are sampled first
+// (ArduPilot allows itself 30 s), so its answer can take several seconds.
+const PREFLIGHT_CAL_TIMEOUT = 30000;
+
+/**
+ * Start the six-position accelerometer calibration. The autopilot then asks for
+ * each position with a COMMAND_LONG MAV_CMD_ACCELCAL_VEHICLE_POS, answered
+ * with sendAccelCalPosition() once the vehicle is in place.
  */
 export async function calibrateAccel() {
-    return sendCommand({
-        type: 'COMMAND_LONG',
-        targetSystem: STATE.systemId,
-        targetComponent: STATE.componentId,
-        command: 241, // MAV_CMD_PREFLIGHT_CALIBRATION
-        param1: 0,    // gyro
-        param2: 0,    // mag
-        param3: 0,    // ground pressure
-        param4: 0,    // radio
-        param5: 1,    // accel
-        param6: 0,    // compass/motor interference
-        param7: 0
-    });
+    return commandWithAck({ command: 241, param5: 1 }, PREFLIGHT_CAL_TIMEOUT);
 }
 
-/**
- * Start compass calibration
- */
-export async function calibrateCompass() {
-    return sendCommand({
-        type: 'COMMAND_LONG',
-        targetSystem: STATE.systemId,
-        targetComponent: STATE.componentId,
-        command: 241, // MAV_CMD_PREFLIGHT_CALIBRATION
-        param1: 0, param2: 1, param3: 0, param4: 0,
-        param5: 0, param6: 0, param7: 0
-    });
+/** Level calibration: AHRS_TRIM from the attitude of a vehicle sitting level */
+export async function calibrateLevel() {
+    return commandWithAck({ command: 241, param5: 2 }, PREFLIGHT_CAL_TIMEOUT);
 }
 
-/**
- * Start gyroscope calibration
- */
+/** One-position accelerometer calibration, for vehicles too large to turn over */
+export async function calibrateAccelSimple() {
+    return commandWithAck({ command: 241, param5: 4 }, PREFLIGHT_CAL_TIMEOUT);
+}
+
+/** Gyroscope offsets (vehicle still) */
 export async function calibrateGyro() {
-    return sendCommand({
-        type: 'COMMAND_LONG',
-        targetSystem: STATE.systemId,
-        targetComponent: STATE.componentId,
-        command: 241, // MAV_CMD_PREFLIGHT_CALIBRATION
-        param1: 1, param2: 0, param3: 0, param4: 0,
-        param5: 0, param6: 0, param7: 0
+    return commandWithAck({ command: 241, param1: 1 }, PREFLIGHT_CAL_TIMEOUT);
+}
+
+/** Barometer: the current pressure becomes ground level */
+export async function calibrateBaro() {
+    return commandWithAck({ command: 241, param3: 1 }, PREFLIGHT_CAL_TIMEOUT);
+}
+
+/** MAV_CMD_ACCELCAL_VEHICLE_POS values (ardupilotmega ACCELCAL_VEHICLE_POS) */
+export const ACCELCAL_POS = {
+    LEVEL: 1, LEFT: 2, RIGHT: 3, NOSEDOWN: 4, NOSEUP: 5, BACK: 6,
+    SUCCESS: 16777215, FAILED: 16777216
+};
+
+/**
+ * Tell the autopilot the vehicle is in the position it asked for. It accepts
+ * only the position it is currently waiting for.
+ * @param {number} position - 1..6, as received
+ */
+export async function sendAccelCalPosition(position) {
+    return commandWithAck({ command: 42429, param1: position });
+}
+
+/**
+ * Start the onboard compass calibration (MAV_CMD_DO_START_MAG_CAL). Progress
+ * comes back as MAG_CAL_PROGRESS, the result as MAG_CAL_REPORT.
+ * @param {object} [opts]
+ * @param {number} [opts.mask=0] - compasses to calibrate, 0 = all
+ * @param {boolean} [opts.retry=true] - start over by itself after a failed fit
+ * @param {boolean} [opts.autosave=true] - save a good result without an ACCEPT
+ * @param {number} [opts.delay=0] - seconds before sampling starts
+ * @param {boolean} [opts.autoreboot=false] - reboot once every compass passed
+ */
+export async function startMagCal({ mask = 0, retry = true, autosave = true, delay = 0, autoreboot = false } = {}) {
+    return commandWithAck({
+        command: 42424,
+        param1: mask,
+        param2: retry ? 1 : 0,
+        param3: autosave ? 1 : 0,
+        param4: delay,
+        param5: autoreboot ? 1 : 0
     });
+}
+
+/** Save the result of a finished compass calibration (MAV_CMD_DO_ACCEPT_MAG_CAL) */
+export async function acceptMagCal(mask = 0) {
+    return commandWithAck({ command: 42425, param1: mask });
+}
+
+/** Stop a compass calibration (MAV_CMD_DO_CANCEL_MAG_CAL) */
+export async function cancelMagCal(mask = 0) {
+    return commandWithAck({ command: 42426, param1: mask });
+}
+
+/**
+ * Compass calibration without rotating the vehicle (MAV_CMD_FIXED_MAG_CAL_YAW,
+ * Mission Planner's "Large Vehicle MagCal"): the offsets follow from the known
+ * heading, the GPS position and the world magnetic model.
+ * @param {number} yawDeg - true heading of the vehicle's nose
+ * @param {number} [mask=0] - compasses, 0 = all
+ * @param {number} [lat=0], [lon=0] - 0 = the vehicle's own GPS position
+ */
+export async function magCalFixedYaw(yawDeg, mask = 0, lat = 0, lon = 0) {
+    return commandWithAck({ command: 42006, param1: yawDeg, param2: mask, param3: lat, param4: lon });
 }
 
 /**
@@ -344,6 +414,18 @@ export async function setMessageInterval(msgId, rateHz) {
         param1: msgId,
         param2: intervalUs,
         param7: 0     // 0 = respond on the requesting link
+    });
+}
+
+/** Put a message back on the autopilot's own default rate (interval 0) */
+export async function resetMessageInterval(msgId) {
+    return sendCommand({
+        type: 'COMMAND_LONG',
+        targetSystem: STATE.systemId,
+        targetComponent: STATE.componentId,
+        command: 511, // MAV_CMD_SET_MESSAGE_INTERVAL
+        param1: msgId,
+        param2: 0     // 0 = default rate
     });
 }
 

@@ -508,9 +508,19 @@
                     <span class="nav-group-dot"></span>
                 </button>
                 <div class="setup-nav-group-items">
-                    <button class="setup-nav-btn" data-section="calibration">
-                        <span class="nav-btn-title">CALIBRATION</span>
-                        <span class="nav-btn-desc">Accel &middot; Compass &middot; Gyro</span>
+                    <button class="setup-nav-btn" data-section="accel-cal">
+                        <span class="nav-btn-title">ACCELEROMETER</span>
+                        <span class="nav-btn-desc">6 positions &middot; Level &middot; Simple</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                    <button class="setup-nav-btn" data-section="compass-cal">
+                        <span class="nav-btn-title">COMPASS</span>
+                        <span class="nav-btn-desc">Onboard mag cal &middot; 3D sphere</span>
+                        <span class="nav-status-dot"></span>
+                    </button>
+                    <button class="setup-nav-btn" data-section="sensor-cal">
+                        <span class="nav-btn-title">GYRO / BARO</span>
+                        <span class="nav-btn-desc">Gyro offsets &middot; Ground pressure</span>
                         <span class="nav-status-dot"></span>
                     </button>
                     <button class="setup-nav-btn" data-section="radio-cal">
@@ -734,35 +744,122 @@
                 </div>
             </div>
 
-            <!-- Sub-tab: Calibration -->
-            <div class="sub-tab-content" id="subtab-calibration">
+            <!-- Sub-tab: Accelerometer calibration (CalibrationController.js) -->
+            <div class="sub-tab-content cal-page" id="subtab-accel-cal">
+                <div class="setup-panel full-width">
+                    <div class="panel-header">ACCELEROMETER CALIBRATION</div>
+                    <div class="cfg-note">Six positions, disarmed. When a position lights up, hold the vehicle that way and still on a flat surface, then press CONTINUE. The gyros are measured first: keep it still when you start.</div>
+                    <div class="accel-steps" id="accel-steps"></div>
+                    <div class="cal-instruction" id="accel-instruction">Press CALIBRATE ACCEL to start.</div>
+                    <div class="cal-actions">
+                        <button class="gcs-btn cal-primary" id="accel-cal-start">CALIBRATE ACCEL</button>
+                        <button class="gcs-btn" id="accel-cal-abort" hidden>ABORT</button>
+                    </div>
+                    <div class="cal-log" id="accel-cal-log"></div>
+                </div>
                 <div class="setup-panel">
-                    <div class="panel-header">CALIBRATION WIZARD</div>
-                    <div class="cal-wizard-row">
-                        <button class="gcs-btn cal-wizard-btn" id="setup-cal-accel" data-cal="accel">
-                            <span class="cal-icon">&#9651;</span>
-                            <span>ACCELEROMETER</span>
-                        </button>
-                        <div class="cal-wizard-status" id="cal-accel-status">Ready</div>
+                    <div class="panel-header">LEVEL</div>
+                    <div class="cfg-note">Sets AHRS_TRIM so that the attitude reads level when the vehicle sits level. Place it level and still, as it flies.</div>
+                    <button class="gcs-btn" id="accel-level-start">CALIBRATE LEVEL</button>
+                    <div class="cal-result" id="accel-level-status"></div>
+                </div>
+                <div class="setup-panel">
+                    <div class="panel-header">SIMPLE ACCEL CAL</div>
+                    <div class="cfg-note">One position only, for vehicles too large to turn over: level and still. Less accurate than the six positions; Copter firmware.</div>
+                    <button class="gcs-btn" id="accel-simple-start">SIMPLE ACCEL CAL</button>
+                    <div class="cal-result" id="accel-simple-status"></div>
+                </div>
+                <div class="setup-panel full-width">
+                    <div class="panel-header">STORED CALIBRATION</div>
+                    <table class="cal-table" id="accel-params"></table>
+                    <div class="cal-actions">
+                        <button class="gcs-btn" id="accel-params-read">READ FROM VEHICLE</button>
                     </div>
-                    <div class="cal-wizard-row">
-                        <button class="gcs-btn cal-wizard-btn" id="setup-cal-compass" data-cal="compass">
-                            <span class="cal-icon">&#9678;</span>
-                            <span>COMPASS</span>
-                        </button>
-                        <div class="cal-wizard-status" id="cal-compass-status">Ready</div>
+                </div>
+            </div>
+
+            <!-- Sub-tab: Compass calibration (CalibrationController.js, MagCal3D.js) -->
+            <div class="sub-tab-content cal-page" id="subtab-compass-cal">
+                <div class="setup-panel full-width">
+                    <div class="panel-header">ONBOARD MAG CALIBRATION</div>
+                    <div class="mag-cal-layout">
+                        <div class="mag-cal-side">
+                            <div class="cfg-note">Press START, then turn the vehicle slowly through every attitude — nose down, tail down, each side down, upside down — until every bar is full. Keep away from metal, cars and cables.</div>
+                            <div class="cal-actions">
+                                <button class="gcs-btn cal-primary" id="mag-cal-start">START</button>
+                                <button class="gcs-btn" id="mag-cal-accept" disabled>ACCEPT</button>
+                                <button class="gcs-btn" id="mag-cal-cancel" disabled>CANCEL</button>
+                            </div>
+                            <div class="cfg-row">
+                                <label>FITNESS</label>
+                                <select id="mag-cal-fit" class="cfg-select" title="COMPASS_CAL_FIT: how close to a sphere the samples must be">
+                                    <option value="4">Very strict</option>
+                                    <option value="8">Strict</option>
+                                    <option value="16" selected>Default</option>
+                                    <option value="32">Relaxed</option>
+                                </select>
+                            </div>
+                            <div class="cfg-row">
+                                <label class="gcs-checkbox" title="Save a good result as soon as it is found, without pressing ACCEPT">
+                                    <input type="checkbox" id="mag-cal-autoaccept" checked>
+                                    AUTO-ACCEPT A GOOD RESULT
+                                </label>
+                            </div>
+                            <div id="mag-cal-bars"></div>
+                            <div class="cal-instruction" id="mag-cal-instruction">Not running.</div>
+                            <div class="cal-actions">
+                                <button class="gcs-btn" id="mag-cal-reboot" hidden>REBOOT AUTOPILOT</button>
+                            </div>
+                        </div>
+                        <div class="mag-cal-view">
+                            <canvas class="mag3d-canvas" id="mag-cal-canvas" title="Drag to turn · wheel to zoom · double-click to reset"></canvas>
+                            <div class="mag3d-legend" id="mag3d-legend"></div>
+                            <div class="mag3d-toolbar">
+                                <select id="mag3d-focus" class="cfg-select" title="The compass the sphere and its coverage refer to">
+                                    <option value="0">MAG 1</option>
+                                    <option value="1">MAG 2</option>
+                                    <option value="2">MAG 3</option>
+                                </select>
+                                <span class="mag3d-stats" id="mag3d-stats">No samples</span>
+                                <button class="gcs-btn" id="mag3d-clear">CLEAR</button>
+                                <button class="gcs-btn" id="mag3d-reset">RESET VIEW</button>
+                            </div>
+                        </div>
                     </div>
-                    <div class="cal-wizard-row">
-                        <button class="gcs-btn cal-wizard-btn" id="setup-cal-gyro" data-cal="gyro">
-                            <span class="cal-icon">&#10227;</span>
-                            <span>GYROSCOPE</span>
-                        </button>
-                        <div class="cal-wizard-status" id="cal-gyro-status">Ready</div>
+                    <table class="cal-table" id="mag-cal-results" hidden></table>
+                </div>
+                <div class="setup-panel full-width">
+                    <div class="panel-header">COMPASSES</div>
+                    <table class="cal-table" id="compass-list"></table>
+                    <div class="cal-actions">
+                        <button class="gcs-btn" id="compass-list-read">READ FROM VEHICLE</button>
                     </div>
-                    <div class="cal-wizard-progress" id="cal-progress" style="display:none;">
-                        <div class="cal-progress-bar"><div class="cal-progress-fill" id="cal-progress-fill"></div></div>
-                        <div class="cal-progress-msg" id="cal-progress-msg">Place vehicle level...</div>
+                </div>
+                <div class="setup-panel">
+                    <div class="panel-header">LARGE VEHICLE MAGCAL</div>
+                    <div class="cfg-note">For a vehicle too large to turn: point its nose at a known true heading, with a GPS fix, and enter that heading. The offsets come from the world magnetic model.</div>
+                    <div class="cfg-row">
+                        <label>NOSE HEADING (&deg; TRUE)</label>
+                        <input type="number" id="mag-fixed-yaw" class="gcs-input" min="0" max="359.9" step="0.1" value="0">
                     </div>
+                    <button class="gcs-btn" id="mag-fixed-start">CALIBRATE FROM HEADING</button>
+                    <div class="cal-result" id="mag-fixed-status"></div>
+                </div>
+            </div>
+
+            <!-- Sub-tab: Gyroscope and barometer calibration (CalibrationController.js) -->
+            <div class="sub-tab-content cal-page" id="subtab-sensor-cal">
+                <div class="setup-panel">
+                    <div class="panel-header">GYROSCOPES</div>
+                    <div class="cfg-note">Measures the gyro offsets. Keep the vehicle completely still for a few seconds. ArduPilot also does this at every boot unless INS_GYR_CAL is 0.</div>
+                    <button class="gcs-btn" id="gyro-cal-start">CALIBRATE GYROS</button>
+                    <div class="cal-result" id="gyro-cal-status"></div>
+                </div>
+                <div class="setup-panel">
+                    <div class="panel-header">BAROMETER</div>
+                    <div class="cfg-note">Takes the current pressure as ground level: the altitude reads zero here. Vehicle still, out of the wind and the prop wash.</div>
+                    <button class="gcs-btn" id="baro-cal-start">CALIBRATE BARO</button>
+                    <div class="cal-result" id="baro-cal-status"></div>
                 </div>
             </div>
 

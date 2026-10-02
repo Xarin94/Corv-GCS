@@ -7,7 +7,8 @@
 import { STATE } from '../core/state.js';
 import { t } from '../core/i18n.js';
 import { connect, disconnect, getAvailablePorts } from '../mavlink/ConnectionManager.js';
-import { setParameter, requestAllParameters, requestParameter, requestDataStream, calibrateAccel, calibrateCompass, calibrateGyro, sendServoTest, sendRelayToggle } from '../mavlink/CommandSender.js';
+import { setParameter, requestAllParameters, requestParameter, requestDataStream, sendServoTest, sendRelayToggle } from '../mavlink/CommandSender.js';
+import { initCalibration } from './CalibrationController.js';
 import { onMessage } from '../mavlink/MAVLinkManager.js';
 import { getVehicleTypeName } from '../mavlink/MAVLinkStateMapper.js';
 import {
@@ -481,17 +482,6 @@ function initSetupTab() {
     // Initialize joystick/gamepad support
     initJoystick();
 
-    // Calibration buttons (moved from sidebar to Initial Setup > Connection sub-tab)
-    bindBtn('setup-cal-accel', async () => {
-        if (await confirm('Start accelerometer calibration?')) await calibrateAccel();
-    });
-    bindBtn('setup-cal-compass', async () => {
-        if (await confirm('Start compass calibration?')) await calibrateCompass();
-    });
-    bindBtn('setup-cal-gyro', async () => {
-        if (await confirm('Start gyroscope calibration?')) await calibrateGyro();
-    });
-
     // Flight Modes sub-tab
     initFlightModes();
 
@@ -501,8 +491,8 @@ function initSetupTab() {
     // Radio Calibration sub-tab
     initRadioCalibration();
 
-    // Calibration wizard progress tracking
-    initCalibrationWizard();
+    // Accelerometer, compass, gyro and baro pages
+    initCalibration();
 }
 
 /**
@@ -1900,84 +1890,6 @@ function updateRcCalBars() {
         const mmEl = document.getElementById(`rc-mm-${i}`);
         if (mmEl) mmEl.textContent = `${STATE.rcCalMin[i]}/${STATE.rcCalMax[i]}`;
     }
-}
-
-// ============================================================
-// CALIBRATION WIZARD
-// ============================================================
-let activeCalibration = null;
-
-function initCalibrationWizard() {
-    // Listen to STATUSTEXT for calibration progress
-    onMessage(253, (data) => {
-        if (!activeCalibration) return;
-        const text = (data.text || '').toLowerCase();
-        const progressEl = document.getElementById('cal-progress');
-        const fillEl = document.getElementById('cal-progress-fill');
-        const msgEl = document.getElementById('cal-progress-msg');
-        const statusEl = document.getElementById(`cal-${activeCalibration}-status`);
-
-        if (text.includes('calibrat')) {
-            if (progressEl) progressEl.style.display = 'block';
-
-            // Parse progress hints from STATUSTEXT
-            if (text.includes('place vehicle')) {
-                if (msgEl) msgEl.textContent = data.text;
-                if (fillEl) fillEl.style.width = '20%';
-            } else if (text.includes('side')) {
-                if (msgEl) msgEl.textContent = data.text;
-                if (fillEl) fillEl.style.width = '50%';
-            } else if (text.includes('success') || text.includes('done') || text.includes('complete')) {
-                if (fillEl) fillEl.style.width = '100%';
-                if (msgEl) msgEl.textContent = 'Calibration complete!';
-                if (statusEl) { statusEl.textContent = 'Done'; statusEl.className = 'cal-wizard-status done'; }
-                setTimeout(() => { if (progressEl) progressEl.style.display = 'none'; }, 3000);
-                activeCalibration = null;
-            } else if (text.includes('fail')) {
-                if (msgEl) msgEl.textContent = 'Calibration failed: ' + data.text;
-                if (fillEl) fillEl.style.width = '0%';
-                if (statusEl) { statusEl.textContent = 'Failed'; statusEl.className = 'cal-wizard-status'; }
-                activeCalibration = null;
-            } else {
-                if (msgEl) msgEl.textContent = data.text;
-            }
-        }
-    });
-
-    // Override calibration button handlers to track wizard state
-    ['accel', 'compass', 'gyro'].forEach(type => {
-        const btn = document.getElementById(`setup-cal-${type}`);
-        if (!btn) return;
-        // Remove old handlers by replacing the element
-        const newBtn = btn.cloneNode(true);
-        btn.parentNode.replaceChild(newBtn, btn);
-
-        newBtn.addEventListener('click', async () => {
-            if (activeCalibration) { alert('Another calibration is in progress'); return; }
-            if (!await confirm(`Start ${type} calibration?`)) return;
-
-            activeCalibration = type;
-            const statusEl = document.getElementById(`cal-${type}-status`);
-            if (statusEl) { statusEl.textContent = 'Running...'; statusEl.className = 'cal-wizard-status running'; }
-
-            const progressEl = document.getElementById('cal-progress');
-            const fillEl = document.getElementById('cal-progress-fill');
-            const msgEl = document.getElementById('cal-progress-msg');
-            if (progressEl) progressEl.style.display = 'block';
-            if (fillEl) fillEl.style.width = '10%';
-            if (msgEl) msgEl.textContent = `Starting ${type} calibration...`;
-
-            try {
-                if (type === 'accel') await calibrateAccel();
-                else if (type === 'compass') await calibrateCompass();
-                else if (type === 'gyro') await calibrateGyro();
-            } catch (e) {
-                alert('Calibration command failed: ' + e.message);
-                activeCalibration = null;
-                if (statusEl) { statusEl.textContent = 'Error'; statusEl.className = 'cal-wizard-status'; }
-            }
-        });
-    });
 }
 
 // ============================================================
