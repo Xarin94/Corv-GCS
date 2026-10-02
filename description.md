@@ -360,6 +360,7 @@ npm install          # Install dependencies
 npm start            # Development mode
 npm run build:win    # Windows installer (NSIS)
 npm run build:linux  # Linux (AppImage, deb)
+npm run build:mac    # macOS (dmg, arm64 + x64), on a Mac
 ```
 
 ### Installer Excludes
@@ -371,7 +372,7 @@ npm run build:linux  # Linux (AppImage, deb)
 | Package | Role |
 |---------|------|
 | Electron 39.x | Desktop runtime (Chromium + Node.js) |
-| electron-builder | NSIS/AppImage/deb packaging |
+| electron-builder | NSIS/AppImage/deb/dmg packaging |
 | node-mavlink 2.x | MAVLink v2 protocol (ardupilotmega dialect) |
 | serialport 13.x | Native serial port access |
 | Three.js r128 | 3D rendering (CDN) |

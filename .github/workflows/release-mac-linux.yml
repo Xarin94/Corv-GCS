@@ -1,0 +1,49 @@
+# Builds the macOS and Linux installers of a release and attaches them to it.
+# The Windows installer is built locally (npm run build:win) and uploaded with
+# `gh release create`; publishing the release starts this workflow. To rebuild
+# an existing release, run it by hand with the release tag.
+name: macOS and Linux installers
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and attach the installers to (e.g. v1.7.6)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            args: --mac
+            files: dist/*.dmg
+          - os: ubuntu-latest
+            args: --linux
+            files: dist/*.AppImage dist/*.deb
+    runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # No Apple Developer ID: the arm64 app gets an ad-hoc signature, x64 none.
+      - run: npx electron-builder ${{ matrix.args }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - run: gh release upload "$TAG" ${{ matrix.files }} --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

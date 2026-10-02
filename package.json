@@ -1,6 +1,6 @@
 {
   "name": "corv-gcs",
-  "version": "1.7.5",
+  "version": "1.7.6",
   "description": "CORV SYSTEMS Ground Control Station",
   "main": "main.js",
   "scripts": {
@@ -9,7 +9,8 @@
     "models": "node scripts/gen-models.js",
     "build": "electron-builder --win --linux",
     "build:win": "electron-builder --win",
-    "build:linux": "electron-builder --linux"
+    "build:linux": "electron-builder --linux",
+    "build:mac": "electron-builder --mac"
   },
   "build": {
     "appId": "com.corvsystems.gcs",
@@ -45,6 +46,22 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "installerSidebar": null
+    },
+    "mac": {
+      "icon": "assets/icons/icon-512x512.png",
+      "category": "public.app-category.utilities",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "linux": {
       "icon": "build/icon256.png",

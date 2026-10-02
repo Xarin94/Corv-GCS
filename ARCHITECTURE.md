@@ -774,7 +774,7 @@ UI preferences) stays in `localStorage`, not in `data/`.
 | Package | Version | Role |
 |---------|---------|------|
 | `electron` | ^39.2.7 | Desktop app runtime (Chromium + Node.js) |
-| `electron-builder` | ^26.8.1 | Build & packaging (NSIS, AppImage, deb) |
+| `electron-builder` | ^26.8.1 | Build & packaging (NSIS, AppImage, deb, dmg) |
 | `node-mavlink` | ^2.3.0 | MAVLink v2 protocol parse/serialize (ardupilotmega dialect) |
 | `serialport` | ^13.0.0 | Native serial port access |
 | Three.js | r128 | 3D rendering (loaded via CDN in HTML) |
@@ -799,8 +799,14 @@ npm run build:win
 
 # Build for Linux only
 npm run build:linux
+
+# Build for macOS only (on a Mac)
+npm run build:mac
 ```
 
-**Platforms:** Windows (NSIS installer), Linux (AppImage, deb)
+**Platforms:** Windows (NSIS installer), Linux (AppImage, deb), macOS (dmg, arm64 and x64; not signed with a Developer ID)
+
+**Releases:** the Windows installer is built locally and published with `gh release create`; publishing the release runs
+`.github/workflows/release-mac-linux.yml`, which builds the macOS and Linux installers on GitHub runners and attaches them.
 
 **Note:** SITL on Windows runs via WSL. Native SITL is supported on Linux.

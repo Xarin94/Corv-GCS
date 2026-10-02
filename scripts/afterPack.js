@@ -13,15 +13,18 @@ exports.default = async function afterPack(context) {
 
     const platformMap = {
         win32: `win32-${arch}`,
-        darwin: `darwin-${arch}`,
+        darwin: 'darwin-x64+arm64', // one universal binary for both archs
         linux:  `linux-${arch}`,
     };
 
     const prebuildTag = platformMap[platform];
     if (!prebuildTag) return;
 
+    const resources = platform === 'darwin'
+        ? path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents', 'Resources')
+        : path.join(context.appOutDir, 'resources');
     const unpacked = path.join(
-        context.appOutDir, 'resources', 'app.asar.unpacked',
+        resources, 'app.asar.unpacked',
         'node_modules', '@serialport', 'bindings-cpp'
     );
 

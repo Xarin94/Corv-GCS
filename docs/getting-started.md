@@ -15,6 +15,12 @@ Download from the [Releases](https://github.com/Xarin94/Corv-GCS/releases/latest
 | Windows 10 / 11 (x64) | `CORV.GCS.Setup.<version>.exe` | Installer; you can choose the folder |
 | Linux (x64) | `CORV.GCS-<version>.AppImage` | Portable: `chmod +x` and run |
 | Debian / Ubuntu | `corv-gcs_<version>_amd64.deb` | `sudo apt install ./corv-gcs_<version>_amd64.deb` |
+| macOS, Apple silicon | `CORV.GCS-<version>-arm64.dmg` | Drag the app to Applications |
+| macOS, Intel | `CORV.GCS-<version>-x64.dmg` | Drag the app to Applications |
+
+The macOS app is not signed with an Apple Developer ID, so macOS reports a downloaded copy as
+damaged. Clear the download flag once, after copying it to Applications:
+`xattr -dr com.apple.quarantine "/Applications/CORV GCS.app"`.
 
 To run from source you need [Node.js](https://nodejs.org/) 18 or newer:
 
