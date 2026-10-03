@@ -24,6 +24,7 @@ import { startLidarDemo, stopLidarDemo, resetLidarDemo, isLidarDemoRunning, conf
 import { isDemoMode } from '../core/state.js';
 import { pushHudMessage } from '../hud/HUDRenderer.js';
 import { setNavDot } from './TabController.js';
+import { drawMountPreview } from './MountPreview.js';
 
 const STORAGE_KEY = 'lidar-config';
 
@@ -111,6 +112,20 @@ function applyDisplayConfig() {
     setLidarMaxPoints(cfg.maxPoints || 3000000);
     setLidarOverTerrain(cfg.overTerrain !== false);
     configureLidarDemo(cfg);
+}
+
+// ============== MOUNT PREVIEW ==============
+// From the inputs as they are typed, before they are applied
+function drawPreview() {
+    const canvas = $('lidar-mount-preview');
+    if (!canvas) return;
+    const v = (id) => parseFloat($(id)?.value) || 0;
+    drawMountPreview(canvas, {
+        mount: [v('lidar-mount-roll'), v('lidar-mount-pitch'), v('lidar-mount-yaw')],
+        lever: [v('lidar-lever-x'), v('lidar-lever-y'), v('lidar-lever-z')],
+        zone: { type: 'band', elMin: -7, elMax: 52 },
+        caption: 'Livox Mid-360 · 360° × −7…+52°'
+    });
 }
 
 // ============== CONNECTION ==============
@@ -309,9 +324,16 @@ export function initLidarController() {
             preset.value = '';
             readInputs();
             saveConfig();
+            drawPreview();
             if (window.lidar) window.lidar.setConfig(mainConfig());
         });
     }
+
+    for (const id of ['lidar-mount-roll', 'lidar-mount-pitch', 'lidar-mount-yaw', 'lidar-lever-x', 'lidar-lever-y', 'lidar-lever-z']) {
+        $(id)?.addEventListener('input', drawPreview);
+    }
+    const previewCanvas = $('lidar-mount-preview');
+    if (previewCanvas && window.ResizeObserver) new ResizeObserver(drawPreview).observe(previewCanvas);   // drawn when the sub-tab shows
 
     els.enable.addEventListener('change', () => setEnabled(els.enable.checked));
 

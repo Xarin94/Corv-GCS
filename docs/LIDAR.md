@@ -48,6 +48,11 @@ sensor is installed relative to the autopilot IMU:
 | ROLL / PITCH / YAW | ZYX Euler angles of the LiDAR body relative to the aircraft body, degrees. Belly mount with the sensor upside down = roll 180. Presets cover the usual cases. |
 | LEVER ARM X / Y / Z | Position of the LiDAR optical centre from the IMU (the point ArduPilot reports its position for), metres, FRD. |
 
+*MOUNT PREVIEW* draws the result as you type: the aircraft as a triangle
+(nose forward, fin on top), the LiDAR at its lever arm with its axes (X red,
+Y green, Z blue) and the Mid-360's 360° × −7…+52° band, turned by the mount
+exactly as the points will be.
+
 A wrong sign here is immediately visible: with the aircraft rolling or
 yawing, walls double and the ground splits into two sheets. Use the emulator
 (section 5) to check a mounting before flying.

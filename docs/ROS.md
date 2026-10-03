@@ -43,6 +43,7 @@ small node converting them to one of these.
 | **POINTS FRAME** | *Auto* from `header.frame_id`: `map`, `odom`, `world`, `earth` (`_ned` suffix: NED) are world-fixed frames from the EKF origin; anything else is the sensor's own frame, placed with the telemetry pose. |
 | **MAX RATE / POINTS PER MESSAGE** | rosbridge sends at most this many messages a second (`throttle_rate`, `queue_length` 1); from each, this many points are sampled with a uniform stride. The rest are not used. |
 | **MOUNT / LEVER ARM** | ZYX Euler angles of the sensor frame (REP-103: x forward, y left, z up; Range and LaserScan measure along x) relative to the vehicle body (FRD), and its offset from the IMU. *Looking down* (0, −90, 0) for an echo sounder or a push-broom scanner, *inverted* (180, 0, 0) for a Livox under the belly. |
+| **MOUNT PREVIEW** | The vehicle (a triangle, nose forward, fin on top), the sensor at its lever arm with its axes (X red, Y green, Z blue) and the zone it collects from, turned by the mount: a Range's cone, a LaserScan's fan, a cloud's directions over the last 10 s (also with no vehicle connected). Drawn with the same rotation the points are placed with. |
 | **RANGE WINDOW** | Returns closer (the airframe, the hull) or farther are dropped. |
 | **TIME OF THE POINTS / LAG** | *Arrival − lag*, or *header.stamp + lag* when the companion computer's clock is synced with the GCS (chrony, NTP, GPS; a stamp more than 2 s off is not trusted). |
 | **MIN CELL / MIN SAMPLES / MEMORY / MAX TILES** | 30 cm cells by default; see §3. |

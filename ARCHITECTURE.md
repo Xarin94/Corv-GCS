@@ -163,6 +163,7 @@ Corv-GCS/
 │   │   ├── FPVController.js     FPV camera overlay & settings
 │   │   ├── LidarController.js   LIDAR panel (Sys Config) + flight-screen strip (CLEAR MAP / SAVE)
 │   │   ├── RosController.js     ROS panel (SETUP → TOOLS) + strip (GRAY/DIST, VIEW, CLEAR), pose feed to the worker
+│   │   ├── MountPreview.js      Schematic 3D view of a sensor mount (vehicle, axes, collection zone), LIDAR and ROS panels
 │   │   └── LoadingOverlay.js    Splash screen with loading progress
 │   ├── lidar/
 │   │   ├── LidarCloud.js        Georeferenced point cloud: chunked THREE.Points, shader colour ramps, fading live layer

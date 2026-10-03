@@ -1896,6 +1896,10 @@
                         </div>
                     </div>
                     <div class="cfg-row">
+                        <label>MOUNT PREVIEW</label>
+                        <canvas class="mount-preview" id="lidar-mount-preview" title="The vehicle (nose forward, fin on top), the LiDAR at its lever arm with its axes (X red, Y green, Z blue) and the zone it scans"></canvas>
+                    </div>
+                    <div class="cfg-row">
                         <label>MIN RANGE &mdash; DISCARD CLOSER THAN (m)</label>
                         <div class="cfg-row-inline lidar-inline">
                             <input type="number" id="lidar-min-range" class="failsafe-input" value="2.5" step="0.1" min="0.1" max="50" title="Returns closer than this are false echoes from the airframe">
@@ -2036,6 +2040,10 @@
                             <input type="number" id="ros-lever-y" class="failsafe-input" value="0" step="0.01" title="Y right">
                             <input type="number" id="ros-lever-z" class="failsafe-input" value="0" step="0.01" title="Z down (a transducer's draft)">
                         </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>MOUNT PREVIEW</label>
+                        <canvas class="mount-preview" id="ros-mount-preview" title="The vehicle (nose forward, fin on top), the sensor at its lever arm with its axes (X red, Y green, Z blue) and the zone it collects from"></canvas>
                     </div>
                     <div class="cfg-row">
                         <label>RANGE WINDOW (m)</label>

@@ -26,6 +26,7 @@ import { ORIGIN } from '../core/constants.js';
 import { isRelativeMode } from '../core/RelativeNav.js';
 import { pushHudMessage } from '../hud/HUDRenderer.js';
 import { setNavDot } from './TabController.js';
+import { drawMountPreview } from './MountPreview.js';
 import {
     applyRosTiles, clearRosMesh, setRosMeshVisible, setRosMeshShown, setRosMeshFillOpacity,
     setRosMeshColorMode, setRosMeshOverTerrain, setRosMeshMinSamples, getRosColorRange, getRosMeshStats
@@ -285,6 +286,41 @@ function onTopicChange() {
     if (worker) worker.postMessage({ op: 'select', topic: cfg.topic, type: cfg.topicType });
 }
 
+// ============== MOUNT PREVIEW ==============
+const DEG = Math.PI / 180;
+
+// The zone the selected topic collects from: a Range's cone, a LaserScan's
+// fan, a cloud's directions over the last 10 s (from the worker)
+function previewZone() {
+    const st = lastStatus, z = st && st.zone, kind = st && st.kind;
+    if (!kind) return { zone: null, caption: 'choose a topic: its zone shows here' };
+    if (st.frame && st.frame !== 'sensor') return { zone: null, caption: `points in the ${st.frameId} frame: no sensor zone` };
+    if (kind === 'range') {
+        const fov = z && z.fov > 0 ? z.fov / DEG : 30;
+        return { zone: { type: 'cone', half: fov / 2 }, caption: `Range · ${fmt(fov)}° cone along X` };
+    }
+    if (kind === 'scan') {
+        const [a0, a1] = z && Number.isFinite(z.min) ? [z.min / DEG, z.max / DEG] : [-135, 135];
+        return { zone: { type: 'fan', min: a0, max: a1 }, caption: `LaserScan · ${fmt(a0)}…${fmt(a1)}° in the X–Y plane` };
+    }
+    if (z && z.dirs && z.dirs.bins.length) return { zone: { type: 'dirs', ...z.dirs }, caption: 'PointCloud2 · where the points came from, last 10 s' };
+    return cfg.profile === 'aerial'
+        ? { zone: { type: 'band', elMin: -7, elMax: 52 }, caption: 'PointCloud2 · Mid-360 band until points arrive' }
+        : { zone: null, caption: 'PointCloud2 · the zone shows when points arrive' };
+}
+
+// From the inputs as they are typed, before they are applied
+function drawPreview() {
+    const canvas = $('ros-mount-preview');
+    if (!canvas) return;
+    const v = (id) => parseFloat($(id)?.value) || 0;
+    drawMountPreview(canvas, {
+        mount: [v('ros-mount-roll'), v('ros-mount-pitch'), v('ros-mount-yaw')],
+        lever: [v('ros-lever-x'), v('ros-lever-y'), v('ros-lever-z')],
+        ...previewZone()
+    });
+}
+
 // ============== STATUS ==============
 function fmt(n, d = 0) {
     return (n || 0).toLocaleString('en-US', { maximumFractionDigits: d });
@@ -349,6 +385,7 @@ function updateStrip(st) {
 
 function onStatus(st) {
     lastStatus = st;
+    drawPreview();
     renderStatus(st);
     updateStrip(st);
     setNavDot('ros', enabled && st && st.link === 'CONNECTED');
@@ -391,6 +428,7 @@ export function initRosController() {
             readInputs();
             saveConfig();
             pushConfig();
+            drawPreview();
             if (f.key === 'url' && enabled) worker.postMessage({ op: 'connect', url: cfg.url });
         });
     }
@@ -406,7 +444,14 @@ export function initRosController() {
         readInputs();
         saveConfig();
         pushConfig();
+        drawPreview();
     });
+
+    for (const id of ['ros-mount-roll', 'ros-mount-pitch', 'ros-mount-yaw', 'ros-lever-x', 'ros-lever-y', 'ros-lever-z']) {
+        $(id)?.addEventListener('input', drawPreview);
+    }
+    const previewCanvas = $('ros-mount-preview');
+    if (previewCanvas && window.ResizeObserver) new ResizeObserver(drawPreview).observe(previewCanvas);   // drawn when the sub-tab shows
 
     els.enable.addEventListener('change', () => setEnabled(els.enable.checked));
     els.topic.addEventListener('change', onTopicChange);

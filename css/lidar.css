@@ -140,6 +140,17 @@
     width: auto;
 }
 
+/* Mount preview (MountPreview.js): lines and text take this colour */
+.mount-preview {
+    display: block;
+    width: 100%;
+    height: 210px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(0, 210, 255, 0.12);
+    color: var(--text-muted-bright);
+}
+
 /* Strip switches: colour by distance (lit), surface hidden (dimmed) */
 .ros-strip .lidar-strip-btn.on {
     border-color: rgba(120, 140, 255, 0.8);

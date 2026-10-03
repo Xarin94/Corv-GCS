@@ -105,6 +105,13 @@ let lastRate = { ...rate };
 let totalMsgs = 0;
 let blocked = null;               // why the last message was not used
 
+// Where the sensor collects from, for the mount preview: a Range's cone, a
+// LaserScan's fan, and for clouds in the sensor frame the directions (10° ×
+// 10° bins of azimuth and elevation) points came from in the last 10 s
+const DIR_AZ = 36, DIR_EL = 18, DIR_KEEP_MS = 10000, DIR_SAMPLES = 200;
+const dirSeen = new Float64Array(DIR_AZ * DIR_EL);
+let zoneMeta = null;
+
 function post(m, transfer) { self.postMessage(m, transfer || []); }
 
 // ============== CONNECTION ==============
@@ -245,14 +252,25 @@ function onMessage(msg) {
     lastFrameId = frameId;
     lastFrame = frame;
 
-    const pose = poseAt(messageTime(msg, now));
-    if (!pose) { rate.noPose++; blocked = poseReason; return; }
-
     const sensor = frame === 'sensor';
     const { count, total } = decodePoints(sel.kind, msg, pts, Math.min(cfg.maxPoints, MAX_POINTS),
         sensor ? cfg.minRange : 0, sensor ? cfg.maxRange : Infinity);
     rate.pointsIn += total;
     rate.sampled += count;
+    if (sel.kind === 'range') zoneMeta = { fov: msg.field_of_view };
+    else if (sel.kind === 'scan') zoneMeta = { min: msg.angle_min, max: msg.angle_max };
+    if (sensor && count) {
+        const step = Math.max(1, Math.floor(count / DIR_SAMPLES));
+        for (let k = 0; k < count; k += step) {
+            const x = pts[k * 3], y = pts[k * 3 + 1], z = pts[k * 3 + 2];
+            const az = Math.min(DIR_AZ - 1, Math.floor((Math.atan2(y, x) + Math.PI) / (2 * Math.PI) * DIR_AZ));
+            const el = Math.min(DIR_EL - 1, Math.floor((Math.atan2(z, Math.hypot(x, y)) + Math.PI / 2) / Math.PI * DIR_EL));
+            dirSeen[el * DIR_AZ + az] = now;
+        }
+    }
+    // (decoded first: the zone shows on the bench, with no vehicle yet)
+    const pose = poseAt(messageTime(msg, now));
+    if (!pose) { rate.noPose++; blocked = poseReason; return; }
     if (!count) { blocked = total ? 'NO VALID POINTS' : 'EMPTY MESSAGES'; return; }
 
     if (!anchor) {
@@ -310,6 +328,12 @@ function state() {
     return blocked || 'ACCUMULATING';
 }
 
+function zoneStatus() {
+    const now = Date.now(), bins = [];
+    for (let b = 0; b < dirSeen.length; b++) if (now - dirSeen[b] < DIR_KEEP_MS) bins.push(b);
+    return { ...zoneMeta, dirs: { az: DIR_AZ, el: DIR_EL, bins } };
+}
+
 function postStatus() {
     post({
         op: 'status',
@@ -317,6 +341,7 @@ function postStatus() {
             link, url, error: lastError, state: state(),
             topic: sel && sel.topic, type: sel && sel.type, kind: sel && sel.kind,
             frameId: lastFrameId, frame: lastFrame, timeBase: cfg.timeBase, stampOff,
+            zone: zoneStatus(),
             rate: lastRate, totalMsgs,
             surface: {
                 cell: surface.cell, maxTiles: surface.maxTiles, tileCells: TILE, layers: cfg.layers,
@@ -369,6 +394,8 @@ self.onmessage = (e) => {
         case 'topics': listTopics(); break;
         case 'select':
             sel = m.topic ? { topic: m.topic, type: m.type, kind: kindOf(m.type) } : null;
+            zoneMeta = null;
+            dirSeen.fill(0);
             subscribe();
             postStatus();
             break;
