@@ -161,7 +161,11 @@ export function downloadMission(onProgress = () => {}) {
             offMessage(73, onItem);
             offMessage(39, onItem);
         };
-        const fail = (msg) => { cleanup(); reject(new Error(msg)); };
+        const fail = (msg) => {
+            console.error(`[mission] download failed: ${msg} (${items.length}/${total < 0 ? '?' : total} items)`);
+            cleanup();
+            reject(new Error(msg));
+        };
         const arm = () => { clearTimeout(timer); timer = setTimeout(() => fail('Vehicle did not answer'), 4000); };
 
         const request = (seq) => {
@@ -172,6 +176,7 @@ export function downloadMission(onProgress = () => {}) {
         const onCount = (data) => {
             if (total >= 0) return;
             total = data.count || 0;
+            console.log(`[mission] download: vehicle has ${total} items`);
             onProgress(0, total);
             if (total === 0) { finish(); return; }
             request(0);
@@ -196,6 +201,7 @@ export function downloadMission(onProgress = () => {}) {
         };
 
         const finish = () => {
+            console.log(`[mission] download complete: ${items.length} items`);
             cleanup();
             sendMessage({ type: 'MISSION_ACK', ...target, ackType: 0 }).catch(() => {});
             resolve(items);
@@ -205,6 +211,7 @@ export function downloadMission(onProgress = () => {}) {
         onMessage(73, onItem);    // MISSION_ITEM_INT
         onMessage(39, onItem);    // MISSION_ITEM (legacy autopilots)
         arm();
+        console.log(`[mission] download from ${target.targetSystem}/${target.targetComponent}`);
         sendMessage({ type: 'MISSION_REQUEST_LIST', ...target }).catch(e => fail(e.message));
     });
 }

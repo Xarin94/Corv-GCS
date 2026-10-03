@@ -30,7 +30,14 @@ function ensureWorker() {
     // Packaged builds keep the worker and its core outside app.asar (see
     // asarUnpack in package.json) so the thread loads them from a real path.
     const base = __dirname.includes('app.asar') ? __dirname.replace('app.asar', 'app.asar.unpacked') : __dirname;
-    worker = new Worker(path.join(base, 'lidar-worker.js'), { workerData: { dataRoot: getRoot() } });
+    worker = new Worker(path.join(base, 'lidar-worker.js'), { workerData: { dataRoot: getRoot() }, stdout: true, stderr: true });
+    // A worker's console bypasses the main console (and the debug log): relay it
+    const relay = (print) => (chunk) => {
+        for (const line of String(chunk).split(/\r?\n/)) if (line.trim()) print(line);
+    };
+    worker.stdout.on('data', relay(console.log));
+    worker.stderr.on('data', relay(console.error));
+    console.log('[lidar] worker started');
     worker.on('message', (m) => {
         if (m.id !== undefined) {
             const p = pending.get(m.id);
@@ -75,6 +82,7 @@ function initLidarHandlers(win) {
     ipcMain.handle('lidar-connect', async (_e, cfg) => {
         const res = await call('connect', cfg);
         active = !!(res && res.success);
+        console.log(`[lidar] connect ${active ? 'ok' : `failed: ${res && res.error}`}`);
         return res;
     });
     ipcMain.handle('lidar-disconnect', async () => {

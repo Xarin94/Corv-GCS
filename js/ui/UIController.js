@@ -416,7 +416,12 @@ function resetHudCellConfig() {
  * @param {string} msg - Message to display
  * @param {string} color - CSS color value
  */
+let lastStatusMsg = '';
 export function setStatusMessage(msg, color = 'var(--accent-cyan)') {
+    if (msg !== lastStatusMsg) {
+        lastStatusMsg = msg;
+        console.log(`[status] ${msg}`);
+    }
     const dom = ensureDomCache();
     if (dom.statusMsg) {
         dom.statusMsg.textContent = msg;
@@ -509,6 +514,31 @@ window.toggleConfig = toggleConfig;
 window.toggleTelemetry = toggleTelemetry;
 window.updateOffset = updateOffset;
 window.openDevTools = openDevTools;
+
+/** Debug log (app-log.js): save a copy for support, or show the live file. */
+async function saveDebugLog() {
+    const status = document.getElementById('debuglog-status');
+    try {
+        const res = await window.appLog?.save();
+        if (status) status.textContent = res?.saved ? `SAVED: ${res.filePath}` : '';
+    } catch (e) {
+        console.error('[log] save copy failed:', e.message);
+        if (status) status.textContent = `SAVE FAILED: ${e.message}`;
+    }
+}
+
+async function revealDebugLog() {
+    const status = document.getElementById('debuglog-status');
+    try {
+        const file = await window.appLog?.reveal();
+        if (status && file) status.textContent = file;
+    } catch (e) {
+        console.error('[log] show file failed:', e.message);
+    }
+}
+
+window.saveDebugLog = saveDebugLog;
+window.revealDebugLog = revealDebugLog;
 window.setHudCellField = setHudCellField;
 window.setHudCellMultiplier = setHudCellMultiplier;
 window.setHudCellUnitLabel = setHudCellUnitLabel;

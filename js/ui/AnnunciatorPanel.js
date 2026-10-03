@@ -172,6 +172,7 @@ export function initAnnunciatorPanel() {
 
 function silence(id) {
     if (!id) return;
+    console.log(`[annun] silenced by the operator: ${id}`);
     silenced.add(id);
     for (const twin of CAUTION_TWINS[id] || []) silenced.add(twin);
     if (id === demoId) { demoId = null; demoNextAt = Date.now() + DEMO_OFF_MS; }
@@ -325,6 +326,18 @@ function refreshValues(demo) {
     }
 }
 
+let loggedOn = new Set();
+function logChanges(on) {
+    for (const def of ALERTS) {
+        const was = loggedOn.has(def.id), is = on.has(def.id);
+        if (was === is) continue;
+        const val = is && def.val ? ` (${def.val()})` : '';
+        if (is) (def.lvl === WARN ? console.warn : console.log)(`[annun] ${def.lvl === WARN ? 'WARNING' : 'caution'} on: ${def.label}${val} — ${def.title}`);
+        else console.log(`[annun] ${def.lvl === WARN ? 'warning' : 'caution'} off: ${def.label}`);
+    }
+    loggedOn = new Set(on);
+}
+
 /**
  * Refresh the strip. Cheap enough for 10 Hz: the DOM is only rebuilt when
  * the active set changes.
@@ -343,6 +356,7 @@ export function updateAnnunciatorPanel() {
     }
     const key = warns.map(d => d.id).join(',') + '|' + cauts.map(d => d.id).join(',');
     if (key !== lastKey) {
+        if (!isDemoMode()) logChanges(on);
         lastKey = key;
         valEls.clear();
         fillList(elWarn, warns);

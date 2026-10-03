@@ -1176,7 +1176,7 @@ function initTerrainWorker() {
                 }
                 if (!existing && isChunkInRange(item)) {
                     addChunkMesh(item, data.step, data.heights, data.minH, data.maxH);
-                    console.debug(`[terrain] Chunk created from worker: ${data.chunkKey} (total=${Object.keys(activeChunks).length})`);
+                    noteChunkCreated(true);
                 }
                 return;
             }
@@ -1198,7 +1198,8 @@ function initTerrainWorker() {
             }
         };
 
-        terrainWorker.onerror = () => {
+        terrainWorker.onerror = (e) => {
+            console.error(`[terrain] TerrainWorker failed: ${e?.message || 'unknown'} ${e?.filename ? `(${e.filename}:${e.lineno})` : ''} — chunks on the main thread`);
             workerAvailable = false;
             terrainWorker = null;
             for (const item of workerPending.values()) {
@@ -1259,7 +1260,8 @@ function initTileWorker() {
             }
         };
 
-        tileWorker.onerror = () => {
+        tileWorker.onerror = (e) => {
+            console.error(`[terrain] TileWorker failed: ${e?.message || 'unknown'} ${e?.filename ? `(${e.filename}:${e.lineno})` : ''}`);
             tileWorkerAvailable = false;
             tileWorker = null;
             pendingTileCallbacks.clear();
@@ -1291,7 +1293,8 @@ function initTextureCullWorker() {
             }
         };
 
-        textureCullWorker.onerror = () => {
+        textureCullWorker.onerror = (e) => {
+            console.error(`[terrain] TextureCullWorker failed: ${e?.message || 'unknown'} ${e?.filename ? `(${e.filename}:${e.lineno})` : ''}`);
             textureCullWorkerAvailable = false;
             textureCullWorker = null;
             textureCullInFlight = false;
@@ -1334,7 +1337,10 @@ function initCompressWorkers() {
         for (let i = 0; i < COMPRESS_WORKER_COUNT; i++) {
             const w = new Worker(new URL('./TextureCompressWorker.js', import.meta.url), { type: 'module' });
             w.onmessage = (e) => onCompressedTexture(e.data || {});
-            w.onerror = () => { compressAvailable = false; };
+            w.onerror = (e) => {
+                console.error(`[terrain] TextureCompressWorker failed: ${e?.message || 'unknown'} — textures uncompressed`);
+                compressAvailable = false;
+            };
             compressWorkers.push(w);
         }
         compressAvailable = true;
@@ -2001,8 +2007,22 @@ function createSingleChunk(item) {
     // NON caricare satellite qui - verrà fatto da refreshNearbyChunkTextures
     // dopo che il terreno base è completamente caricato
     const mesh = addChunkMesh(item, step, heights, minH, maxH);
-    console.debug(`[terrain] Chunk created: ${item.chunkKey} (total=${Object.keys(activeChunks).length})`);
+    noteChunkCreated(false);
     return mesh;
+}
+
+// Chunks come by the hundred at startup and on every move: one summary line
+// per CHUNK_LOG_MS instead of one per chunk, which would flood the debug log.
+const CHUNK_LOG_MS = 2000;
+let chunkLog = { worker: 0, main: 0, timer: null };
+function noteChunkCreated(fromWorker) {
+    chunkLog[fromWorker ? 'worker' : 'main']++;
+    if (chunkLog.timer) return;
+    chunkLog.timer = setTimeout(() => {
+        const { worker, main } = chunkLog;
+        console.debug(`[terrain] ${worker + main} chunks created (worker ${worker}, main thread ${main}), ${Object.keys(activeChunks).length} active`);
+        chunkLog = { worker: 0, main: 0, timer: null };
+    }, CHUNK_LOG_MS);
 }
 
 /**

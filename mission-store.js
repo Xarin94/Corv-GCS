@@ -233,6 +233,7 @@ function saveMission({ id, name, notes, items, route, vehicleType, meta }) {
     fs.renameSync(tmp, file);
 
     rebuildIndex();
+    console.log(`[store] mission saved: "${payload.name}" (${items.length} items, vehicle type ${payload.vehicleType}) → ${file}`);
     return { id: targetId, file, name: payload.name };
 }
 
@@ -240,12 +241,14 @@ function loadMission(id) {
     const file = path.join(getMissionsDir(), path.basename(id) + MISSION_EXT);
     if (!fs.existsSync(file)) throw new Error(`Mission "${id}" not found`);
     const data = readMissionFile(file);
+    console.log(`[store] mission loaded: "${data.name}" (${data.items.length} items, format v${data.version || 1})`);
     return { id, ...data };
 }
 
 function deleteMission(id) {
     const file = path.join(getMissionsDir(), path.basename(id) + MISSION_EXT);
     if (fs.existsSync(file)) fs.unlinkSync(file);
+    console.log(`[store] mission deleted: ${id}`);
     rebuildIndex();
     return true;
 }

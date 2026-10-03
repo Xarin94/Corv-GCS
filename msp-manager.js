@@ -722,6 +722,10 @@ async function missionLoadStored(index = 0) {
 }
 
 function sendConnectionState(state) {
+    console.log(`[msp] connection state → ${state}`);
+    require('./app-log').setHeader('Connection', state === 'CONNECTED'
+        ? `MSP ${portKind || ''} since ${new Date().toLocaleTimeString()}`
+        : `none (MSP link closed ${new Date().toLocaleTimeString()})`);
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('mavlink-connection-state', state);
     }

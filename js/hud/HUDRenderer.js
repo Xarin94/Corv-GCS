@@ -1017,7 +1017,8 @@ function drawTime(x, y) {
 /**
  * Push a message to the HUD message queue
  */
-export function pushHudMessage(text, level = 'info') {
+export function pushHudMessage(text, level = 'info', { log = true } = {}) {
+    if (log) console.log(`[hud] ${level}: ${text}`);
     hudMessages.push({ text, level, time: performance.now() });
     if (hudMessages.length > MAX_HUD_MESSAGES) hudMessages.shift();
 }

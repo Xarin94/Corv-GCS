@@ -391,6 +391,7 @@ function internalSeek(targetMs) {
 // IPC messaging ──────────────────────────────────────────────────────────────
 
 function sendState(state) {
+    if (state !== 'UNLOADED') console.log(`[replay] ${state}${replay ? ` at ${(currentLogMs() / 1000).toFixed(1)} s` : ''}`);
     if (!mainWindow || mainWindow.isDestroyed()) return;
     mainWindow.webContents.send('log-replay-state', {
         state,
@@ -434,7 +435,7 @@ function unload() {
             currentMs: 0, totalMs: 0, playing: false, cursor: 0
         });
     }
-    if (DEBUG) console.log('[replay] unloaded');
+    console.log('[replay] unloaded');
 }
 
 function load(filePath) {
@@ -470,7 +471,7 @@ function load(filePath) {
     if (replay.format === 'tlog') buildTlogPipeline();
 
     const elapsed = Date.now() - t0;
-    if (DEBUG) console.log(`[replay] loaded ${fileName} (${parsed.totalMessages} msgs, ${parsed.totalMs}ms) in ${elapsed}ms`);
+    console.log(`[replay] loaded ${fileName} (${replay.format}, ${parsed.totalMessages} msgs, ${(parsed.totalMs / 1000).toFixed(0)} s of flight) in ${elapsed} ms`);
 
     // Tell the renderer to clear the existing trail and reset telemetry state
     // so the replay starts with a fresh visualization, not glued onto previous data.

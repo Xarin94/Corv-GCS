@@ -2372,6 +2372,14 @@
                     <label>DEVTOOLS</label>
                     <button id="btn-devtools" class="file-upload-btn" type="button" onclick="openDevTools()">OPEN DEVTOOLS</button>
                 </div>
+                <div class="cfg-row">
+                    <label>DEBUG LOG (LAST 5 MIN)</label>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button id="btn-debuglog-save" class="file-upload-btn" type="button" onclick="saveDebugLog()" title="One file with the last 5 minutes of this session and of the previous one: send it to support">SAVE COPY…</button>
+                        <button id="btn-debuglog-reveal" class="file-upload-btn" type="button" onclick="revealDebugLog()" title="Show the debug log file, rewritten every few seconds">SHOW FILE</button>
+                    </div>
+                    <div id="debuglog-status" class="status-msg"></div>
+                </div>
             </div>
             <div class="setup-panel">
                 <div class="panel-header">GCS OPTIONS</div>
@@ -2987,6 +2995,8 @@
             document.body.appendChild(container);
 
             window.alert = function(msg) {
+                // Most failures reach the operator only here: keep the text in the debug log
+                console.warn('[ui] alert: ' + String(msg).slice(0, 400));
                 const toast = document.createElement('div');
                 Object.assign(toast.style, {
                     background: '#1a1a2e', color: '#e0e0e0', border: '1px solid #444',
@@ -3058,6 +3068,7 @@
                     document.body.appendChild(overlay);
 
                     const close = (result) => {
+                        console.log('[ui] confirm "' + String(msg).slice(0, 300) + '" -> ' + (result ? 'OK' : 'Cancel'));
                         document.removeEventListener('keydown', onKey, true);
                         overlay.remove();
                         resolve(result);

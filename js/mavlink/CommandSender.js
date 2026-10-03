@@ -705,17 +705,25 @@ export async function sendRelayToggle(relayNum, state) {
  */
 export async function uploadMission(items) {
     if (!items || items.length === 0) throw new Error('No mission items to upload');
+    console.log(`[mission] upload of ${items.length} items to ${STATE.systemId}/${STATE.componentId}`);
+    const t0 = Date.now();
+    let lastSeq = -1;
 
     return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
             cleanup();
+            console.error(`[mission] upload timeout after 15 s: last item requested ${lastSeq} of ${items.length}`);
             reject(new Error('Mission upload timeout'));
         }, 15000);
 
         // Handler for MISSION_REQUEST_INT (51) — autopilot asks for item N
         const onRequest = (data) => {
             const seq = data.seq;
-            if (seq >= items.length) return;
+            if (seq >= items.length) {
+                console.warn(`[mission] vehicle asked for item ${seq}, the mission has ${items.length}`);
+                return;
+            }
+            lastSeq = seq;
             const item = items[seq];
             sendMessage({
                 type: 'MISSION_ITEM_INT',
@@ -735,7 +743,7 @@ export async function uploadMission(items) {
                 y: Math.round((item.lng || 0) * 1e7),
                 z: item.alt || 0,
                 missionType: 0
-            }).catch(() => {});
+            }).catch((e) => console.error(`[mission] item ${seq} not sent: ${e.message}`));
         };
 
         // Handler for MISSION_REQUEST (40) — older protocol version
@@ -745,8 +753,10 @@ export async function uploadMission(items) {
         const onAck = (data) => {
             cleanup();
             if (data.type === 0) {
+                console.log(`[mission] upload accepted: ${items.length} items in ${Date.now() - t0} ms`);
                 resolve({ success: true, count: items.length });
             } else {
+                console.error(`[mission] upload rejected: MISSION_ACK type ${data.type} after item ${lastSeq}`);
                 reject(new Error(`Mission ACK error: type=${data.type}`));
             }
         };

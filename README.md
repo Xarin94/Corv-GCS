@@ -219,6 +219,19 @@ Missions, flight logs and LiDAR maps are written to a `data/` folder next to the
 they go to the per-user data folder and the mission library shows the path in use. Custom aircraft
 models (`.glb` / `.gltf`) go in `models/`.
 
+## Debug log for support
+
+The app keeps the **last 5 minutes** of what it did in `data/debug/corv-gcs-debug.log`,
+rewritten every 3 seconds and capped at 3 MB: connections and their failures, every command sent
+and its acknowledgement, STATUSTEXT, heartbeats lost and back, arming and mode changes, parameter
+and mission transfers, warnings shown on screen, button presses, a vehicle / link / frame-rate
+snapshot every 10 seconds, and crashes. At start-up the previous session's file becomes
+`corv-gcs-debug.prev.log`, so the minutes before a crash survive the restart.
+
+When something goes wrong, open **SYS CONFIG → DEBUG LOG → SAVE COPY…**: it writes one file with
+this session and the previous one, to send to support. **SHOW FILE** opens the folder. The log holds
+no keys or passwords (cellular key, NTRIP credentials are masked).
+
 ## Connection guide
 
 | Method | Protocol | Typical use | Default |

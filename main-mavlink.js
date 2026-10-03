@@ -9,6 +9,8 @@ const dgram = require('dgram');
 const fs = require('fs');
 const path = require('path');
 const { PassThrough, Transform } = require('stream');
+const appLog = require('./app-log');
+const trace = require('./mavlink-trace');
 
 // Lazy-load native modules to avoid ABI mismatch at startup
 let SerialPort = null;
@@ -202,6 +204,7 @@ function initMAVLinkHandlers(win) {
         try {
             ensureSerialLoaded();
             const ports = await SerialPort.list();
+            logPortList(ports);
             return ports.map(p => ({
                 path: p.path,
                 manufacturer: p.manufacturer || '',
@@ -218,6 +221,7 @@ function initMAVLinkHandlers(win) {
 
     // Connect via serial
     ipcMain.handle('mavlink-connect-serial', async (event, portPath, baudRate) => {
+        console.log(`[mavlink] connect serial ${portPath} @ ${baudRate || 57600} requested`);
         await disconnectCurrent();
         ensureSerialLoaded();
         ensureMAVLinkLoaded();
@@ -251,12 +255,14 @@ function initMAVLinkHandlers(win) {
             });
 
             port.on('error', (err) => {
-                console.error('[mavlink] Serial error:', err.message);
+                console.error(`[mavlink] Serial error on ${portPath}:`, err.message);
+                trace.onDisconnect(`serial error: ${err.message}`);
                 sendConnectionState('DISCONNECTED');
             });
 
-            port.on('close', () => {
-                console.log('[mavlink] Serial port closed');
+            port.on('close', (err) => {
+                console.log(`[mavlink] Serial port ${portPath} closed${err && err.disconnected ? ' (device unplugged)' : ''}`);
+                trace.onDisconnect(err && err.disconnected ? 'device unplugged' : 'port closed');
                 stopLinkStats();
                 sendConnectionState('DISCONNECTED');
             });
@@ -264,17 +270,19 @@ function initMAVLinkHandlers(win) {
             activeConnection = { type: 'serial', port, splitter, parser };
             startHeartbeat();
             startLinkStats('SERIAL');
+            trace.onConnect(`MAVLink serial ${portPath} @ ${baudRate || 57600}`, () => linkBytesRx);
             sendConnectionState('CONNECTED');
             console.log(`[mavlink] Connected to ${portPath} at ${baudRate} baud`);
             return { success: true };
         } catch (e) {
-            console.error('[mavlink] Serial connect failed:', e.message);
+            console.error(`[mavlink] Serial connect to ${portPath} @ ${baudRate} failed:`, e.message);
             throw e;
         }
     });
 
     // Connect via UDP
     ipcMain.handle('mavlink-connect-udp', async (event, host, port) => {
+        console.log(`[mavlink] connect UDP ${host}:${port} requested`);
         await disconnectCurrent();
         ensureMAVLinkLoaded();
         try {
@@ -305,6 +313,7 @@ function initMAVLinkHandlers(win) {
                     remoteAddress = rinfo.address;
                     remotePort = rinfo.port;
                     hasRemote = true;
+                    console.log(`[mavlink] UDP first packet from ${rinfo.address}:${rinfo.port} (replies go there)`);
                 }
                 linkBytesRx += msg.length;
                 passthrough.write(msg);
@@ -317,6 +326,7 @@ function initMAVLinkHandlers(win) {
             socket.on('error', (err) => {
                 console.error('[mavlink] UDP error:', err.message);
             });
+            socket.on('close', () => trace.onDisconnect('UDP socket closed'));
 
             activeConnection = {
                 type: 'udp',
@@ -329,17 +339,19 @@ function initMAVLinkHandlers(win) {
             };
             startHeartbeat();
             startLinkStats('UDP');
+            trace.onConnect(`MAVLink UDP listen :${port || 14550}`, () => linkBytesRx);
             sendConnectionState('CONNECTED');
             console.log(`[mavlink] UDP connected to ${host}:${port}`);
             return { success: true };
         } catch (e) {
-            console.error('[mavlink] UDP connect failed:', e.message);
+            console.error(`[mavlink] UDP connect (port ${port}) failed:`, e.message);
             throw e;
         }
     });
 
     // Connect via TCP (used for SITL on WSL which exposes TCP 5760)
     ipcMain.handle('mavlink-connect-tcp', async (event, host, port) => {
+        console.log(`[mavlink] connect TCP ${host}:${port} requested`);
         await disconnectCurrent();
         ensureMAVLinkLoaded();
         const net = require('net');
@@ -388,8 +400,9 @@ function initMAVLinkHandlers(win) {
                 console.error('[mavlink] TCP error:', err.message);
             });
 
-            socket.on('close', () => {
-                console.log('[mavlink] TCP connection closed');
+            socket.on('close', (hadError) => {
+                console.log(`[mavlink] TCP connection closed${hadError ? ' (after an error)' : ''}`);
+                trace.onDisconnect(hadError ? 'TCP closed after an error' : 'TCP closed');
                 stopLinkStats();
                 sendConnectionState('DISCONNECTED');
             });
@@ -404,12 +417,13 @@ function initMAVLinkHandlers(win) {
                 hasRemote: () => true
             };
             startLinkStats('TCP');
+            trace.onConnect(`MAVLink TCP ${tcpHost}:${tcpPort}`, () => linkBytesRx);
             sendConnectionState('CONNECTED');
             // Delay heartbeat start for TCP - give SITL time to finish initialization
             setTimeout(() => startHeartbeat(), 2000);
             return { success: true };
         } catch (e) {
-            console.error('[mavlink] TCP connect failed:', e.message);
+            console.error(`[mavlink] TCP connect to ${host}:${port} failed:`, e.message);
             throw e;
         }
     });
@@ -419,6 +433,8 @@ function initMAVLinkHandlers(win) {
     // end-to-end records. The link reconnects by itself after drops, so the
     // connection state only goes DISCONNECTED on an explicit disconnect.
     ipcMain.handle('mavlink-connect-lte', async (event, opts) => {
+        // Module id and relay only, never the key
+        console.log(`[mavlink] connect LTE module ${opts && opts.moduleId} via ${opts && opts.host}:${opts && opts.port} requested`);
         await disconnectCurrent();
         ensureMAVLinkLoaded();
         const { LteLink } = require('./lte-link');
@@ -434,6 +450,7 @@ function initMAVLinkHandlers(win) {
             passthrough.write(data);
         });
         link.on('status', (status) => {
+            logLteStatus(status);
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('lte-status', status);
             }
@@ -460,6 +477,7 @@ function initMAVLinkHandlers(win) {
         };
         startHeartbeat();
         startLinkStats('LTE');
+        trace.onConnect(`MAVLink LTE module ${opts.moduleId} via ${opts.host}:${opts.port}`, () => linkBytesRx);
         sendConnectionState('CONNECTED');
         console.log(`[mavlink] LTE connected to module ${opts.moduleId} via ${opts.host}:${opts.port}`);
         return { success: true };
@@ -467,6 +485,7 @@ function initMAVLinkHandlers(win) {
 
     // Connect CORV binary via serial — parse packets and emit as mavlink-message
     ipcMain.handle('corv-connect-serial', async (event, portPath, baudRate) => {
+        console.log(`[corv] connect serial ${portPath} @ ${baudRate || 460800} requested`);
         await disconnectCurrent();
         ensureSerialLoaded();
         try {
@@ -535,6 +554,7 @@ function initMAVLinkHandlers(win) {
                         corvLen -= total;
                         again = true;
                     } else {
+                        corvCrcErrors++;
                         corvBuf.copyWithin(0, 1, corvLen);
                         corvLen -= 1;
                         again = true;
@@ -544,28 +564,33 @@ function initMAVLinkHandlers(win) {
 
             port.on('error', (err) => {
                 console.error('[corv] Serial error:', err.message);
+                trace.onDisconnect(`serial error: ${err.message}`);
                 sendConnectionState('DISCONNECTED');
             });
 
-            port.on('close', () => {
-                console.log('[corv] Serial port closed');
+            port.on('close', (err) => {
+                console.log(`[corv] Serial port closed${err && err.disconnected ? ' (device unplugged)' : ''}, ${corvCrcErrors} CRC errors on this link`);
+                trace.onDisconnect(err && err.disconnected ? 'device unplugged' : 'port closed');
                 stopLinkStats();
                 sendConnectionState('DISCONNECTED');
             });
 
             activeConnection = { type: 'serial', port };
+            corvCrcErrors = 0;
             startLinkStats('CORV');
+            trace.onConnect(`CORV binary serial ${portPath} @ ${baudRate || 460800}`, () => linkBytesRx);
             sendConnectionState('CONNECTED');
             console.log(`[corv] Connected to ${portPath} at ${baudRate} baud`);
             return { success: true };
         } catch (e) {
-            console.error('[corv] Serial connect failed:', e.message);
+            console.error(`[corv] Serial connect to ${portPath} @ ${baudRate} failed:`, e.message);
             throw e;
         }
     });
 
     // Disconnect
     ipcMain.handle('mavlink-disconnect', async () => {
+        console.log('[mavlink] disconnect requested');
         await disconnectCurrent();
         return { success: true };
     });
@@ -576,6 +601,7 @@ function initMAVLinkHandlers(win) {
             throw new Error('No active serial connection');
         }
         const buf = Buffer.from(packetBytes);
+        console.log(`[corv] config packet out: ${buf.length} bytes, type 0x${(buf[2] || 0).toString(16)}`);
         activeConnection.port.write(buf);
         return { success: true };
     });
@@ -587,7 +613,7 @@ function initMAVLinkHandlers(win) {
             await sendMAVLinkCommand(cmd);
             return { success: true };
         } catch (e) {
-            console.error('[mavlink] Send command failed:', e.message);
+            console.error(`[mavlink] Send command ${cmd && cmd.command} failed:`, e.message);
             throw e;
         }
     });
@@ -599,7 +625,7 @@ function initMAVLinkHandlers(win) {
             await sendMAVLinkMessage(msg);
             return { success: true };
         } catch (e) {
-            console.error('[mavlink] Send message failed:', e.message);
+            console.error(`[mavlink] Send message ${msg && msg.type} failed:`, e.message);
             throw e;
         }
     });
@@ -607,6 +633,7 @@ function initMAVLinkHandlers(win) {
     // Toggle GCS output mute (suppress all outgoing messages)
     ipcMain.handle('mavlink-set-gcs-muted', async (event, muted) => {
         gcsOutputMuted = !!muted;
+        appLog.setHeader('GCS output', gcsOutputMuted ? 'MUTED (nothing is sent to the vehicle)' : null);
         console.log('[mavlink] GCS output', gcsOutputMuted ? 'MUTED' : 'UNMUTED');
         return { muted: gcsOutputMuted };
     });
@@ -623,11 +650,13 @@ function handlePacket(packet) {
     if (rawPacketCallback) rawPacketCallback(packet);
 
     const msgId = packet.header.msgid;
+    if (!replayActive) trace.onPacket(packet.header);
 
     try {
         // Look up message class from registry
         const MessageClass = messageRegistry ? messageRegistry.get(msgId) : null;
         let data = {};
+        if (!MessageClass && !replayActive) trace.onUndecoded(msgId);
 
         if (MessageClass && packet.protocol) {
             // Deserialize payload into typed message instance
@@ -643,6 +672,7 @@ function handlePacket(packet) {
             }
         }
 
+        if (!replayActive) trace.onMessage(msgId, data, packet.header.sysid, packet.header.compid);
         for (const cb of decodedMessageCallbacks) {
             try { cb(msgId, data); } catch (err) { console.error('[mavlink] decoded-message tap failed:', err.message); }
         }
@@ -654,7 +684,8 @@ function handlePacket(packet) {
             compId: packet.header.compid
         });
     } catch (e) {
-        console.error(`[mavlink] Packet parse error for msg ${msgId}:`, e.message);
+        const skipped = appLog.throttle(`parse-${msgId}`, 5000);
+        if (skipped >= 0) console.error(`[mavlink] Packet parse error for msg ${msgId}: ${e.message}${skipped ? ` (+${skipped} more)` : ''}`);
         // For unknown/malformed messages, send with empty data
         mainWindow.webContents.send('mavlink-message', {
             msgId,
@@ -724,6 +755,7 @@ function resolveEnumValue(str) {
  * Send a COMMAND_LONG message
  */
 async function sendMAVLinkCommand(cmd) {
+    trace.onSend('COMMAND_LONG', cmd);
     const msg = new common.CommandLong();
     msg.targetSystem = cmd.targetSystem || 1;
     msg.targetComponent = cmd.targetComponent || 1;
@@ -746,6 +778,7 @@ async function sendMAVLinkCommand(cmd) {
  * DO_SET_HOME as a COMMAND_INT internally.
  */
 async function sendMAVLinkCommandInt(cmd) {
+    trace.onSend('COMMAND_INT', cmd);
     const msg = new common.CommandInt();
     msg.targetSystem = cmd.targetSystem || 1;
     msg.targetComponent = cmd.targetComponent || 1;
@@ -784,7 +817,6 @@ async function sendMAVLinkMessage(msg) {
             mavMsg.paramId = msg.paramId;
             mavMsg.paramValue = msg.paramValue;
             mavMsg.paramType = msg.paramType || 9;
-            console.log(`[mavlink] PARAM_SET: ${msg.paramId} = ${msg.paramValue} (type=${mavMsg.paramType}, target=${mavMsg.targetSystem}/${mavMsg.targetComponent})`);
             break;
         }
         case 'PARAM_REQUEST_LIST': {
@@ -859,7 +891,6 @@ async function sendMAVLinkMessage(msg) {
             mavMsg.reqStreamId = msg.reqStreamId || 0;
             mavMsg.reqMessageRate = msg.reqMessageRate || 10;
             mavMsg.startStop = msg.startStop !== undefined ? msg.startStop : 1;
-            console.log(`[mavlink] REQUEST_DATA_STREAM: stream=${mavMsg.reqStreamId} rate=${mavMsg.reqMessageRate}Hz start=${mavMsg.startStop}`);
             break;
         }
         case 'RC_CHANNELS_OVERRIDE': {
@@ -923,6 +954,7 @@ async function sendMAVLinkMessage(msg) {
             throw new Error(`Unknown message type: ${msg.type}`);
     }
 
+    trace.onSend(msg.type, msg);
     await sendToConnection(mavMsg);
 }
 
@@ -930,7 +962,11 @@ async function sendMAVLinkMessage(msg) {
  * Send a MAVLink message to the active connection
  */
 async function sendToConnection(msg) {
-    if (gcsOutputMuted) return;
+    if (gcsOutputMuted) {
+        const skipped = appLog.throttle('tx-muted', 10000);
+        if (skipped >= 0) console.warn(`[mavlink] GCS output muted: ${msg.constructor && msg.constructor.MSG_NAME} not sent${skipped ? ` (+${skipped} more)` : ''}`);
+        return;
+    }
     if (!activeConnection) throw new Error('No active connection');
 
     if (activeConnection.type === 'serial') {
@@ -946,7 +982,8 @@ async function sendToConnection(msg) {
     } else if (activeConnection.type === 'udp') {
         const { socket, getRemote, hasRemote } = activeConnection;
         if (!hasRemote()) {
-            console.warn('[mavlink] No remote endpoint yet for UDP');
+            const skipped = appLog.throttle('udp-no-remote', 10000);
+            if (skipped >= 0) console.warn(`[mavlink] No remote endpoint yet for UDP (nothing received): ${msg.constructor && msg.constructor.MSG_NAME} not sent${skipped ? ` (+${skipped} more)` : ''}`);
             return;
         }
         const remote = getRemote();
@@ -1029,6 +1066,7 @@ async function disconnectCurrent() {
     }
 
     activeConnection = null;
+    trace.onDisconnect('disconnect');
     sendConnectionState('DISCONNECTED');
     console.log('[mavlink] Disconnected');
 }
@@ -1045,6 +1083,7 @@ function sendConnectionState(state) {
         stopTlogRecording();
     }
 
+    console.log(`[mavlink] connection state → ${state}`);
     if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('mavlink-connection-state', state);
     }
@@ -1107,6 +1146,31 @@ function getNextSequenceNumber() {
     const seq = sequenceNumber;
     sequenceNumber = (sequenceNumber + 1) & 0xFF;
     return seq;
+}
+
+// ── Debug log helpers ─────────────────────────────────────────────────────────
+
+let corvCrcErrors = 0;
+
+// The port list is asked for often (UI refresh): logged when it changes
+let lastPortList = null;
+function logPortList(ports) {
+    const desc = ports.map(p => `${p.path}${p.friendlyName ? ` "${p.friendlyName}"` : p.manufacturer ? ` "${p.manufacturer}"` : ''}${p.vendorId ? ` ${p.vendorId}:${p.productId}` : ''}`).join(', ');
+    if (desc === lastPortList) return;
+    lastPortList = desc;
+    console.log(`[serial] ${ports.length} port(s): ${desc || 'none'}`);
+}
+
+// Cellular link status: state changes only (the object also carries counters)
+let lastLteState = null;
+function logLteStatus(status) {
+    if (!status || status.state === lastLteState) return;
+    lastLteState = status.state;
+    const extra = Object.entries(status)
+        .filter(([k, val]) => k !== 'state' && !/key/i.test(k) && (typeof val !== 'object' || val === null))
+        .map(([k, val]) => `${k}=${val}`).join(' ');
+    const text = `[lte] ${status.state}${extra ? ` (${extra})` : ''}`;
+    if (/error|fail|reject|denied/i.test(status.state)) console.warn(text); else console.log(text);
 }
 
 // Raw packet callback for telemetry forwarding (MAVLink passthrough)

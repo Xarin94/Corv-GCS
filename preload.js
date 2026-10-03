@@ -44,6 +44,15 @@ contextBridge.exposeInMainWorld('devtools', {
   open: () => ipcRenderer.send('devtools-open')
 });
 
+// Rolling debug log (app-log.js): last 5 minutes on disk, for remote support
+contextBridge.exposeInMainWorld('appLog', {
+  info: () => ipcRenderer.invoke('applog-info'),
+  reveal: () => ipcRenderer.invoke('applog-reveal'),
+  save: () => ipcRenderer.invoke('applog-save'),
+  // A header line of the log file, always current (e.g. 'Display', 'Renderer')
+  setHeader: (key, value) => ipcRenderer.send('applog-header', String(key), value == null ? null : String(value))
+});
+
 // Preload bridge: call the main process to read .hgt files (avoid using fs in the preload script)
 contextBridge.exposeInMainWorld('topography', {
   // Returns array of filenames (strings), NOT file contents

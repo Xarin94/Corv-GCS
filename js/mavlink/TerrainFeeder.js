@@ -45,6 +45,7 @@ const RESEND_AFTER_MS = 3000;   // requests repeat every 2 s; still asked after 
 const LOCATION_SCALING_FACTOR_INV = 89.83204953368922;
 
 const STALL_MS = 20000;         // TERRAIN_REPORT unchanged this long with blocks pending = stalled
+const REPORT_LOG_MS = 10000;
 
 const queue = new Map();        // block key → block, in arrival order
 const sentAt = new Map();       // block key → when it went out
@@ -200,8 +201,11 @@ function handleTerrainReport(data) {
     const now = Date.now();
     const report = `${data.pending}/${data.loaded}`;
     if (report !== diag.report) {
-        if (data.pending > 0 || diag.report) {
+        // Every change while a grid loads is one line a second: the debug log
+        // keeps one per REPORT_LOG_MS, plus the moment the queue empties.
+        if ((data.pending > 0 || diag.report) && (data.pending === 0 || now - (diag.loggedAt || 0) >= REPORT_LOG_MS)) {
             console.log(`[terrain-feeder] Vehicle terrain status: pending=${data.pending} loaded=${data.loaded}`);
+            diag.loggedAt = now;
         }
         diag.report = report;
         diag.changedAt = now;

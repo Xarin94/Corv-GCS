@@ -1116,6 +1116,7 @@ function initSimulationTab() {
                             await connect(connType, { host: connHost, port: connPort });
                             if (statusEl) statusEl.textContent = `${vehicle} SITL running — connected (${connType})`;
                         } catch (e) {
+                            console.error(`[sitl] running but auto-connect failed: ${e.message}`);
                             if (statusEl) statusEl.textContent = `SITL running but connection failed: ${e.message}`;
                         }
                     }, 1000);

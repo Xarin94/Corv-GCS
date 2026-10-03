@@ -1,4 +1,7 @@
 const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron');
+// Rolling debug log (last 5 min on disk): first, so every later line is captured
+const appLog = require('./app-log');
+appLog.init();
 const fs = require('fs');
 const path = require('path');
 const { initMAVLinkHandlers, cleanup: cleanupMAVLink, registerDecodedMessageCallback } = require('./main-mavlink');
@@ -164,6 +167,7 @@ function createWindow() {
     }
   });
 
+  console.log('[window] created, loading html/index.html');
   win.loadFile(path.join(__dirname, 'html', 'index.html'));
 
   // Route window.open / target=_blank to the system browser
@@ -211,25 +215,8 @@ function createWindow() {
   initLidarHandlers(win);
   registerDecodedMessageCallback(lidarOnMavlink);
 
-  // Forward renderer console.* messages to the terminal (PowerShell) so we can debug
-  // without opening DevTools.
-  win.webContents.on('console-message', (event) => {
-    // Electron 39+: the event object includes WebContentsConsoleMessageEventParams.
-    const level = event.level;
-    const message = event.message;
-    const line = event.lineNumber;
-    const sourceId = event.sourceId;
-
-    const prefix = `[renderer]${sourceId ? ` ${sourceId}` : ''}${line ? `:${line}` : ''}`;
-    const text = `${prefix} ${message}`;
-
-    // Chromium levels are numeric; map them to Node/Electron console methods.
-    // (0=log, 1=warning, 2=error, 3=debug; other values can appear depending on Chromium)
-    if (level === 2) console.error(text);
-    else if (level === 1) console.warn(text);
-    else if (level === 3) console.debug(text);
-    else console.log(text);
-  });
+  // Renderer console → terminal and debug log; window load/crash/hang events
+  appLog.attachWindow(win);
 
   // IPC handlers for window controls
   ipcMain.on('window-minimize', () => win.minimize());
@@ -237,7 +224,10 @@ function createWindow() {
     if (win.isMaximized()) win.unmaximize();
     else win.maximize();
   });
-  ipcMain.on('window-close', () => win.close());
+  ipcMain.on('window-close', () => {
+    console.log('[window] close button');
+    win.close();
+  });
 }
 
 app.whenReady().then(() => {
@@ -303,6 +293,8 @@ ipcMain.handle('adsb-fetch', async (event, lamin, lomin, lamax, lomax) => {
     });
     return data;
   } catch (err) {
+    const skipped = appLog.throttle('adsb-fetch', 60000);
+    if (skipped >= 0) console.warn(`[adsb] OpenSky fetch failed: ${err.message}${skipped ? ` (+${skipped} more failures)` : ''}`);
     return { states: null, error: err.message };
   }
 });

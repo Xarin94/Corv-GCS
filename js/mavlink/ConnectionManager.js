@@ -18,6 +18,20 @@ let currentConnection = null;
  * @param {object} options - Connection options
  */
 export async function connect(type, options = {}) {
+    // Never the cellular key: everything else helps reading a failed connect
+    const shown = Object.entries(options).filter(([k]) => !/key|pass/i.test(k)).map(([k, v]) => `${k}=${v}`).join(' ');
+    console.log(`[conn] connect ${type} ${shown}`);
+    const t0 = Date.now();
+    try {
+        await connectLink(type, options);
+    } catch (e) {
+        console.error(`[conn] connect ${type} failed after ${Date.now() - t0} ms: ${e.message}`);
+        throw e;
+    }
+    console.log(`[conn] connect ${type} done in ${Date.now() - t0} ms`);
+}
+
+async function connectLink(type, options) {
     // Disconnect existing connection first
     if (STATE.connected) {
         await disconnect();
@@ -116,6 +130,7 @@ export function isMSPLink() {
  */
 export async function disconnect() {
     if (!currentConnection) return;
+    console.log(`[conn] disconnect ${currentConnection.type}`);
 
     if (currentConnection.type === 'corv-binary') {
         await window.corvSerial.disconnect();

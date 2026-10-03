@@ -12,6 +12,7 @@ import {
 } from './core/constants.js';
 import { STATE, demoFlightState, pushGHistory } from './core/state.js';
 import { initI18n, setLanguage } from './core/i18n.js';
+import { initDebugLog, noteFps } from './core/DebugLog.js';
 import { latLonToMeters, calculateDistance, lerpColor, getHeightColor } from './core/utils.js';
 import { fetchADSBData, downloadTrafficCSV, getNearestTraffic } from './adsb/ADSBManager.js';
 
@@ -1196,6 +1197,7 @@ function updateFPS(now, rendered) {
     if (rendered) fpsFrameCount++;
     if (now - fpsLastTime >= 1000) {
         updateFPSDisplay(fpsFrameCount);
+        noteFps(fpsFrameCount);
         fpsFrameCount = 0;
         fpsLastTime = now;
     }
@@ -1959,6 +1961,8 @@ function init() {
     // Initialize 3D scene
     const container = document.getElementById('scene-container');
     const { scene, camera, renderer } = init3D(container);
+    console.log('[init] 3D scene ready');
+    initDebugLog({ getTab: getCurrentTab, getRenderer: () => renderer });
 
     // Camera mode + orbit controls
     initThirdPersonControls();
@@ -1966,6 +1970,7 @@ function init() {
     
     // Initialize terrain manager
     initTerrain(scene, renderer, getCurrentSunDirection());
+    console.log('[init] initTerrain done');
     window.sunlightEnabled = isSunlightEnabled();
 
     // Realistic sunlight OFF by default at startup: flat lighting is more
@@ -1975,6 +1980,7 @@ function init() {
 
     // Initialize HUD
     initHUD(document.getElementById('hud-canvas'));
+    console.log('[init] initHUD done');
     
     // Setup event listeners
     window.onresize = handleResize;
@@ -1994,6 +2000,7 @@ function init() {
 
     // Initialize MAVLink and GCS controls
     initMAVLink();
+    console.log('[init] initMAVLink done');
     initTerrainFeeder();
     initCommandBar();
     initGCSSidebar();
@@ -2002,12 +2009,15 @@ function init() {
     initRotorLoadPanel();
     initAnnunciatorPanel();
     initTabs();
+    console.log('[init] initTabs done');
     initOfflinePanel();
     initMap('mini-map');
+    console.log('[init] initMap done');
     initMinimapSwap();
     updateMinimapHoverSize();
     initParametersPanel();
     initFPV();
+    console.log('[init] initFPV done');
 
     // Livox point cloud: geometry in the scene, settings panel + flight strip
     initLidarCloud(scene);
@@ -2017,6 +2027,7 @@ function init() {
     initRosVolume(scene);
     initRosController();
     initCellularLink();
+    console.log('[init] initCellularLink done');
 
     // Relative navigation (SYS CONFIG): terrain off and a zero plane while it is on
     window.addEventListener('relNavChanged', applyRelativeFrame);
@@ -2062,7 +2073,7 @@ function init() {
         const prefix = SEVERITY_LEVELS[sev] || 'INFO';
         const text = `[${prefix}] ${data.text || ''}`;
         const level = sev <= 3 ? 'error' : sev <= 4 ? 'warning' : 'info';
-        pushHudMessage(text, level);
+        pushHudMessage(text, level, { log: false });   // the main process logs STATUSTEXT
         if (sev <= 3) pushMavOverlayError(text);
     });
 
@@ -2086,7 +2097,7 @@ function init() {
     // Show COMMAND_ACK results on HUD + toast
     window.addEventListener('commandAck', (e) => {
         const { cmdName, resultName, level } = e.detail;
-        pushHudMessage(`${cmdName}: ${resultName}`, level);
+        pushHudMessage(`${cmdName}: ${resultName}`, level, { log: false });   // the main process logs COMMAND_ACK
         showAckToast(cmdName, resultName);
     });
 
