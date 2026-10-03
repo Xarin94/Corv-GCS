@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.6-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.7.7-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"/>
   <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
   <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
@@ -141,6 +141,14 @@ by height; the map can be saved as a `.ply` file for other software.
 
 ![LiDAR](docs/images/lidar.jpg)
 
+## Surfaces from ROS
+
+Any LiDAR, echo sounder or sonar running under ROS (1 or 2) reaches the GCS through rosbridge: the
+ground under an aircraft, the bed under a boat or a ROV, the walls of an underwater cave, drawn as a
+mesh of grey lines over a transparent body, averaged in 30 cm cells instead of millions of points,
+in absolute or relative navigation. A preview in the settings shows how the sensor is mounted and
+the zone it collects from.
+
 ## Under water, and without GPS
 
 Lakes and seas are found in the elevation data and drawn as a blue surface; a ROV is placed at its
@@ -180,9 +188,9 @@ radio that is the difference between two packets and several minutes.
 ## Installation
 
 Installers are on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
-**Windows** `CORV GCS Setup 1.7.6.exe`, **macOS** `CORV GCS-1.7.6-arm64.dmg` (Apple silicon) and
-`CORV GCS-1.7.6-x64.dmg` (Intel), **Linux** `CORV GCS-1.7.6.AppImage` (portable) and
-`corv-gcs_1.7.6_amd64.deb` (Debian / Ubuntu).
+**Windows** `CORV GCS Setup 1.7.7.exe`, **macOS** `CORV GCS-1.7.7-arm64.dmg` (Apple silicon) and
+`CORV GCS-1.7.7-x64.dmg` (Intel), **Linux** `CORV GCS-1.7.7.AppImage` (portable) and
+`corv-gcs_1.7.7_amd64.deb` (Debian / Ubuntu).
 
 The macOS app is not signed with an Apple Developer ID: after copying it to Applications, run
 `xattr -dr com.apple.quarantine "/Applications/CORV GCS.app"` once, or macOS reports it as damaged.
@@ -234,6 +242,7 @@ the ArduPilot documentation page for each flight mode, mission command, failsafe
 [vehicle setup](https://xarin94.github.io/Corv-GCS/setup.html),
 [simulator](https://xarin94.github.io/Corv-GCS/simulator.html),
 [LiDAR](https://xarin94.github.io/Corv-GCS/LIDAR.html),
+[ROS surface](https://xarin94.github.io/Corv-GCS/ROS.html),
 [keyboard shortcuts](https://xarin94.github.io/Corv-GCS/shortcuts.html).
 Its source is the [docs/](docs/) folder.
 
