@@ -108,6 +108,20 @@ the photo interval from the forward overlap — a Mavic 3 at 100 m gives 49 m be
 every 26 m and 2.7 cm per pixel on the ground. Every planned photo is a red dot on the route; hover it
 to see the rectangle it covers. The default gimbal pitch and yaw are set next to the camera.
 
+## Sonar and LiDAR surveys
+
+For a sensor that sweeps a fan under the vehicle — an imaging or multibeam sonar, a LiDAR — set the
+area scan's **SPACING** to *Sensor*: give the fan's **APERTURE** (across the track), its **RANGE** and
+the **DESIGN DISTANCE** to the surface (the depth under a boat; 0: the segment's altitude). The swath
+is the narrower of the aperture's width at that distance and the width the range reaches
+(2·√(range² − distance²)); the lanes are spaced by the swath less the **SIDE OVERLAP**, and the card
+says which of the two limited it. A 90° sonar with 90 m of range at 30 m sweeps 60 m: 30 m between
+lanes with 50 % overlap. Choose the design distance from the shallowest water that must be covered: the
+swath narrows with depth, so lanes spaced for 30 m leave gaps where the bed is shallower than 15 m. With
+50 % overlap the bed under each lane is also seen by the next lane's outer beams, where the water under
+a hull is noisy. A boat's mission has no take-off; no camera is triggered. During the survey the ROS
+strip shows how much of each planned area is covered ([ROS](ROS.md)).
+
 ## Upload, read, save
 
 - **UPLOAD** sends the calculated mission to the autopilot (MAVLink mission protocol, or MSP on INAV);

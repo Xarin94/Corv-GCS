@@ -3,7 +3,7 @@
  * Translates MAVLink message data into the application's STATE format
  */
 
-import { STATE, pushGHistory } from '../core/state.js';
+import { STATE, pushGHistory, pushPoseHistory } from '../core/state.js';
 import { purgeStaleTraffic } from '../adsb/ADSBManager.js';
 import { relNavOnMessage, isRelativeMode } from '../core/RelativeNav.js';
 
@@ -333,6 +333,10 @@ function mapAttitude(data) {
     if (Number.isFinite(data.rollspeed)) STATE.rollRate = data.rollspeed;
     if (Number.isFinite(data.pitchspeed)) STATE.pitchRate = data.pitchspeed;
     if (Number.isFinite(data.yawspeed)) STATE.yawRate = data.yawspeed;
+    pushPoseHistory('att', {
+        t: STATE.attTime, b: Number.isFinite(data.timeBootMs) ? data.timeBootMs : null,
+        roll: data.roll, pitch: data.pitch, yaw: data.yaw, p: STATE.rollRate, q: STATE.pitchRate, r: STATE.yawRate
+    });
     // ATTITUDE arrives at ~25 Hz, faster than GLOBAL_POSITION_INT on many
     // setups, so refresh AoA/SSA here too — otherwise the HUD flight-path
     // marker only moves at the slower of the two streams.
@@ -378,6 +382,13 @@ function mapGlobalPositionInt(data) {
 
     STATE.gamma = Math.atan2(-STATE.vd, vHoriz); // positive = climbing
     STATE.track = Math.atan2(STATE.ve, STATE.vn); // NED track angle
+
+    if (!isRelativeMode() && data.lat !== 0 && data.lon !== 0) {
+        pushPoseHistory('pos', {
+            t: _lastGlobalPosTs, b: Number.isFinite(data.timeBootMs) ? data.timeBootMs : null,
+            lat: STATE.lat, lon: STATE.lon, alt: STATE.rawAlt, vn: STATE.vn, ve: STATE.ve, vd: STATE.vd
+        });
+    }
 
     // Compute AoA and SSA by rotating NED velocity into body frame
     computeAeroAngles();

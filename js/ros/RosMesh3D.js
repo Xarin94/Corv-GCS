@@ -7,7 +7,11 @@
  * under an aircraft, a sea bed under a boat. A cave's 3D surface is drawn by
  * RosVolume3D.js with the same uniforms and look. Colour can switch to a red →
  * blue ramp by distance from the vehicle: red is the nearest surface, blue is
- * NEAR + max(20 m, 2 × NEAR) away.
+ * NEAR + max(20 m, 2 × NEAR) away; or to ROUGHNESS: grey where the surface is
+ * flat (level or sloping), redder the further it departs from its local plane
+ * (SurfaceRaster.roughness: RMS about the plane fitted within 1.5 m; full red
+ * at ROUGH_FULL), so rocks, a wreck, a scarp or a bad average stand out of a
+ * flat bed.
  *
  * Adaptive resolution (SurfaceRaster.js). The cell size is the finest the
  * mesh gets: each cell is drawn at the finest of 30 cm, 60 cm, 1.2, 2.4, 4.8 m
@@ -50,7 +54,7 @@ import { STATE } from '../core/state.js';
 import { ORIGIN } from '../core/constants.js';
 import { latLonToMeters } from '../core/utils.js';
 import { TILE, tileKey } from './SurfaceTiles.js';
-import { EMPTY, LEVELS, rasterize, triangulate } from './SurfaceRaster.js';
+import { EMPTY, LEVELS, rasterize, roughness, triangulate } from './SurfaceRaster.js';
 
 const BLOCK_TILES = 8;
 const BLOCK = BLOCK_TILES * TILE;          // cells per block side
@@ -60,9 +64,12 @@ const MIN_TRI_PX = 6;
 const REBUILD_QUADS_PER_FRAME = 70000;     // rebuild budget
 const RANGE_MS = 250;
 const GHOST_ALPHA = 0.35;
+const ROUGH_FULL = 0.5;                    // m RMS about the local plane: full red
+const MODES = { gray: 0, distance: 1, rough: 2 };
 
 const VERTEX = `
 uniform highp sampler2D uHeights;
+uniform sampler2D uRough;
 uniform float uCell;
 uniform int uStep;
 uniform int uW;
@@ -70,21 +77,28 @@ uniform vec3 uVehicle;
 varying vec2 vCell;
 varying float vDist;
 varying float vLevel;
+varying float vRough;
 void main() {
     ivec2 g = ivec2(gl_VertexID % uW, gl_VertexID / uW) * uStep;
     vec2 hl = texelFetch(uHeights, g, 0).rg;     // height, resolution level
     vLevel = hl.g;
+    vRough = texelFetch(uRough, g, 0).r * 2.55;  // m (stored in cm)
     vec4 local = vec4((float(g.x) + 0.5) * uCell, hl.r, -(float(g.y) + 0.5) * uCell, 1.0);
     vCell = vec2(g);
     vDist = distance((modelMatrix * local).xyz, uVehicle);
     gl_Position = projectionMatrix * modelViewMatrix * local;
 }`;
 
-// Distance colour ramp, red (near) → violet → blue (far); also RosVolume3D's
+// Distance colour ramp, red (near) → violet → blue (far); roughness: the grey
+// of the lines (flat) → amber → red (irregular). Also RosVolume3D's
 export const ROS_RAMP_GLSL = `
 vec3 ramp(float t) {
     const vec3 R = vec3(1.0, 0.22, 0.16), M = vec3(0.72, 0.30, 0.88), B = vec3(0.18, 0.45, 1.0);
     return t < 0.5 ? mix(R, M, t * 2.0) : mix(M, B, t * 2.0 - 1.0);
+}
+vec3 roughRamp(vec3 base, float t) {
+    const vec3 A = vec3(1.0, 0.68, 0.18), R = vec3(1.0, 0.16, 0.12);
+    return t < 0.5 ? mix(base, A, t * 2.0) : mix(A, R, t * 2.0 - 1.0);
 }`;
 
 const FRAGMENT = `
@@ -94,9 +108,11 @@ uniform float uAlpha;
 uniform float uMode;
 uniform float uNear;
 uniform float uFar;
+uniform float uRoughFull;
 varying vec2 vCell;
 varying float vDist;
 varying float vLevel;
+varying float vRough;
 ${ROS_RAMP_GLSL}
 // Triangle edges of a lattice: along x, y and the x = y diagonal; faded out
 // where its cells are smaller than a few pixels
@@ -119,9 +135,17 @@ void main() {
     vec2 ft = max(fwidth(t), vec2(1e-6));
     vec2 lt = 1.0 - smoothstep(vec2(0.6), vec2(1.6), abs(fract(t + 0.5) - 0.5) / ft);
     float major = max(lt.x, lt.y) * smoothstep(3.0, 6.0, 1.0 / max(ft.x, ft.y));
-    bool byDistance = uMode > 0.5;
-    vec3 col = byDistance ? ramp(clamp((vDist - uNear) / max(uFar - uNear, 1.0), 0.0, 1.0)) : uColor;
-    float a = max(minor * 0.85, major * 0.6) + uFill * (byDistance ? 2.5 : 1.0);
+    vec3 col = uColor;
+    float fill = uFill;
+    if (uMode > 1.5) {
+        float t = clamp(vRough / uRoughFull, 0.0, 1.0);
+        col = roughRamp(uColor, t);
+        fill *= 1.0 + 3.5 * t;
+    } else if (uMode > 0.5) {
+        col = ramp(clamp((vDist - uNear) / max(uFar - uNear, 1.0), 0.0, 1.0));
+        fill *= 2.5;
+    }
+    float a = max(minor * 0.85, major * 0.6) + fill;
     gl_FragColor = vec4(col, min(a, 1.0) * uAlpha);
 }`;
 
@@ -134,7 +158,8 @@ const shared = {
     uMode: { value: 0 },
     uVehicle: { value: new THREE.Vector3() },
     uNear: { value: 0 },
-    uFar: { value: 20 }
+    uFar: { value: 20 },
+    uRoughFull: { value: ROUGH_FULL }
 };
 const view = { visible: false, shown: true, overTerrain: true, minSamples: 1, range: { near: 0, far: 20 }, lastRange: 0 };
 export { shared as rosShared, view as rosView };
@@ -220,12 +245,16 @@ class SurfaceLayer {
         const texData = new Float32Array(TEX * TEX * 2);           // drawn: height, level
         const tex = new THREE.DataTexture(texData, TEX, TEX, THREE.RGFormat, THREE.FloatType);
         tex.internalFormat = 'RG32F';
-        const uniforms = { ...shared, uHeights: { value: tex }, uStep: { value: 1 }, uW: { value: TEX }, uAlpha: { value: 1 } };
+        const rough = new Uint8Array(TEX * TEX);                   // roughness, cm (ROUGH mode only)
+        const roughTex = new THREE.DataTexture(rough, TEX, TEX, THREE.RedFormat, THREE.UnsignedByteType);
+        roughTex.internalFormat = 'R8';
+        roughTex.unpackAlignment = 1;                              // rows of 241 bytes
+        const uniforms = { ...shared, uHeights: { value: tex }, uRough: { value: roughTex }, uStep: { value: 1 }, uW: { value: TEX }, uAlpha: { value: 1 } };
         const common = { vertexShader: VERTEX, fragmentShader: FRAGMENT, transparent: true, depthWrite: false, side: THREE.DoubleSide };
         const mat = new THREE.ShaderMaterial({ ...common, uniforms, depthTest: !view.overTerrain });
         const ghostMat = new THREE.ShaderMaterial({ ...common, uniforms: { ...uniforms, uAlpha: { value: GHOST_ALPHA } }, depthFunc: THREE.GreaterDepth });
         const b = {
-            bx, by, data, wts, texData, tex, mat, ghostMat, tiles: new Set(),
+            bx, by, data, wts, texData, tex, rough, roughTex, roughDone: false, mat, ghostMat, tiles: new Set(),
             geo: null, mesh: null, ghost: null, capacity: 0, triangles: 0,
             step: 0, dirty: true, box: new THREE.Box3(), levelCount: new Uint32Array(LEVELS + 1)
         };
@@ -278,6 +307,7 @@ class SurfaceLayer {
         b.mat.dispose();
         b.ghostMat.dispose();
         b.tex.dispose();
+        b.roughTex.dispose();
         this.blocks.delete(key);
     }
 
@@ -313,6 +343,12 @@ class SurfaceLayer {
     fillBlock(b) {
         b.levelCount = rasterize(b.data, b.wts, TEX, TEX, b.texData, { minSamples: view.minSamples, cell: this.cell });
         b.tex.needsUpdate = true;
+        // Roughness only while it is shown; switching to it refills the blocks
+        b.roughDone = shared.uMode.value === MODES.rough;
+        if (b.roughDone) {
+            roughness(b.texData, TEX, TEX, b.rough, { cell: this.cell });
+            b.roughTex.needsUpdate = true;
+        }
         b.dirty = false;
     }
 
@@ -439,10 +475,18 @@ export function setRosMeshFillOpacity(a) {
     shared.uFill.value = Math.max(0, Math.min(1, a));
 }
 
-/** 'gray' or 'distance' (red near → blue far from the vehicle). */
+/** 'gray', 'distance' (red near → blue far from the vehicle) or 'rough' (grey flat → red irregular). */
 export function setRosMeshColorMode(mode) {
-    shared.uMode.value = mode === 'distance' ? 1 : 0;
+    const v = MODES[mode] ?? MODES.gray;
+    if (v === shared.uMode.value) return;
+    shared.uMode.value = v;
+    if (v === MODES.rough) {
+        for (const l of Object.values(layers)) for (const b of l.blocks.values()) if (!b.roughDone) b.dirty = true;
+    }
 }
+
+/** RMS about the local plane drawn full red, m. */
+export function getRosRoughFull() { return shared.uRoughFull.value; }
 
 /** Samples a cell needs to be drawn at its own size; fewer: a coarser level. */
 export function setRosMeshMinSamples(n) {
@@ -474,7 +518,7 @@ export function updateRosMesh() {
     const veh = latLonToMeters(STATE.lat, STATE.lon);
     shared.uVehicle.value.set(veh.x, (STATE.rawAlt || 0) + (STATE.offsetAlt || 0), veh.z);
     const now = performance.now();
-    if (shared.uMode.value > 0.5 && now - view.lastRange > RANGE_MS) {
+    if (shared.uMode.value === MODES.distance && now - view.lastRange > RANGE_MS) {
         view.lastRange = now;
         const near = Math.min(...all.map(l => l.nearest(shared.uVehicle.value)));
         if (Number.isFinite(near)) {

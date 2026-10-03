@@ -133,6 +133,72 @@ export function rasterize(data, wts, w, h, out, opts = {}) {
     return count;
 }
 
+// Scratch summed-area tables per grid size: count, x, y, z, xx, yy, xy, xz, yz, zz
+const satCache = new Map();
+const SAT_N = 10;
+
+/**
+ * Roughness of the drawn surface: at each drawn cell, the RMS distance of the
+ * heights around it (within RADIUS) from the plane that fits them best — the
+ * variance about the local plane. A flat bed, level or sloping, is 0; ripples,
+ * rocks, a wreck, a scarp, a bad average are not. Summed-area tables of the
+ * fit's moments make it O(1) per cell whatever the radius.
+ * @param {Float32Array} view  rasterize()'s output (height, level per cell)
+ * @param {Uint8Array} out     per cell: the RMS in cm, 0–255 (255: 2.55 m or more)
+ * @param {{cell?: number, radius?: number}} [opts]  radius in m (default 1.5 m, at least one cell)
+ */
+export function roughness(view, w, h, out, opts = {}) {
+    const cell = opts.cell ?? 0.3;
+    const r = Math.max(1, Math.round((opts.radius ?? 1.5) / cell));
+    const W = w + 1, key = w * 65536 + h;
+    let sat = satCache.get(key);
+    if (!sat) { sat = new Float64Array(W * (h + 1) * SAT_N); satCache.set(key, sat); }
+    // Heights from a reference in the block: the moments stay small
+    let z0 = NaN;
+    for (let p = 0; p < w * h && Number.isNaN(z0); p++) if (view[p * 2] > EMPTY) z0 = view[p * 2];
+    out.fill(0);
+    if (Number.isNaN(z0)) return;
+    const m = new Float64Array(SAT_N);
+    for (let j = 0; j <= h; j++) {
+        for (let i = 0; i <= w; i++) {
+            const o = (j * W + i) * SAT_N;
+            if (!i || !j) { for (let c = 0; c < SAT_N; c++) sat[o + c] = 0; continue; }
+            const zr = view[((j - 1) * w + (i - 1)) * 2];
+            m.fill(0);
+            if (zr > EMPTY) {
+                const x = i - 1, y = j - 1, z = zr - z0;
+                m[0] = 1; m[1] = x; m[2] = y; m[3] = z; m[4] = x * x; m[5] = y * y; m[6] = x * y; m[7] = x * z; m[8] = y * z; m[9] = z * z;
+            }
+            const a = ((j - 1) * W + i) * SAT_N, b = (j * W + i - 1) * SAT_N, d = ((j - 1) * W + i - 1) * SAT_N;
+            for (let c = 0; c < SAT_N; c++) sat[o + c] = m[c] + sat[a + c] + sat[b + c] - sat[d + c];
+        }
+    }
+    const minN = Math.max(4, Math.ceil((2 * r + 1) * (2 * r + 1) / 4));
+    for (let j = 0; j < h; j++) {
+        const j0 = Math.max(0, j - r), j1 = Math.min(h, j + r + 1);
+        for (let i = 0; i < w; i++) {
+            if (!(view[(j * w + i) * 2] > EMPTY)) continue;
+            const i0 = Math.max(0, i - r), i1 = Math.min(w, i + r + 1);
+            const A = (j1 * W + i1) * SAT_N, B = (j0 * W + i1) * SAT_N, C = (j1 * W + i0) * SAT_N, D = (j0 * W + i0) * SAT_N;
+            const n = sat[A] - sat[B] - sat[C] + sat[D];
+            if (n < minN) continue;
+            const S = (c) => (sat[A + c] - sat[B + c] - sat[C + c] + sat[D + c]) / n;
+            const mx = S(1), my = S(2), mz = S(3);
+            const cxx = S(4) - mx * mx, cyy = S(5) - my * my, cxy = S(6) - mx * my;
+            const cxz = S(7) - mx * mz, cyz = S(8) - my * mz, czz = S(9) - mz * mz;
+            const det = cxx * cyy - cxy * cxy;
+            let v;
+            if (det > 1e-6) {
+                const bx = (cxz * cyy - cyz * cxy) / det, by = (cyz * cxx - cxz * cxy) / det;
+                v = czz - bx * cxz - by * cyz;
+            } else {
+                v = czz - (cxx > 1e-6 ? cxz * cxz / cxx : 0) - (cyy > 1e-6 ? cyz * cyz / cyy : 0);
+            }
+            out[j * w + i] = Math.min(255, Math.round(100 * Math.sqrt(Math.max(0, v))));
+        }
+    }
+}
+
 /**
  * Triangles over a w × h raster at vertex spacing s (cells): two per quad with
  * four corners drawn, one where three are; vertex ids are row-major on the

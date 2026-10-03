@@ -47,23 +47,24 @@
  */
 
 import { Ros, Topic } from '../../vendor/roslib/roslib.esm.min.js';
-import { SurfaceTiles, TILE } from './SurfaceTiles.js';
+import { SurfaceTiles, TILE, coveredArea, polygonAreaXY } from './SurfaceTiles.js';
 import {
-    kindOf, frameOf, decodePoints, eulerToMatrix, makeAnchor, toEnu, sensorToEnu, worldToEnu, projectPose,
+    kindOf, frameOf, decodePoints, despike, eulerToMatrix, makeAnchor, toEnu, sensorToEnu, worldToEnu, projectPose,
 } from './RosPoints.js';
 import { SurfaceVolume } from './SurfaceVolume.js';
 
 const DEG = Math.PI / 180;
 const RECONNECT_MS = 2000;
 const TILES_MS = 250;
-const POSE_CAP = 64;
+const POSE_CAP = 1024;             // samples kept: 40 s at 25 Hz, 2 s of a SITL at speedup 20
+const CLOCK_SPAN_MS = 300;         // samples spanning at least this give the autopilot's clock rate
 const MAX_PROJECT_MS = 500;       // a pose is projected at most this far from its sample
 const STAMP_TRUST_MS = 2000;
 const MAX_POINTS = 20000;
 
 const cfg = {
     transport: 'cbor', rateHz: 5, maxPoints: 400, frame: 'auto', lagMs: 0, timeBase: 'arrival',
-    minRange: 0.5, maxRange: 100,
+    minRange: 0.5, maxRange: 100, despike: 'on',
     mountRoll: 0, mountPitch: 0, mountYaw: 0, leverX: 0, leverY: 0, leverZ: 0,
     cell: 0.3, memory: 20, maxTiles: 2048, layers: 'floor'
 };
@@ -86,8 +87,9 @@ let anchor = null;                // makeAnchor() + rel, epoch
 let epoch = 0;
 let resetPending = true;          // the renderer must drop what it has
 
-const attRing = [];               // { t, roll, pitch, yaw, p, q, r }        t: ATTITUDE arrival
-const posRing = [];               // { t, lat, lon, alt, vn, ve, vd, rel, home }
+const attRing = [];               // { t, b, roll, pitch, yaw, p, q, r }     t: ATTITUDE arrival, b: time_boot_ms
+const posRing = [];               // { t, b, lat, lon, alt, vn, ve, vd, rel, home }
+let clockRate = 1;                // autopilot seconds per second here (SITL: its speedup)
 let poseReason = 'NO VEHICLE';
 let stampOff = null;              // header.stamp − this clock, ms, when it was not trusted
 const Rm = new Float64Array(9);
@@ -100,7 +102,8 @@ const enu = new Float64Array(MAX_POINTS * 3);
 const sensorPos = [0, 0, 0];
 
 // Per-second counters, and totals since the last clear
-const rate = { msgs: 0, pointsIn: 0, sampled: 0, used: 0, noPose: 0, noHome: 0 };
+const rate = { msgs: 0, pointsIn: 0, sampled: 0, used: 0, spikes: 0, noPose: 0, noHome: 0 };
+let unordered = false;            // the last scan had no order: the spike filter left it alone
 let lastRate = { ...rate };
 let totalMsgs = 0;
 let blocked = null;               // why the last message was not used
@@ -200,16 +203,40 @@ function unsubscribe() {
 }
 
 // ============== POSE ==============
-function pushPose(p) {
-    const a = attRing[attRing.length - 1], q = posRing[posRing.length - 1];
-    if (!a || p.tA !== a.t) {
-        attRing.push({ t: p.tA, roll: p.roll, pitch: p.pitch, yaw: p.yaw, p: p.p, q: p.q, r: p.r });
-        if (attRing.length > POSE_CAP) attRing.shift();
+// The snapshot of STATE (p), and every ATTITUDE / GLOBAL_POSITION_INT that
+// arrived since the last one (att, pos: absolute navigation only); a snapshot
+// value is used where there are none (the relative position, a replay)
+function pushPose(p, att = [], pos = []) {
+    const push = (ring, s) => {
+        const last = ring[ring.length - 1];
+        // The autopilot rebooted (a SITL relaunched): its clock starts over
+        if (last && s.b !== null && last.b !== null && s.b < last.b) ring.length = 0;
+        ring.push(s);
+        if (ring.length > POSE_CAP) ring.shift();
+    };
+    if (att.length) for (const s of att) push(attRing, s);
+    else {
+        const a = attRing[attRing.length - 1];
+        if (!a || p.tA !== a.t) push(attRing, { t: p.tA, b: null, roll: p.roll, pitch: p.pitch, yaw: p.yaw, p: p.p, q: p.q, r: p.r });
     }
-    if (!q || p.tP !== q.t || p.rel !== q.rel) {
-        posRing.push({ t: p.tP, lat: p.lat, lon: p.lon, alt: p.alt, vn: p.vn, ve: p.ve, vd: p.vd, rel: p.rel, home: p.home });
-        if (posRing.length > POSE_CAP) posRing.shift();
+    const q = posRing[posRing.length - 1];
+    if (pos.length) for (const s of pos) push(posRing, { ...s, rel: p.rel, home: p.home });
+    else if (!q || p.tP !== q.t || p.rel !== q.rel) {
+        push(posRing, { t: p.tP, b: null, lat: p.lat, lon: p.lon, alt: p.alt, vn: p.vn, ve: p.ve, vd: p.vd, rel: p.rel, home: p.home });
     }
+    clockRate = autopilotClockRate();
+}
+
+// Autopilot time per time here, from the attitude samples' time_boot_ms over
+// their arrival: 1 on a real vehicle, SIM_SPEEDUP in a SITL
+function autopilotClockRate() {
+    let first = null;
+    const last = attRing[attRing.length - 1];
+    if (!last || last.b === null) return 1;
+    for (let i = attRing.length - 1; i >= 0 && attRing[i].b !== null; i--) first = attRing[i];
+    const dt = last.t - first.t, db = last.b - first.b;
+    if (dt < CLOCK_SPAN_MS || db <= 0) return clockRate;
+    return Math.max(0.05, Math.min(200, db / dt));
 }
 
 // Last sample at or before t (the first one if t is older than all)
@@ -224,7 +251,7 @@ function poseAt(t) {
     if (!attRing.length || !posRing.length) return null;
     const a = sampleAt(attRing, t), q = sampleAt(posRing, t);
     if (Math.abs(t - a.t) > MAX_PROJECT_MS || Math.abs(t - q.t) > MAX_PROJECT_MS) return null;
-    return { ...projectPose(a, q, t), rel: q.rel, home: q.home };
+    return { ...projectPose(a, q, t, clockRate), rel: q.rel, home: q.home };
 }
 
 // Time of a message on this clock (see the header)
@@ -253,10 +280,19 @@ function onMessage(msg) {
     lastFrame = frame;
 
     const sensor = frame === 'sensor';
-    const { count, total } = decodePoints(sel.kind, msg, pts, Math.min(cfg.maxPoints, MAX_POINTS),
+    const decoded = decodePoints(sel.kind, msg, pts, Math.min(cfg.maxPoints, MAX_POINTS),
         sensor ? cfg.minRange : 0, sensor ? cfg.maxRange : Infinity);
+    const total = decoded.total;
+    let count = decoded.count;
     rate.pointsIn += total;
     rate.sampled += count;
+    // Spikes along the scan, in the sensor frame where the order is the beams'
+    if (sensor && cfg.despike !== 'off' && sel.kind !== 'range') {
+        const d = despike(pts, count);
+        count = d.count;
+        rate.spikes += d.removed;
+        unordered = !d.ordered;
+    }
     if (sel.kind === 'range') zoneMeta = { fov: msg.field_of_view };
     else if (sel.kind === 'scan') zoneMeta = { min: msg.angle_min, max: msg.angle_max };
     if (sensor && count) {
@@ -328,6 +364,23 @@ function state() {
     return blocked || 'ACCUMULATING';
 }
 
+// The mission's survey areas (lat/lng polygons from the planner) and how much
+// of each the surface covers — absolute navigation only: a relative frame has
+// no place on the map
+let areas = [];
+let coverage = [];
+const COVERAGE_MS = 2000;
+setInterval(() => {
+    if (!anchor || anchor.rel || !areas.length) { coverage = []; return; }
+    coverage = areas.map(a => {
+        const poly = a.points.map(p => {
+            const v = toEnu(anchor, p.lat, p.lng, anchor.alt, [0, 0, 0]);
+            return [v[0], v[1]];
+        });
+        return { name: a.name, area: polygonAreaXY(poly), covered: coveredArea(surface, poly) };
+    });
+}, COVERAGE_MS);
+
 function zoneStatus() {
     const now = Date.now(), bins = [];
     for (let b = 0; b < dirSeen.length; b++) if (now - dirSeen[b] < DIR_KEEP_MS) bins.push(b);
@@ -340,13 +393,15 @@ function postStatus() {
         st: {
             link, url, error: lastError, state: state(),
             topic: sel && sel.topic, type: sel && sel.type, kind: sel && sel.kind,
-            frameId: lastFrameId, frame: lastFrame, timeBase: cfg.timeBase, stampOff,
+            frameId: lastFrameId, frame: lastFrame, timeBase: cfg.timeBase, stampOff, clockRate,
+            despike: cfg.despike !== 'off' ? (unordered ? 'unordered' : 'on') : 'off',
             zone: zoneStatus(),
             rate: lastRate, totalMsgs,
             surface: {
                 cell: surface.cell, maxTiles: surface.maxTiles, tileCells: TILE, layers: cfg.layers,
                 tiles: surface.size, filled: surface.filled,
-                chunks: volume.size, maxChunks: volume.maxChunks
+                chunks: volume.size, maxChunks: volume.maxChunks,
+                coverage
             },
             anchor
         }
@@ -387,7 +442,7 @@ self.onmessage = (e) => {
     const m = e.data || {};
     switch (m.op) {
         case 'pose':
-            if (m.p) pushPose(m.p); else poseReason = m.reason || 'NO POSE';
+            if (m.p) pushPose(m.p, m.att, m.pos); else poseReason = m.reason || 'NO POSE';
             break;
         case 'connect': connect(m.url); break;
         case 'disconnect': disconnect(); postStatus(); break;
@@ -401,5 +456,6 @@ self.onmessage = (e) => {
             break;
         case 'config': applyConfig(m.cfg || {}); break;
         case 'clear': clear(); break;
+        case 'areas': areas = Array.isArray(m.areas) ? m.areas : []; break;
     }
 };

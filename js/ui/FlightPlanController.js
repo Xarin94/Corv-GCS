@@ -1494,6 +1494,16 @@ function renderSegmentList() {
     }
 }
 
+// Lane spacing and what it comes from: the camera's footprint, or the mapping sensor's swath
+function surveyDerivedHtml(g) {
+    if (g.sensor) {
+        return `<span>lane spacing <b>${g.sideDistance.toFixed(1)} m</b></span>`
+            + `<span>swath <b>${g.sensor.swath.toFixed(0)} m</b> at ${g.sensor.distance.toFixed(0)} m${g.sensor.limitedByRange ? ' (range-limited)' : ''}</span>`;
+    }
+    return `<span>lane spacing <b>${g.sideDistance.toFixed(1)} m</b></span><span>trigger every <b>${g.triggerDistance.toFixed(1)} m</b></span>`
+        + `${g.gsd ? `<span>GSD <b>${g.gsd.toFixed(2)} cm/px</b></span>` : ''}<span>footprint <b>${g.footprint.width.toFixed(0)} × ${g.footprint.height.toFixed(0)} m</b></span>`;
+}
+
 function renderInspector(seg, issues) {
     const def = SEGMENT_TYPES[seg.type];
     const P = getRoute().params;
@@ -1503,12 +1513,7 @@ function renderInspector(seg, issues) {
     let extra = '';
     if (seg.type === 'area' || seg.type === 'corridor') {
         const g = surveyGeometry(seg, segmentAlt(seg, P), P.camera);
-        extra = `<div class="fp-derived">
-            <span>lane spacing <b>${g.sideDistance.toFixed(1)} m</b></span>
-            <span>trigger every <b>${g.triggerDistance.toFixed(1)} m</b></span>
-            ${g.gsd ? `<span>GSD <b>${g.gsd.toFixed(2)} cm/px</b></span>` : ''}
-            <span>footprint <b>${g.footprint.width.toFixed(0)} × ${g.footprint.height.toFixed(0)} m</b></span>
-        </div>`;
+        extra = `<div class="fp-derived">${surveyDerivedHtml(g)}</div>`;
     }
     const canAct = seg.type !== 'poi';
     // An action the flight stack cannot fly is kept — the route may be replanned
@@ -1576,7 +1581,7 @@ function renderCardSummary(seg) {
     const derived = document.querySelector(`.fp-seg[data-id="${seg.id}"] .fp-derived`);
     if (derived && (seg.type === 'area' || seg.type === 'corridor')) {
         const g = surveyGeometry(seg, segmentAlt(seg, P), P.camera);
-        derived.innerHTML = `<span>lane spacing <b>${g.sideDistance.toFixed(1)} m</b></span><span>trigger every <b>${g.triggerDistance.toFixed(1)} m</b></span>${g.gsd ? `<span>GSD <b>${g.gsd.toFixed(2)} cm/px</b></span>` : ''}<span>footprint <b>${g.footprint.width.toFixed(0)} × ${g.footprint.height.toFixed(0)} m</b></span>`;
+        derived.innerHTML = surveyDerivedHtml(g);
     }
 }
 

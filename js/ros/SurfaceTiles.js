@@ -30,6 +30,47 @@ const BIAS = 32768;                    // tile coordinates ±32 768 tiles (±295
 
 export function tileKey(tx, ty) { return (tx + BIAS) * 65536 + (ty + BIAS); }
 
+function inPolygon(x, y, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [xi, yi] = poly[i], [xj, yj] = poly[j];
+        if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+}
+
+export function polygonAreaXY(poly) {
+    let a = 0;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) a += poly[j][0] * poly[i][1] - poly[i][0] * poly[j][1];
+    return Math.abs(a) / 2;
+}
+
+/**
+ * Area of a polygon (x east, y north, metres from the anchor) the surface
+ * covers: filled cells whose centre is inside, m². A tile wholly inside counts
+ * its filled cells at once; only the tiles on the edge are looked at cell by cell.
+ */
+export function coveredArea(surface, poly) {
+    const c = surface.cell, span = TILE * c, cell2 = c * c;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of poly) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    let covered = 0;
+    for (const t of surface.tiles.values()) {
+        if (!t.filled) continue;
+        const tx0 = t.tx * span, ty0 = t.ty * span, tx1 = tx0 + span, ty1 = ty0 + span;
+        if (tx1 < x0 || tx0 > x1 || ty1 < y0 || ty0 > y1) continue;
+        const corners = inPolygon(tx0, ty0, poly) && inPolygon(tx1, ty0, poly) && inPolygon(tx1, ty1, poly) && inPolygon(tx0, ty1, poly);
+        const vertexInside = poly.some(([x, y]) => x > tx0 && x < tx1 && y > ty0 && y < ty1);
+        if (corners && !vertexInside) { covered += t.filled * cell2; continue; }
+        for (let k = 0; k < TILE * TILE; k++) {
+            if (!(t.w[k] > 0)) continue;
+            const i = k % TILE, j = (k - i) / TILE;
+            if (inPolygon(tx0 + (i + 0.5) * c, ty0 + (j + 0.5) * c, poly)) covered += cell2;
+        }
+    }
+    return covered;
+}
+
 export class SurfaceTiles {
     /**
      * @param {object} [opts]

@@ -151,11 +151,17 @@
     color: var(--text-muted-bright);
 }
 
-/* Strip switches: colour by distance (lit), surface hidden (dimmed) */
+/* Strip switches: colour by distance or by roughness (lit), surface hidden (dimmed) */
 .ros-strip .lidar-strip-btn.on {
     border-color: rgba(120, 140, 255, 0.8);
     color: #fff;
     background: linear-gradient(90deg, rgba(255, 56, 41, 0.35), rgba(46, 115, 255, 0.35));
+}
+
+.ros-strip .lidar-strip-btn.rough {
+    border-color: rgba(255, 120, 60, 0.8);
+    color: #fff;
+    background: linear-gradient(90deg, rgba(166, 166, 166, 0.3), rgba(255, 174, 46, 0.35), rgba(255, 41, 31, 0.45));
 }
 
 .ros-strip .lidar-strip-btn.off {

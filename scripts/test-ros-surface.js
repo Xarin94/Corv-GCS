@@ -254,6 +254,59 @@ async function main() {
         const a2 = P.makeAnchor(47.2603, 11.3439, 0);
         const back = P.toEnu(a2, 47.2603 + 100 / 111320, 11.3439 + 100 / (111320 * Math.cos(47.2603 * DEG)), 0);
         check('anchor metres = latLonToMeters() metres', near(back[0], 100, 1e-6) && near(back[1], 100, 1e-6));
+        // A SITL at speedup 20: 25 ms here are 0.5 s of the autopilot's rates and velocity
+        const pk = P.projectPose({ t: 0, roll: 0, pitch: 0, yaw: 0, p: 0, q: 0, r: 90 * DEG },
+            { t: 0, lat: 45, lon: 10, alt: 100, vn: 10, ve: 0, vd: 0 }, 25, 20);
+        check('projection on the autopilot clock (×20)', near(pk.yaw, 45 * DEG, 1e-9) && near((pk.lat - 45) * 111320, 5, 1e-6));
+    }
+
+    // ---------- Spike filter (despike) ----------
+    {
+        // A 256-beam fan over a 40 m flat bed: 12 % aeration (0.5–4.5 m), a few fish
+        const n = 256, fan = new Float32Array(n * 3), bad = new Set();
+        for (let i = 0; i < n; i++) {
+            const a = (-45 + 90 * (i + 0.5) / n) * DEG;
+            let d = 40 / Math.cos(a) + 0.05 * (Math.random() - 0.5);
+            if (Math.random() < 0.12) { d = 0.5 + 4 * Math.random(); bad.add(i); } else if (i % 97 === 50) { d = 15; bad.add(i); }
+            fan[i * 3] = Math.cos(a) * d; fan[i * 3 + 1] = Math.sin(a) * d;
+        }
+        const orig = Float32Array.from(fan);
+        const r = P.despike(fan, n);
+        const keptR = new Set(Array.from({ length: r.count }, (_, k) => Math.hypot(fan[k * 3], fan[k * 3 + 1]).toFixed(4)));
+        let badKept = 0, goodLost = 0;
+        for (let i = 0; i < n; i++) {
+            const k = keptR.has(Math.hypot(orig[i * 3], orig[i * 3 + 1]).toFixed(4));
+            if (bad.has(i) && k) badKept++;
+            if (!bad.has(i) && !k) goodLost++;
+        }
+        check('spike filter: aeration and fish dropped from a sonar fan', r.ordered && badKept === 0 && goodLost <= 0.03 * (n - bad.size),
+            `${r.removed} dropped · ${badKept}/${bad.size} spikes kept · ${goodLost} bed returns lost`);
+        // The same fan shuffled has no order: nothing is dropped
+        const sh = Float32Array.from(orig);
+        for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); for (let c = 0; c < 3; c++) [sh[i * 3 + c], sh[j * 3 + c]] = [sh[j * 3 + c], sh[i * 3 + c]]; }
+        const u = P.despike(sh, n);
+        check('spike filter: a cloud without order is left alone', !u.ordered && u.removed === 0);
+        // A cave profile: a near wall then a far one, the edge between them kept
+        const cv = new Float32Array(80 * 3);
+        for (let i = 0; i < 80; i++) { const a = i / 80 * Math.PI, d = i < 40 ? 3 : 15; cv[i * 3] = Math.cos(a) * d; cv[i * 3 + 1] = Math.sin(a) * d; }
+        const e = P.despike(cv, 80);
+        check('spike filter: an edge between two walls is kept', e.ordered && e.removed === 0);
+    }
+
+    // ---------- Roughness (RMS about the local plane) ----------
+    {
+        const R = await load('js/ros/SurfaceRaster.js');
+        const w = 60, h = 60, view = new Float32Array(w * h * 2), out = new Uint8Array(w * h);
+        // 1 m cells: a bed sloping 5 % with 2 cm of noise, a 1.5 m boulder at (40, 20), a hole
+        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+            view[(j * w + i) * 2] = -40 + 0.05 * i + 0.02 * j + 0.02 * (Math.random() - 0.5) * 2
+                + 1.5 * Math.exp(-((i - 40) ** 2 + (j - 20) ** 2) / 4.5);
+        }
+        for (let j = 45; j < 55; j++) for (let i = 5; i < 15; i++) view[(j * w + i) * 2] = R.EMPTY;
+        R.roughness(view, w, h, out, { cell: 1 });
+        const at = (i, j) => out[j * w + i];
+        check('roughness: a sloping bed is flat, a boulder is not', at(10, 10) <= 3 && at(50, 50) <= 3 && at(40, 20) >= 25 && at(10, 50) === 0,
+            `slope ${at(10, 10)} / ${at(50, 50)} cm · boulder ${at(40, 20)} cm · hole ${at(10, 50)}`);
     }
 
     // ---------- 4. End to end: emulator + roslib over WebSocket ----------
@@ -319,7 +372,7 @@ async function main() {
         const ros = await connect(19090);
         const topics = await new Promise((res, rej) => ros.getTopics(res, rej));
         const usable = topics.topics.filter((_, i) => P.kindOf(topics.types[i]));
-        check('rosapi lists the topics; 6 of 10 are drawable types', topics.topics.length === 10 && usable.length === 6, usable.join(' '));
+        check('rosapi lists the topics; 7 of 11 are drawable types', topics.topics.length === 11 && usable.length === 7, usable.join(' '));
 
         const t0 = Date.now();
         const livox = await collect(ros, '/livox/lidar', 'sensor_msgs/msg/PointCloud2', 'cbor', 2000, 200);

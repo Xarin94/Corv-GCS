@@ -998,20 +998,20 @@ function updateExtTuningSlider(paramId, value) {
 const ROV_SITL = new Set(['sub', 'subnogps']);
 const LAND_HOME = { lat: 47.2603, lon: 11.3439 };
 const ROV_HOME = { lat: 45.60319, lon: 10.67127 };   // centre of Lake Garda
+const BOAT_HOME = { lat: 45.4960, lon: 10.6490 };     // southern basin, corner of the survey scene (scripts/ros-sim-scenes.js)
 let rovSession = null;                                // what a ROV launch changed
 
 function sameHome(latEl, lonEl, home) {
     return Math.abs(parseFloat(latEl.value) - home.lat) < 1e-6 && Math.abs(parseFloat(lonEl.value) - home.lon) < 1e-6;
 }
 
-/** A ROV starts on the water, anything else on land — unless the operator typed a home of their own. */
+/** A ROV or a boat starts on the water, anything else on land — unless the operator typed a home of their own. */
 function suggestSitlHome(vehicle) {
     const latEl = document.getElementById('sitl-home-lat');
     const lonEl = document.getElementById('sitl-home-lon');
     if (!latEl || !lonEl) return;
-    const rov = ROV_SITL.has(vehicle);
-    const from = rov ? LAND_HOME : ROV_HOME, to = rov ? ROV_HOME : LAND_HOME;
-    if (latEl.value === '' || sameHome(latEl, lonEl, from)) {
+    const to = ROV_SITL.has(vehicle) ? ROV_HOME : vehicle === 'boat' ? BOAT_HOME : LAND_HOME;
+    if (latEl.value === '' || [LAND_HOME, ROV_HOME, BOAT_HOME].some(h => sameHome(latEl, lonEl, h))) {
         latEl.value = String(to.lat);
         lonEl.value = String(to.lon);
     }

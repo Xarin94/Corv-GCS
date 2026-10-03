@@ -71,6 +71,9 @@ export function compileRoute(route, ctx) {
     if (homeTerrain === null) addIssue('warn', 'No elevation data at the take-off point — vehicle home altitude assumed');
 
     const isPlane = ctx.vehicleType === 1;
+    // A rover, a boat or a sub has nothing to take off from: no NAV_TAKEOFF (ArduRover
+    // would only skip it with a warning), and no "must be airborne" warning either
+    const onSurface = [10, 11, 12].includes(ctx.vehicleType);
 
     // Intermediate representation: { lat,lng, alt(mode units)|null, command, p1..p4, segId, derived, loc, kind }
     const out = [];
@@ -86,7 +89,7 @@ export function compileRoute(route, ctx) {
     // the translation would be busywork, but the operator still has to be told
     // that the setting they can see is not going to be flown.
     if (P.takeoff && isInav) addIssue('warn', 'INAV has no take-off waypoint — arm and take off in a flight mode, then switch to WP');
-    if (P.takeoff && !isInav) {
+    if (P.takeoff && !isInav && !onSurface) {
         push({
             command: 22, lat: home.lat, lng: home.lng, alt: +P.takeoffAlt || 30, loc: true, segId: null, derived: false,
             param1: isPlane ? 15 : 0, param2: 0, param3: 0, param4: 0, kind: 'takeoff',
@@ -160,8 +163,10 @@ export function compileRoute(route, ctx) {
             case 'area': {
                 if (seg.points.length < 3) { addIssue('error', 'Area scan needs at least 3 vertices', seg.id); break; }
                 const g = surveyGeometry(seg, alt, P.camera);
+                if (g.sensor && !g.sensor.swath) { addIssue('error', `The surface (${g.sensor.distance} m) is beyond the sensor's range`, seg.id); break; }
                 stats.gsd = g.gsd;
                 stats.area = polygonArea(seg.points);
+                if (g.sensor) stats.swath = g.sensor.swath;
                 const lanes = lawnmower(seg.points, +sp.angle || 0, g.sideDistance, +sp.overshoot || 0, lastNav);
                 let pts = lanes.points;
                 stats.lanes = lanes.count;
@@ -172,17 +177,18 @@ export function compileRoute(route, ctx) {
                 }
                 if (!pts.length) { addIssue('error', 'Area too small for the lane spacing — reduce side distance or overlap', seg.id); break; }
                 navPts = pts.map(p => ({ ...p, alt, command: 16 }));
-                if (sp.trigger) navPts.trigger = g.triggerDistance;
+                if (sp.trigger && !g.sensor) navPts.trigger = g.triggerDistance;
                 break;
             }
             case 'corridor': {
                 if (seg.points.length < 2) { addIssue('error', 'Corridor needs at least 2 points', seg.id); break; }
                 const g = surveyGeometry(seg, alt, P.camera);
+                if (g.sensor && !g.sensor.swath) { addIssue('error', `The surface (${g.sensor.distance} m) is beyond the sensor's range`, seg.id); break; }
                 stats.gsd = g.gsd;
                 const passes = corridorPasses(seg.points, Math.max(1, +sp.width || 60), g.sideDistance, lastNav);
                 stats.lanes = passes.count;
                 navPts = passes.points.map(p => ({ ...p, alt, command: 16 }));
-                if (sp.trigger) navPts.trigger = g.triggerDistance;
+                if (sp.trigger && !g.sensor) navPts.trigger = g.triggerDistance;
                 break;
             }
             case 'landing':
@@ -303,7 +309,7 @@ export function compileRoute(route, ctx) {
     // INAV counts waypoint records, not MAVLink items — that check lives in the
     // translation below, where the records actually exist.
     if (!isInav && itemLimit > 0 && items.length > itemLimit) addIssue('error', `${items.length} items — ${platform.label} stores at most ${itemLimit}`);
-    if (!P.takeoff && !isPlane && !isInav && route.segments.length) addIssue('warn', 'No automatic take-off — the vehicle must already be airborne when AUTO starts');
+    if (!P.takeoff && !isPlane && !isInav && !onSurface && route.segments.length) addIssue('warn', 'No automatic take-off — the vehicle must already be airborne when AUTO starts');
     if (route.segments.length && flying.length) {
         const far = haversine(home, flying[0]);
         if (far > 5000) addIssue('warn', `First waypoint is ${(far / 1000).toFixed(1)} km from the take-off point`);
@@ -660,7 +666,7 @@ function buildStats(route, items, navLocated, segStats, homeElev, home) {
     // Length & duration follow the item sequence so speed changes are honoured
     let speed = 0, prev = null, len = 0, dur = 0;
     const P = route.params;
-    if (P.takeoff) dur += (+P.takeoffAlt || 30) / CLIMB_RATE;
+    if (items.some(it => it.kind === 'takeoff')) dur += (+P.takeoffAlt || 30) / CLIMB_RATE;
     for (const it of items) {
         if (it.command === 178) { speed = it.param2; continue; }
         if (it.command === 93) { dur += it.param1; continue; }

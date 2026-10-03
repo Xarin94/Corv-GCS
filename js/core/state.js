@@ -257,6 +257,22 @@ export const gHistoryBuffer = _gHistoryBuffer;
  * trails/values from a previous position. Does NOT touch connection state,
  * user preferences, or RC calibration.
  */
+/**
+ * Every ATTITUDE and GLOBAL_POSITION_INT as it arrived, the last
+ * POSE_HISTORY_CAP of each: the ROS surface projects the pose of each point
+ * cloud from the sample just before it, not from a 20 Hz snapshot of STATE.
+ * Samples: { seq, t: arrival (Date.now()), b: the autopilot's time_boot_ms, … }.
+ * b is the autopilot's own clock, which SITL runs SPEEDUP times faster.
+ */
+export const POSE_HISTORY_CAP = 512;
+export const POSE_HISTORY = { att: [], pos: [], seq: 0 };
+export function pushPoseHistory(kind, sample) {
+    const ring = POSE_HISTORY[kind];
+    sample.seq = ++POSE_HISTORY.seq;
+    ring.push(sample);
+    if (ring.length > POSE_HISTORY_CAP) ring.shift();
+}
+
 export function resetReplayState() {
     STATE.roll = 0; STATE.pitch = 0; STATE.yaw = 0;
     STATE.aoa = 0; STATE.ssa = 0; STATE.gamma = 0; STATE.track = 0;
@@ -267,6 +283,7 @@ export function resetReplayState() {
     STATE.rollRate = 0; STATE.pitchRate = 0; STATE.yawRate = 0;
     STATE.vn = 0; STATE.ve = 0; STATE.vd = 0;
     STATE.attTime = 0; STATE.posTime = 0;
+    POSE_HISTORY.att.length = 0; POSE_HISTORY.pos.length = 0;
     STATE.terrainHeight = null;
     STATE.gHistory.fill(1.0);
     _gHistoryBuffer.clear();

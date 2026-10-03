@@ -13,6 +13,10 @@
  *   /scan               sensor_msgs/LaserScan    laser        270° push-broom, 0.5°
  *   /sonar/multibeam    sensor_msgs/PointCloud2  sonar        256-beam swath, ±65°
  *   /ping1d/range       sensor_msgs/Range        ping1d       single-beam echo sounder (0.5–100 m, Ping2)
+ *   /sonar/imaging      sensor_msgs/PointCloud2  imaging_sonar  imaging sonar looking down: a fan of
+ *                                                --sonar-aperture (90°) across the vehicle, --sonar-beams
+ *                                                (256), --sonar-range (90 m), --sonar-rate (20 Hz), with
+ *                                                the disturbances of a real one (below)
  *   /sonar/profiler     sensor_msgs/PointCloud2  sonar_profiler  dual 360° profiling sonar: one fan
  *                                                across the vehicle (y–z plane: a level passage's
  *                                                cross-section), one level (x–y: a shaft's), 2 × 400
@@ -20,8 +24,21 @@
  * plus a few topics of other types, listed by rosapi and never published.
  *
  * Scenes (scripts/ros-sim-scenes.js): 'terrain' (hills under an aircraft),
- * 'seabed' (a lake bed 5–25 m under the surface the vehicle started on) or
- * 'cave' (an underwater cave from a basin at the start, for a ROV).
+ * 'seabed' (a lake bed 5–25 m under the surface the vehicle started on),
+ * 'cave' (an underwater cave from a basin at the start, for a ROV) or
+ * 'garda' (5 km² of Lake Garda's southern basin, fixed to the map: its origin
+ * is the survey area's corner, not the vehicle's start; the water surface is
+ * still the home altitude).
+ *
+ * Imaging sonar disturbances (--sonar-clean turns them off): the return comes
+ * from anywhere in the beam's vertical aperture (--sonar-elevation, 10°) but
+ * is reported on its axis, as an imaging sonar cannot tell; range noise of
+ * 3 cm + 0.2 % of the range; 3 % of beams with no return; targets in the water
+ * column (fish, particles); and aeration — near-field echoes from bubbles,
+ * more when the hull rolls and pitches in the waves and when it goes fast.
+ * The waves themselves are SITL's (SIM_WAVE_*, see the boat's defaults): they
+ * move the true pose this emulator ray-casts from, so the sonar and the
+ * telemetry see the same sea.
  * Every sensor is "installed" with the mount and lever arm given here; the
  * GCS has to undo it. A mesh that matches the scene means the whole chain —
  * decoding, sampling, mount, attitude, position, frames, averaging — is right.
@@ -68,6 +85,14 @@ const PROFILER_MOUNT = arg('profiler-mount', '0,0,0').split(',').map(Number);
 const LEVER = arg('lever', '0,0,0').split(',').map(Number);
 const LIDAR_POINTS = parseInt(arg('lidar-points', '10000'), 10);
 const ANCHOR_ARG = arg('anchor', null);
+const SONAR = {
+    aperture: parseFloat(arg('sonar-aperture', '90')),
+    beams: parseInt(arg('sonar-beams', '256'), 10),
+    range: parseFloat(arg('sonar-range', '90')),
+    rate: parseFloat(arg('sonar-rate', '20')),
+    elevation: parseFloat(arg('sonar-elevation', '10')),
+    clean: argv.includes('--sonar-clean')
+};
 const POSE_ARG = arg('pose', null);
 const SCENE = SCENES[SCENE_NAME];
 if (!SCENE) { console.error(`unknown scene ${SCENE_NAME} (terrain | seabed)`); process.exit(1); }
@@ -272,7 +297,9 @@ if (POSE_ARG) {
 function tryAnchor() {
     if (anchor || !pose.have || (pose.lat === 0 && pose.lon === 0)) return;
     const alt = homeAlt !== null ? homeAlt : pose.alt;
-    anchor = makeAnchor(pose.lat, pose.lon, alt);
+    // A scene fixed to the map keeps its own origin; the surface is still home's
+    const o = SCENE.origin || { lat: pose.lat, lon: pose.lon };
+    anchor = makeAnchor(o.lat, o.lon, alt);
     log(`scene '${SCENE_NAME}' anchored at ${anchor.lat.toFixed(7)}, ${anchor.lon.toFixed(7)}, ${alt.toFixed(2)} m (${homeAlt !== null ? 'home' : 'first true altitude'})`);
 }
 
@@ -394,6 +421,10 @@ function shoot(r, x, y, z, maxRange) {
     return castRay(SCENE, r.o[0], r.o[1], r.o[2], de, dn, du, maxRange);
 }
 
+function gaussRand() {
+    return Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
+}
+
 let headerSeq = 0;
 function header(frameId) {
     const now = Date.now();
@@ -490,6 +521,34 @@ const GEN = {
         return cloud('sonar', [['x', 0, F32], ['y', 4, F32], ['z', 8, F32], ['intensity', 12, F32]], 16, k,
             new Uint8Array(buf.buffer, buf.byteOffset, k * 16));
     },
+    '/sonar/imaging': () => {
+        const r = rig(R_DOWN);
+        if (!r) return null;
+        const n = SONAR.beams, half = SONAR.aperture / 2, buf = Buffer.alloc(n * 16);
+        // Aeration grows with the hull's motion in the waves and with speed
+        const motion = Math.hypot(pose.p, pose.q) + 0.05 * Math.hypot(pose.vn, pose.ve);
+        const bubbles = SONAR.clean ? 0 : Math.min(0.25, 0.01 + 0.4 * motion);
+        let k = 0;
+        for (let i = 0; i < n; i++) {
+            const a = (-half + SONAR.aperture * (i + 0.5) / n) * DEG;
+            // The echo comes from somewhere in the vertical aperture …
+            const el = SONAR.clean ? 0 : (Math.random() - 0.5) * SONAR.elevation * DEG;
+            let d = shoot(r, Math.cos(a) * Math.cos(el), Math.sin(a) * Math.cos(el), Math.sin(el), SONAR.range);
+            if (!SONAR.clean) {
+                if (Math.random() < 0.03) d = 0;                                          // no return
+                else if (Math.random() < bubbles) d = 0.5 + Math.random() * 4;             // aeration under the hull
+                else if (d && Math.random() < 0.004) d = 2 + Math.random() * (d - 2);      // fish, particles
+                if (d) d += (0.03 + 0.002 * d) * gaussRand();
+            }
+            if (!(d > 0.3)) continue;
+            // … and is reported on the beam's axis
+            buf.writeFloatLE(Math.cos(a) * d, k * 16); buf.writeFloatLE(Math.sin(a) * d, k * 16 + 4); buf.writeFloatLE(0, k * 16 + 8);
+            buf.writeFloatLE(80 + Math.random() * 100, k * 16 + 12);
+            k++;
+        }
+        return cloud('imaging_sonar', [['x', 0, F32], ['y', 4, F32], ['z', 8, F32], ['intensity', 12, F32]], 16, k,
+            new Uint8Array(buf.buffer, buf.byteOffset, k * 16));
+    },
     '/sonar/profiler': () => {
         const r = rig(R_PROFILER);
         if (!r) return null;
@@ -526,6 +585,7 @@ const TOPICS = new Map([
     ['/sonar/multibeam', T('sensor_msgs', 'PointCloud2'), 10],
     ['/ping1d/range', T('sensor_msgs', 'Range'), 10],
     ['/sonar/profiler', T('sensor_msgs', 'PointCloud2'), 10],
+    ['/sonar/imaging', T('sensor_msgs', 'PointCloud2'), SONAR.rate],
     ['/rosout', ROS1 ? 'rosgraph_msgs/Log' : 'rcl_interfaces/msg/Log', 0],
     ['/tf', T('tf2_msgs', 'TFMessage'), 0],
     ['/camera/image_raw', T('sensor_msgs', 'Image'), 0],

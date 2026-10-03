@@ -168,6 +168,76 @@ export function decodePoints(kind, msg, out, max, rMin = 0, rMax = Infinity) {
     return { count: 0, total: 0 };
 }
 
+// Scratch for despike(), grown on demand
+let spikeR = new Float32Array(0), spikeW = new Float32Array(0), spikeKeep = new Uint8Array(0);
+
+function medianOf(a, n) {
+    for (let i = 1; i < n; i++) {
+        const v = a[i];
+        let j = i - 1;
+        while (j >= 0 && a[j] > v) { a[j + 1] = a[j]; j--; }
+        a[j + 1] = v;
+    }
+    return n & 1 ? a[n >> 1] : 0.5 * (a[(n >> 1) - 1] + a[n >> 1]);
+}
+
+/**
+ * Spikes in a scan profile, dropped in place. Points in the order the sensor
+ * sent them — a sonar's beams across its swath, a LaserScan's sweep, a lidar's
+ * rings — form a profile: a real surface is continuous from one beam to the
+ * next but at a few edges, while aeration under the hull, a fish or a particle
+ * is one beam, or a few, far off its neighbours. A point whose range is more
+ * than max(ABS, REL × range) off the median of the 2·HALF + 1 points around
+ * it is dropped: the median keeps edges (a wall, a wreck's side) and drops
+ * what is narrower than HALF beams.
+ *
+ * Only on ordered profiles: in a cloud without order (or sampled too sparsely
+ * to keep it) the points around one are not its neighbours, and nothing is
+ * dropped. A profile is ordered when the median step from one point to the
+ * next is small against the spread of its ranges.
+ * @param {Float32Array} pts  x, y, z in the sensor frame (decodePoints), compacted in place
+ * @returns {{count: number, removed: number, ordered: boolean}}
+ */
+export function despike(pts, count, opts = {}) {
+    const half = opts.half ?? 4, abs = opts.abs ?? 0.5, rel = opts.rel ?? 0.08;
+    const win = 2 * half + 1;
+    if (count < win) return { count, removed: 0, ordered: false };
+    if (spikeR.length < count) {
+        spikeR = new Float32Array(count);
+        spikeKeep = new Uint8Array(count);
+        spikeW = new Float32Array(Math.max(win, count));
+    }
+    const r = spikeR, w = spikeW, keep = spikeKeep;
+    for (let k = 0; k < count; k++) {
+        const x = pts[k * 3], y = pts[k * 3 + 1], z = pts[k * 3 + 2];
+        r[k] = Math.sqrt(x * x + y * y + z * z);
+    }
+    // Ordered? median step vs the 10–90 % spread (on a subsample: sorting is O(n²) here)
+    const sub = Math.max(1, Math.floor(count / 256));
+    let n = 0;
+    for (let k = sub; k < count; k += sub) w[n++] = Math.abs(r[k] - r[k - 1]);
+    const step = medianOf(w, n);
+    n = 0;
+    for (let k = 0; k < count; k += sub) w[n++] = r[k];
+    medianOf(w, n);
+    const spread = w[Math.floor(0.9 * (n - 1))] - w[Math.floor(0.1 * (n - 1))];
+    if (step > Math.max(0.1 * spread, abs / 4)) return { count, removed: 0, ordered: false };
+
+    for (let k = 0; k < count; k++) {
+        const a = Math.max(0, Math.min(count - win, k - half));
+        for (let i = 0; i < win; i++) w[i] = r[a + i];
+        const m = medianOf(w, win);
+        keep[k] = Math.abs(r[k] - m) <= Math.max(abs, rel * m) ? 1 : 0;
+    }
+    let out = 0;
+    for (let k = 0; k < count; k++) {
+        if (!keep[k]) continue;
+        if (out !== k) { pts[out * 3] = pts[k * 3]; pts[out * 3 + 1] = pts[k * 3 + 1]; pts[out * 3 + 2] = pts[k * 3 + 2]; }
+        out++;
+    }
+    return { count: out, removed: count - out, ordered: true };
+}
+
 // ============== GEOREFERENCING ==============
 const M_PER_DEG = 111320;
 const PROJECT_STEP_S = 0.02;
@@ -180,17 +250,21 @@ const PROJECT_STEP_S = 0.02;
  * 111 320 m per degree, the app's convention).
  * @param {{t, roll, pitch, yaw, p, q, r}} a   attitude sample
  * @param {{t, lat, lon, alt, vn, ve, vd}} q   position sample
+ * @param {number} t      time to project to, ms on the samples' clock
+ * @param {number} [k=1]  autopilot seconds per second of that clock: the rates
+ *                        and velocities are per autopilot second (a SITL at
+ *                        speedup 20: k = 20)
  */
-export function projectPose(a, q, t) {
+export function projectPose(a, q, t, k = 1) {
     let roll = a.roll, pitch = a.pitch, yaw = a.yaw;
-    const dt = (t - a.t) / 1000, n = Math.max(1, Math.ceil(Math.abs(dt) / PROJECT_STEP_S)), h = dt / n;
+    const dt = k * (t - a.t) / 1000, n = Math.max(1, Math.ceil(Math.abs(dt) / PROJECT_STEP_S)), h = dt / n;
     for (let k = 0; k < n; k++) {
         const sr = Math.sin(roll), cr = Math.cos(roll), qr = a.q * sr + a.r * cr;
         roll += h * (a.p + qr * Math.tan(pitch));
         pitch += h * (a.q * cr - a.r * sr);
         yaw += h * qr / Math.max(1e-3, Math.cos(pitch));
     }
-    const dp = (t - q.t) / 1000;
+    const dp = k * (t - q.t) / 1000;
     return {
         lat: q.lat + q.vn * dp / M_PER_DEG,
         lon: q.lon + q.ve * dp / (M_PER_DEG * Math.cos(q.lat * Math.PI / 180)),

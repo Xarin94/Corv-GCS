@@ -26,6 +26,9 @@ const VEHICLE_MAP = {
     // Tuning comes from default_params_plane.parm.
     plane:   { binary: 'arduplane',   model: 'plane-jet:jet600.json' },
     rover:   { binary: 'ardurover',   model: 'rover' },
+    // Boat: ArduRover on SITL's motorboat (FRAME_CLASS 2), with wind and the
+    // SIM_WAVE_* sea from default_params_boat.parm; same binary as the rover.
+    boat:    { binary: 'ardurover',   model: 'motorboat' },
     // ROV: ArduSub on the vectored BlueROV2 frame. Its simulator keeps the
     // water surface at 0 m MSL whatever the home altitude, so the launcher
     // starts it at 0 and lifts it onto the real lake with the GCS altitude
@@ -64,7 +67,7 @@ function getFirmwareUrl(vehicle, version) {
     if (!info) return null;
     const pathMap = {
         copter: 'Copter', copter12s: 'Copter', tri12s: 'Copter',
-        plane: 'Plane', rover: 'Rover',
+        plane: 'Plane', rover: 'Rover', boat: 'Rover',
         sub: 'Sub', subnogps: 'Sub', heli: 'Copter', quadplane: 'Plane'
     };
     const fwPath = pathMap[vehicle] || 'Copter';

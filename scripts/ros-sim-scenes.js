@@ -21,6 +21,16 @@
  *            the centre line). Not a height field: a signed distance
  *            (negative in the water), ray-cast by sphere tracing; the water
  *            surface gives no echo.
+ *   garda    5 km² of Lake Garda's southern basin, between the Sirmione
+ *            peninsula and Lazise (GARDA: a 2.5 × 2 km rectangle, its
+ *            south-west corner the scene origin, fixed to the map rather than
+ *            to the vehicle). An approximation of the bed, not survey data:
+ *            10 m deep in the south-west, 65–80 m in the north-east basin, a
+ *            moraine ridge 14 m high running NW–SE with a boulder field on
+ *            it, a meandering channel 8 m deep, sand ripples (0.35 m, 22 m)
+ *            in the shallows, pockmarks, a rock shoal coming up to 6 m and a
+ *            wreck 28 × 7 m standing 3.5 m proud. Beyond 90 m of range an
+ *            imaging sonar sees none of the deepest part from the surface.
  *
  * The details have soft edges (slopes ≤ 1.5) so castRay's step stays safe.
  */
@@ -105,11 +115,80 @@ function caveSdf(e, n, u) {
     return Math.min(tube(e, n, u) - CAVE_RADIUS + rough, lake);
 }
 
+// ── Lake Garda, southern basin ──────────────────────────────────────────────
+const GARDA = {
+    origin: { lat: 45.4960, lon: 10.6490 },          // south-west corner of the survey area
+    size: [2500, 2000],                              // m east × north: 5 km²
+};
+{
+    const mLat = 111320, mLon = 111320 * Math.cos(GARDA.origin.lat * Math.PI / 180);
+    const [w, h] = GARDA.size;
+    GARDA.area = [[0, 0], [w, 0], [w, h], [0, h]].map(([e, n]) => ({ lat: GARDA.origin.lat + n / mLat, lng: GARDA.origin.lon + e / mLon }));
+}
+
+// A reproducible value in [0, 1) per grid cell
+function hash01(i, j, seed) {
+    let h = (Math.imul(i, 374761393) + Math.imul(j, 668265263) + Math.imul(seed, 1442695041)) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+}
+
+// Distance from (e, n) to the segment a–b
+function segDist(e, n, a, b) {
+    const de = b[0] - a[0], dn = b[1] - a[1];
+    const t = Math.max(0, Math.min(1, ((e - a[0]) * de + (n - a[1]) * dn) / (de * de + dn * dn)));
+    return Math.hypot(e - a[0] - t * de, n - a[1] - t * dn);
+}
+
+const MORAINE = [[900, 2050], [1750, 50]];
+const WRECK = { e: 1250, n: 1150, half: [14, 3.5], heading: 65, height: 3.5 };
+
+// Bumps hashed on a grid: within ±1 cell of (e, n), each cell may hold one
+function hashedBumps(e, n, cell, seed, chance, hMin, hMax, sMin, sMax, sign) {
+    const ci = Math.floor(e / cell), cj = Math.floor(n / cell);
+    let h = 0;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        const i = ci + di, j = cj + dj;
+        if (hash01(i, j, seed) > chance) continue;
+        const be = (i + hash01(i, j, seed + 1)) * cell, bn = (j + hash01(i, j, seed + 2)) * cell;
+        const sg = sMin + (sMax - sMin) * hash01(i, j, seed + 3);
+        const d2 = (e - be) ** 2 + (n - bn) ** 2;
+        if (d2 > 16 * sg * sg) continue;
+        h += sign * (hMin + (hMax - hMin) * hash01(i, j, seed + 4)) * Math.exp(-d2 / (2 * sg * sg));
+    }
+    return h;
+}
+
+function gardaDepth(e, n) {
+    const [w, h] = GARDA.size;
+    // South-west shallows to the north-east basin
+    const t = Math.max(0, Math.min(1, 0.7 * e / w + 0.3 * n / h));
+    let d = 10 + 55 * t * t * (3 - 2 * t) + 13 * gauss(e, n, 1900, 1500, 600);
+    // Moraine ridge, with boulders on and around it
+    const dm = segDist(e, n, MORAINE[0], MORAINE[1]);
+    d -= 14 * Math.exp(-(dm * dm) / (2 * 120 * 120));
+    if (dm < 300) d -= hashedBumps(e, n, 12, 11, 0.35, 0.6, 2.0, 0.9, 1.8, 1);
+    // Meandering channel
+    const nc = 600 + 150 * Math.sin(e / 350);
+    d += 8 * Math.exp(-((n - nc) ** 2) / (2 * 40 * 40));
+    // Rock shoal up to 6 m in the west
+    d = Math.min(d, 6 + 0.02 * ((e - 300) ** 2 + (n - 1500) ** 2) ** 0.5 * 4);
+    // Sand ripples in the shallows, pockmarks in the mud
+    const shallow = Math.max(0, Math.min(1, (35 - d) / 10));
+    if (shallow > 0) d -= 0.35 * shallow * Math.sin(2 * Math.PI * (e * 0.866 + n * 0.5) / 22);
+    if (d > 30) d += hashedBumps(e, n, 60, 23, 0.15, 0.8, 1.2, 3, 5, 1);
+    // Wreck
+    d -= WRECK.height * slab(e, n, WRECK.e, WRECK.n, WRECK.half[0], WRECK.half[1], WRECK.heading, 2.5);
+    return Math.max(3, d);
+}
+
 // max: the highest the surface gets within 500 m of the anchor
 const SCENES = {
     terrain: { height: (e, n) => terrainRaw(e, n) - TERRAIN_ZERO, max: 42 },
     seabed: { height: (e, n) => -seabedDepth(e, n), max: -3 },
-    cave: { sdf: caveSdf, path: CAVE_PATH, radius: CAVE_RADIUS }
+    cave: { sdf: caveSdf, path: CAVE_PATH, radius: CAVE_RADIUS },
+    garda: { height: (e, n) => -gardaDepth(e, n), max: -2.5, origin: GARDA.origin, area: GARDA.area }
 };
 
 // Sphere tracing through the water of an SDF scene: 0 when the ray leaves by
@@ -159,4 +238,4 @@ function castRay(scene, oe, on, ou, de, dn, du, maxRange) {
     return r <= maxRange ? r : 0;
 }
 
-module.exports = { SCENES, castRay, CAVE_PATH };
+module.exports = { SCENES, castRay, CAVE_PATH, GARDA };

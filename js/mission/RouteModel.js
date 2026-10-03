@@ -60,19 +60,23 @@ export const SEGMENT_TYPES = {
         defaults: {
             alt: null, speed: 0, angle: 0, spacingMode: 'camera', sideDistance: 30,
             sideOverlap: 70, forwardOverlap: 80,
+            sensorAperture: 90, sensorRange: 90, sensorDistance: 30,
             overshoot: 0, doubleGrid: false, trigger: true,
         },
         fields: [
             { key: 'alt',            label: 'Altitude',       unit: 'm',   type: 'number', min: -500, max: 10000, step: 1, nullable: true, placeholder: 'route' },
             { key: 'speed',          label: 'Speed',          unit: 'm/s', type: 'number', min: 0, max: 100, step: 0.5, zeroLabel: 'route' },
             { key: 'angle',          label: 'Direction',      unit: '°',   type: 'number', min: -180, max: 180, step: 1 },
-            { key: 'spacingMode',    label: 'Lane spacing',   type: 'select', options: [['camera', 'From camera'], ['manual', 'Manual']] },
+            { key: 'spacingMode',    label: 'Lane spacing',   type: 'select', options: [['camera', 'From camera'], ['sensor', 'From mapping sensor'], ['manual', 'Manual']] },
             { key: 'sideDistance',   label: 'Side distance',  unit: 'm',   type: 'number', min: 1, max: 5000, step: 1, when: { spacingMode: 'manual' } },
-            { key: 'sideOverlap',    label: 'Side overlap',   unit: '%',   type: 'number', min: 0, max: 95, step: 5, when: { spacingMode: 'camera' } },
-            { key: 'forwardOverlap', label: 'Forward overlap', unit: '%',  type: 'number', min: 0, max: 95, step: 5 },
+            { key: 'sensorAperture', label: 'Sensor swath angle', unit: '°', type: 'number', min: 1, max: 180, step: 1, when: { spacingMode: 'sensor' }, title: 'Across-track aperture of the mapping sensor: an imaging sonar 90°, a multibeam 120–140°, a LiDAR scanning across the track 70°' },
+            { key: 'sensorRange',    label: 'Sensor range',   unit: 'm',   type: 'number', min: 1, max: 2000, step: 1, when: { spacingMode: 'sensor' } },
+            { key: 'sensorDistance', label: 'Distance to the surface', unit: 'm', type: 'number', min: 0.5, max: 5000, step: 1, nullable: true, placeholder: 'altitude', when: { spacingMode: 'sensor' }, title: 'Expected distance from the sensor to what it maps: the depth for a boat, the height above the bed for a ROV; empty = the segment altitude (an aircraft over the ground)' },
+            { key: 'sideOverlap',    label: 'Side overlap',   unit: '%',   type: 'number', min: 0, max: 95, step: 5, when: { spacingMode: ['camera', 'sensor'] } },
+            { key: 'forwardOverlap', label: 'Forward overlap', unit: '%',  type: 'number', min: 0, max: 95, step: 5, when: { spacingMode: ['camera', 'manual'] } },
             { key: 'overshoot',      label: 'Overshoot',      unit: 'm',   type: 'number', min: 0, max: 500, step: 5 },
             { key: 'doubleGrid',     label: 'Double grid',    type: 'check' },
-            { key: 'trigger',        label: 'Camera trigger by distance', type: 'check' },
+            { key: 'trigger',        label: 'Camera trigger by distance', type: 'check', when: { spacingMode: ['camera', 'manual'] } },
         ],
     },
     corridor: {
@@ -81,16 +85,20 @@ export const SEGMENT_TYPES = {
         defaults: {
             alt: null, speed: 0, width: 60, spacingMode: 'camera', sideDistance: 30,
             sideOverlap: 70, forwardOverlap: 80, trigger: true,
+            sensorAperture: 90, sensorRange: 90, sensorDistance: 30,
         },
         fields: [
             { key: 'alt',            label: 'Altitude',       unit: 'm',   type: 'number', min: -500, max: 10000, step: 1, nullable: true, placeholder: 'route' },
             { key: 'speed',          label: 'Speed',          unit: 'm/s', type: 'number', min: 0, max: 100, step: 0.5, zeroLabel: 'route' },
             { key: 'width',          label: 'Corridor width', unit: 'm',   type: 'number', min: 1, max: 5000, step: 5 },
-            { key: 'spacingMode',    label: 'Lane spacing',   type: 'select', options: [['camera', 'From camera'], ['manual', 'Manual']] },
+            { key: 'spacingMode',    label: 'Lane spacing',   type: 'select', options: [['camera', 'From camera'], ['sensor', 'From mapping sensor'], ['manual', 'Manual']] },
             { key: 'sideDistance',   label: 'Side distance',  unit: 'm',   type: 'number', min: 1, max: 5000, step: 1, when: { spacingMode: 'manual' } },
-            { key: 'sideOverlap',    label: 'Side overlap',   unit: '%',   type: 'number', min: 0, max: 95, step: 5, when: { spacingMode: 'camera' } },
-            { key: 'forwardOverlap', label: 'Forward overlap', unit: '%',  type: 'number', min: 0, max: 95, step: 5 },
-            { key: 'trigger',        label: 'Camera trigger by distance', type: 'check' },
+            { key: 'sensorAperture', label: 'Sensor swath angle', unit: '°', type: 'number', min: 1, max: 180, step: 1, when: { spacingMode: 'sensor' }, title: 'Across-track aperture of the mapping sensor: an imaging sonar 90°, a multibeam 120–140°, a LiDAR scanning across the track 70°' },
+            { key: 'sensorRange',    label: 'Sensor range',   unit: 'm',   type: 'number', min: 1, max: 2000, step: 1, when: { spacingMode: 'sensor' } },
+            { key: 'sensorDistance', label: 'Distance to the surface', unit: 'm', type: 'number', min: 0.5, max: 5000, step: 1, nullable: true, placeholder: 'altitude', when: { spacingMode: 'sensor' }, title: 'Expected distance from the sensor to what it maps: the depth for a boat, the height above the bed for a ROV; empty = the segment altitude (an aircraft over the ground)' },
+            { key: 'sideOverlap',    label: 'Side overlap',   unit: '%',   type: 'number', min: 0, max: 95, step: 5, when: { spacingMode: ['camera', 'sensor'] } },
+            { key: 'forwardOverlap', label: 'Forward overlap', unit: '%',  type: 'number', min: 0, max: 95, step: 5, when: { spacingMode: ['camera', 'manual'] } },
+            { key: 'trigger',        label: 'Camera trigger by distance', type: 'check', when: { spacingMode: ['camera', 'manual'] } },
         ],
     },
     poi: {
@@ -418,7 +426,7 @@ export function segmentAlt(seg, params = route.params) {
 /** Whether a field is visible given the current values (`when` clauses). */
 export function fieldVisible(field, values) {
     if (!field.when) return true;
-    return Object.entries(field.when).every(([k, v]) => values[k] === v);
+    return Object.entries(field.when).every(([k, v]) => Array.isArray(v) ? v.includes(values[k]) : values[k] === v);
 }
 
 // ── Geometry helpers (shared by compiler and UI) ─────────────────────────────
@@ -493,8 +501,28 @@ export function cameraFootprint(alt, cam) {
  * manual side distance or the route camera. Also the GSD — the number a
  * surveyor actually plans against.
  */
+/**
+ * Width a mapping sensor covers on a flat surface at `distance`: its aperture
+ * across the track, cut by its range when the surface is far (the beams at
+ * the edge of the fan reach it no more). 0 when the surface is out of range.
+ */
+export function sensorSwath(apertureDeg, range, distance) {
+    const d = Math.max(0.1, distance);
+    if (!(range > d)) return { swath: 0, limitedByRange: true };
+    const byAngle = d * Math.tan(Math.min(179, apertureDeg) / 2 * Math.PI / 180);
+    const byRange = Math.sqrt(range * range - d * d);
+    return { swath: 2 * Math.min(byAngle, byRange), limitedByRange: byRange < byAngle };
+}
+
 export function surveyGeometry(seg, alt, cam = route.params.camera) {
     const p = seg.params;
+    if (p.spacingMode === 'sensor') {
+        // A sonar or a LiDAR: lanes from its swath on the surface it maps
+        const distance = +p.sensorDistance > 0 ? +p.sensorDistance : Math.max(1, alt);
+        const sw = sensorSwath(+p.sensorAperture || 90, +p.sensorRange || 90, distance);
+        const sideDistance = Math.max(1, sw.swath * (1 - (p.sideOverlap || 0) / 100));
+        return { sideDistance, triggerDistance: 0, gsd: null, footprint: { width: sw.swath, height: 0 }, sensor: { ...sw, distance } };
+    }
     const fp = cameraFootprint(Math.max(1, alt), cam);
     const sideDistance = p.spacingMode === 'manual'
         ? Math.max(1, +p.sideDistance || 30)

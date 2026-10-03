@@ -1,0 +1,53 @@
+# CORV GCS — boat SITL (ArduRover on the 'motorboat' model)
+# A survey boat on Lake Garda: boat frame, at most 2 m/s on the lanes, and the
+# afternoon "Ora" — a southerly breeze of 5 m/s — with the short chop it raises
+# over the southern basin. SITL's own wave model moves the hull (roll, pitch,
+# heave), so the attitude in the telemetry and the true pose the rosbridge
+# emulator ray-casts its sonar from see the same sea.
+
+FRAME_CLASS     2
+
+# --- RC calibration ---
+RC1_MIN 1000
+RC1_MAX 2000
+RC1_TRIM 1500
+RC2_MIN 1000
+RC2_MAX 2000
+RC2_TRIM 1500
+RC3_MIN 1000
+RC3_MAX 2000
+RC3_TRIM 1500
+RC4_MIN 1000
+RC4_MAX 2000
+RC4_TRIM 1500
+
+# --- small INS offsets so the IMU counts as calibrated ---
+INS_ACCOFFS_X   0.001
+INS_ACCOFFS_Y   0.001
+INS_ACCOFFS_Z   0.001
+INS_ACCSCAL_X   1.001
+INS_ACCSCAL_Y   1.001
+INS_ACCSCAL_Z   1.001
+COMPASS_OFS_X   5
+COMPASS_OFS_Y   13
+COMPASS_OFS_Z   -18
+
+# --- survey speed and lane following: a sonar survey boat, 2 m/s at most ---
+CRUISE_SPEED    2
+WP_SPEED        2
+WP_RADIUS       3
+WP_OVERSHOOT    2
+
+# --- the lake: a southerly 5 m/s, waves 0.5 m high, 12 m long, at the
+# deep-water speed for that length (sqrt(g λ / 2π) ≈ 4.3 m/s) ---
+# SITL's boat (SIM_Sailboat.cpp, which MotorBoat reuses) only makes waves
+# once armed, takes half of SIM_WAVE_AMP as the amplitude (slopes up to ~7°
+# here) and heaves only with SIM_WAVE_ENABLE 2.
+SIM_WIND_SPD    5
+SIM_WIND_DIR    180
+SIM_WIND_TURB   1
+SIM_WAVE_ENABLE 2
+SIM_WAVE_AMP    0.5
+SIM_WAVE_LENGTH 12
+SIM_WAVE_DIR    180
+SIM_WAVE_SPEED  4.3

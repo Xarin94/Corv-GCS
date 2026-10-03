@@ -21,15 +21,16 @@
  * started deliberately, per flight.
  */
 
-import { STATE, isDemoMode } from '../core/state.js';
+import { STATE, isDemoMode, POSE_HISTORY } from '../core/state.js';
 import { ORIGIN } from '../core/constants.js';
 import { isRelativeMode } from '../core/RelativeNav.js';
 import { pushHudMessage } from '../hud/HUDRenderer.js';
 import { setNavDot } from './TabController.js';
 import { drawMountPreview } from './MountPreview.js';
+import { getRoute } from '../mission/RouteModel.js';
 import {
     applyRosTiles, clearRosMesh, setRosMeshVisible, setRosMeshShown, setRosMeshFillOpacity,
-    setRosMeshColorMode, setRosMeshOverTerrain, setRosMeshMinSamples, getRosColorRange, getRosMeshStats
+    setRosMeshColorMode, setRosMeshOverTerrain, setRosMeshMinSamples, getRosColorRange, getRosMeshStats, getRosRoughFull
 } from '../ros/RosMesh3D.js';
 import { applyRosVolume, clearRosVolume, getRosVolumeStats, getRosVolumeColorRange } from '../ros/RosVolume3D.js';
 
@@ -52,6 +53,7 @@ const FIELDS = {
     'ros-lever-z':      { key: 'leverZ',     parse: num(0) },
     'ros-min-range':    { key: 'minRange',   parse: num(2.5) },
     'ros-max-range':    { key: 'maxRange',   parse: num(100) },
+    'ros-despike':      { key: 'despike',    parse: v => (v === 'off' ? 'off' : 'on') },
     'ros-lag':          { key: 'lagMs',      parse: num(0) },
     'ros-time-base':    { key: 'timeBase',   parse: v => String(v) },
     'ros-cell':         { key: 'cell',       parse: num(0.3) },
@@ -71,6 +73,10 @@ const PROFILES = {
     seabed: { mountRoll: 0, mountPitch: -90, mountYaw: 0, minRange: 0.5, maxRange: 100, rateHz: 10, maxPoints: 1000 }
 };
 const KEY_TO_ID = Object.fromEntries(Object.entries(FIELDS).map(([id, f]) => [f.key, id]));
+
+// The strip's colour button: grey → distance → roughness → grey
+const COLOR_LABEL = { gray: 'GRAY', distance: 'DIST', rough: 'ROUGH' };
+const COLOR_NEXT = { gray: 'distance', distance: 'rough', rough: 'gray' };
 
 function num(def) {
     return v => { const n = parseFloat(v); return Number.isFinite(n) ? n : def; };
@@ -124,8 +130,9 @@ function applyView() {
     setRosMeshColorMode(cfg.colorMode);
     setRosMeshShown(cfg.shown !== false);
     if (els.colorBtn) {
-        els.colorBtn.textContent = cfg.colorMode === 'distance' ? 'DIST' : 'GRAY';
+        els.colorBtn.textContent = COLOR_LABEL[cfg.colorMode] || 'GRAY';
         els.colorBtn.classList.toggle('on', cfg.colorMode === 'distance');
+        els.colorBtn.classList.toggle('rough', cfg.colorMode === 'rough');
     }
     if (els.viewBtn) {
         els.viewBtn.textContent = cfg.shown !== false ? 'VIEW ON' : 'VIEW OFF';
@@ -194,10 +201,35 @@ function poseSample() {
     };
 }
 
+// The planner's survey areas, for the coverage the worker measures against them
+let sentAreas = '';
+function sendAreas() {
+    if (!worker) return;
+    let areas = [];
+    try {
+        areas = getRoute().segments
+            .filter(s => s.type === 'area' && s.points.length >= 3)
+            .map((s, i) => ({ name: `area ${i + 1}`, points: s.points.map(p => ({ lat: p.lat, lng: p.lng })) }));
+    } catch (_) { /* no route yet */ }
+    const key = JSON.stringify(areas);
+    if (key === sentAreas) return;
+    sentAreas = key;
+    worker.postMessage({ op: 'areas', areas });
+}
+
+// Every ATTITUDE / GLOBAL_POSITION_INT since the last call goes along: at 25 Hz
+// they are one or two, in a SITL at speedup 20 a few dozen
+let sentSeq = 0;
 function sendPose() {
     if (!worker) return;
     const s = poseSample();
-    worker.postMessage({ op: 'pose', p: s.p || null, reason: s.reason });
+    const att = [], pos = [];
+    if (s.p) {
+        for (const x of POSE_HISTORY.att) if (x.seq > sentSeq) att.push(x);
+        if (!s.p.rel) for (const x of POSE_HISTORY.pos) if (x.seq > sentSeq) pos.push(x);
+    }
+    sentSeq = POSE_HISTORY.seq;
+    worker.postMessage({ op: 'pose', p: s.p || null, reason: s.reason, att, pos });
 }
 
 // ============== CONNECTION ==============
@@ -218,6 +250,8 @@ function setEnabled(on) {
         if (cfg.topic) worker.postMessage({ op: 'select', topic: cfg.topic, type: cfg.topicType });
         clearInterval(poseTimer);
         poseTimer = setInterval(sendPose, POSE_MS);
+        sentAreas = '';
+        sendAreas();
         setRosMeshVisible(true);
         els.strip.classList.remove('hidden');
         lastState = null;
@@ -345,7 +379,9 @@ function renderStatus(st) {
     if (st.topic) lines.push(`${esc(st.topic)} · ${esc(shortType(st.type))}${st.frameId ? ` · frame ${esc(st.frameId)} → ${FRAME_LABEL[st.frame] || ''}` : ''}`);
     if (st.stampOff !== null && st.stampOff !== undefined) lines.push(`<span class="warn">header.stamp ${fmt(st.stampOff / 1000, 1)} s from this clock: not synced, arrival time used</span>`);
     const r = st.rate || {};
-    lines.push(`${fmt(r.msgs)} msg/s · ${fmt(r.pointsIn)} pts/s in · ${fmt(r.sampled)} sampled · ${fmt(r.used)} averaged`);
+    lines.push(`${fmt(r.msgs)} msg/s · ${fmt(r.pointsIn)} pts/s in · ${fmt(r.sampled)} sampled · ${fmt(r.used)} averaged`
+        + (st.despike === 'on' ? ` · ${fmt(r.spikes || 0)} spikes dropped (${fmt(100 * (r.spikes || 0) / Math.max(1, r.sampled), 1)} %)`
+            : st.despike === 'unordered' ? ' · spike filter idle: the scan has no order' : ''));
     const drops = [];
     if (r.noPose) drops.push(`${fmt(r.noPose)} msg/s without pose`);
     if (r.noHome) drops.push(`${fmt(r.noHome)} msg/s without home`);
@@ -357,11 +393,15 @@ function renderStatus(st) {
     } else {
         const m = getRosMeshStats();
         lines.push(`surface ${fmt(g.tiles)} / ${fmt(g.maxTiles)} tiles of ${g.tileCells}×${g.tileCells} · cell ${fmt(g.cell, 2)} m · ${fmt(g.filled)} cells (${fmt(g.filled * g.cell * g.cell)} m²)`);
+        for (const c of g.coverage || []) {
+            lines.push(`planned ${esc(c.name)}: ${fmt(c.area / 1e6, 2)} km² · <span class="${c.covered / c.area > 0.9 ? 'ok' : 'warn'}">${fmt(100 * c.covered / c.area, 1)} % covered</span>`);
+        }
         const lv = m.levels, lvTotal = lv.reduce((x, y) => x + y, 0);
         const res = lvTotal ? lv.map((n, k) => n ? `${fmt(g.cell * 100 * 2 ** k)} cm ${Math.round(100 * n / lvTotal)}%` : null).filter(Boolean).join(' · ') : '—';
         lines.push(`drawn ${fmt(m.blocksDrawn)} / ${fmt(m.blocks)} blocks · ${fmt(m.triangles)} triangles · resolution ${res}`);
     }
-    lines.push(`<span class="${ok ? 'ok' : 'warn'}">${esc(st.state)}</span> · pose ${isRelativeMode() ? 'relative (local frame)' : 'absolute (GPS)'}`);
+    lines.push(`<span class="${ok ? 'ok' : 'warn'}">${esc(st.state)}</span> · pose ${isRelativeMode() ? 'relative (local frame)' : 'absolute (GPS)'}`
+        + (st.clockRate && Math.abs(st.clockRate - 1) > 0.1 ? ` · autopilot clock ×${fmt(st.clockRate, 1)} (SITL speedup)` : ''));
     if (st.error && st.link !== 'CONNECTED') lines.push(`<span class="err">${esc(st.error)}</span>`);
     el.innerHTML = lines.join('\n');
 }
@@ -379,6 +419,12 @@ function updateStrip(st) {
     if (cfg.colorMode === 'distance' && have) {
         const r = cave ? getRosVolumeColorRange() : getRosColorRange();
         text += ` · ${fmt(r.near)}–${fmt(r.far)} m`;
+    } else if (cfg.colorMode === 'rough' && have) {
+        text += cave ? ' · flat → 25° of spread' : ` · flat → ${fmt(getRosRoughFull(), 1)} m off-plane`;
+    }
+    if (!cave && g.coverage && g.coverage.length) {
+        const a = g.coverage.reduce((s, c) => s + c.area, 0), c = g.coverage.reduce((s, x) => s + x.covered, 0);
+        text += ` · ${fmt(100 * c / a)} % of the area`;
     }
     els.stripGrid.textContent = text;
 }
@@ -386,6 +432,7 @@ function updateStrip(st) {
 function onStatus(st) {
     lastStatus = st;
     drawPreview();
+    sendAreas();
     renderStatus(st);
     updateStrip(st);
     setNavDot('ros', enabled && st && st.link === 'CONNECTED');
@@ -459,7 +506,7 @@ export function initRosController() {
     $('ros-clear-btn')?.addEventListener('click', () => clearSurface(true));
     $('ros-strip-clear')?.addEventListener('click', () => clearSurface(true));
     els.colorBtn?.addEventListener('click', () => {
-        cfg.colorMode = cfg.colorMode === 'distance' ? 'gray' : 'distance';
+        cfg.colorMode = COLOR_NEXT[cfg.colorMode] || 'distance';
         saveConfig();
         applyView();
         updateStrip(lastStatus);
