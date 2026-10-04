@@ -54,7 +54,9 @@ The tabs along the top:
 
 The 3D terrain is built from **SRTM** elevation tiles, one file per 1° × 1° square (about 25 MB at
 30 m resolution, named like `N47E011.hgt`). The tiles under the vehicle are **downloaded
-automatically** when a network is available and kept on disk. Without a network you can:
+automatically** when a network is available and kept on disk, in `data/terrain` next to the
+installation (in the per-user data folder when the installation folder is read-only). Without a
+network you can:
 
 - put your own `.hgt` files in `topography/` inside the installation folder, or pick a folder in
   **SYS CONFIG → SYSTEM CONFIG → TERRAIN (HGT FOLDER)** — from

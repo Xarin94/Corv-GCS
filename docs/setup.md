@@ -136,7 +136,7 @@ A Livox Mid-360 point cloud mapped live from the telemetry — see [LiDAR point 
 |-------|---|
 | **FLIGHT STACK** | ArduPilot, INAV or Betaflight — see [Getting started](getting-started.md#choose-the-flight-stack) |
 | **NAVIGATION** | Absolute or relative position, the velocity dead reckoning uses, fresh or sea water — see [Navigation without GPS](3D-NAVIGATION.md#5-navigation-without-gps) |
-| **SYSTEM CONFIG** | Language (English, 中文), altitude offset, terrain folder, 3D model and its scale, time of day, map brightness, attitude smoothing, 3D frame rate (60 or 30 to save battery), DevTools |
+| **SYSTEM CONFIG** | Language (English, 中文), altitude offset, terrain folder, 3D model and its scale, time of day, map brightness, attitude smoothing, 3D frame rate (60 or 30 to save battery), 3D satellite detail (the sharpest imagery around the aircraft: zoom 16 to 20, 18 by default — see [Flight screen](flight-screen.md#satellite-detail)), DevTools |
 | **GCS OPTIONS** | ADS-B traffic overlay, ground clamp (keep the model on the terrain surface), battery voltage range and cells for the percentage when the vehicle does not report one |
 | **ROTOR LOAD** | A schematic of the motors coloured by their output, for multirotors: frame, PWM scale and the green / orange / red thresholds |
 | **SIYI CAMERA STREAM** | Address, port, path and frame rate of the FPV video |

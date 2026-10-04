@@ -214,18 +214,10 @@ export function appendLiveLidarPoints(batch) {
     liveGroup.children[0].geometry.setDrawRange(0, liveCount);
 }
 
-// Partial upload; when two spans land in one frame, widen to cover both
-// (WebGLAttributes resets updateRange.count to -1 after each upload).
+// Partial upload. Spans that land in one frame add up: three merges them at
+// the next upload and clears the list.
 function markRange(attr, offset, count) {
-    if (attr.updateRange.count > 0) {
-        const a = Math.min(attr.updateRange.offset, offset);
-        const b = Math.max(attr.updateRange.offset + attr.updateRange.count, offset + count);
-        attr.updateRange.offset = a;
-        attr.updateRange.count = b - a;
-    } else {
-        attr.updateRange.offset = offset;
-        attr.updateRange.count = count;
-    }
+    attr.addUpdateRange(offset, count);
     attr.needsUpdate = true;
 }
 
@@ -298,12 +290,8 @@ export function appendLidarPoints(batch) {
         total += room;
         k += room;
         c.points.geometry.setDrawRange(0, c.n);
-        c.posAttr.updateRange.offset = start * 3;
-        c.posAttr.updateRange.count = room * 3;
-        c.posAttr.needsUpdate = true;
-        c.intAttr.updateRange.offset = start;
-        c.intAttr.updateRange.count = room;
-        c.intAttr.needsUpdate = true;
+        markRange(c.posAttr, start * 3, room * 3);
+        markRange(c.intAttr, start, room);
     }
     histDirty = true;
 }

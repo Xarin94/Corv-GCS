@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.7.7-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.8.0-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"/>
   <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
   <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
@@ -45,6 +45,10 @@ You see what the aircraft sees: the terrain ahead in 3D, with an aviation-style 
 over it. Speed, altitude, heading, vertical speed and G-load are drawn the way an airliner's primary
 flight display draws them — the pitch ladder, the flight-path marker and the bank arc follow the
 same conventions as a Garmin or Boeing HUD, so the picture reads at a glance.
+
+Around the aircraft the satellite imagery is as sharp as on the 2D map, down to 10 cm per pixel
+(zoom 20; 40 cm by default, set in **SYS CONFIG → 3D SATELLITE DETAIL**), loaded as the aircraft
+flies: low over the ground you see the cars, the fences and the power lines you are flying over.
 
 Turn the satellite imagery off (**M**) and the terrain becomes a schematic chart, in the style of
 the mission simulations in *Top Gun: Maverick*: black sky, contour lines every 10 m with brighter
@@ -188,9 +192,9 @@ radio that is the difference between two packets and several minutes.
 ## Installation
 
 Installers are on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
-**Windows** `CORV GCS Setup 1.7.7.exe`, **macOS** `CORV GCS-1.7.7-arm64.dmg` (Apple silicon) and
-`CORV GCS-1.7.7-x64.dmg` (Intel), **Linux** `CORV GCS-1.7.7.AppImage` (portable) and
-`corv-gcs_1.7.7_amd64.deb` (Debian / Ubuntu).
+**Windows** `CORV GCS Setup 1.8.0.exe`, **macOS** `CORV GCS-1.8.0-arm64.dmg` (Apple silicon) and
+`CORV GCS-1.8.0-x64.dmg` (Intel), **Linux** `CORV GCS-1.8.0.AppImage` (portable) and
+`corv-gcs_1.8.0_amd64.deb` (Debian / Ubuntu).
 
 The macOS app is not signed with an Apple Developer ID: after copying it to Applications, run
 `xattr -dr com.apple.quarantine "/Applications/CORV GCS.app"` once, or macOS reports it as damaged.
@@ -210,7 +214,8 @@ npm run build            # installers for Windows + Linux → dist/
 
 The 3D terrain comes from SRTM `.hgt` elevation tiles (one file per 1° × 1° square, ~25 MB each at
 30 m resolution). The tiles under the vehicle are downloaded automatically when a network is
-available; you can also put your own files in `topography/` inside the installation folder, from
+available and kept in `data/terrain`; you can also put your own files in `topography/` inside the
+installation folder, from
 [OpenTopography](https://portal.opentopography.org/raster?opentopoID=OTSRTM.082015.4326.1) or
 [USGS EarthExplorer](https://earthexplorer.usgs.gov/), named like `N47E011.hgt`.
 

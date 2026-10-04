@@ -55,77 +55,130 @@ ipcMain.handle('models-load', async (event, filename) => {
   }
 });
 
-// IPC handler to LIST available .hgt files (names only, no data — avoids OOM)
-ipcMain.handle('topography-load', async (event, folderName = 'topography') => {
-  const candidates = [folderName, 'topo'];
-  const base = __dirname;
+// ── Terrain tiles (.hgt) ─────────────────────────────────────────────────────
+// Packaged, __dirname is inside app.asar: a file, which has no topo/ folder (the
+// build leaves the tiles out) and cannot be written to — tiles saved there were
+// lost with ENOTDIR. So the tiles live outside the app:
+//   - topography/ and topo/ next to the installation (the project folder in
+//     development): tiles the operator supplies, read only;
+//   - <data root>/terrain (mission-store.js): where downloaded tiles are saved,
+//     writable even when the installation is under Program Files.
+// Lookups ignore case: the renderer asks for N47E011.HGT, the offline downloader
+// saves N47E011.hgt, and Linux file systems tell the two apart.
 
-  for (const cand of candidates) {
-    const dir = path.join(base, cand);
-    try {
-      const st = await fs.promises.stat(dir);
-      if (!st.isDirectory()) continue;
-    } catch (err) {
-      continue;
+const HGT_NAME = /^[NS]\d{2}[EW]\d{3}\.hgt$/i;
+const HGT_SIZES = new Set([1201 * 1201 * 2, 3601 * 3601 * 2]);   // SRTM3, SRTM1
+const HGT_RESCAN_MS = 2000;
+
+function hgtCacheDir() {
+  return path.join(require('./mission-store').getRoot(), 'terrain');
+}
+
+/** Folders searched for tiles, first match wins: the operator's own, then the cache. */
+function hgtDirs() {
+  // An AppImage runs from a read-only mount in /tmp: its folder is where the .AppImage file is
+  const base = !app.isPackaged ? app.getAppPath()
+    : process.env.APPIMAGE ? path.dirname(process.env.APPIMAGE)
+    : path.dirname(app.getPath('exe'));
+  return [path.join(base, 'topography'), path.join(base, 'topo'), hgtCacheDir()];
+}
+
+let hgtIndex = null;     // UPPERCASE name → full path
+let hgtIndexAt = 0;
+
+async function scanHgt() {
+  const index = new Map();
+  const counts = [];
+  for (const dir of hgtDirs()) {
+    let entries;
+    try { entries = await fs.promises.readdir(dir); } catch (e) { continue; }
+    let n = 0;
+    for (const e of entries) {
+      if (!HGT_NAME.test(e)) continue;
+      n++;
+      const key = e.toUpperCase();
+      if (!index.has(key)) index.set(key, path.join(dir, e));
     }
-
-    const entries = await fs.promises.readdir(dir);
-    const names = entries.filter(e => e.toLowerCase().endsWith('.hgt')).map(e => e.toUpperCase());
-    console.log(`topography-load: found ${names.length} .hgt files in ${dir}`);
-    return names;
+    counts.push(`${n} in ${dir}`);
   }
+  hgtIndex = index;
+  hgtIndexAt = Date.now();
+  return counts;
+}
 
-  console.log('topography-load: no folder found');
-  return [];
-});
-
-// IPC handler to load a SINGLE .hgt file by name (on-demand, lazy)
-ipcMain.handle('topography-load-one', async (event, filename) => {
-  if (!filename || /[\/\\]/.test(filename)) return null;
-  const candidates = ['topo', 'topography'];
-  for (const cand of candidates) {
-    const full = path.join(__dirname, cand, filename);
-    try {
-      const buf = await fs.promises.readFile(full);
-      const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-      console.log(`topography-load-one: ${filename} (${ab.byteLength} bytes)`);
-      return ab;
-    } catch (err) {
-      // try next candidate
-    }
+/** Full path of a tile, or null. A miss rescans the folders (a tile copied in by hand). */
+async function findHgt(filename) {
+  const key = String(filename).toUpperCase();
+  if (!hgtIndex) await scanHgt();
+  let p = hgtIndex.get(key);
+  if (!p && Date.now() - hgtIndexAt > HGT_RESCAN_MS) {
+    await scanHgt();
+    p = hgtIndex.get(key);
   }
+  if (!p) return null;
+  try {
+    const st = await fs.promises.stat(p);
+    if (st.isFile() && st.size > 0) return p;
+  } catch (e) { /* deleted since the scan */ }
+  hgtIndex.delete(key);
   return null;
+}
+
+// List the available tiles (names only, no data — avoids OOM)
+ipcMain.handle('topography-load', async () => {
+  const counts = await scanHgt();
+  console.log(`[hgt] ${hgtIndex.size} tiles available (${counts.join(', ') || 'no terrain folder yet'}); downloads go to ${hgtCacheDir()}`);
+  return [...hgtIndex.keys()];
 });
 
-// IPC handler to CHECK if a .hgt file exists (cheap stat — no file read).
-// Used by the offline downloader's skip check; reading the full ~25 MB file
-// just to test existence is wasteful.
-ipcMain.handle('topography-exists', async (event, filename) => {
-  if (!filename || /[\/\\]/.test(filename)) return false;
-  const candidates = ['topo', 'topography'];
-  for (const cand of candidates) {
-    const full = path.join(__dirname, cand, filename);
-    try {
-      const st = await fs.promises.stat(full);
-      if (st.isFile() && st.size > 0) return true;
-    } catch (err) {
-      // try next candidate
-    }
+// Load a single tile by name (on-demand, lazy)
+ipcMain.handle('topography-load-one', async (event, filename) => {
+  if (!HGT_NAME.test(filename || '')) return null;
+  const full = await findHgt(filename);
+  if (!full) return null;
+  try {
+    const buf = await fs.promises.readFile(full);
+    console.log(`[hgt] loaded ${filename} from ${full} (${buf.byteLength} bytes)`);
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  } catch (err) {
+    console.error(`[hgt] cannot read ${full}: ${err.message}`);
+    return null;
   }
-  return false;
 });
 
-// IPC handler to save a single .hgt file to the topo folder
+// Does a tile exist (cheap stat — no file read). Used by the offline downloader's
+// skip check; reading the full ~25 MB file just to test existence is wasteful.
+ipcMain.handle('topography-exists', async (event, filename) => {
+  if (!HGT_NAME.test(filename || '')) return false;
+  return !!(await findHgt(filename));
+});
+
+// Save a downloaded tile to the terrain cache. Through a temp file + rename: a
+// truncated tile would pass the exists() check and never be downloaded again.
 ipcMain.handle('topography-save', async (event, filename, arrayBuffer) => {
-  const dir = path.join(__dirname, 'topo');
+  if (!HGT_NAME.test(filename || '')) {
+    console.error(`[hgt] refused to save "${filename}": not a tile name`);
+    return false;
+  }
+  const size = arrayBuffer ? arrayBuffer.byteLength : 0;
+  if (!HGT_SIZES.has(size)) {
+    console.error(`[hgt] refused to save ${filename}: ${size} bytes is not an SRTM tile`);
+    return false;
+  }
+  const dir = hgtCacheDir();
+  const filePath = path.join(dir, filename.toUpperCase());
+  const tmp = `${filePath}.tmp`;
   try {
     await fs.promises.mkdir(dir, { recursive: true });
-    const filePath = path.join(dir, filename);
-    await fs.promises.writeFile(filePath, Buffer.from(arrayBuffer));
-    console.log(`topography-save: saved ${filename} (${arrayBuffer.byteLength} bytes)`);
+    await fs.promises.writeFile(tmp, Buffer.from(arrayBuffer));
+    await fs.promises.rename(tmp, filePath);
+    if (!hgtIndex) await scanHgt();
+    hgtIndex.set(filename.toUpperCase(), filePath);
+    console.log(`[hgt] saved ${filename} to ${filePath} (${size} bytes)`);
     return true;
   } catch (err) {
-    console.error(`topography-save: failed to save ${filename}`, err.message);
+    console.error(`[hgt] failed to save ${filename} to ${dir}: ${err.message}`);
+    fs.promises.unlink(tmp).catch(() => {});
     return false;
   }
 });

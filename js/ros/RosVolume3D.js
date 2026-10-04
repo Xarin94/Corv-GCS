@@ -95,7 +95,8 @@ export function initRosVolume(scene) {
         fragmentShader: FRAGMENT,
         transparent: true,
         depthWrite: false,
-        side: THREE.DoubleSide
+        side: THREE.DoubleSide,
+        forceSinglePass: true   // one draw per chunk: three splits transparent double-sided meshes into back, then front
     });
 }
 

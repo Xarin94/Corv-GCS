@@ -106,12 +106,12 @@ export function initWater3D(scene) {
         transparent: true,
         depthWrite: false,
         side: THREE.DoubleSide,
+        forceSinglePass: true,   // one draw: three splits transparent double-sided meshes into back, then front
         // Over a lake the plane lies on the terrain's own surface: pull it forward
         polygonOffset: true,
         polygonOffsetFactor: -1,
         polygonOffsetUnits: -4
     });
-    planeMaterial.extensions.derivatives = true;
     const geometry = new THREE.PlaneGeometry(2, 2);
     geometry.rotateX(-Math.PI / 2);
     plane = new THREE.Mesh(geometry, planeMaterial);

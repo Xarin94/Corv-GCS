@@ -228,7 +228,7 @@ function watchBrowser() {
             const gl = r.getContext();
             const ext = gl.getExtension('WEBGL_debug_renderer_info');
             const gpu = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
-            const desc = `${gpu} | WebGL${r.capabilities?.isWebGL2 ? '2' : '1'} max texture ${r.capabilities?.maxTextureSize}`;
+            const desc = `${gpu} | WebGL2 three r${THREE.REVISION} max texture ${r.capabilities?.maxTextureSize}`;
             if (/swiftshader|basic render|llvmpipe|software/i.test(gpu)) console.warn(`[gl] SOFTWARE rendering: ${desc}`);
             else console.log(`[gl] ${desc}`);
             setHeader('WebGL', desc);

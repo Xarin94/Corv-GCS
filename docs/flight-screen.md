@@ -47,6 +47,25 @@ left/right turn it 110°; releasing returns to the nose.
 camera stays at least 30 m above the terrain under it, except over water, where it can follow a ROV
 under the surface. Far out, a ring marks the aircraft.
 
+## Satellite detail
+
+Around the aircraft the 3D view draws sharper imagery than on the rest of the terrain, up to the zoom
+chosen in **SYS CONFIG → SYSTEM CONFIG → 3D SATELLITE DETAIL**:
+
+| Zoom | Ground pixel (mid latitudes) | |
+|------|------------------------------|---|
+| 16 | 1.6 m | Off: the terrain textures alone |
+| 17 | 0.8 m | |
+| 18 | 0.4 m | Default |
+| 19 | 0.2 m | |
+| 20 | 0.1 m | The sharpest the imagery has |
+
+The sharper levels cover less ground (zoom 20: about 200 m around the aircraft) and are used only
+when the camera is close enough to show them: at 1000 m above the ground zoom 17 and 18 are enough.
+Each step up doubles the detail, and the tiles downloaded when flying low and fast — at zoom 20,
+50 m above the ground at 26 m/s, about 0.5 MB/s. The tiles are kept for offline use like those of
+the 2D map; where none is available the terrain texture shows.
+
 ## Schematic chart
 
 With the satellite imagery off (**M**) the terrain becomes a chart, in the style of the mission

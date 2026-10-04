@@ -375,6 +375,6 @@ npm run build:mac    # macOS (dmg, arm64 + x64), on a Mac
 | electron-builder | NSIS/AppImage/deb/dmg packaging |
 | node-mavlink 2.x | MAVLink v2 protocol (ardupilotmega dialect) |
 | serialport 13.x | Native serial port access |
-| Three.js r128 | 3D rendering (CDN) |
+| Three.js r186 | 3D rendering (vendored ES modules) |
 | Leaflet 1.9 | 2D mapping (CDN) |
 | Plotly.js 2.27 | Telemetry charts (CDN) |

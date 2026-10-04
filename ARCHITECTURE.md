@@ -109,6 +109,7 @@ Corv-GCS/
 ├── js/                         Renderer process modules (ES Modules)
 │   ├── main.js                 Entry point + 60 FPS animation loop
 │   ├── core/                   State management & utilities
+│   │   ├── three.js            three.js r186 as the global THREE (imported first by main.js)
 │   │   ├── state.js            Global STATE object (~100+ properties)
 │   │   ├── RelativeNav.js      Relative navigation (no GPS), dead reckoning when the vehicle has no position
 │   │   ├── constants.js        Configuration constants
@@ -132,6 +133,7 @@ Corv-GCS/
 │   │   └── SunPosition.js      Solar position for lighting & hillshade
 │   ├── terrain/                Terrain elevation & mesh generation
 │   │   ├── TerrainManager.js   HGT loading, chunked 3D mesh, LOD textures
+│   │   ├── SatelliteDetail.js  Zoom 17–20 imagery around the aircraft (toroidal clipmap over the chunk textures)
 │   │   ├── TerrainWorker.js    Web Worker: chunk elevation samples
 │   │   ├── TileWorker.js       Web Worker: satellite tile download
 │   │   ├── TextureCompressWorker.js Web Worker: BC1 compression + mips
@@ -234,7 +236,7 @@ Corv-GCS/
 │
 ├── assets/icons/                App icons (16x16 to 512x512, ICO, PNG)
 ├── models/                      3D aircraft models (GLB)
-├── topo/                        SRTM .hgt terrain elevation files
+├── topo/                        SRTM .hgt terrain elevation files (development; packaged, downloads go to <data root>/terrain)
 ├── build/                       Build artifacts & installer icons
 ├── docs/                        Additional documentation
 └── docs/                        User guide (GitHub Pages site), feature docs and screenshots (docs/images)
@@ -248,7 +250,7 @@ Corv-GCS/
 
 | File | Key Functions | Purpose |
 |------|---------------|---------|
-| `main.js` | `createWindow()`, IPC handlers for models/topography/ADS-B/tlog/topography-save | Electron app lifecycle, window management, file I/O, HGT file persistence |
+| `main.js` | `createWindow()`, IPC handlers for models/topography/ADS-B/tlog/topography-save | Electron app lifecycle, window management, file I/O, HGT file persistence. Tiles are looked up, ignoring case, in `topography/` and `topo/` next to the installation (the project folder in development), then in `<data root>/terrain`, where downloads are saved (temp file + rename, SRTM sizes only) — never under `__dirname`, which is inside app.asar when packaged |
 | `main-mavlink.js` | `initMAVLinkHandlers()`, `connectSerial/UDP/TCP()`, `handlePacket()`, `sendMAVLinkCommand()`, `sendMAVLinkMessage()`, `startHeartbeat()`, `disconnectCurrent()`, `sendRawBuffer()`, `corvEmitNavigation()`, `corvEmitDebug()`, `corvEmitRawSensor()`, `emitFakeMavlinkMessage()`, `getReplayParserBuilder()` | MAVLink v2 connection pipeline: serial/UDP/TCP transport, packet splitting/parsing/deserialization, 1 Hz GCS heartbeat (sysid 255, compid 190, MAV_TYPE_GCS), command encoding, GCS output mute toggle. Also hosts the CORV binary protocol v7/v8 decoder (re-emits as synthetic MAVLink to share the renderer pipeline) and the .tlog raw-packet recorder (auto-start on connect). Exports replay hooks consumed by `log-replay-manager.js` |
 | `log-replay-manager.js` | `initLogReplay()`, internal: `loadFile()`, `play()/pause()`, `seek()`, `tick()`, sticky-message re-emit, 20 Hz emitter + 10 Hz UI tick | Main-process replay engine. Indexes a .tlog or .bin file once, then streams its MAVLink messages into the renderer via the same `mavlink-message` IPC channel live connections use — the UI is animated without awareness of the source. .tlog uses a replay-scoped `MavLinkPacketSplitter`/`MavLinkPacketParser` from node-mavlink; .bin uses a custom minimal parser. Sticky whitelist re-emits the last HOME/MODE/etc. on seek so the UI stays coherent |
 | `log-replay-bin-parser.js` | `parseBinLog()` | Minimal ArduPilot DataFlash (.bin) parser. Decodes a whitelisted subset (ATT/GPS/AHR2/BARO/ARSP/BAT/MODE/MSG/RCIN/RCOU/VIBE/ORGN) and synthesizes MAVLink-shaped records for IDs 30/33/24/74/1/0/253/35/36/241/242. Trajectory comes from AHR2 (EKF-smoothed), velocity carries over from the most recent GPS sample; VFR_HUD is synthesized from GPS speed + (barometer climb when present) so the HUD shows real values on logs without sensors |
@@ -467,6 +469,13 @@ Three.js Scene
     │   frustum test in updateTerrainInstances(), ~4 draw calls)
     └── chunks with a satellite map → own Mesh + material (~35 near the aircraft)
     │ LRUCache manages texture memory (cap: 1500)
+    │ chunk maps stop at zoom 16 next to the aircraft (1.6 m/px): SatelliteDetail.js
+    │ adds four 2048² RGBA textures following it, zoom 17 / 18 / 19 / 20 (1.7 km,
+    │ 830 m, 420 m, 210 m across), sampled by world x/z in the terrain shader,
+    │ finest first. Toroidal: moving loads only the tiles entering a window.
+    │ A level is fetched only while the camera is close enough to need it
+    │ (all four at 50 m AGL, z17–18 at 1000 m); ~21 MB VRAM per level in use.
+    │ SYS CONFIG → 3D SATELLITE DETAIL caps the finest level (default 18)
     ▼
 Rendered at 60 FPS (30 FPS in eco mode)
     └── schematic view: world → depth target → outline pass → overlays
@@ -558,7 +567,7 @@ OfflineDownloader.js
         AWS Mapzen: elevation-tiles-prod.s3.amazonaws.com/skadi/
         │ fetch .hgt.gz → DecompressionStream → ArrayBuffer
         │
-        ├── IPC: topography-save → disk (topo/N44E022.hgt)
+        ├── IPC: topography-save → disk (<data root>/terrain/N44E022.HGT)
         └── TerrainManager.addHGTFile() → immediate use
 ```
 
@@ -764,6 +773,7 @@ by `mission-store.js`:
 ├── missions/       saved missions, one .json each
 ├── logs/           .tlog and .crv flight recordings
 ├── debug/          corv-gcs-debug.log (last 5 min, rewritten every 3 s) and .prev.log (previous session)
+├── terrain/        SRTM .hgt tiles downloaded by the app (auto-download and OFFLINE DATA DOWNLOAD)
 └── lidar/          map-*.ply (voxel map exports) and raw-*.ply (raw point recordings), ENU
                     metres from the origin written in the header comments
 ```
@@ -775,7 +785,8 @@ by `mission-store.js`:
 | Development (`npm start`) | `<project folder>/data` (git-ignored) |
 
 Read-only inputs the operator supplies stay outside `data/`: `topo/` or `topography/` for SRTM
-`.hgt` tiles and `models/` for GLB/GLTF airframes, both inside the installation folder.
+`.hgt` tiles and `models/` for GLB/GLTF airframes, both inside the installation folder. A tile
+found there wins over a downloaded copy in `terrain/`; names match whatever their case.
 
 **Mission file format** (`missions/<id>.json`):
 
@@ -814,8 +825,8 @@ UI preferences) stays in `localStorage`, not in `data/`.
 | `electron-builder` | ^26.8.1 | Build & packaging (NSIS, AppImage, deb, dmg) |
 | `node-mavlink` | ^2.3.0 | MAVLink v2 protocol parse/serialize (ardupilotmega dialect) |
 | `serialport` | ^13.0.0 | Native serial port access |
-| Three.js | r128 | 3D rendering (loaded via CDN in HTML) |
-| Leaflet | 1.9.4 | 2D map tiles (loaded via CDN in HTML) |
+| Three.js | r186 | 3D rendering, `WebGLRenderer`. Vendored ES modules in `vendor/three/` (core build + GLTFLoader and its two utils from the addons), mapped by the import map in `html/index.html`; `js/core/three.js` exposes them as the global `THREE`. Colour management off and `LinearSRGBColorSpace` output, light intensities × π (`LIGHT_UNIT` in `Scene3D.js`): the scene draws as it did on r128 |
+| Leaflet | 1.9.4 | 2D map tiles (vendored in `vendor/leaflet/`) |
 
 ---
 

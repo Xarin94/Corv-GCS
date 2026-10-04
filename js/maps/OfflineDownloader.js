@@ -101,10 +101,13 @@ async function downloadSrtmTile(name, signal) {
             return 'error';
         }
 
-        // Save to disk via IPC
+        // Save to disk via IPC — the point of an offline download
         const filename = `${name}.hgt`;
         if (window.topography && window.topography.save) {
-            await window.topography.save(filename, hgtBuf.buffer);
+            if (!(await window.topography.save(filename, hgtBuf.buffer))) {
+                console.warn(`[offline] ${filename} downloaded but could not be saved to disk`);
+                return 'error';
+            }
         }
 
         // Register in terrain engine immediately

@@ -41,6 +41,7 @@ export class MagCal3D {
     constructor(canvas) {
         this.canvas = canvas;
         this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;   // see js/core/three.js
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
         this.renderer.setClearColor(0x000000, 0);
         this.scene = new THREE.Scene();

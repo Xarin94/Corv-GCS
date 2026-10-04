@@ -323,7 +323,7 @@ export function makeLabel(text, sub, color) {
     const texture = new THREE.CanvasTexture(canvas);
     texture.minFilter = THREE.LinearFilter;
     texture.generateMipmaps = false;
-    // No fog: a label is read at any distance (r128 materials default to fog on)
+    // No fog: a label is read at any distance (three's materials default to fog on)
     const material = new THREE.SpriteMaterial({
         map: texture, sizeAttenuation: false, depthTest: false, depthWrite: false, transparent: true, fog: false
     });

@@ -16,7 +16,9 @@ import { VISIBILITY_RADIUS, RELOAD_DISTANCE, CAMERA_FOV } from '../core/constant
 // allocate up to 8192², i.e. 256 MB of RGBA plus mips, and four of them were
 // enough to put ~284 MB of texture in VRAM. Now a chunk at 20 km costs 256².
 const ZOOM_BANDS = [
-    { maxDist: 3000,     zoom: 17, maxDim: 4096 }, // max practical detail, ~1.2 m/px
+    // A near chunk needs ~4900 px at zoom 17 and steps down to 16 (1.6 m/px);
+    // SatelliteDetail.js draws zoom 17 to 20 around the aircraft over it
+    { maxDist: 3000,     zoom: 17, maxDim: 4096 },
     { maxDist: 6000,     zoom: 16, maxDim: 2048 },
     { maxDist: 12000,    zoom: 15, maxDim: 1024 },
     { maxDist: 22000,    zoom: 14, maxDim: 512 },
@@ -44,6 +46,10 @@ import { STATE } from '../core/state.js';
 import { latLonToMeters, calculateDistance, latLonToTile, tileToBounds } from '../core/utils.js';
 import { LRUCache } from '../core/LRUCache.js';
 import { getTile as getCachedTile, putTile as putCachedTile } from '../maps/TileCache.js';
+import {
+    initSatelliteDetail, updateSatelliteDetail, getSatelliteDetailStats,
+    satelliteDetailUniforms, SATELLITE_DETAIL_GLSL
+} from './SatelliteDetail.js';
 
 // ============== MEMORY TRACKING ==============
 let texturesCreated = 0;
@@ -69,11 +75,12 @@ export function getMemoryStats() {
         textureApplyQueueLen: textureApplyQueue.length,
         activeChunkJobsCount: activeChunkJobs.size,
         pendingTileCallbacksCount: pendingTileCallbacks.size,
-        heightLayers: [...heightStores.values()].reduce((n, st) => n + st.layers.size, 0),
+        heightLayers: [...heightStores.values()].reduce((n, st) => n + st.used.size, 0),
         heightMB: +([...heightStores.values()].reduce((n, st) => n + st.capacity * st.geoW * st.geoW * 2, 0) / 1048576).toFixed(1),
         compressedTextures: compressedTexturesBuilt,
         compressedMB: +(compressedBytes / 1048576).toFixed(1),
-        compressionActive: compressAvailable
+        compressionActive: compressAvailable,
+        satelliteDetail: getSatelliteDetailStats()
     };
 }
 
@@ -86,24 +93,47 @@ let cleanupIntervalId = null;
 
 // Set of HGT filenames available on disk (populated at startup, lazy-loaded on demand)
 const availableHgtFiles = new Set();
-const hgtLoadingInProgress = new Set(); // prevent duplicate loads
+const hgtLoadingInProgress = new Map(); // filename → promise of the load in flight
 let hgtParsing = 0; // FileReader passes in flight (HGT → chunk queue)
 const hgtReadInProgress = new Set(); // tile keys with a FileReader pass in flight
 
-/** Register which HGT files are available on disk without loading them */
+// The disk list arrives over IPC after the first terrain updates have run. Until
+// then a tile that is on disk looks missing: downloading it then fetched it again
+// on every start and overwrote the copy on disk. Auto-download waits for the list.
+let hgtListReady = false;
+let resolveHgtListReady;
+const hgtListReadyPromise = new Promise(r => { resolveHgtListReady = r; });
+
+/**
+ * Register which HGT files are available on disk without loading them. Called
+ * once at startup, with an empty list when there are none or the lookup failed:
+ * that call is what lets missing tiles be downloaded.
+ */
 export function setAvailableHgtFiles(names) {
-    names.forEach(n => availableHgtFiles.add(n.toUpperCase()));
+    (names || []).forEach(n => availableHgtFiles.add(n.toUpperCase()));
     console.log(`[terrain] ${availableHgtFiles.size} HGT files available on disk (lazy)`);
+    hgtListReady = true;
+    resolveHgtListReady();
 }
 
-/** Lazy-load a single HGT file from disk via IPC if not already loaded */
-async function ensureHgtLoaded(filename) {
-    if (hgtFiles[filename]) return true;
-    if (!availableHgtFiles.has(filename)) return false;
-    if (hgtLoadingInProgress.has(filename)) return false; // already loading
-    if (!window.topography || !window.topography.loadOne) return false;
+/**
+ * Lazy-load a single HGT file from disk via IPC if not already loaded. A second
+ * caller while the file loads shares that load: answering false made
+ * getTerrainElevationAsync take the tile for missing and download it again.
+ */
+function ensureHgtLoaded(filename) {
+    if (hgtFiles[filename]) return Promise.resolve(true);
+    if (!availableHgtFiles.has(filename)) return Promise.resolve(false);
+    if (!window.topography || !window.topography.loadOne) return Promise.resolve(false);
+    let load = hgtLoadingInProgress.get(filename);
+    if (!load) {
+        load = loadHgtFromDisk(filename);
+        hgtLoadingInProgress.set(filename, load);
+    }
+    return load;
+}
 
-    hgtLoadingInProgress.add(filename);
+async function loadHgtFromDisk(filename) {
     try {
         let ab = await window.topography.loadOne(filename);
         if (!ab) return false;
@@ -175,8 +205,8 @@ async function autoDownloadSRTM(filename, latBase, lonBase) {
 
         // Save to disk via IPC
         if (window.topography && window.topography.save) {
-            await window.topography.save(filename, hgtBuf.buffer);
-            availableHgtFiles.add(filename);
+            if (await window.topography.save(filename, hgtBuf.buffer)) availableHgtFiles.add(filename);
+            else console.warn(`[terrain] ${filename} could not be saved to disk: it will be downloaded again next time`);
         }
 
         // Register in memory
@@ -474,7 +504,8 @@ attribute float aLayer;
 uniform vec4 uChunk;
 uniform float uLayer;
 #endif
-varying vec3 vTerrainShade;
+varying float vTerrainLight;
+varying vec3 vTerrainTint;
 varying float vTerrainH;
 varying vec2 vTerrainXZ;
 varying float vSchemShade;
@@ -550,14 +581,11 @@ if (uSchematic > 0.5 && tH >= 0.0 && tHE == tH && tHW == tH && tHS == tH && tHN 
 // Replaces <begin_vertex>
 const TERRAIN_BEGIN_VERTEX = `
 vec3 transformed = vec3(tChunk.x + float(tG.x) * tChunk.z, tH, tChunk.y + float(tG.y) * tChunk.w);
-float terrainLight = uSunlightOn > 0.5
+vTerrainLight = uSunlightOn > 0.5
     ? 0.45 + 1.05 * max(0.0, dot(objectNormal, uSunDir))
     : uBrightness;
-#ifdef USE_MAP
-vTerrainShade = vec3(terrainLight);
-#else
-vTerrainShade = terrainHeightColor(tH) * terrainLight;
-#endif
+// The colour of a chunk without a satellite map
+vTerrainTint = terrainHeightColor(tH);
 vTerrainH = tHiso;
 vTerrainXZ = transformed.xz;
 if (uSchematic > 0.5 && uSubWater.w > 0.0 && tH <= uSubWater.z + 1.5 && length(transformed.xz - uSubWater.xy) < uSubWater.w) tWater = 1.0;
@@ -568,7 +596,8 @@ vSchemShade = max(0.0, dot(objectNormal, vec3(-0.5, 0.70710678, -0.5)));
 `;
 
 const TERRAIN_FRAGMENT_PARS = `
-varying vec3 vTerrainShade;
+varying float vTerrainLight;
+varying vec3 vTerrainTint;
 varying float vTerrainH;
 varying vec2 vTerrainXZ;
 varying float vSchemShade;
@@ -678,6 +707,17 @@ vec3 schematicTerrainColor() {
     // The MAP BRIGHTNESS slider (default 0.85) scales the whole drawing
     return col * (uBrightness / 0.85);
 }
+${SATELLITE_DETAIL_GLSL}`;
+
+// After <color_fragment>: the chunk's satellite map (the height tint without
+// one), the full-resolution imagery around the aircraft over it, then the light
+const TERRAIN_COLOR_FRAGMENT = `
+#ifdef USE_MAP
+vec3 terrainBase = diffuseColor.rgb;
+#else
+vec3 terrainBase = diffuseColor.rgb * vTerrainTint;
+#endif
+diffuseColor.rgb = satelliteDetail(terrainBase, vTerrainXZ) * vTerrainLight;
 `;
 
 // Replaces <fog_fragment>: the schematic colour replaces the lit one, then the
@@ -699,14 +739,14 @@ if (uSchematic > 0.5) {
 function applyTerrainShading(shader) {
     // Shading uniforms are shared by every chunk; the chunk uniforms belong to
     // this material (a chunk's own mesh, or an instanced batch's grid).
-    Object.assign(shader.uniforms, terrainShadingUniforms, this.userData.terrain);
+    Object.assign(shader.uniforms, terrainShadingUniforms, satelliteDetailUniforms, this.userData.terrain);
     shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\n' + TERRAIN_VERTEX_PARS)
         .replace('#include <beginnormal_vertex>', TERRAIN_BEGINNORMAL)
         .replace('#include <begin_vertex>', TERRAIN_BEGIN_VERTEX);
     shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\n' + TERRAIN_FRAGMENT_PARS)
-        .replace('#include <color_fragment>', '#include <color_fragment>\n\tdiffuseColor.rgb *= vTerrainShade;')
+        .replace('#include <color_fragment>', '#include <color_fragment>\n' + TERRAIN_COLOR_FRAGMENT)
         .replace('#include <fog_fragment>', TERRAIN_FOG_FRAGMENT);
 }
 
@@ -818,96 +858,69 @@ function getGridGeometry(geoW) {
 }
 
 // ---- Elevation texture arrays ----------------------------------------------
-// One R16I 2D-array texture per grid size, one layer per chunk. three.js r128
-// cannot update a single layer of an array texture, so the WebGL texture is
-// managed here and handed to three through its texture properties; layers are
-// written with texSubImage3D. A CPU copy of each layer (2 bytes per sample,
-// ~2 MB in total) lets the array grow by re-uploading.
+// One R16I 2D-array texture per grid size, one layer per chunk. The samples of
+// every layer live in one CPU array (2 bytes per sample, ~2 MB in total), the
+// texture's own data: a new chunk uploads its layer alone (addLayerUpdate),
+// and growing the array, or a WebGL context restore, uploads all of it.
 const heightStores = new Map(); // geoW -> store
 const HEIGHT_STORE_INITIAL_LAYERS = 32;
-
-function createHeightTexture(geoW, capacity) {
-    const gl = rendererRef.getContext();
-    const glTex = gl.createTexture();
-    rendererRef.state.bindTexture(gl.TEXTURE_2D_ARRAY, glTex);
-    gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.R16I, geoW, geoW, capacity);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    return glTex;
-}
-
-/**
- * Hand three.js our WebGL texture for the store's placeholder: with a matching
- * version three binds it as a sampler2DArray and never tries to upload it.
- */
-function adoptHeightTexture(store) {
-    const props = rendererRef.properties.get(store.texture);
-    props.__webglInit = true;
-    props.__webglTexture = store.glTex;
-    props.__version = store.texture.version;
-}
 
 function getHeightStore(geoW) {
     let store = heightStores.get(geoW);
     if (store) return store;
     const capacity = HEIGHT_STORE_INITIAL_LAYERS;
-    store = {
-        geoW, capacity,
-        glTex: createHeightTexture(geoW, capacity),
-        texture: new THREE.DataTexture2DArray(null, geoW, geoW, capacity),
-        layers: new Map(), free: [], next: 0
-    };
-    adoptHeightTexture(store);
+    const data = new Int16Array(geoW * geoW * capacity);
+    const texture = new THREE.DataArrayTexture(data, geoW, geoW, capacity);
+    texture.format = THREE.RedIntegerFormat;
+    texture.type = THREE.ShortType;
+    texture.internalFormat = 'R16I';
+    texture.minFilter = THREE.NearestFilter;
+    texture.magFilter = THREE.NearestFilter;
+    texture.unpackAlignment = 2;   // rows of 2-byte samples with odd widths
+    texture.needsUpdate = true;
+    // While a whole upload is pending (new storage) no layer may be listed
+    // alone: three would upload only the listed layers into it
+    store = { geoW, capacity, data, texture, used: new Set(), free: [], next: 0, fullUpload: true };
+    texture.onUpdate = () => { store.fullUpload = false; };
     heightStores.set(geoW, store);
     return store;
 }
 
-/**
- * After a WebGL context loss and restore, three.js rebuilds its own resources
- * from their sources, but these textures are ours: recreate them from the CPU
- * copies. Runs after three's own handler (registered when the renderer was
- * created), so the renderer state and properties are already the new ones.
- */
-function restoreHeightStores() {
-    for (const store of heightStores.values()) {
-        store.glTex = createHeightTexture(store.geoW, store.capacity);
-        for (const [layer, heights] of store.layers) uploadHeightLayer(store, layer, heights);
-        adoptHeightTexture(store);
-    }
+/** The whole array goes up at the next render. */
+function uploadWholeHeightStore(store) {
+    store.fullUpload = true;
+    store.texture.clearLayerUpdates();
+    store.texture.needsUpdate = true;
 }
 
-function uploadHeightLayer(store, layer, heights) {
-    const gl = rendererRef.getContext();
-    rendererRef.state.bindTexture(gl.TEXTURE_2D_ARRAY, store.glTex);
-    // three sets these per upload of its own; a 3D upload rejects FLIP_Y, and
-    // rows of 2-byte samples with odd widths are not 4-byte aligned.
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 2);
-    gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, layer, store.geoW, store.geoW, 1,
-        gl.RED_INTEGER, gl.SHORT, heights);
+/** three re-creates its textures after a WebGL context restore: from all the layers. */
+function restoreHeightStores() {
+    for (const store of heightStores.values()) uploadWholeHeightStore(store);
+}
+
+/** Twice the layers. The texture object stays (the materials point at it); its WebGL storage is replaced. */
+function growHeightStore(store) {
+    store.capacity *= 2;
+    const data = new Int16Array(store.geoW * store.geoW * store.capacity);
+    data.set(store.data);
+    store.data = data;
+    store.texture.image = { data, width: store.geoW, height: store.geoW, depth: store.capacity };
+    store.texture.dispose();   // frees the old storage; the next render allocates the new size
+    uploadWholeHeightStore(store);
 }
 
 function allocHeightLayer(store, heights) {
     const layer = store.free.length ? store.free.pop() : store.next++;
-    if (layer >= store.capacity) {
-        // Grow: a new, larger array filled from the CPU copies
-        const old = store.glTex;
-        store.capacity *= 2;
-        store.glTex = createHeightTexture(store.geoW, store.capacity);
-        for (const [l, h] of store.layers) uploadHeightLayer(store, l, h);
-        adoptHeightTexture(store);
-        rendererRef.getContext().deleteTexture(old);
-    }
-    store.layers.set(layer, heights);
-    uploadHeightLayer(store, layer, heights);
+    if (layer >= store.capacity) growHeightStore(store);
+    store.used.add(layer);
+    store.data.set(heights, layer * store.geoW * store.geoW);
+    if (!store.fullUpload) store.texture.addLayerUpdate(layer);
+    store.texture.needsUpdate = true;
     return layer;
 }
 
 function freeHeightLayer(store, layer) {
-    if (store && store.layers.delete(layer)) store.free.push(layer);
+    if (store && store.used.delete(layer)) store.free.push(layer);
 }
 
 /**
@@ -1102,13 +1115,23 @@ export function updateTerrainInstances(camera) {
         batch.mesh.count = batch.count;
         batch.mesh.visible = batch.count > 0;
         if (batch.count === 0) continue;
-        batch.chunkAttr.updateRange.offset = 0;
-        batch.chunkAttr.updateRange.count = batch.count * 4;
+        batch.chunkAttr.clearUpdateRanges();
+        batch.chunkAttr.addUpdateRange(0, batch.count * 4);
         batch.chunkAttr.needsUpdate = true;
-        batch.layerAttr.updateRange.offset = 0;
-        batch.layerAttr.updateRange.count = batch.count;
+        batch.layerAttr.clearUpdateRanges();
+        batch.layerAttr.addUpdateRange(0, batch.count);
         batch.layerAttr.needsUpdate = true;
     }
+
+    // Full-resolution imagery around the aircraft, over the chunk textures
+    updateSatelliteDetail({
+        camera,
+        lat: STATE.lat,
+        lon: STATE.lon,
+        groundY: STATE.terrainHeight,
+        pixelAngle: lodPixelScale,
+        enabled: chunksVisible && !!window.satelliteEnabled && terrainShadingUniforms.uSchematic.value < 0.5
+    });
 }
 
 /**
@@ -1131,6 +1154,7 @@ export function initTerrain(scene, renderer, sunDirection) {
     // shader follows the sun without any per-chunk work.
     if (sunDirection) terrainShadingUniforms.uSunDir.value = sunDirection;
     renderer.domElement.addEventListener('webglcontextrestored', restoreHeightStores);
+    initSatelliteDetail(renderer, loadTileImage);
 
     initTerrainWorker();
     initTileWorker();
@@ -1559,7 +1583,15 @@ export async function getTerrainElevationAsync(lat, lon) {
             await ensureHgtLoaded(filename);
             file = hgtFiles[filename];
         }
-        // If still not available, auto-download from AWS Mapzen
+        // If still not available, auto-download from AWS Mapzen — once the disk
+        // list is known, or a tile already on disk would be fetched again
+        if (!file && !hgtListReady) {
+            await hgtListReadyPromise;
+            if (availableHgtFiles.has(filename)) {
+                await ensureHgtLoaded(filename);
+                file = hgtFiles[filename];
+            }
+        }
         if (!file && !_autoDownloadFailed.has(filename)) {
             file = await autoDownloadSRTM(filename, latBase, lonBase);
         }
@@ -1734,6 +1766,9 @@ export async function updateTerrainChunks() {
     // Rate-limit to avoid saturating the network: max 2 downloads in flight.
     const MAX_DOWNLOADS_PER_CALL = 2;
     let started = 0;
+    // Before the disk list arrives every tile looks missing: wait for it
+    // (loadTopographyAtStart runs this again once it is in)
+    if (!hgtListReady) missingFiles.length = 0;
     for (const { filename, latBase, lonBase } of missingFiles) {
         if (started >= MAX_DOWNLOADS_PER_CALL) break;
         if (_autoDownloadInProgress.has(filename)) continue;

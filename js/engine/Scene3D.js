@@ -60,6 +60,12 @@ let palette = PALETTE_DARK;
 const HOME_POLE_M = 100;       // home symbol height above the ground
 const HOME_RING_M = 25;        // radius of the ring around home on the ground
 
+// Light intensities in this scene are the ones tuned on three.js r128, times
+// this. r128's legacy lighting scaled every light by π internally; since r155
+// lights are physical and do not, so the scale keeps the terrain and models as
+// they were.
+export const LIGHT_UNIT = Math.PI;
+
 // Sun direction for hillshading
 let currentSunDirection = null;
 let sunlightEnabled = true;
@@ -113,6 +119,8 @@ export function init3D(container) {
     camera.layers.enable(OVERLAY_LAYER);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+    // Colours go out as they are written (see js/core/three.js)
+    renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     // No shadow map: the vehicle was the only caster, and over a 6 km shadow
@@ -151,14 +159,14 @@ export function init3D(container) {
  */
 function initLighting() {
     // Sun directional light (no shadows — see init3D)
-    sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    sunLight = new THREE.DirectionalLight(0xffffff, 1.5 * LIGHT_UNIT);
     sunLight.position.set(20000, 30000, 10000);
     sunLight.layers.enableAll();   // lights are layered too: keep them in every pass
     scene.add(sunLight);
     scene.add(sunLight.target);
 
     // Ambient light
-    ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    ambientLight = new THREE.AmbientLight(0xffffff, 0.6 * LIGHT_UNIT);
     ambientLight.layers.enableAll();
     scene.add(ambientLight);
 }
@@ -571,7 +579,7 @@ function getOutline() {
     renderer.getDrawingBufferSize(_bufferSize);
     const w = Math.max(1, _bufferSize.x), h = Math.max(1, _bufferSize.y);
     if (!outline) {
-        // 32-bit float depth: r128 maps every other depth type to 16 bits on WebGL2
+        // 32-bit float depth: the precision the edge test needs on far ridges
         const depthTexture = new THREE.DepthTexture(w, h);
         depthTexture.type = THREE.FloatType;
         const target = new THREE.WebGLRenderTarget(w, h, {

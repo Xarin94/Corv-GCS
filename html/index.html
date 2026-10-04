@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CORV GCS v1.7.7</title>
+    <title>CORV GCS v1.8.0</title>
 
     <!-- Critical inline styles to prevent flash of unstyled content -->
     <style>
@@ -11,9 +11,16 @@
     </style>
 
     <!-- External libraries, vendored: the GCS must start with no network
-         (three.js r128, GLTFLoader 0.128.0, Leaflet 1.9.4) -->
-    <script src="../vendor/three/three.min.js"></script>
-    <script src="../vendor/three/GLTFLoader.js"></script>
+         (three.js r186 + GLTFLoader as ES modules, Leaflet 1.9.4).
+         js/core/three.js exposes three as the global THREE. -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "../vendor/three/three.module.js",
+            "three/addons/": "../vendor/three/addons/"
+        }
+    }
+    </script>
     <link rel="stylesheet" href="../vendor/leaflet/leaflet.css" />
     <script src="../vendor/leaflet/leaflet.js"></script>
 
@@ -2366,6 +2373,16 @@
                     <select id="render-fps-select" class="cfg-select" title="30 FPS halves the rendering and compositing work — use it on battery">
                         <option value="60">60 FPS</option>
                         <option value="30">30 FPS (ECO)</option>
+                    </select>
+                </div>
+                <div class="cfg-row">
+                    <label>3D SATELLITE DETAIL (ZOOM)</label>
+                    <select id="sat-detail-select" class="cfg-select" title="Sharpest satellite imagery drawn around the aircraft in the 3D view (resolution at mid latitudes). Each step doubles the detail, and the tiles downloaded when flying low">
+                        <option value="16">16 · 1.6 m (OFF)</option>
+                        <option value="17">17 · 0.8 m</option>
+                        <option value="18">18 · 0.4 m (DEFAULT)</option>
+                        <option value="19">19 · 0.2 m</option>
+                        <option value="20">20 · 0.1 m (MAX)</option>
                     </select>
                 </div>
                 <div class="cfg-row">

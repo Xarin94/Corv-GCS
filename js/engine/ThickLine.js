@@ -5,8 +5,8 @@
  * the trail, the mission route and the corridor edges used to be hairlines.
  * Here every segment is an instance of a small quad that the vertex shader
  * widens to a fixed width in pixels, with round caps so consecutive segments
- * join without notches. Same approach as three's LineSegments2, which the
- * vendored r128 build does not ship.
+ * join without notches. Same approach as three's LineSegments2 (an addon, not
+ * part of the core build that is vendored).
  *
  * Points live in one Float32Array (x, y, z per point):
  *   'strip' — a polyline, segment i runs from point i to point i + 1
@@ -324,12 +324,10 @@ export class ThickLine {
     _flush() {
         if (this._dirtyFrom >= this._dirtyTo) return;
         const from = this._dirtyFrom, to = Math.min(this._dirtyTo, this.capacity);
-        this.posBuffer.updateRange.offset = from * 3;
-        this.posBuffer.updateRange.count = (to - from) * 3;
+        this.posBuffer.addUpdateRange(from * 3, (to - from) * 3);
         this.posBuffer.needsUpdate = true;
         if (this.colBuffer) {
-            this.colBuffer.updateRange.offset = from * 4;
-            this.colBuffer.updateRange.count = (to - from) * 4;
+            this.colBuffer.addUpdateRange(from * 4, (to - from) * 4);
             this.colBuffer.needsUpdate = true;
         }
         this._dirtyFrom = Infinity;

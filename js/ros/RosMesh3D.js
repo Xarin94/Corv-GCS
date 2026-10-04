@@ -250,7 +250,7 @@ class SurfaceLayer {
         roughTex.internalFormat = 'R8';
         roughTex.unpackAlignment = 1;                              // rows of 241 bytes
         const uniforms = { ...shared, uHeights: { value: tex }, uRough: { value: roughTex }, uStep: { value: 1 }, uW: { value: TEX }, uAlpha: { value: 1 } };
-        const common = { vertexShader: VERTEX, fragmentShader: FRAGMENT, transparent: true, depthWrite: false, side: THREE.DoubleSide };
+        const common = { vertexShader: VERTEX, fragmentShader: FRAGMENT, transparent: true, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true };
         const mat = new THREE.ShaderMaterial({ ...common, uniforms, depthTest: !view.overTerrain });
         const ghostMat = new THREE.ShaderMaterial({ ...common, uniforms: { ...uniforms, uAlpha: { value: GHOST_ALPHA } }, depthFunc: THREE.GreaterDepth });
         const b = {
@@ -364,8 +364,7 @@ class SurfaceLayer {
         }
         const index = b.geo.index;
         index.array.set(out.subarray(0, n));
-        index.updateRange.offset = 0;
-        index.updateRange.count = n;
+        index.addUpdateRange(0, n);
         index.needsUpdate = true;
         b.geo.setDrawRange(0, n);
         b.triangles = n / 3;

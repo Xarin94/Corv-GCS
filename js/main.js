@@ -3,7 +3,8 @@
  * Initializes all modules and runs the main animation loop
  */
 
-// Core imports
+// Core imports. three.js first: the modules below use the global THREE it sets.
+import './core/three.js';
 import {
     ORIGIN, CAMERA_FOV, VISIBILITY_RADIUS, RELOAD_DISTANCE, RAD,
     DEMO_CRUISE_SPEED, DEMO_SPEED_VARIANCE, DEMO_CRUISE_AGL, DEMO_MIN_CLEARANCE,
@@ -21,7 +22,7 @@ import {
     init3D, updateTrail, updateCamera, render, resize,
     resetTrail, setTrailPoints,
     updateMissionTrajectory, clearMissionTrajectory,
-    getScene, getCamera, getRenderer, getSunLight, getAmbientLight,
+    getScene, getCamera, getRenderer, getSunLight, getAmbientLight, LIGHT_UNIT,
     getCurrentSunDirection, isSunlightEnabled, setSunlightEnabled,
     getTimeOverride, setTimeOverride,
     updateHomeMarker3D,
@@ -85,6 +86,7 @@ import { initTabs, getCurrentTab } from './ui/TabController.js';
 import { initParametersPanel } from './ui/ParametersPageController.js';
 
 import { setTerrainSatelliteEnabled, setTerrainLowAltGrid } from './terrain/TerrainManager.js';
+import { setSatelliteDetailMaxZoom, SATELLITE_DETAIL_DEFAULT_ZOOM } from './terrain/SatelliteDetail.js';
 import { initOfflinePanel } from './maps/OfflineDownloader.js';
 
 // FPV imports
@@ -630,7 +632,7 @@ function updateSunPosition() {
 
     if (!sunLight || !isSunlightEnabled()) return;
 
-    ambientLight.intensity = 0.6;
+    ambientLight.intensity = 0.6 * LIGHT_UNIT;
 
     let now;
     const timeOverride = getTimeOverride();
@@ -664,17 +666,17 @@ function updateSunPosition() {
         setSkyColor(0x0a1020);
     } else if (altitudeDeg < 0) {
         const t = (altitudeDeg + 6) / 6;
-        sunLight.intensity = t * 1.0;
+        sunLight.intensity = t * LIGHT_UNIT;
         sunLight.color.setHex(0xff8844);
         setSkyColor(lerpColor(0x0a1020, 0x553322, t));
     } else if (altitudeDeg < 15) {
         const t = altitudeDeg / 15;
-        sunLight.intensity = 1.0 + t * 0.5;
+        sunLight.intensity = (1.0 + t * 0.5) * LIGHT_UNIT;
         const sunColor = lerpColor(0xff6622, 0xffeedd, t);
         sunLight.color.setHex(sunColor);
         setSkyColor(lerpColor(0x553322, 0x87ceeb, t));
     } else {
-        sunLight.intensity = 1.5;
+        sunLight.intensity = 1.5 * LIGHT_UNIT;
         sunLight.color.setHex(0xffffff);
         setSkyColor(0x87ceeb);
     }
@@ -1171,6 +1173,25 @@ function setRenderFpsCap(fps) {
     try { localStorage.setItem(RENDER_FPS_KEY, String(cap)); } catch (_) {}
 }
 
+// Sharpest satellite imagery of the 3D view, around the aircraft (SatelliteDetail.js)
+const SAT_DETAIL_KEY = 'satDetailMaxZoom';
+
+function setupSatDetailSelect() {
+    const select = document.getElementById('sat-detail-select');
+    let zoom = SATELLITE_DETAIL_DEFAULT_ZOOM;
+    try {
+        const saved = Number(localStorage.getItem(SAT_DETAIL_KEY));
+        if (saved >= 16 && saved <= 20) zoom = saved;
+    } catch (_) {}
+    setSatelliteDetailMaxZoom(zoom);
+    if (!select) return;
+    select.value = String(zoom);
+    select.addEventListener('change', () => {
+        setSatelliteDetailMaxZoom(select.value);
+        try { localStorage.setItem(SAT_DETAIL_KEY, select.value); } catch (_) {}
+    });
+}
+
 function setupRenderFpsSelect() {
     const select = document.getElementById('render-fps-select');
     let saved = 60;
@@ -1586,16 +1607,16 @@ function toggleSunlight() {
 
     if (enabled) {
         btn.classList.add('active');
-        ambientLight.intensity = 0.6;
-        sunLight.intensity = 1.5;
+        ambientLight.intensity = 0.6 * LIGHT_UNIT;
+        sunLight.intensity = 1.5 * LIGHT_UNIT;
         updateSunPosition();
     } else {
         btn.classList.remove('active');
         sunLight.position.set(camera.position.x, camera.position.y + 30000, camera.position.z);
         sunLight.target.position.copy(camera.position);
-        sunLight.intensity = 0.5;
+        sunLight.intensity = 0.5 * LIGHT_UNIT;
         sunLight.color.setHex(0xffffff);
-        ambientLight.intensity = 0.6;
+        ambientLight.intensity = 0.6 * LIGHT_UNIT;
         setSkyColor(0x87ceeb);
         currentSunDirection.set(0, 1, 0);
         updateTerrainHillshading();
@@ -1877,6 +1898,7 @@ async function loadTopographyAtStart() {
     try {
         if (!window.topography || !window.topography.load) {
             console.debug('topography API not available in preload');
+            setAvailableHgtFiles([]);   // nothing on disk: missing tiles may be downloaded
             setAutoLoadAttempted();
             setStatusMessage('AUTO HGT LOAD: not available', '#ff4444');
             hideLoadingOverlay();
@@ -1887,11 +1909,12 @@ async function loadTopographyAtStart() {
         // Now returns just filenames (strings), not file contents
         const names = await window.topography.load('topography');
 
+        // Register available files for lazy on-demand loading — also when there
+        // are none: it is what lets the missing tiles be downloaded
+        setAvailableHgtFiles(names || []);
         if (!names || names.length === 0) {
             setStatusMessage('AUTO HGT LOAD: no files found', '#ffcc00');
         } else {
-            // Register available files for lazy on-demand loading
-            setAvailableHgtFiles(names);
             setStatusMessage(`${names.length} HGT AVAILABLE (lazy)`, 'var(--accent-cyan)');
         }
 
@@ -1901,6 +1924,7 @@ async function loadTopographyAtStart() {
         setAutoLoadAttempted();
     } catch (e) {
         console.warn('Topography load failed', e);
+        setAvailableHgtFiles([]);
         setAutoLoadAttempted();
         setStatusMessage('AUTO HGT LOAD: error', '#ff4444');
         scheduleHideLoadingOverlaySoon();
@@ -1991,6 +2015,7 @@ function init() {
     setupMapBrightnessSlider();
     setupAttSmoothSlider();
     setupRenderFpsSelect();
+    setupSatDetailSelect();
     setupStreamRates();
     setupModelSelector();
 

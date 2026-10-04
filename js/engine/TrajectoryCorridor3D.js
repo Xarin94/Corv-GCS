@@ -107,6 +107,7 @@ export function initCorridor(scene) {
         vertexColors: true,
         transparent: true,
         side: THREE.DoubleSide,
+        forceSinglePass: true,   // one draw: three splits transparent double-sided meshes into back, then front
         depthWrite: false
     });
 
