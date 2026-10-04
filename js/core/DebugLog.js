@@ -56,7 +56,9 @@ function glInfo() {
     const r = providers.getRenderer?.();
     if (!r || !r.info) return '';
     const { memory, render, programs } = r.info;
-    return `gl calls ${render.calls} tris ${(render.triangles / 1e6).toFixed(2)}M geo ${memory.geometries} tex ${memory.textures} prog ${programs ? programs.length : '-'}`;
+    const frame = providers.getRenderPerformanceStats?.();
+    const detail = frame ? ` passes ${frame.passes} dpr ${frame.pixelRatio} submit95 ${frame.submitP95Ms.toFixed(1)}ms` : '';
+    return `gl calls ${render.calls} tris ${(render.triangles / 1e6).toFixed(2)}M geo ${memory.geometries} tex ${memory.textures} prog ${programs ? programs.length : '-'}${detail}`;
 }
 
 function heapInfo() {

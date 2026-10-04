@@ -112,7 +112,7 @@ async function downloadSrtmTile(name, signal) {
 
         // Register in terrain engine immediately
         const file = new File([hgtBuf.buffer], filename);
-        addHGTFile(filename, file);
+        if (!await addHGTFile(filename, file)) return 'error';
 
         return 'downloaded';
     } catch (e) {

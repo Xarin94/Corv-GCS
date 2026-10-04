@@ -22,7 +22,7 @@ import {
     init3D, updateTrail, updateCamera, render, resize,
     resetTrail, setTrailPoints,
     updateMissionTrajectory, clearMissionTrajectory,
-    getScene, getCamera, getRenderer, getSunLight, getAmbientLight, LIGHT_UNIT,
+    getScene, getCamera, getRenderer, getRenderBackend, getSunLight, getAmbientLight, LIGHT_UNIT,
     getCurrentSunDirection, isSunlightEnabled, setSunlightEnabled,
     getTimeOverride, setTimeOverride,
     updateHomeMarker3D,
@@ -30,8 +30,10 @@ import {
     updateTargetMarker3D,
     setSkyColor, setSchematicView, setOutlineBrightness, setLightTheme,
     setMissionActiveSeq, updateOwnshipMarker,
-    setGroundGridVisible, updateWaterView, isSchematicView
+    setGroundGridVisible, updateWaterView, isSchematicView,
+    getRenderPerformanceStats, setRenderQuality
 } from './engine/Scene3D.js';
+import { readRenderQuality } from './engine/RenderQuality.js';
 import { OVERLAY_LAYER } from './engine/Layers.js';
 import { isRelativeMode, applyRelativeToState, resetRelNav } from './core/RelativeNav.js';
 
@@ -49,7 +51,6 @@ import {
     refreshNearbyChunkTextures, resetTextureRefreshPosition,
     setMapBrightness,
     getMemoryStats,
-    updateTerrainInstances,
     getWaterSurfaceAt, lowAltGridStrength, LOW_ALT_GRID, setTerrainChunksVisible, setTerrainSubWater
 } from './terrain/TerrainManager.js';
 
@@ -985,7 +986,6 @@ function update3DWorld() {
     // FPV camera-only mode keeps the scene at opacity 0 (the WebGL context stays
     // alive and the world keeps updating), so drawing it would be thrown away.
     if (!isFPVCameraMode()) {
-        updateTerrainInstances(camera);
         render();
     }
 }
@@ -1200,6 +1200,13 @@ function setupRenderFpsSelect() {
     if (!select) return;
     select.value = String(saved);
     select.addEventListener('change', () => setRenderFpsCap(select.value));
+}
+
+function setupRenderQualitySelect() {
+    const select = document.getElementById('render-quality-select');
+    if (!select) return;
+    select.value = readRenderQuality(window.localStorage);
+    select.addEventListener('change', () => setRenderQuality(select.value));
 }
 
 // Slow-path update throttles (these don't need to run at monitor refresh rate)
@@ -1762,15 +1769,12 @@ function applyHudLookTransform() {
 
 // ============== HGT FILE INPUT ==============
 function setupHGTInput() {
-    document.getElementById('hgt-input').onchange = (e) => {
-        const files = e.target.files;
-        let c = 0;
-        for (let i = 0; i < files.length; i++) {
-            if (files[i].name.toLowerCase().endsWith('.hgt')) {
-                addHGTFile(files[i].name, files[i]);
-                c++;
-            }
-        }
+    document.getElementById('hgt-input').onchange = async (e) => {
+        const files = Array.from(e.target.files).filter(f => f.name.toLowerCase().endsWith('.hgt'));
+        if (!files.length) return;
+        setStatusMessage('LOADING HGT...', 'var(--accent-cyan)');
+        const results = await Promise.all(files.map(file => addHGTFile(file.name, file)));
+        const c = results.filter(Boolean).length;
         setStatusMessage(`${c} HGT LOADED`, 'var(--accent-cyan)');
         updateTerrainChunks();
     };
@@ -1986,14 +1990,14 @@ function init() {
     const container = document.getElementById('scene-container');
     const { scene, camera, renderer } = init3D(container);
     console.log('[init] 3D scene ready');
-    initDebugLog({ getTab: getCurrentTab, getRenderer: () => renderer });
+    initDebugLog({ getTab: getCurrentTab, getRenderer: () => renderer, getRenderPerformanceStats });
 
     // Camera mode + orbit controls
     initThirdPersonControls();
     setCameraMode('FIRST');
     
     // Initialize terrain manager
-    initTerrain(scene, renderer, getCurrentSunDirection());
+    initTerrain(scene, renderer, getCurrentSunDirection(), getRenderBackend());
     console.log('[init] initTerrain done');
     window.sunlightEnabled = isSunlightEnabled();
 
@@ -2015,6 +2019,7 @@ function init() {
     setupMapBrightnessSlider();
     setupAttSmoothSlider();
     setupRenderFpsSelect();
+    setupRenderQualitySelect();
     setupSatDetailSelect();
     setupStreamRates();
     setupModelSelector();
@@ -2045,7 +2050,7 @@ function init() {
     console.log('[init] initFPV done');
 
     // Livox point cloud: geometry in the scene, settings panel + flight strip
-    initLidarCloud(scene);
+    initLidarCloud(scene, renderer, getRenderBackend());
     initLidarController();
     // ROS surface (rosbridge): averaged wireframe in the scene, settings + strip
     initRosMesh(scene);

@@ -5,3 +5,5 @@ topography/
 .env
 .claude/
 data/
+prototypes/**/.venv/
+prototypes/**/__pycache__/

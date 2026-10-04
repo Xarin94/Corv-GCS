@@ -7,7 +7,7 @@
 import { CAMERA_FOV } from '../core/constants.js';
 import { STATE } from '../core/state.js';
 import { latLonToMeters } from '../core/utils.js';
-import { setLodViewParams, setTerrainSchematicLight } from '../terrain/TerrainManager.js';
+import { setLodViewParams, setTerrainSchematicLight, updateTerrainInstances } from '../terrain/TerrainManager.js';
 import { ThickLine, flushThickLines } from './ThickLine.js';
 import { SymbolLayer, SHAPE, makeLabel, fitLabel, disposeLabel, setSymbolHalo, setLabelHalo } from './SymbolLayer.js';
 import { WORLD_LAYER, OVERLAY_LAYER, toOverlayLayer } from './Layers.js';
@@ -15,9 +15,17 @@ import { setCorridorColor } from './TrajectoryCorridor3D.js';
 import { initTraffic3D, updateTraffic3D, animateTraffic3D, resizeTraffic3D, setTrafficColor } from './Traffic3D.js';
 import { initMission3D, updateMission3D, setMission3DActiveSeq, clearMission3D, setMission3DPalette, resizeMission3D } from './Mission3D.js';
 import { initWater3D, updateWater3D } from './Water3D.js';
+import { ThreeWebGLBackend } from './RenderBackend.js';
+import { readRenderQuality, RENDER_QUALITY_KEY } from './RenderQuality.js';
+import { renderWorld } from '../render/RenderState.js';
+import { encodeRenderWorld } from '../render/RenderPacket.js';
+import { captureThreeCamera } from './three/CameraAdapter.js';
+import { createThreeTerrainRenderer } from './three/TerrainRenderer.js';
+import { createThreePointCloudRenderer } from './three/PointCloudRenderer.js';
 
 // Module-level references
 let scene, camera, renderer;
+let renderBackend;
 let sunLight, ambientLight;
 // When true, updateTrail() is a no-op — the trail is driven externally via
 // setTrailPoints() (used during log replay to show the whole pre-recorded path).
@@ -118,11 +126,10 @@ export function init3D(container) {
     // Both layers in one pass, except in the schematic view (renderSchematic)
     camera.layers.enable(OVERLAY_LAYER);
 
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
-    // Colours go out as they are written (see js/core/three.js)
-    renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderBackend = new ThreeWebGLBackend(THREE, { quality: readRenderQuality(window.localStorage),
+        terrainFactory: createThreeTerrainRenderer, pointCloudFactory: createThreePointCloudRenderer });
+    renderer = renderBackend.renderer;
+    renderBackend.resize(window.innerWidth, window.innerHeight, window.devicePixelRatio);
     // No shadow map: the vehicle was the only caster, and over a 6 km shadow
     // frustum its shadow covered one or two texels — a full extra pass plus PCF
     // sampling on every terrain fragment for something nobody could see.
@@ -435,12 +442,21 @@ export function updateCamera() {
  */
 export function render() {
     if (renderer && scene && camera) {
+        captureThreeCamera(camera, renderWorld.camera, renderer);
+        const dir = renderWorld.terrainStyle.sunDirection;
+        dir[0] = currentSunDirection.x; dir[1] = currentSunDirection.y; dir[2] = currentSunDirection.z;
+        updateTerrainInstances(camera);
         animateTraffic3D(camera, renderer.getSize(_viewport).y);
         flushThickLines();
         // AR forces the schematic terrain too (FPVController), and its
         // outlines are what shows over the camera feed
-        if (schematicView || arMode) renderSchematic();
-        else renderer.render(scene, camera);
+        renderBackend.beginFrame();
+        try {
+            if (schematicView || arMode) renderSchematic();
+            else renderBackend.render(scene, camera);
+        } finally {
+            renderBackend.endFrame();
+        }
     }
 }
 
@@ -653,11 +669,11 @@ function renderSchematic() {
     const o = getOutline();
 
     camera.layers.set(WORLD_LAYER);
-    renderer.setRenderTarget(o.target);
-    renderer.render(scene, camera);
+    renderBackend.setRenderTarget(o.target);
+    renderBackend.render(scene, camera);
 
-    renderer.setRenderTarget(null);
-    renderer.render(o.quadScene, o.quadCamera);
+    renderBackend.setRenderTarget(null);
+    renderBackend.render(o.quadScene, o.quadCamera);
 
     // A colour background makes three clear the canvas whatever autoClear
     // says: detach it, or the overlays would wipe the terrain drawn above
@@ -666,7 +682,7 @@ function renderSchematic() {
     const background = scene.background;
     renderer.autoClear = false;
     scene.background = null;
-    renderer.render(scene, camera);
+    renderBackend.render(scene, camera);
     scene.background = background;
     renderer.autoClear = autoClear;
 
@@ -695,7 +711,7 @@ export function resize(width, height) {
         camera.updateProjectionMatrix();
     }
     if (renderer) {
-        renderer.setSize(width, height);
+        renderBackend.resize(width, height, window.devicePixelRatio);
         // Terrain LOD is a screen-space error budget, so it has to follow the
         // viewport: the same chunk needs more triangles in a taller window.
         setLodViewParams(camera ? camera.fov : 60, renderer.domElement.height);
@@ -841,6 +857,17 @@ export function updateTrafficMarkers3D(nearest) {
 export function getScene() { return scene; }
 export function getCamera() { return camera; }
 export function getRenderer() { return renderer; }
+export function getRenderBackend() { return renderBackend; }
+export function getRenderWorld() { return renderWorld; }
+export function exportRenderPacket(options) { return encodeRenderWorld(renderWorld, options); }
+export function getRenderPerformanceStats() { return renderBackend?.getStats() || null; }
+export function setRenderQuality(value) {
+    if (!renderBackend) return;
+    renderBackend.setQuality(value);
+    try { localStorage.setItem(RENDER_QUALITY_KEY, renderBackend.quality); } catch (_) {}
+    // Existing resize handlers also refresh camera offsets and overlay sizes.
+    window.dispatchEvent(new Event('resize'));
+}
 export function getSunLight() { return sunLight; }
 export function getAmbientLight() { return ambientLight; }
 export function getCurrentSunDirection() { return currentSunDirection; }

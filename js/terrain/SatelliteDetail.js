@@ -103,6 +103,7 @@ vec3 satelliteDetail(vec3 base, vec2 xz) {
 let renderer = null;
 let loadTile = null;      // (x, y, z, callback(ImageBitmap|null)) from TerrainManager
 let contextLost = false;
+let onContextLost = null, onContextRestored = null;
 // Highest zoom drawn (SYS CONFIG → 3D SATELLITE DETAIL); 16 leaves the chunk textures alone
 export const SATELLITE_DETAIL_DEFAULT_ZOOM = 18;
 let maxZoom = SATELLITE_DETAIL_DEFAULT_ZOOM;
@@ -126,12 +127,13 @@ const _clearColor = new THREE.Color();
  * @param {Function} loader TerrainManager's tile loader: (x, y, z, callback)
  */
 export function initSatelliteDetail(r, loader) {
+    disposeSatelliteDetail();
     renderer = r;
     loadTile = loader;
     const canvas = renderer.domElement;
-    canvas.addEventListener('webglcontextlost', () => { contextLost = true; });
+    onContextLost = () => { contextLost = true; };
     // three re-creates its render targets empty: clear them and load every tile again
-    canvas.addEventListener('webglcontextrestored', () => {
+    onContextRestored = () => {
         contextLost = false;
         copyQueue.length = 0;
         for (const level of levels) {
@@ -139,7 +141,23 @@ export function initSatelliteDetail(r, loader) {
             level.tx0 = level.ty0 = null;
             level.slots.fill(null);
         }
-    });
+    };
+    canvas.addEventListener('webglcontextlost', onContextLost);
+    canvas.addEventListener('webglcontextrestored', onContextRestored);
+    contextLost = false;
+}
+
+/** Release the active view's clipmaps and listeners when its backend closes. */
+export function disposeSatelliteDetail() {
+    if (renderer) {
+        renderer.domElement.removeEventListener('webglcontextlost', onContextLost);
+        renderer.domElement.removeEventListener('webglcontextrestored', onContextRestored);
+    }
+    for (const level of levels) releaseLevel(level);
+    copyQueue.length = 0;
+    renderer = loadTile = null;
+    onContextLost = onContextRestored = null;
+    contextLost = true;
 }
 
 /**

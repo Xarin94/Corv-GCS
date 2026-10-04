@@ -7,6 +7,10 @@
     "start": "electron .",
     "postinstall": "electron-builder install-app-deps",
     "models": "node scripts/gen-models.js",
+    "test:hgt": "node scripts/test-hgt-worker.js",
+    "test:render": "node scripts/test-render-backend.js",
+    "test:architecture": "node scripts/test-render-architecture.js",
+    "measure:runtime": "node scripts/measure-runtime.js",
     "build": "electron-builder --win --linux",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux",
@@ -33,6 +37,7 @@
       "!topo/**",
       "!topography/**",
       "!scripts/**",
+      "!prototypes/**",
       "!data/**",
       "!docs/**"
     ],

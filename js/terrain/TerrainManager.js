@@ -4,6 +4,7 @@
  */
 
 import { VISIBILITY_RADIUS, RELOAD_DISTANCE, CAMERA_FOV } from '../core/constants.js';
+import { decodeHgtCooperatively } from './HgtDecoder.js';
 
 // ============== SATELLITE TEXTURE RESOLUTION BANDS ==============
 // Texture detail follows distance instead of a single HD/standard split. Each band
@@ -46,10 +47,8 @@ import { STATE } from '../core/state.js';
 import { latLonToMeters, calculateDistance, latLonToTile, tileToBounds } from '../core/utils.js';
 import { LRUCache } from '../core/LRUCache.js';
 import { getTile as getCachedTile, putTile as putCachedTile } from '../maps/TileCache.js';
-import {
-    initSatelliteDetail, updateSatelliteDetail, getSatelliteDetailStats,
-    satelliteDetailUniforms, SATELLITE_DETAIL_GLSL
-} from './SatelliteDetail.js';
+import { renderWorld } from '../render/RenderState.js';
+import { TERRAIN_GRID } from '../render/TerrainData.js';
 
 // ============== MEMORY TRACKING ==============
 let texturesCreated = 0;
@@ -60,6 +59,7 @@ let chunksCreated = 0;
 let chunksDisposed = 0;
 
 export function getMemoryStats() {
+    const gpuStats = terrainView?.getStats();
     return {
         texturesCreated,
         texturesDisposed,
@@ -75,12 +75,22 @@ export function getMemoryStats() {
         textureApplyQueueLen: textureApplyQueue.length,
         activeChunkJobsCount: activeChunkJobs.size,
         pendingTileCallbacksCount: pendingTileCallbacks.size,
-        heightLayers: [...heightStores.values()].reduce((n, st) => n + st.used.size, 0),
-        heightMB: +([...heightStores.values()].reduce((n, st) => n + st.capacity * st.geoW * st.geoW * 2, 0) / 1048576).toFixed(1),
+        heightLayers: gpuStats?.heightLayers || 0,
+        heightMB: gpuStats?.heightMB || 0,
+        renderData: renderWorld.getStats(),
         compressedTextures: compressedTexturesBuilt,
         compressedMB: +(compressedBytes / 1048576).toFixed(1),
         compressionActive: compressAvailable,
-        satelliteDetail: getSatelliteDetailStats()
+        hgt: {
+            tiles: Object.keys(hgtElevationData).length,
+            queryMB: +(Object.values(hgtElevationData).reduce((n, t) => n + t.data.byteLength, 0) / 1048576).toFixed(2),
+            workerTiles: hgtRegisteredInWorker.size,
+            pending: hgtPreparations.size,
+            workerDecodes: hgtWorkerDecodes,
+            fallbackDecodes: hgtFallbackDecodes,
+            lastPrepareMs: +hgtLastPrepareMs.toFixed(2)
+        },
+        satelliteDetail: gpuStats?.satelliteDetail || null
     };
 }
 
@@ -94,8 +104,14 @@ let cleanupIntervalId = null;
 // Set of HGT filenames available on disk (populated at startup, lazy-loaded on demand)
 const availableHgtFiles = new Set();
 const hgtLoadingInProgress = new Map(); // filename → promise of the load in flight
-let hgtParsing = 0; // FileReader passes in flight (HGT → chunk queue)
-const hgtReadInProgress = new Set(); // tile keys with a FileReader pass in flight
+const hgtPreparations = new Map(); // tile key → shared decode/registration promise
+const hgtWorkerRequests = new Map(); // request id → worker reply callbacks
+const hgtReadInProgress = new Set(); // one chunk-enqueue continuation per tile
+let hgtRequestId = 0;
+let hgtWorkerDecodes = 0;
+let hgtFallbackDecodes = 0;
+let hgtLastPrepareMs = 0;
+let terrainWorkerInitAttempted = false;
 
 // The disk list arrives over IPC after the first terrain updates have run. Until
 // then a tile that is on disk looks missing: downloading it then fetched it again
@@ -139,7 +155,7 @@ async function loadHgtFromDisk(filename) {
         if (!ab) return false;
         if (ab.buffer) ab = ab.buffer; // unwrap if needed
         const file = new File([ab], filename, { type: 'application/octet-stream' });
-        addHGTFile(filename, file);
+        if (!await addHGTFile(filename, file)) return false;
         console.log(`[terrain] Lazy-loaded ${filename}`);
         return true;
     } catch (e) {
@@ -211,7 +227,7 @@ async function autoDownloadSRTM(filename, latBase, lonBase) {
 
         // Register in memory
         const file = new File([hgtBuf.buffer], filename, { type: 'application/octet-stream' });
-        addHGTFile(filename, file);
+        if (!await addHGTFile(filename, file)) return null;
         console.log(`[terrain] Auto-downloaded and registered ${filename} (${(totalLen / 1024 / 1024).toFixed(1)} MB)`);
         return file;
     } catch (e) {
@@ -369,8 +385,7 @@ const CLEANUP_RADIUS = VISIBILITY_RADIUS * 1.05; // poco oltre la visibilità
 // headroom for the cleanup hysteresis rather than an arbitrary cap.
 const MAX_ACTIVE_CHUNKS = 550;
 const HGT_CACHE_RADIUS = CLEANUP_RADIUS * 1.2; // raggio cache HGT
-// Tiles whose buffer has been transferred to the terrain worker. The transfer
-// detaches the buffer, so re-sending one is both wasteful and impossible.
+// Tiles acknowledged by the terrain worker, which owns its native Int16 grid.
 const hgtRegisteredInWorker = new Set();
 const WORKER_STALE_MS = 30000; // 30s: worker can be slow on large HGT tiles
 const BASE_READY_FORCE_MS = 10000;
@@ -386,6 +401,12 @@ let mapBrightness = 0.85;
 
 // Scene reference (set during init)
 let sceneRef = null;
+let terrainView = null;
+let chunksVisible = true;
+const TRI_GRID_CELL_M = TERRAIN_GRID.cellM;
+const TRI_GRID_RADIUS_M = TERRAIN_GRID.radiusM;
+const TRI_GRID_FULL_AGL = TERRAIN_GRID.fullAgl;
+const TRI_GRID_MAX_AGL = TERRAIN_GRID.maxAgl;
 let rendererRef = null;
 
 // Worker-based chunk generation (optional)
@@ -427,544 +448,6 @@ function isChunkInRange(item, radius = VISIBILITY_RADIUS) {
     return getChunkDistanceToPlayer(item) <= radius;
 }
 
-// ============== GPU TERRAIN ==============
-// Chunk geometry lives on the GPU as elevation only. A chunk's samples (Int16,
-// straight from the HGT grid) are one layer of a texture array per grid size,
-// and the vertex shader rebuilds each vertex position and its normal from them
-// with texelFetch. Every chunk built on the same grid shares one triangle list
-// and one UV set.
-//
-// Chunks without a satellite map (everything beyond SATELLITE_RADIUS: ~390 of
-// ~420 resident) are drawn as instances of one InstancedMesh per grid — a
-// handful of draw calls — after a per-chunk frustum test in
-// updateTerrainInstances(). Chunks with a map keep a mesh of their own (the map
-// differs per chunk), on the same shared grid geometry. This replaced ~420
-// meshes, each with its own position and normal buffers, which cost three.js a
-// culling test, a matrix update and a draw call per chunk on every frame.
-
-// Hillshade, and the height palette of chunks without a satellite map, are
-// computed in the same vertex shader. The formula is the one the CPU used to
-// bake into vertex colours:
-//   sunlight on:  0.45 + 1.05 * max(0, N·sun)      sunlight off: map brightness
-// times the height palette when the chunk has no map. It scales the diffuse
-// colour, and MeshLambertMaterial then applies the scene lights.
-//
-// With the satellite imagery off the palette gives way to the schematic style
-// (uSchematic): near-black ground with a faint hillshade — green with the
-// light UI theme — isolines every 10 m and index isolines every 50 / 250 m,
-// the look of the mission simulations in Top Gun: Maverick. It is written
-// over the final colour, so scene lights and sunlight play no part in it.
-const terrainShadingUniforms = {
-    uSunDir: { value: new THREE.Vector3(0, 1, 0) }, // replaced by the scene's sun vector in initTerrain()
-    uSunlightOn: { value: 1 },
-    uBrightness: { value: mapBrightness },
-    uSchematic: { value: 0 },
-    // The schematic world ends on a circle this far from the camera; its rim
-    // is the horizon line the schematic view outlines (Scene3D). The centre is
-    // set every frame in updateTerrainInstances(): three only uploads its own
-    // cameraPosition for a few material types, and Lambert is not one of them.
-    uSchematicRadius: { value: SCHEMATIC_RADIUS },
-    uSchematicCenter: { value: new THREE.Vector2() },
-    // Light UI theme: green ground and dark lines instead of dark ground and light lines
-    uSchematicLight: { value: 0 },
-    // Triangle grid (setTerrainLowAltGrid): strength 0..1 from the aircraft's
-    // height above the ground, and the aircraft's world x/z it is centred on
-    uTriGrid: { value: 0 },
-    uTriCenter: { value: new THREE.Vector2() },
-    // A sub in water the elevation data does not show (a quarry, a small
-    // lake): x, z, surface height, radius — ground at that height within the
-    // radius is its water (setTerrainSubWater). Radius 0: off.
-    uSubWater: { value: new THREE.Vector4(0, 0, 0, 0) }
-};
-
-// Triangle grid of the schematic view, flying low: TRI_GRID_CELL_M triangles
-// within TRI_GRID_RADIUS_M of the aircraft, in full up to TRI_GRID_FULL_AGL
-// above the ground and gone at TRI_GRID_MAX_AGL. Low down the isolines are few
-// and far apart, and a flat valley floor has none: triangles of a fixed size
-// are what shows how high the aircraft is, growing on screen as it descends.
-// Everywhere else the shader skips it.
-const TRI_GRID_CELL_M = 25;
-const TRI_GRID_RADIUS_M = 500;
-const TRI_GRID_FULL_AGL = 150;
-const TRI_GRID_MAX_AGL = 200;
-
-const TERRAIN_VERTEX_PARS = `
-uniform vec3 uSunDir;
-uniform float uSunlightOn;
-uniform float uBrightness;
-uniform float uSchematic;
-uniform vec4 uSubWater;
-varying float vTerrainWater;
-uniform highp isampler2DArray uHeights;
-uniform int uGridMax;                 // vertices per side - 1
-#ifdef USE_INSTANCING
-attribute vec4 aChunk;                // x0, z0, dx, dz: world position of grid vertex (0,0), spacing
-attribute float aLayer;
-#else
-uniform vec4 uChunk;
-uniform float uLayer;
-#endif
-varying float vTerrainLight;
-varying vec3 vTerrainTint;
-varying float vTerrainH;
-varying vec2 vTerrainXZ;
-varying float vSchemShade;
-// Same palette as getHeightColor() in core/utils.js
-vec3 terrainHeightColor(float h) {
-    const vec3 G = vec3(0.0431372549, 0.4, 0.137254902);
-    const vec3 Y = vec3(0.902, 0.7647058824, 0.3529411765);
-    const vec3 O = vec3(0.902, 0.494, 0.133);
-    const vec3 R = vec3(0.906, 0.298, 0.235);
-    const vec3 P = vec3(0.608, 0.349, 0.713);
-    const vec3 B = vec3(0.204, 0.596, 0.858);
-    if (h <= -100.0) return vec3(0.0);
-    if (h <= 700.0) return G;
-    if (h <= 1400.0) return mix(G, Y, (h - 700.0) / 700.0);
-    if (h <= 2100.0) return mix(Y, O, (h - 1400.0) / 700.0);
-    if (h <= 2800.0) return mix(O, R, (h - 2100.0) / 700.0);
-    if (h <= 3500.0) return mix(R, P, (h - 2800.0) / 700.0);
-    if (h <= 4000.0) return mix(P, B, (h - 3500.0) / 500.0);
-    return B;
-}
-float terrainHeight(ivec2 g, int layer) {
-    return float(texelFetch(uHeights, ivec3(g, layer), 0).r);
-}
-`;
-
-// Replaces <beginnormal_vertex>. position.xy is the grid vertex (column, row);
-// rows run south, columns east. The normal is the central difference the
-// terrain worker used to compute (one-sided on the chunk edge): n = S × E.
-const TERRAIN_BEGINNORMAL = `
-#ifdef USE_INSTANCING
-vec4 tChunk = aChunk;
-int tLayer = int(aLayer + 0.5);
-#else
-vec4 tChunk = uChunk;
-int tLayer = int(uLayer + 0.5);
-#endif
-ivec2 tG = ivec2(position.xy + 0.5);
-float tH = terrainHeight(tG, tLayer);
-ivec2 tE = ivec2(min(tG.x + 1, uGridMax), tG.y);
-ivec2 tW = ivec2(max(tG.x - 1, 0), tG.y);
-ivec2 tS = ivec2(tG.x, min(tG.y + 1, uGridMax));
-ivec2 tN = ivec2(tG.x, max(tG.y - 1, 0));
-float tHE = terrainHeight(tE, tLayer), tHW = terrainHeight(tW, tLayer);
-float tHS = terrainHeight(tS, tLayer), tHN = terrainHeight(tN, tLayer);
-float tEx = float(tE.x - tW.x) * tChunk.z;
-float tEy = tHE - tHW;
-float tSz = float(tS.y - tN.y) * tChunk.w;
-float tSy = tHS - tHN;
-vec3 objectNormal = normalize(vec3(-tSz * tEy, tSz * tEx, -tSy * tEx));
-// Height the schematic isolines follow: lightly smoothed, so the metre-level
-// noise of SRTM on flat ground does not break a level into dozens of rings.
-// On an even slope the neighbours cancel out and it equals tH.
-float tHiso = 0.5 * tH + 0.125 * (tHE + tHW + tHS + tHN);
-// Water surface (schematic view only): SRTM flattens every lake to one height
-// and the sea to 0, while real ground is never flat to the metre across a
-// dozen samples — the same test as getWaterSurfaceAt(). Below 0 the data is
-// bathymetry, the sea bed, which is ground.
-float tWater = 0.0;
-if (uSchematic > 0.5 && tH >= 0.0 && tHE == tH && tHW == tH && tHS == tH && tHN == tH) {
-    int tX0 = max(tG.x - 1, 0), tX1 = min(tG.x + 1, uGridMax);
-    int tY0 = max(tG.y - 1, 0), tY1 = min(tG.y + 1, uGridMax);
-    bool tFlat =
-        terrainHeight(ivec2(tX1, tY0), tLayer) == tH && terrainHeight(ivec2(tX0, tY0), tLayer) == tH &&
-        terrainHeight(ivec2(tX1, tY1), tLayer) == tH && terrainHeight(ivec2(tX0, tY1), tLayer) == tH &&
-        terrainHeight(ivec2(min(tG.x + 2, uGridMax), tG.y), tLayer) == tH &&
-        terrainHeight(ivec2(max(tG.x - 2, 0), tG.y), tLayer) == tH &&
-        terrainHeight(ivec2(tG.x, min(tG.y + 2, uGridMax)), tLayer) == tH &&
-        terrainHeight(ivec2(tG.x, max(tG.y - 2, 0)), tLayer) == tH;
-    tWater = tFlat ? 1.0 : 0.0;
-}
-`;
-
-// Replaces <begin_vertex>
-const TERRAIN_BEGIN_VERTEX = `
-vec3 transformed = vec3(tChunk.x + float(tG.x) * tChunk.z, tH, tChunk.y + float(tG.y) * tChunk.w);
-vTerrainLight = uSunlightOn > 0.5
-    ? 0.45 + 1.05 * max(0.0, dot(objectNormal, uSunDir))
-    : uBrightness;
-// The colour of a chunk without a satellite map
-vTerrainTint = terrainHeightColor(tH);
-vTerrainH = tHiso;
-vTerrainXZ = transformed.xz;
-if (uSchematic > 0.5 && uSubWater.w > 0.0 && tH <= uSubWater.z + 1.5 && length(transformed.xz - uSubWater.xy) < uSubWater.w) tWater = 1.0;
-vTerrainWater = tWater;
-// Cartographic hillshade for the schematic style: light from the north-west,
-// 45° up (x east, z south), whatever the sun is doing.
-vSchemShade = max(0.0, dot(objectNormal, vec3(-0.5, 0.70710678, -0.5)));
-`;
-
-const TERRAIN_FRAGMENT_PARS = `
-varying float vTerrainLight;
-varying vec3 vTerrainTint;
-varying float vTerrainH;
-varying vec2 vTerrainXZ;
-varying float vSchemShade;
-varying float vTerrainWater;
-uniform float uSchematic;
-uniform float uSchematicRadius;
-uniform vec2 uSchematicCenter;
-uniform float uSchematicLight;
-uniform float uBrightness;
-uniform float uTriGrid;
-uniform vec2 uTriCenter;
-uniform vec4 uSubWater;
-
-// Isolines of height h every 'interval' metres, 'widthPx' wide on screen.
-// fwidth() gives the spacing of neighbouring lines in pixels: where they would
-// crowd closer than 'minSpacingPx' (far away, steep slopes seen edge-on) the
-// level fades out, so the next, coarser level takes over instead of the
-// lines merging into a grey smear.
-// Levels sit half a metre off the round figure: SRTM heights are whole
-// metres, so a flat area at exactly 580 m would lie on the 580 line
-// everywhere and be painted solid.
-float schematicIsoline(float h, float interval, float widthPx, float minSpacingPx) {
-    float x = (h - 0.5) / interval;
-    float fw = max(fwidth(x), 1e-5);
-    float distPx = abs(fract(x + 0.5) - 0.5) / fw;
-    float line = 1.0 - smoothstep(widthPx * 0.5 - 0.5, widthPx * 0.5 + 0.5, distPx);
-    return line * smoothstep(minSpacingPx, minSpacingPx * 2.5, 1.0 / fw);
-}
-
-// Kilometre grid on the ground: on a flat valley floor there are no isolines,
-// and the grid is what still shows scale and ground speed.
-float schematicGrid(vec2 p, float cell, float widthPx) {
-    vec2 x = p / cell;
-    vec2 fw = max(fwidth(x), vec2(1e-5));
-    vec2 distPx = abs(fract(x + 0.5) - 0.5) / fw;
-    vec2 line = 1.0 - smoothstep(vec2(widthPx * 0.5 - 0.5), vec2(widthPx * 0.5 + 0.5), distPx);
-    vec2 keep = smoothstep(vec2(6.0), vec2(16.0), 1.0 / fw);
-    return max(line.x * keep.x, line.y * keep.y);
-}
-
-// Distance of p along the normals of the triangle grid's three line families
-// (60° apart, meeting at the same vertices), in line spacings. Linear in p.
-vec3 triGridCoords(vec2 p) {
-    return vec3(p.y, 0.8660254 * p.x - 0.5 * p.y, 0.8660254 * p.x + 0.5 * p.y)
-        / (${TRI_GRID_CELL_M.toFixed(1)} * 0.8660254);
-}
-
-// Equilateral triangles laid flat in world space and draped over the relief,
-// out to the grid radius around the aircraft with a soft edge. dpx / dpy are
-// the screen derivatives of p, taken by the caller: this runs in a branch that
-// differs from pixel to pixel, where derivatives are undefined, and the
-// coordinates being linear in p, theirs follow. The three families fade
-// together, from the most crowded, so the grid thins out as triangles and not
-// as streaks where the ground is seen at a grazing angle.
-float schematicTriGrid(vec2 p, vec2 dpx, vec2 dpy, float widthPx) {
-    float r = length(p - uTriCenter);
-    if (r >= ${TRI_GRID_RADIUS_M.toFixed(1)}) return 0.0;
-    vec3 x = triGridCoords(p);
-    vec3 fw = max(abs(triGridCoords(dpx)) + abs(triGridCoords(dpy)), vec3(1e-5));
-    vec3 distPx = abs(fract(x + 0.5) - 0.5) / fw;
-    vec3 line = 1.0 - smoothstep(vec3(widthPx * 0.5 - 0.5), vec3(widthPx * 0.5 + 0.5), distPx);
-    float keep = smoothstep(2.5, 6.0, 1.0 / max(fw.x, max(fw.y, fw.z)));
-    float edge = 1.0 - smoothstep(${(TRI_GRID_RADIUS_M * 0.8).toFixed(1)}, ${TRI_GRID_RADIUS_M.toFixed(1)}, r);
-    return max(line.x, max(line.y, line.z)) * keep * edge;
-}
-
-// Three levels, as on a topographic chart: faint 10 m lines, stronger 50 m
-// index lines, and 250 m lines that stay when the others have faded.
-// Dark theme: grey ground shaded from black, light lines, amber 250 m lines.
-// Light theme: the same hillshade in greens, dark green lines, burnt orange.
-// Flying low, a faint triangle grid lies under the isolines around the aircraft.
-// Water (a lake, or the sea where the data flattens it to 0) is dark blue with
-// the triangle grid in blue, marking the surface; the sea bed (bathymetry,
-// below 0) is ground tinted blue, its isolines the depth contours.
-vec3 schematicTerrainColor() {
-    float grid = schematicGrid(vTerrainXZ, 1000.0, 1.0);
-    vec2 dpx = dFdx(vTerrainXZ), dpy = dFdy(vTerrainXZ);
-    float tri = uTriGrid > 0.001 ? schematicTriGrid(vTerrainXZ, dpx, dpy, 1.0) * uTriGrid : 0.0;
-    float minor = schematicIsoline(vTerrainH, 10.0, 1.0, 3.5);
-    float index = schematicIsoline(vTerrainH, 50.0, 1.4, 3.5);
-    float major = schematicIsoline(vTerrainH, 250.0, 2.0, 3.0);
-    float water = smoothstep(0.5, 0.95, vTerrainWater);
-    float bed = (1.0 - water) * smoothstep(0.0, -2.0, vTerrainH);
-    // A sub's own water where the data shows none: its surface grid is the
-    // plane's (Water3D), level — the ground under it is only roughly flat
-    if (uSubWater.w > 0.0) tri *= 1.0 - water;
-    vec3 col;
-    if (uSchematicLight > 0.5) {
-        col = mix(vec3(0.31, 0.48, 0.28), vec3(0.80, 0.89, 0.67), vSchemShade);
-        col = mix(col, col * vec3(0.72, 0.86, 1.15), bed);
-        col = mix(col, vec3(0.62, 0.76, 0.90), water);
-        col = mix(col, vec3(0.27, 0.43, 0.39), grid * 0.35);
-        col = mix(col, mix(vec3(0.25, 0.41, 0.30), vec3(0.10, 0.33, 0.72), water), tri * mix(0.18, 0.4, water));
-        col = mix(col, vec3(0.22, 0.37, 0.20), minor * 0.4);
-        col = mix(col, vec3(0.12, 0.25, 0.12), index * 0.65);
-        col = mix(col, vec3(0.62, 0.30, 0.05), major * 0.9);
-    } else {
-        col = vec3(0.022, 0.028, 0.034) + vec3(0.115, 0.125, 0.135) * vSchemShade;
-        col = mix(col, col * vec3(0.70, 0.90, 1.35), bed);
-        col = mix(col, vec3(0.015, 0.045, 0.085), water);
-        col = mix(col, vec3(0.12, 0.24, 0.28), grid * 0.7);
-        col = mix(col, mix(vec3(0.20, 0.32, 0.35), vec3(0.16, 0.42, 0.85), water), tri * mix(0.3, 0.55, water));
-        col = mix(col, vec3(0.38, 0.43, 0.47), minor * 0.75);
-        col = mix(col, vec3(0.74, 0.79, 0.82), index * 0.85);
-        col = mix(col, vec3(1.00, 0.60, 0.16), major);
-    }
-    // The MAP BRIGHTNESS slider (default 0.85) scales the whole drawing
-    return col * (uBrightness / 0.85);
-}
-${SATELLITE_DETAIL_GLSL}`;
-
-// After <color_fragment>: the chunk's satellite map (the height tint without
-// one), the full-resolution imagery around the aircraft over it, then the light
-const TERRAIN_COLOR_FRAGMENT = `
-#ifdef USE_MAP
-vec3 terrainBase = diffuseColor.rgb;
-#else
-vec3 terrainBase = diffuseColor.rgb * vTerrainTint;
-#endif
-diffuseColor.rgb = satelliteDetail(terrainBase, vTerrainXZ) * vTerrainLight;
-`;
-
-// Replaces <fog_fragment>: the schematic colour replaces the lit one, then the
-// (black) scene fog fades it with distance. The colour is computed before the
-// radius test so its fwidth() calls run on every fragment of the quad.
-const TERRAIN_FOG_FRAGMENT = `
-#ifndef USE_MAP
-if (uSchematic > 0.5) {
-    gl_FragColor.rgb = schematicTerrainColor();
-    // Alpha 0 marks a water surface for the outline pass (Scene3D), which
-    // then lets whatever is under the water show through it
-    gl_FragColor.a = vTerrainWater > 0.5 ? 0.0 : 1.0;
-    if (length(vTerrainXZ - uSchematicCenter) > uSchematicRadius) discard;
-}
-#endif
-#include <fog_fragment>
-`;
-
-function applyTerrainShading(shader) {
-    // Shading uniforms are shared by every chunk; the chunk uniforms belong to
-    // this material (a chunk's own mesh, or an instanced batch's grid).
-    Object.assign(shader.uniforms, terrainShadingUniforms, satelliteDetailUniforms, this.userData.terrain);
-    shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\n' + TERRAIN_VERTEX_PARS)
-        .replace('#include <beginnormal_vertex>', TERRAIN_BEGINNORMAL)
-        .replace('#include <begin_vertex>', TERRAIN_BEGIN_VERTEX);
-    shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\n' + TERRAIN_FRAGMENT_PARS)
-        .replace('#include <color_fragment>', '#include <color_fragment>\n' + TERRAIN_COLOR_FRAGMENT)
-        .replace('#include <fog_fragment>', TERRAIN_FOG_FRAGMENT);
-}
-
-function createTerrainMaterial(params) {
-    const material = new THREE.MeshLambertMaterial(Object.assign({
-        side: THREE.FrontSide  // heightfield seen from above: backface culling halves rasterization
-    }, params));
-    material.userData.terrain = {
-        uHeights: { value: null },
-        uGridMax: { value: 0 },
-        uChunk: { value: new THREE.Vector4() },
-        uLayer: { value: 0 }
-    };
-    // A single shared function (it reads its uniforms from `this`): three.js keys
-    // its program cache on the callback's source, so every terrain material
-    // compiles to the same few programs.
-    material.onBeforeCompile = applyTerrainShading;
-    return material;
-}
-
-// Material slot of chunks drawn through an instanced batch (no map). It is
-// never rendered itself; a chunk only gets a material of its own while it
-// carries a map. Never disposed.
-const untexturedTerrainMaterial = createTerrainMaterial();
-
-/** Point a non-instanced terrain material at a chunk's elevation layer. */
-function syncChunkUniforms(material, ud) {
-    const t = material.userData.terrain;
-    t.uHeights.value = ud.heightStore.texture;
-    t.uGridMax.value = ud.geoW - 1;
-    t.uChunk.value.set(ud.chunkVec[0], ud.chunkVec[1], ud.chunkVec[2], ud.chunkVec[3]);
-    t.uLayer.value = ud.heightLayer;
-}
-
-/**
- * Put a satellite map on a chunk, or remove it (texture = null). The chunk's
- * previous map is disposed. With a map the chunk is drawn as a mesh of its own;
- * without one it goes back to its grid's instanced batch.
- */
-function setChunkMap(mesh, texture) {
-    const own = mesh.material !== untexturedTerrainMaterial ? mesh.material : null;
-    if (own && own.map) {
-        try { own.map.dispose(); texturesDisposed++; } catch (e) {}
-        own.map = null;
-    }
-    if (texture) {
-        const material = own || createTerrainMaterial();
-        material.map = texture;
-        material.needsUpdate = true;
-        if (!own) {
-            syncChunkUniforms(material, mesh.userData);
-            mesh.material = material;
-            if (sceneRef) sceneRef.add(mesh);
-        }
-    } else if (own) {
-        own.dispose();
-        mesh.material = untexturedTerrainMaterial;
-        if (mesh.parent) mesh.parent.remove(mesh);
-    }
-}
-
-// ---- Shared grid geometry -------------------------------------------------
-const gridGeometries = new Map(); // geoW -> BufferGeometry
-
-/**
- * Grid of geoW x geoW vertices: position = (column, row, 0), same UVs and same
- * triangle order as the THREE.PlaneGeometry the chunks used to be built from,
- * so the winding FrontSide culling depends on is unchanged. Never disposed.
- */
-function getGridGeometry(geoW) {
-    let geometry = gridGeometries.get(geoW);
-    if (geometry) return geometry;
-
-    const seg = geoW - 1;
-    const IndexArray = geoW * geoW > 65535 ? Uint32Array : Uint16Array;
-    const index = new IndexArray(seg * seg * 6);
-    let k = 0;
-    for (let r = 0; r < seg; r++) {
-        for (let c = 0; c < seg; c++) {
-            const a = r * geoW + c;
-            const b = (r + 1) * geoW + c;
-            const cc = (r + 1) * geoW + c + 1;
-            const d = r * geoW + c + 1;
-            index[k++] = a; index[k++] = b; index[k++] = d;
-            index[k++] = b; index[k++] = cc; index[k++] = d;
-        }
-    }
-
-    const position = new Float32Array(geoW * geoW * 3);
-    const uv = new Float32Array(geoW * geoW * 2);
-    for (let r = 0; r < geoW; r++) {
-        for (let c = 0; c < geoW; c++) {
-            const i = r * geoW + c;
-            position[i * 3] = c;
-            position[i * 3 + 1] = r;
-            uv[i * 2] = c / seg;
-            uv[i * 2 + 1] = 1 - r / seg;
-        }
-    }
-
-    geometry = new THREE.BufferGeometry();
-    geometry.setIndex(new THREE.BufferAttribute(index, 1));
-    geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
-    geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    // Grid space, not world space: meshes on it are culled per chunk instead
-    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
-    gridGeometries.set(geoW, geometry);
-    return geometry;
-}
-
-// ---- Elevation texture arrays ----------------------------------------------
-// One R16I 2D-array texture per grid size, one layer per chunk. The samples of
-// every layer live in one CPU array (2 bytes per sample, ~2 MB in total), the
-// texture's own data: a new chunk uploads its layer alone (addLayerUpdate),
-// and growing the array, or a WebGL context restore, uploads all of it.
-const heightStores = new Map(); // geoW -> store
-const HEIGHT_STORE_INITIAL_LAYERS = 32;
-
-function getHeightStore(geoW) {
-    let store = heightStores.get(geoW);
-    if (store) return store;
-    const capacity = HEIGHT_STORE_INITIAL_LAYERS;
-    const data = new Int16Array(geoW * geoW * capacity);
-    const texture = new THREE.DataArrayTexture(data, geoW, geoW, capacity);
-    texture.format = THREE.RedIntegerFormat;
-    texture.type = THREE.ShortType;
-    texture.internalFormat = 'R16I';
-    texture.minFilter = THREE.NearestFilter;
-    texture.magFilter = THREE.NearestFilter;
-    texture.unpackAlignment = 2;   // rows of 2-byte samples with odd widths
-    texture.needsUpdate = true;
-    // While a whole upload is pending (new storage) no layer may be listed
-    // alone: three would upload only the listed layers into it
-    store = { geoW, capacity, data, texture, used: new Set(), free: [], next: 0, fullUpload: true };
-    texture.onUpdate = () => { store.fullUpload = false; };
-    heightStores.set(geoW, store);
-    return store;
-}
-
-/** The whole array goes up at the next render. */
-function uploadWholeHeightStore(store) {
-    store.fullUpload = true;
-    store.texture.clearLayerUpdates();
-    store.texture.needsUpdate = true;
-}
-
-/** three re-creates its textures after a WebGL context restore: from all the layers. */
-function restoreHeightStores() {
-    for (const store of heightStores.values()) uploadWholeHeightStore(store);
-}
-
-/** Twice the layers. The texture object stays (the materials point at it); its WebGL storage is replaced. */
-function growHeightStore(store) {
-    store.capacity *= 2;
-    const data = new Int16Array(store.geoW * store.geoW * store.capacity);
-    data.set(store.data);
-    store.data = data;
-    store.texture.image = { data, width: store.geoW, height: store.geoW, depth: store.capacity };
-    store.texture.dispose();   // frees the old storage; the next render allocates the new size
-    uploadWholeHeightStore(store);
-}
-
-function allocHeightLayer(store, heights) {
-    const layer = store.free.length ? store.free.pop() : store.next++;
-    if (layer >= store.capacity) growHeightStore(store);
-    store.used.add(layer);
-    store.data.set(heights, layer * store.geoW * store.geoW);
-    if (!store.fullUpload) store.texture.addLayerUpdate(layer);
-    store.texture.needsUpdate = true;
-    return layer;
-}
-
-function freeHeightLayer(store, layer) {
-    if (store && store.used.delete(layer)) store.free.push(layer);
-}
-
-/**
- * Store a chunk's elevation samples and derive what the shader and the
- * culling need: grid origin and spacing in world metres, bounding sphere.
- * Replaces the chunk's previous layer (LOD rebuild).
- */
-function setChunkHeights(mesh, item, step, heights, minH, maxH) {
-    const ud = mesh.userData;
-    const { cx, cy, latBase, lonBase, size, vertsPerChunk } = item;
-    const geoW = vertsPerChunk / step + 1;
-
-    if (ud.heightStore) freeHeightLayer(ud.heightStore, ud.heightLayer);
-    const store = getHeightStore(geoW);
-    ud.heightStore = store;
-    ud.heightLayer = allocHeightLayer(store, heights);
-    ud.geoW = geoW;
-    ud.lodStep = step;
-
-    // latLonToMeters() is linear in lat/lon, so the grid maps to world space as
-    // an origin plus a constant spacing per row and per column.
-    const startRow = cy * vertsPerChunk;
-    const startCol = cx * vertsPerChunk;
-    const latTop = latBase + 1 - startRow / (size - 1);
-    const lonLeft = lonBase + startCol / (size - 1);
-    const o = latLonToMeters(latTop, lonLeft);
-    const e = latLonToMeters(latTop, lonLeft + step / (size - 1));
-    const s = latLonToMeters(latTop - step / (size - 1), lonLeft);
-    const dx = e.x - o.x, dz = s.z - o.z;
-    ud.chunkVec = [o.x, o.z, dx, dz];
-
-    const halfW = (geoW - 1) * dx / 2;
-    const halfD = (geoW - 1) * dz / 2;
-    const halfH = (maxH - minH) / 2;
-    ud.sphere = {
-        x: o.x + halfW, y: (minH + maxH) / 2, z: o.z + halfD,
-        r: Math.sqrt(halfW * halfW + halfD * halfD + halfH * halfH)
-    };
-
-    mesh.geometry = getGridGeometry(geoW);
-    ud.batch = getInstanceBatch(geoW);
-    if (mesh.material !== untexturedTerrainMaterial) syncChunkUniforms(mesh.material, ud);
-}
-
 /** Int16 elevation samples of one chunk from the parsed HGT tile. */
 function sampleChunkHeights(item, step) {
     const { cx, cy, size, vertsPerChunk, hgtKey } = item;
@@ -989,149 +472,14 @@ function sampleChunkHeights(item, step) {
     return { heights, minH, maxH };
 }
 
-// ---- Instanced batches (chunks without a map) ------------------------------
-const instanceBatches = new Map(); // geoW -> batch
-const INSTANCE_CAPACITY = 1024;    // > MAX_ACTIVE_CHUNKS
-let chunksVisible = true;
-
-function getInstanceBatch(geoW) {
-    let batch = instanceBatches.get(geoW);
-    if (batch) return batch;
-
-    const grid = getGridGeometry(geoW);
-    const chunkAttr = new THREE.InstancedBufferAttribute(new Float32Array(INSTANCE_CAPACITY * 4), 4);
-    const layerAttr = new THREE.InstancedBufferAttribute(new Float32Array(INSTANCE_CAPACITY), 1);
-    chunkAttr.setUsage(THREE.DynamicDrawUsage);
-    layerAttr.setUsage(THREE.DynamicDrawUsage);
-    // Its own geometry object (the instance attributes are per batch) on the
-    // grid's shared index / position / uv buffers
-    const geometry = new THREE.BufferGeometry();
-    geometry.setIndex(grid.index);
-    geometry.setAttribute('position', grid.attributes.position);
-    geometry.setAttribute('uv', grid.attributes.uv);
-    geometry.setAttribute('aChunk', chunkAttr);
-    geometry.setAttribute('aLayer', layerAttr);
-    geometry.boundingSphere = grid.boundingSphere;
-
-    const material = createTerrainMaterial();
-    material.userData.terrain.uHeights.value = getHeightStore(geoW).texture;
-    material.userData.terrain.uGridMax.value = geoW - 1;
-
-    const mesh = new THREE.InstancedMesh(geometry, material, INSTANCE_CAPACITY);
-    // Vertices come out of the shader in world space: identity instance matrices
-    const m = mesh.instanceMatrix.array;
-    for (let i = 0; i < INSTANCE_CAPACITY; i++) {
-        m[i * 16] = m[i * 16 + 5] = m[i * 16 + 10] = m[i * 16 + 15] = 1;
-    }
-    mesh.frustumCulled = false;   // culled per chunk in updateTerrainInstances()
-    mesh.matrixAutoUpdate = false;
-    mesh.count = 0;
-    mesh.visible = false;
-    if (sceneRef) sceneRef.add(mesh);
-
-    batch = { mesh, chunkAttr, layerAttr, count: 0 };
-    instanceBatches.set(geoW, batch);
-    return batch;
+// GPU resource creation and batching belong to the selected backend.
+function setChunkHeights(mesh, item, step, heights, minH, maxH) {
+    const record = renderWorld.terrain.put(item, step, heights, minH, maxH);
+    terrainView.updateHeights(mesh, record);
 }
-
-const _frustum = new THREE.Frustum();
-const _projScreenMatrix = new THREE.Matrix4();
-const _planes = new Float64Array(24);   // 6 x (nx, ny, nz, constant)
-
-// Resident chunks as an array for the per-frame pass: iterating activeChunks
-// with for...in (an object whose keys come and go) cost several times more.
-const chunkList = [];
-
-function listChunk(mesh) {
-    mesh.userData.listIndex = chunkList.length;
-    chunkList.push(mesh);
-}
-
-function unlistChunk(mesh) {
-    const i = mesh.userData.listIndex;
-    if (i === undefined || chunkList[i] !== mesh) return;
-    const last = chunkList.pop();
-    if (last !== mesh) {
-        chunkList[i] = last;
-        last.userData.listIndex = i;
-    }
-    mesh.userData.listIndex = undefined;
-}
-
-/**
- * Per-frame terrain culling, called right before rendering: chunks with a map
- * get their mesh shown or hidden, chunks without one are packed into their
- * grid's instanced batch.
- * @param {THREE.Camera} camera
- */
 export function updateTerrainInstances(camera) {
-    if (!camera) return;
-    camera.updateMatrixWorld();
-    _projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-    _frustum.setFromProjectionMatrix(_projScreenMatrix);
-    for (let p = 0; p < 6; p++) {
-        const plane = _frustum.planes[p];
-        _planes[p * 4] = plane.normal.x;
-        _planes[p * 4 + 1] = plane.normal.y;
-        _planes[p * 4 + 2] = plane.normal.z;
-        _planes[p * 4 + 3] = plane.constant;
-    }
-
-    for (const batch of instanceBatches.values()) batch.count = 0;
-
-    // Schematic view: chunks wholly outside its radius would only be discarded
-    // pixel by pixel in the fragment shader
-    const clipRadius = terrainShadingUniforms.uSchematic.value > 0.5 ? SCHEMATIC_RADIUS : Infinity;
-    const cx = camera.position.x, cz = camera.position.z;
-    terrainShadingUniforms.uSchematicCenter.value.set(cx, cz);
-
-    for (let n = 0; n < chunkList.length; n++) {
-        const mesh = chunkList[n];
-        const ud = mesh.userData;
-        const s = ud.sphere;
-        // Sphere against the six frustum planes (same test as Frustum.intersectsSphere)
-        let visible = chunksVisible && Math.hypot(s.x - cx, s.z - cz) - s.r <= clipRadius;
-        for (let p = 0; visible && p < 24; p += 4) {
-            if (_planes[p] * s.x + _planes[p + 1] * s.y + _planes[p + 2] * s.z + _planes[p + 3] < -s.r) visible = false;
-        }
-
-        if (mesh.material !== untexturedTerrainMaterial) {   // own mesh (has a map)
-            mesh.visible = visible;
-            continue;
-        }
-        if (!visible) continue;
-        const batch = ud.batch;
-        if (batch.count >= INSTANCE_CAPACITY) continue;
-        const i = batch.count++;
-        const c = batch.chunkAttr.array;
-        c[i * 4] = ud.chunkVec[0];
-        c[i * 4 + 1] = ud.chunkVec[1];
-        c[i * 4 + 2] = ud.chunkVec[2];
-        c[i * 4 + 3] = ud.chunkVec[3];
-        batch.layerAttr.array[i] = ud.heightLayer;
-    }
-
-    for (const batch of instanceBatches.values()) {
-        batch.mesh.count = batch.count;
-        batch.mesh.visible = batch.count > 0;
-        if (batch.count === 0) continue;
-        batch.chunkAttr.clearUpdateRanges();
-        batch.chunkAttr.addUpdateRange(0, batch.count * 4);
-        batch.chunkAttr.needsUpdate = true;
-        batch.layerAttr.clearUpdateRanges();
-        batch.layerAttr.addUpdateRange(0, batch.count);
-        batch.layerAttr.needsUpdate = true;
-    }
-
-    // Full-resolution imagery around the aircraft, over the chunk textures
-    updateSatelliteDetail({
-        camera,
-        lat: STATE.lat,
-        lon: STATE.lon,
-        groundY: STATE.terrainHeight,
-        pixelAngle: lodPixelScale,
-        enabled: chunksVisible && !!window.satelliteEnabled && terrainShadingUniforms.uSchematic.value < 0.5
-    });
+    terrainView?.updateFrame(renderWorld.camera, { camera, aircraft: STATE,
+        pixelAngle: lodPixelScale, satelliteEnabled: !!window.satelliteEnabled });
 }
 
 /**
@@ -1140,7 +488,7 @@ export function updateTerrainInstances(camera) {
  * @param {THREE.WebGLRenderer} renderer
  * @param {THREE.Vector3} sunDirection
  */
-export function initTerrain(scene, renderer, sunDirection) {
+export function initTerrain(scene, renderer, sunDirection, backend) {
     sceneRef = scene;
     rendererRef = renderer;
 
@@ -1150,11 +498,11 @@ export function initTerrain(scene, renderer, sunDirection) {
     if (gpuMaxTexture > 0) {
         MAX_CANVAS_DIM = Math.min(MAX_CANVAS_DIM, gpuMaxTexture);
     }
-    // The scene mutates this vector in place as the sun moves, so the terrain
-    // shader follows the sun without any per-chunk work.
-    if (sunDirection) terrainShadingUniforms.uSunDir.value = sunDirection;
-    renderer.domElement.addEventListener('webglcontextrestored', restoreHeightStores);
-    initSatelliteDetail(renderer, loadTileImage);
+    if (!backend?.createTerrainView) throw new Error('Terrain requires a rendering backend');
+    terrainView?.dispose();
+    terrainView = backend.createTerrainView({ scene, world: renderWorld, loadTileImage,
+        onTextureDisposed: () => { texturesDisposed++; } });
+    if (sunDirection) renderWorld.terrainStyle.sunDirection.splice(0, 3, sunDirection.x, sunDirection.y, sunDirection.z);
 
     initTerrainWorker();
     initTileWorker();
@@ -1171,6 +519,8 @@ export function initTerrain(scene, renderer, sunDirection) {
 }
 
 function initTerrainWorker() {
+    if (terrainWorkerInitAttempted) return;
+    terrainWorkerInitAttempted = true;
     if (!USE_TERRAIN_WORKER || typeof Worker === 'undefined') return;
 
     try {
@@ -1180,6 +530,22 @@ function initTerrainWorker() {
 
         terrainWorker.onmessage = (e) => {
             const data = e.data || {};
+            if (data.type === 'hgtReady' || data.type === 'hgtFailed') {
+                const request = hgtWorkerRequests.get(data.id);
+                if (!request || request.key !== data.key) return;
+                hgtWorkerRequests.delete(data.id);
+                clearTimeout(request.timer);
+                if (data.type === 'hgtFailed') {
+                    request.reject(new Error(data.reason));
+                } else {
+                    // Registration is acknowledged before any buildChunk is sent.
+                    hgtRegisteredInWorker.add(data.key);
+                    hgtWorkerDecodes++;
+                    hgtLastPrepareMs = data.prepareMs;
+                    request.resolve({ data: data.elevations, size: data.size });
+                }
+                return;
+            }
             if (data.type === 'chunkBuilt') {
                 const item = workerPending.get(data.chunkKey);
                 if (!item) return;
@@ -1194,7 +560,7 @@ function initTerrainWorker() {
                     // layer and grid change.
                     if (existing) {
                         setChunkHeights(existing, item, data.step, data.heights, data.minH, data.maxH);
-                        existing.userData.lodRebuildQueued = false;
+                        existing.data.lodRebuildQueued = false;
                     }
                     return;
                 }
@@ -1213,7 +579,7 @@ function initTerrainWorker() {
                 markChunkActivity();
                 if (item.lodRebuild) {
                     // Keep the current grid; a later pass may retry
-                    if (activeChunks[data.chunkKey]) activeChunks[data.chunkKey].userData.lodRebuildQueued = false;
+                    if (activeChunks[data.chunkKey]) activeChunks[data.chunkKey].data.lodRebuildQueued = false;
                     return;
                 }
                 if (!activeChunks[data.chunkKey] && isChunkInRange(item)) {
@@ -1222,25 +588,69 @@ function initTerrainWorker() {
             }
         };
 
-        terrainWorker.onerror = (e) => {
-            console.error(`[terrain] TerrainWorker failed: ${e?.message || 'unknown'} ${e?.filename ? `(${e.filename}:${e.lineno})` : ''} — chunks on the main thread`);
-            workerAvailable = false;
-            terrainWorker = null;
-            for (const item of workerPending.values()) {
-                if (!activeChunks[item.chunkKey] || item.lodRebuild) {
-                    chunkCreationQueue.unshift(item);
-                }
-            }
-            workerPending.clear();
-            workerInflight = 0;
-            if (!isProcessingChunks && chunkCreationQueue.length > 0) {
-                processChunkQueue();
-            }
-        };
+        terrainWorker.onerror = (e) => disableTerrainWorker(e?.message || 'unknown error');
+        terrainWorker.onmessageerror = () => disableTerrainWorker('Unreadable worker reply');
     } catch (err) {
         workerAvailable = false;
         terrainWorker = null;
     }
+}
+
+function disableTerrainWorker(reason) {
+    console.warn(`[terrain] TerrainWorker unavailable: ${reason}; using cooperative HGT decoding`);
+    workerAvailable = false;
+    terrainWorker?.terminate();
+    terrainWorker = null;
+    hgtRegisteredInWorker.clear();
+    for (const request of hgtWorkerRequests.values()) {
+        clearTimeout(request.timer);
+        request.reject(Object.assign(new Error(reason), { workerUnavailable: true }));
+    }
+    hgtWorkerRequests.clear();
+    for (const item of workerPending.values()) {
+        if (!activeChunks[item.chunkKey] || item.lodRebuild) chunkCreationQueue.unshift(item);
+    }
+    workerPending.clear();
+    workerInflight = 0;
+    if (!isProcessingChunks && chunkCreationQueue.length > 0) processChunkQueue();
+}
+
+/** All import, disk, download and elevation-query paths share one preparation. */
+function prepareHgt(file, key) {
+    initTerrainWorker();
+    const cached = hgtElevationData[key];
+    if (cached && (!workerAvailable || hgtRegisteredInWorker.has(key))) return Promise.resolve(cached);
+    if (hgtPreparations.has(key)) return hgtPreparations.get(key);
+    const job = (async () => {
+        let tile;
+        if (workerAvailable && terrainWorker) {
+            try {
+                tile = await new Promise((resolve, reject) => {
+                    const id = ++hgtRequestId;
+                    const timer = setTimeout(() => disableTerrainWorker('HGT preparation timed out'), 60000);
+                    hgtWorkerRequests.set(id, { key, resolve, reject, timer });
+                    try {
+                        terrainWorker.postMessage({ type: 'prepareHgt', id, key, file });
+                    } catch (error) {
+                        disableTerrainWorker(error.message);
+                    }
+                });
+            } catch (error) {
+                if (!error.workerUnavailable) throw error; // invalid HGT is not retried
+            }
+        }
+        if (!tile) {
+            const start = performance.now();
+            tile = cached || await decodeHgtCooperatively(await file.arrayBuffer());
+            if (!cached) hgtFallbackDecodes++;
+            hgtLastPrepareMs = performance.now() - start;
+        }
+        hgtElevationData[key] = tile;
+        lastTerrainQuery = { lat: null, lon: null, height: null };
+        return tile;
+    })().finally(() => hgtPreparations.delete(key));
+    hgtPreparations.set(key, job);
+    return job;
 }
 
 function initTileWorker() {
@@ -1344,14 +754,11 @@ let compressedTexturesBuilt = 0;
 let compressedBytes = 0;
 
 function initCompressWorkers() {
-    if (typeof Worker === 'undefined' || !rendererRef) return;
+    if (typeof Worker === 'undefined' || !terrainView) return;
 
     // BC1 needs the S3TC extension. Everything desktop has it; if it is missing
     // the RGBA path still works, just with the old memory cost.
-    let ext = null;
-    try {
-        ext = rendererRef.getContext().getExtension('WEBGL_compressed_texture_s3tc');
-    } catch (e) { /* fall through to the uncompressed path */ }
+    const ext = terrainView.capabilities.bc1;
     if (!ext) {
         console.warn('[terrain] S3TC unavailable — terrain textures stay uncompressed');
         return;
@@ -1418,25 +825,13 @@ function onCompressedTexture(msg) {
     const { mesh } = pending;
     const width = msg.width, height = msg.height;
 
-    if (!msg.ok || !mesh || (mesh.userData && mesh.userData.disposed) || !window.satelliteEnabled) {
+    if (!msg.ok || !mesh || (mesh.data && mesh.data.disposed) || !window.satelliteEnabled) {
         if (!msg.ok) console.warn('[terrain] Texture compression failed:', msg.error);
-        if (mesh && mesh.userData && !msg.ok) mesh.userData.textureLoaded = false;
+        if (mesh && mesh.data && !msg.ok) mesh.data.textureLoaded = false;
         return;
     }
 
-    const texture = new THREE.CompressedTexture(
-        msg.mips, msg.padWidth, msg.padHeight, THREE.RGB_S3TC_DXT1_Format
-    );
-    texture.wrapS = THREE.ClampToEdgeWrapping;
-    texture.wrapT = THREE.ClampToEdgeWrapping;
-    texture.minFilter = THREE.LinearMipmapLinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-    if (rendererRef) texture.anisotropy = rendererRef.capabilities.getMaxAnisotropy();
-    // Level 0 was padded up to a multiple of 4; map UV 0..1 onto the real image.
-    // The worker flips vertically before padding, so the padding ends up at the
-    // top and right and a plain scale (no offset) is the exact correction.
-    texture.repeat.set(width / msg.padWidth, height / msg.padHeight);
-    texture.needsUpdate = true;
+    const texture = terrainView.makeCompressedTexture(msg);
 
     texturesCreated++;
     compressedTexturesBuilt++;
@@ -1547,9 +942,9 @@ export function getWaterSurfaceAt(lat, lon) {
  *   surface height, null to switch it off
  */
 export function setTerrainSubWater(water) {
-    const u = terrainShadingUniforms.uSubWater.value;
-    if (water) u.set(water.x, water.z, water.level, TRI_GRID_RADIUS_M);
-    else u.w = 0;
+    const u = renderWorld.terrainStyle.subWater;
+    if (water) { u[0] = water.x; u[1] = water.z; u[2] = water.level; u[3] = TRI_GRID_RADIUS_M; }
+    else u[3] = 0;
 }
 
 /** The triangle grid's cell and radius, for the water plane drawn at the same lattice (Water3D). */
@@ -1557,7 +952,7 @@ export const LOW_ALT_GRID = { cellM: TRI_GRID_CELL_M, radiusM: TRI_GRID_RADIUS_M
 
 /** Current strength (0..1) of the triangle grid and the point it is centred on. */
 export function getLowAltGridState() {
-    return { strength: terrainShadingUniforms.uTriGrid.value, center: terrainShadingUniforms.uTriCenter.value };
+    return { strength: renderWorld.terrainStyle.gridStrength, center: renderWorld.terrainStyle.gridCenter };
 }
 
 /**
@@ -1596,18 +991,7 @@ export async function getTerrainElevationAsync(lat, lon) {
             file = await autoDownloadSRTM(filename, latBase, lonBase);
         }
         if (file) {
-            const buf = await file.arrayBuffer();
-            const len = buf.byteLength;
-            const size = (len === 1201 * 1201 * 2) ? 1201 : (len === 3601 * 3601 * 2 ? 3601 : 0);
-            if (size && !hgtElevationData[key]) {
-                const dataView = new DataView(buf);
-                const elevationArray = new Int16Array(size * size);
-                for (let i = 0; i < size * size; i++) {
-                    elevationArray[i] = dataView.getInt16(i * 2, false);
-                }
-                hgtElevationData[key] = { data: elevationArray, size };
-                console.log(`[terrain] Parsed elevation data for ${filename} on demand (${size}x${size})`);
-            }
+            await prepareHgt(file, key);
         }
     }
 
@@ -1637,38 +1021,28 @@ export function getTerrainElevationCached(lat, lon) {
 }
 
 /**
- * Add HGT file to storage
+ * Add HGT file to storage. Resolves true only after elevation data is ready.
  * @param {string} filename 
  * @param {File} file 
  */
-export function addHGTFile(filename, file) {
-    hgtFiles[filename.toUpperCase()] = file;
-
-    // Pre-parse elevation data so getTerrainElevationFromHGT works immediately
+export async function addHGTFile(filename, file) {
     const match = String(filename).toUpperCase().match(/^([NS])(\d{1,2})([EW])(\d{1,3})/);
-    if (match) {
+    if (!match) return false;
+    const name = filename.toUpperCase();
+    hgtFiles[name] = file;
+    try {
         const latSign = match[1] === 'S' ? -1 : 1;
         const lonSign = match[3] === 'W' ? -1 : 1;
         const latBase = latSign * Number(match[2]);
         const lonBase = lonSign * Number(match[4]);
         const key = `${latBase}_${lonBase}`;
-        if (!hgtElevationData[key]) {
-            file.arrayBuffer().then(buf => {
-                const len = buf.byteLength;
-                const size = (len === 1201 * 1201 * 2) ? 1201 : (len === 3601 * 3601 * 2 ? 3601 : 0);
-                if (size && !hgtElevationData[key]) {
-                    const dataView = new DataView(buf);
-                    const elevationArray = new Int16Array(size * size);
-                    for (let i = 0; i < size * size; i++) {
-                        elevationArray[i] = dataView.getInt16(i * 2, false);
-                    }
-                    hgtElevationData[key] = { data: elevationArray, size };
-                    // Invalidate cached query so next frame picks up new data
-                    lastTerrainQuery = { lat: null, lon: null, height: null };
-                    console.log(`[terrain] Pre-parsed elevation data for ${filename} (${size}x${size})`);
-                }
-            }).catch(() => {});
-        }
+        const tile = await prepareHgt(file, key);
+        console.log(`[terrain] HGT ready: ${filename} (${tile.size}x${tile.size})`);
+        return true;
+    } catch (error) {
+        if (hgtFiles[name] === file) delete hgtFiles[name];
+        console.warn(`[terrain] Failed to prepare ${filename}: ${error.message}`);
+        return false;
     }
 }
 
@@ -1803,60 +1177,14 @@ function processHGTFile(file, latBase, lonBase) {
         return;
     }
 
-    // One read per tile at a time: updateTerrainChunks() is re-run every
-    // second (and every frame while no chunk exists yet), and each call used
-    // to start another 25 MB FileReader for the same file — hundreds in
-    // flight during startup, all producing the same chunks.
+    // Share the preparation with imports and elevation queries. Enqueue only
+    // after the worker has acknowledged that its native grid is available.
     if (hgtReadInProgress.has(key)) return;
     hgtReadInProgress.add(key);
 
-    const reader = new FileReader();
-    hgtParsing++;
-    const done = () => {
-        hgtParsing = Math.max(0, hgtParsing - 1);
-        hgtReadInProgress.delete(key);
-    };
-    reader.onload = (e) => {
-        done();
-        generateChunksFromBuffer(e.target.result, latBase, lonBase);
-    };
-    reader.onerror = done;
-    reader.readAsArrayBuffer(file);
-}
-
-/**
- * Generate terrain chunks from HGT buffer
- * @param {ArrayBuffer} buffer 
- * @param {number} latBase 
- * @param {number} lonBase 
- */
-function generateChunksFromBuffer(buffer, latBase, lonBase) {
-    const len = buffer.byteLength;
-    let size = (len === 1201 * 1201 * 2) ? 1201 : (len === 3601 * 3601 * 2 ? 3601 : 0);
-    if (!size) return;
-    
-    const key = `${latBase}_${lonBase}`;
-
-    if (!hgtElevationData[key]) {
-        const dataView = new DataView(buffer);
-        const elevationArray = new Int16Array(size * size);
-        for (let i = 0; i < size * size; i++) {
-            elevationArray[i] = dataView.getInt16(i * 2, false);
-        }
-        hgtElevationData[key] = { data: elevationArray, size: size };
-    }
-
-    enqueueChunksForTile(latBase, lonBase, size);
-
-    // Transferring detaches the buffer, so this may only happen once per tile.
-    if (workerAvailable && terrainWorker && !hgtRegisteredInWorker.has(key)) {
-        try {
-            terrainWorker.postMessage({ type: 'registerHgt', key, size, buffer }, [buffer]);
-            hgtRegisteredInWorker.add(key);
-        } catch (err) {
-            workerAvailable = false;
-        }
-    }
+    prepareHgt(file, key).then(tile => enqueueChunksForTile(latBase, lonBase, tile.size))
+        .catch(error => console.warn(`[terrain] HGT ${key}: ${error.message}`))
+        .finally(() => hgtReadInProgress.delete(key));
 }
 
 /**
@@ -1939,7 +1267,7 @@ function processChunkQueue() {
                     chunkCreationQueue.unshift(item);
                 } else if (item.lodRebuild && activeChunks[chunkKey]) {
                     // Rebuild dropped — release the flag so a later pass can retry
-                    activeChunks[chunkKey].userData.lodRebuildQueued = false;
+                    activeChunks[chunkKey].data.lodRebuildQueued = false;
                 }
             }
         }
@@ -2021,7 +1349,7 @@ function processChunkQueue() {
                     const step = sanitizeLodStep(item.lodStep || 1, item.vertsPerChunk);
                     const { heights, minH, maxH } = sampleChunkHeights(item, step);
                     setChunkHeights(existing, item, step, heights, minH, maxH);
-                    existing.userData.lodRebuildQueued = false;
+                    existing.data.lodRebuildQueued = false;
                 } else {
                     createSingleChunk(item);
                 }
@@ -2068,21 +1396,15 @@ function addChunkMesh(item, step, heights, minH, maxH) {
     const { cx, cy, chunkKey, latBase, lonBase, vertsPerChunk } = item;
     const chunksPerAxis = CHUNKS_PER_TILE_AXIS;
 
-    const mesh = new THREE.Mesh(getGridGeometry(vertsPerChunk / step + 1), untexturedTerrainMaterial);
-    mesh.frustumCulled = false;     // culled per chunk in updateTerrainInstances()
-    mesh.matrixAutoUpdate = false;  // vertices come out of the shader in world space
-    mesh.userData = {
-        chunkLatTop: latBase + 1 - (cy / chunksPerAxis),
-        chunkLatBottom: latBase + 1 - ((cy + 1) / chunksPerAxis),
-        chunkLonLeft: lonBase + (cx / chunksPerAxis),
-        chunkLonRight: lonBase + ((cx + 1) / chunksPerAxis),
-        vertsPerChunk,
-        textureLoaded: false
-    };
-    setChunkHeights(mesh, item, step, heights, minH, maxH);
-
+    const record = renderWorld.terrain.put(item, step, heights, minH, maxH);
+    const mesh = terrainView.createChunk(record, {
+        chunkLatTop: latBase + 1 - cy / chunksPerAxis,
+        chunkLatBottom: latBase + 1 - (cy + 1) / chunksPerAxis,
+        chunkLonLeft: lonBase + cx / chunksPerAxis,
+        chunkLonRight: lonBase + (cx + 1) / chunksPerAxis,
+        vertsPerChunk
+    });
     activeChunks[chunkKey] = mesh;
-    listChunk(mesh);
     chunksCreated++;
     markChunkActivity();
     return mesh;
@@ -2108,7 +1430,7 @@ function getBandForChunk(latTop, latBottom, lonLeft, lonRight) {
  */
 function createChunkTexture(mesh, latTop, latBottom, lonLeft, lonRight) {
     if (!window.satelliteEnabled) {
-        mesh.userData.textureLoaded = false;
+        mesh.data.textureLoaded = false;
         return;
     }
 
@@ -2201,8 +1523,8 @@ function createChunkTexture(mesh, latTop, latBottom, lonLeft, lonRight) {
     // loop above may have stepped the zoom down, and keying the re-texture decision
     // off the zoom would make such a chunk look permanently out of date and get
     // rebuilt on every pass.
-    mesh.userData.textureZoom = zoomLevel;
-    mesh.userData.textureBand = band;
+    mesh.data.textureZoom = zoomLevel;
+    mesh.data.textureBand = band;
 
     for (let ty = tileTopLeft.y; ty <= tileBottomRight.y; ty++) {
         for (let tx = tileTopLeft.x; tx <= tileBottomRight.x; tx++) {
@@ -2281,7 +1603,7 @@ function processTileDrawQueue() {
                 // Not a single tile (typically offline with nothing cached for
                 // this area): keep the height-tinted chunk rather than a grey slab.
                 releaseCanvas(canvas);
-                if (job.mesh && job.mesh.userData) job.mesh.userData.textureLoaded = false;
+                if (job.mesh && job.mesh.data) job.mesh.data.textureLoaded = false;
             } else {
                 enqueueCompositeTexture(job.mesh, canvas);
             }
@@ -2302,7 +1624,7 @@ function processTileDrawQueue() {
 }
 
 function enqueueCompositeTexture(mesh, canvas) {
-    if (!mesh || (mesh.userData && mesh.userData.disposed)) {
+    if (!mesh || (mesh.data && mesh.data.disposed)) {
         if (canvas) {
             canvas.width = 1;
             canvas.height = 1;
@@ -2543,11 +1865,11 @@ function processTileLoadQueue() {
 function applyCompositeTexture(mesh, canvas) {
     // If satellite got disabled while tiles were loading, don't apply.
     if (!window.satelliteEnabled) {
-        if (mesh && mesh.userData) mesh.userData.textureLoaded = false;
+        if (mesh && mesh.data) mesh.data.textureLoaded = false;
         return;
     }
 
-    if (!mesh || (mesh.userData && mesh.userData.disposed)) {
+    if (!mesh || (mesh.data && mesh.data.disposed)) {
         releaseCanvas(canvas);
         return;
     }
@@ -2556,24 +1878,8 @@ function applyCompositeTexture(mesh, canvas) {
     // the worker answers; until then the chunk keeps whatever it already had.
     if (requestCompressedTexture(mesh, canvas)) return;
 
-    const texture = new THREE.CanvasTexture(canvas);
+    const texture = terrainView.makeCanvasTexture(canvas);
     texturesCreated++;
-
-    // Force an early GPU upload. IMPORTANT: the canvas must stay alive — it
-    // is texture.image, the source THREE re-reads on every re-upload (e.g.
-    // after a WebGL context loss/restore). Shrinking it here permanently
-    // blanked the texture to white. It is GC'd naturally when the texture is
-    // disposed (unloadChunkTexture / LOD swap), so there is no leak.
-    if (rendererRef) {
-        rendererRef.initTexture(texture);
-    }
-    texture.wrapS = THREE.ClampToEdgeWrapping;
-    texture.wrapT = THREE.ClampToEdgeWrapping;
-    texture.minFilter = THREE.LinearMipmapLinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-    if (rendererRef) {
-        texture.anisotropy = rendererRef.capabilities.getMaxAnisotropy();
-    }
 
     attachTextureToMesh(mesh, texture);
 }
@@ -2582,9 +1888,9 @@ function applyCompositeTexture(mesh, canvas) {
  * Put a finished texture (compressed or not) on a chunk.
  */
 function attachTextureToMesh(mesh, texture) {
-    if (mesh && mesh.material) {
-        setChunkMap(mesh, texture);
-        mesh.userData.textureLoaded = true;
+    if (mesh && terrainView.hasChunk(mesh)) {
+        terrainView.setMap(mesh, texture);
+        mesh.data.textureLoaded = true;
     }
 }
 
@@ -2609,21 +1915,22 @@ function abortChunkJob(mesh) {
 }
 
 function unloadChunkTexture(mesh) {
-    if (!mesh || !mesh.material) return;
+    if (!mesh || !terrainView.hasChunk(mesh)) return;
 
     abortChunkJob(mesh);
 
-    if (mesh.material.map) {
+    const mapDescriptor = renderWorld.terrain.chunks.get(mesh.id)?.appearance;
+    if (mapDescriptor) {
         // A CanvasTexture's backing canvas is released along with it (a
         // compressed texture's staging canvas was released when it was built)
-        if (mesh.material.map.image && !mesh.material.map.isCompressedTexture) canvasesReleased++;
-        setChunkMap(mesh, null);
+        if (mapDescriptor.kind === 'canvas-reference') canvasesReleased++;
+        terrainView.setMap(mesh, null);
     }
-    if (mesh.userData) {
-        mesh.userData.textureLoaded = false;
-        mesh.userData.textureQueued = false;
-        mesh.userData.textureZoom = 0;
-        mesh.userData.textureBand = undefined;
+    if (mesh.data) {
+        mesh.data.textureLoaded = false;
+        mesh.data.textureQueued = false;
+        mesh.data.textureZoom = 0;
+        mesh.data.textureBand = undefined;
     }
 }
 
@@ -2662,6 +1969,7 @@ function clearPendingTextureOperations() {
 
 export function setTerrainChunksVisible(visible) {
     chunksVisible = !!visible;
+    renderWorld.terrainStyle.visible = chunksVisible;
 }
 
 /**
@@ -2670,7 +1978,7 @@ export function setTerrainChunksVisible(visible) {
  * @param {boolean} light
  */
 export function setTerrainSchematicLight(light) {
-    terrainShadingUniforms.uSchematicLight.value = light ? 1 : 0;
+    renderWorld.terrainStyle.light = !!light;
 }
 
 /**
@@ -2693,8 +2001,8 @@ export function lowAltGridStrength(height) {
  */
 export function setTerrainLowAltGrid(agl, x, z) {
     const s = lowAltGridStrength(agl);
-    terrainShadingUniforms.uTriGrid.value = s;
-    if (s > 0) terrainShadingUniforms.uTriCenter.value.set(x, z);
+    renderWorld.terrainStyle.gridStrength = s;
+    if (s > 0) { renderWorld.terrainStyle.gridCenter.x = x; renderWorld.terrainStyle.gridCenter.y = z; }
 }
 
 /**
@@ -2710,7 +2018,7 @@ export function setTerrainSatelliteEnabled(enabled) {
 
     // Chunks beyond the satellite radius keep the height palette while the
     // imagery is on; with it off every chunk is drawn schematic.
-    terrainShadingUniforms.uSchematic.value = on ? 0 : 1;
+    renderWorld.terrainStyle.schematic = !on;
 
     console.log(`[terrain] Satellite ${on ? 'ENABLED' : 'DISABLED'} — activeChunks=${Object.keys(activeChunks).length}, queue=${chunkCreationQueue.length}, workerPending=${workerPending.size}`);
 
@@ -2723,7 +2031,7 @@ export function setTerrainSatelliteEnabled(enabled) {
     if (!on) {
         for (const key in activeChunks) {
             const mesh = activeChunks[key];
-            if (mesh && mesh.material) unloadChunkTexture(mesh);
+            if (mesh && terrainView.hasChunk(mesh)) unloadChunkTexture(mesh);
         }
         clearPendingTextureOperations();
         try { imageLRU.clear(); } catch (e) {}
@@ -2760,7 +2068,7 @@ function cleanupDistantChunks() {
 
     let removed = 0;
     for (const [key, mesh] of chunkEntries) {
-        const ud = mesh.userData;
+        const ud = mesh.data;
         if (!ud.chunkLatTop) continue;
 
         const centerLat = (ud.chunkLatTop + ud.chunkLatBottom) / 2;
@@ -2781,7 +2089,7 @@ function cleanupDistantChunks() {
     if (Object.keys(activeChunks).length > MAX_ACTIVE_CHUNKS) {
         const sorted = Object.entries(activeChunks)
             .map(([key, mesh]) => {
-                const ud = mesh.userData;
+                const ud = mesh.data;
                 if (!ud.chunkLatTop) return { key, dist: 0 };
                 const centerLat = (ud.chunkLatTop + ud.chunkLatBottom) / 2;
                 const centerLon = (ud.chunkLonLeft + ud.chunkLonRight) / 2;
@@ -2820,7 +2128,7 @@ function updateChunkLods(playerPos) {
     const rebuilds = [];
 
     for (const [key, mesh] of Object.entries(activeChunks)) {
-        const ud = mesh.userData;
+        const ud = mesh.data;
         if (!ud || ud.chunkLatTop == null || !ud.lodStep || ud.lodRebuildQueued) continue;
         if (workerPending.has(key)) continue;
 
@@ -2885,7 +2193,7 @@ function requeueChunkForLod(chunkKey, mesh, dist) {
     // rebuilt chunk collapses to a zero-area mesh — a hole in the terrain.
     const vertsPerChunk = Math.floor((size - 1) / CHUNKS_PER_TILE_AXIS);
 
-    mesh.userData.lodRebuildQueued = true;
+    mesh.data.lodRebuildQueued = true;
     chunkCreationQueue.push({
         cx, cy, dist, chunkKey,
         latBase, lonBase, size, vertsPerChunk,
@@ -2903,8 +2211,9 @@ function requeueChunkForLod(chunkKey, mesh, dist) {
  */
 function cleanupHgtCache() {
     // Intentionally left empty: hgtElevationData entries are retained for the
-    // full session lifetime. Each 1°×1° SRTM tile is ~2.9 MB parsed; keeping
-    // them avoids repeated AWS downloads and re-parse overhead.
+    // full session lifetime. SRTM3 uses 2.75 MiB, SRTM1 uses 24.73 MiB per
+    // native grid; the worker retains another grid and the File is also kept.
+    // A bounded cache requires coordinated eviction with pending chunk jobs.
 }
 
 /**
@@ -2913,7 +2222,7 @@ function cleanupHgtCache() {
 function disposeChunk(key, mesh) {
     if (!mesh) return;
 
-    if (mesh.userData) mesh.userData.disposed = true;
+    if (mesh.data) mesh.data.disposed = true;
 
     // Release any pending texture work and map
     unloadChunkTexture(mesh);
@@ -2951,20 +2260,9 @@ function disposeChunk(key, mesh) {
         }
     }
 
-    // unloadChunkTexture() above already put the chunk back on the shared
-    // material slot; this only catches a material left without its map
-    if (mesh.material && mesh.material !== untexturedTerrainMaterial) {
-        if (mesh.material.map) {
-            try { mesh.material.map.dispose(); texturesDisposed++; } catch (e) {}
-        }
-        try { mesh.material.dispose(); } catch (e) {}
-    }
-    // The grid geometry is shared; the chunk's own data is its elevation layer
-    freeHeightLayer(mesh.userData.heightStore, mesh.userData.heightLayer);
-    mesh.userData.heightStore = null;
-    if (mesh.parent) mesh.parent.remove(mesh);
+    terrainView.removeChunk(mesh);
+    renderWorld.terrain.remove(key);
     delete activeChunks[key];
-    unlistChunk(mesh);
     chunksDisposed++;
 }
 
@@ -2973,7 +2271,7 @@ function disposeChunk(key, mesh) {
  * call: the shader reads the scene's sun vector directly (see initTerrain).
  */
 export function updateTerrainHillshading() {
-    terrainShadingUniforms.uSunlightOn.value = window.sunlightEnabled !== false ? 1 : 0;
+    renderWorld.terrainStyle.sunlight = window.sunlightEnabled !== false;
 }
 
 /**
@@ -2984,7 +2282,7 @@ export function setMapBrightness(value) {
     const v = Number(value);
     if (!Number.isFinite(v)) return;
     mapBrightness = Math.max(0.3, Math.min(1.6, v));
-    terrainShadingUniforms.uBrightness.value = mapBrightness;
+    renderWorld.terrainStyle.brightness = mapBrightness;
 }
 
 // Getters
@@ -3000,13 +2298,13 @@ export function getInitialLoadStatus() {
     let chunksActive = 0;
     for (const key in activeChunks) {
         chunksActive++;
-        const ud = activeChunks[key] && activeChunks[key].userData;
+        const ud = activeChunks[key] && activeChunks[key].data;
         if (ud && ud.textureLoaded) texturedChunks++;
     }
     return {
         hgtAvailable: availableHgtFiles.size,
         hgtLoaded: Object.keys(hgtFiles).length,
-        hgtPending: hgtLoadingInProgress.size + _autoDownloadInProgress.size + hgtParsing,
+        hgtPending: hgtLoadingInProgress.size + _autoDownloadInProgress.size + hgtPreparations.size,
         chunksActive,
         chunksPending: chunkCreationQueue.length + workerPending.size,
         terrainBaseReady,
@@ -3091,9 +2389,9 @@ export function refreshNearbyChunkTextures() {
     const HYSTERESIS = 0.1;
 
     for (const [key, mesh] of Object.entries(activeChunks)) {
-        if (!mesh || !mesh.userData) continue;
+        if (!mesh || !mesh.data) continue;
 
-        const ud = mesh.userData;
+        const ud = mesh.data;
         if (ud.chunkLatTop == null) continue;
         // Skip chunks already being processed
         if (ud.textureQueued || activeChunkJobs.has(mesh.uuid)) continue;

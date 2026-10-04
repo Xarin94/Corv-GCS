@@ -13,6 +13,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { pathToFileURL } = require('url');
 
 const root = path.join(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corv-radio-'));
@@ -29,8 +30,8 @@ function check(name, cond, detail = '') {
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 
 (async () => {
-    const RL = await import(path.join(tmp, 'RadioLink.mjs'));
-    const RM = await import(path.join(tmp, 'RouteModel.mjs'));
+    const RL = await import(pathToFileURL(path.join(tmp, 'RadioLink.mjs')));
+    const RM = await import(pathToFileURL(path.join(tmp, 'RouteModel.mjs')));
     const { LINK } = RL;
 
     const radio = { ...RM.defaultRadio(), preset: 'rfd900x', ...RM.RADIO_PRESETS.rfd900x, losses: 1, minMargin: 10, groundHeight: 2 };
