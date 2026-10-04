@@ -20,7 +20,7 @@ assorbirebbero lavoro senza risolvere automaticamente i colli di bottiglia CPU.
 Il renderer specializzato per terreno e sensori può crescere sopra un backend
 esistente, con risultati misurabili a ogni fase.
 
-L'audit precedente è in [ANALISI-PRESTAZIONI-2026-10-04.md](ANALISI-PRESTAZIONI-2026-10-04.md).
+Gli artefatti dell'audit esplorativo sono stati rimossi durante la pulizia del repository.
 Il terreno usa già shader GPU per altezza/normali e geometrie condivise. La
 conversione big-endian HGT era invece ripetuta in tre percorsi del thread UI;
 il main process Node leggeva i file attraverso `fs.promises.readFile`.
@@ -109,7 +109,7 @@ riscrittura della UI, non soltanto cambiare il contenitore della finestra.
 reale, normali, geometria indicizzata, camera animata e overlay QML. La prova
 trasparente sul PC Ryzen AI 9 365/Radeon 880M ha usato **Direct3D 11**, disegnato
 **64.800 triangoli** e presentato frame da un thread distinto dalla GUI.
-JSON e screenshot verificato sono in `docs/audits/2026-10-04/qt-terrain-smoke.*`.
+JSON e screenshot temporanei della prova sono stati rimossi durante la pulizia.
 
 La prima prova offscreen aveva selezionato software e non disegnava il terreno;
 è stata sostituita dalla prova GPU con finestra trasparente. Python 3.9.1 locale
@@ -181,8 +181,8 @@ deduplicazione import/quote, dimensioni reali dei canvas, rendering schematico,
 fallback per worker assente e per errore durante una richiesta. Durante l'avvio:
 quattro HGT pronti, 160 chunk prodotti, nessun `chunkFailed`, nessun fallback HGT.
 
-Risultati in `docs/audits/2026-10-04/hgt-renderer-validation.json`. La finestra
-Electron era nascosta: queste sono verifiche funzionali, non un benchmark FPS.
+Gli output temporanei della verifica sono stati rimossi. La finestra Electron
+era nascosta: queste sono verifiche funzionali, non un benchmark FPS.
 
 Passano anche `node scripts/test-lidar-math.js` e `node scripts/test-radio-link.js`.
 Quest'ultimo usava percorsi assoluti negli import ESM e falliva su Windows prima

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.8.0-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.8.1-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"/>
   <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
   <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
@@ -202,9 +202,9 @@ radio that is the difference between two packets and several minutes.
 ## Installation
 
 Installers are on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
-**Windows** `CORV GCS Setup 1.8.0.exe`, **macOS** `CORV GCS-1.8.0-arm64.dmg` (Apple silicon) and
-`CORV GCS-1.8.0-x64.dmg` (Intel), **Linux** `CORV GCS-1.8.0.AppImage` (portable) and
-`corv-gcs_1.8.0_amd64.deb` (Debian / Ubuntu).
+**Windows** `CORV GCS Setup 1.8.1.exe`, **macOS** `CORV GCS-1.8.1-arm64.dmg` (Apple silicon) and
+`CORV GCS-1.8.1-x64.dmg` (Intel), **Linux** `CORV GCS-1.8.1.AppImage` (portable) and
+`corv-gcs_1.8.1_amd64.deb` (Debian / Ubuntu).
 
 The macOS app is not signed with an Apple Developer ID: after copying it to Applications, run
 `xattr -dr com.apple.quarantine "/Applications/CORV GCS.app"` once, or macOS reports it as damaged.

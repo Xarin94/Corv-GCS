@@ -2,7 +2,12 @@
 
 > Desktop Ground Control Station for ArduPilot — Electron + Three.js + Leaflet
 
-**Version:** 1.7.2 | **License:** Apache-2.0 | **Repository:** [github.com/Xarin94/Corv-GCS](https://github.com/Xarin94/Corv-GCS)
+**Version:** 1.8.1 | **License:** Apache-2.0 | **Repository:** [github.com/Xarin94/Corv-GCS](https://github.com/Xarin94/Corv-GCS)
+
+The terrain, camera and Livox rendering boundary introduced in 1.8.1 is documented
+in [Rendering architecture](docs/ARCHITETTURA-RENDERING.md). Their data models are
+independent of Three.js; the shipping application uses Three/WebGL2 adapters.
+The Qt Quick 3D consumer is a separate prototype, excluded from installers.
 
 Corv-GCS is a frameless Electron desktop application providing 3D terrain visualization, 2D mapping, HUD flight instruments, mission planning with undo/redo and a local mission library, FPV camera, RTK/NTRIP corrections, ADS-B traffic awareness, joystick RC override, `.tlog` flight recording, `.tlog` and ArduPilot `.bin` log replay, and offline map/elevation caching.
 

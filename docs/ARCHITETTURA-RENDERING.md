@@ -109,13 +109,19 @@ const scene = await import('../js/engine/Scene3D.js');
 scene.render();
 const packet = scene.exportRenderPacket(); // ArrayBuffer CRVG
 const world = scene.getRenderWorld();      // per ispezione, non da mutare dall'UI
+const url = URL.createObjectURL(new Blob([packet], { type: 'application/octet-stream' }));
+const download = document.createElement('a');
+download.href = url;
+download.download = 'render-world.crvg';
+download.click();
+setTimeout(() => URL.revokeObjectURL(url), 60000);
 ```
 
-Il test Electron salva uno snapshot in `docs/audits/2026-10-04/render-world.crvg`.
-Il client nativo lo apre con:
+Lo snapshot si genera dalla sessione attuale; i vecchi file di audit sono stati
+rimossi. Il client nativo apre il file scaricato, indicandone il percorso:
 
 ```powershell
-prototypes/qt-terrain/.venv/Scripts/python.exe prototypes/qt-terrain/run.py --packet docs/audits/2026-10-04/render-world.crvg --seconds 3 --smoke --output qt-packet-result.json
+prototypes/qt-terrain/.venv/Scripts/python.exe prototypes/qt-terrain/run.py --packet "$env:USERPROFILE/Downloads/render-world.crvg" --seconds 3 --smoke --output qt-packet-result.json
 ```
 
 Qt converte i heightfield in geometrie indicizzate, con il medesimo ordine dei
@@ -143,9 +149,8 @@ Il test genera il proprio fixture temporaneo e non dipende dai file di audit.
 La verifica Electron usa profilo isolato, HGT locali e rete esterna disabilitata.
 Controlla il contratto in uso, gli attributi GPU condivisi con il modello LiDAR,
 il disegno schematico e i profili DPR. Lo snapshot viene poi renderizzato in Qt
-con Direct3D 11 e camera/DPR corrispondenti. Evidenze in
-`docs/audits/2026-10-04/render-architecture-validation.json` e
-`qt-render-packet-smoke.*`. Le finestre delle prove sono nascoste/trasparenti:
+con Direct3D 11 e camera/DPR corrispondenti. Gli artefatti temporanei delle prove
+sono stati rimossi durante la pulizia. Le finestre delle prove sono nascoste/trasparenti:
 queste verifiche non costituiscono un benchmark FPS.
 
 La GCS completa usa ancora Three/WebGL2. Restano da portare: materiali TSL o

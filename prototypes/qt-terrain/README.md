@@ -38,7 +38,7 @@ display; può usare il renderer software e non disegnare la scena 3D.
 
 Python 3.12.10 isolato + PySide6/Qt 6.9.3: HGT 3601², passo 20, 64.800 triangoli,
 Direct3D 11, frame presentati da un thread diverso dalla GUI e screenshot del
-terreno verificato. Evidenze in `docs/audits/2026-10-04/qt-terrain-smoke.*`.
+terreno verificato. Gli artefatti temporanei della prova sono stati rimossi.
 Il test dimostra la fattibilità del rendering nativo; per confrontare le
 prestazioni servono scene equivalenti e finestre visibili su entrambi i client,
 come definito in `docs/PIANO-MIGRAZIONE-GRAFICA.md`.
@@ -48,9 +48,10 @@ come definito in `docs/PIANO-MIGRAZIONE-GRAFICA.md`.
 Il client supporta ora `--packet` in alternativa a `--hgt`:
 
 ```powershell
-prototypes/qt-terrain/.venv/Scripts/python.exe prototypes/qt-terrain/run.py --packet docs/audits/2026-10-04/render-world.crvg --seconds 3 --smoke --output qt-packet-result.json
+prototypes/qt-terrain/.venv/Scripts/python.exe prototypes/qt-terrain/run.py --packet "$env:USERPROFILE/Downloads/render-world.crvg" --seconds 3 --smoke --output qt-packet-result.json
 ```
 
+Generare uno snapshot dalla GCS come descritto in `docs/ARCHITETTURA-RENDERING.md`.
 CRVG v1 contiene heightfield dei chunk con il loro LOD, camera con proiezione
 e quaternion, viewport e punti LiDAR con transform. Il prototipo usa direttamente
 questi dati; non ricalcola un LOD indipendente dal client Electron. Il file reader
