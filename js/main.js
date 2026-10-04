@@ -12,6 +12,7 @@ import {
     DEMO_STRAIGHT, DEMO_TURN_RADIUS, DEMO_CAPTURE_R
 } from './core/constants.js';
 import { STATE, demoFlightState, pushGHistory } from './core/state.js';
+import { lookAroundInput, canLookAround } from './input/LookAroundInput.js';
 import { initI18n, setLanguage } from './core/i18n.js';
 import { initDebugLog, noteFps } from './core/DebugLog.js';
 import { latLonToMeters, calculateDistance, lerpColor, getHeightColor } from './core/utils.js';
@@ -189,7 +190,6 @@ const look = {
     fromYaw: 0, fromPitch: 0,               // tween start
     toYaw: 0, toPitch: 0,                   // tween end (the commanded viewpoint)
     t0: 0, dur: 0,                          // tween start time (ms) and length (s)
-    keys: { up: false, down: false, left: false, right: false },
     _q: null, _euler: null                  // scratch objects, allocated on first use
 };
 const LOOK_PITCH_MAX = 90 * Math.PI / 180;
@@ -1682,22 +1682,19 @@ function initViewShortcuts() {
 // single-key toggles above: Flight Data tab only, not while typing.
 function initLookAround() {
     const KEY_MAP = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
-    const release = () => { for (const k in look.keys) look.keys[k] = false; };
+    const release = () => lookAroundInput.release('keyboard');
 
     document.addEventListener('keydown', (e) => {
         const dir = KEY_MAP[e.key];
         if (!dir) return;
         if (e.ctrlKey || e.altKey || e.metaKey) return;
-        const tag = document.activeElement?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-        const flightTab = document.getElementById('tab-flight-data');
-        if (!flightTab || !flightTab.classList.contains('active')) return;
+        if (!canLookAround()) return;
         e.preventDefault(); // also swallows key-repeat and page scroll
-        look.keys[dir] = true;
+        lookAroundInput.setKey(dir, true);
     });
     document.addEventListener('keyup', (e) => {
         const dir = KEY_MAP[e.key];
-        if (dir) look.keys[dir] = false;
+        if (dir) lookAroundInput.setKey(dir, false);
     });
     // A lost focus never delivers the keyup — don't leave the view stuck aside.
     window.addEventListener('blur', release);
@@ -1709,7 +1706,7 @@ function initLookAround() {
 // mind mid-sweep still eases into the new target. Time-based, so it lands
 // exactly on the target and stays there regardless of frame rate.
 function updateLookAround() {
-    const k = look.keys;
+    const k = lookAroundInput.read();
     const inFirstPerson = cameraMode !== 'THIRD';
     const targetPitch = inFirstPerson ? ((k.up ? 1 : 0) - (k.down ? 1 : 0)) * LOOK_PITCH_MAX : 0;
     const targetYaw = inFirstPerson ? ((k.left ? 1 : 0) - (k.right ? 1 : 0)) * LOOK_YAW_MAX : 0;

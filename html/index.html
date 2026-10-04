@@ -915,12 +915,24 @@
                         <label>STATUS</label>
                         <span class="cfg-val" id="joystick-status">Disabled</span>
                     </div>
-                    <div class="joystick-section-label">AXIS MAPPING</div>
+                    <div class="joystick-section-label">RC INPUT MAPPING (8 AXES)</div>
+                    <div class="cfg-note">Choose a physical axis or an analog button/trigger for each input. Button: released = 1000, pressed = 2000 PWM. INV reverses the range. Unavailable inputs release their channel.</div>
                     <div id="joystick-axes-container">
                         <div class="joystick-placeholder">Connect a gamepad and click SCAN</div>
                     </div>
                     <div class="joystick-section-label">CHANNEL OUTPUT (PWM)</div>
                     <div id="joystick-channel-preview"></div>
+                    <div class="joystick-section-label">SERVO BUTTONS</div>
+                    <label class="gcs-checkbox">
+                        <input type="checkbox" id="joystick-servo-enable"> ENABLE SERVO BUTTONS
+                    </label>
+                    <div class="cfg-note">Each press sends the chosen position once; release leaves it there. Works independently of RC override while connected. 0–100% = 1000–2000 µs. Use an output configured to accept servo commands.</div>
+                    <div id="joystick-servo-mapping"></div>
+                    <div class="cfg-note" id="joystick-servo-status" role="status">Disabled</div>
+                    <div class="joystick-section-label">FPV LOOK BUTTONS</div>
+                    <div class="cfg-note">Hold to look around, release to return to center, like the arrow keys. Active in the Flight Data first-person view, also with RC override disabled.</div>
+                    <div id="joystick-view-mapping"></div>
+                    <div class="cfg-note">Pressed buttons: <span id="joystick-pressed-buttons">—</span> (numbers match the selectors)</div>
                 </div>
             </div>
 

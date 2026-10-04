@@ -10,6 +10,8 @@
     "test:hgt": "node scripts/test-hgt-worker.js",
     "test:render": "node scripts/test-render-backend.js",
     "test:architecture": "node scripts/test-render-architecture.js",
+    "test:joystick": "node scripts/test-joystick.js",
+    "test:joystick-ui": "node scripts/test-joystick-ui.js",
     "measure:runtime": "node scripts/measure-runtime.js",
     "build": "electron-builder --win --linux",
     "build:win": "electron-builder --win",

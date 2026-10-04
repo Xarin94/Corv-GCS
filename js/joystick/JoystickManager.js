@@ -3,10 +3,34 @@
  */
 
 import { STATE } from '../core/state.js';
-import { sendRCChannelsOverride, setParameter } from '../mavlink/CommandSender.js';
+import { sendRCChannelsOverride, sendServoTest, setParameter } from '../mavlink/CommandSender.js';
+import { LOOK_DIRECTIONS, lookAroundInput, canLookAround } from '../input/LookAroundInput.js';
 
 const STORAGE_KEY = 'datad-joystick-config';
 const RELEASE = 0; // 0 = release channel back to RC receiver
+const MIN_INPUTS = 8;
+const validIndex = value => Number.isInteger(value) && value >= 0 && value < 256;
+const clamp = (value, min, max, fallback) => Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
+const buttonIndex = value => validIndex(value) ? value : -1;
+
+function normalizeAxis(cfg, index) {
+    return {
+        sourceType: ['axis', 'button', 'none'].includes(cfg?.sourceType) ? cfg.sourceType : 'axis',
+        sourceIndex: validIndex(cfg?.sourceIndex) ? cfg.sourceIndex : index,
+        channel: Number.isInteger(cfg?.channel) && cfg.channel >= 0 && cfg.channel <= 18 ? cfg.channel : 0,
+        inverted: !!cfg?.inverted,
+        deadzone: clamp(cfg?.deadzone, 0, 0.9, 0.05),
+        expo: clamp(cfg?.expo, 0, 1, 0)
+    };
+}
+
+function normalizeServo(cfg, index) {
+    return {
+        button: buttonIndex(cfg?.button),
+        servo: Number.isInteger(cfg?.servo) && cfg.servo >= 1 && cfg.servo <= 16 ? cfg.servo : 9 + index,
+        percent: clamp(cfg?.percent, 0, 100, 100)
+    };
+}
 
 /**
  * Default axis-to-channel mapping (standard RC order)
@@ -30,7 +54,16 @@ export class JoystickManager {
         this.suspended = false;
         this.onStateChange = null;  // UI hook: enable/disable/suspend/resume/select
         this._lastNullWarn = 0;
-        this.axisMap = [];
+        this.axisMap = Array.from({ length: MIN_INPUTS }, (_, i) => normalizeAxis(DEFAULT_AXIS_MAP[i], i));
+        this.servoMap = [normalizeServo(null, 0), normalizeServo(null, 1)];
+        this.viewMap = Object.fromEntries(LOOK_DIRECTIONS.map(dir => [dir, -1]));
+        this.servoButtonsEnabled = false; // Deliberate activation each session, never persisted.
+        this.servoStatus = '';
+        this.pressedButtons = [];
+        this._previousButtons = null;
+        this._buttonTarget = null;
+        this._servoPending = new Set();
+        this._lastPreview = 0;
         this.channelValues = new Array(18).fill(RELEASE);
         this.rawAxisValues = [];
         this.pollHandle = null;
@@ -38,13 +71,17 @@ export class JoystickManager {
         this.sendRateHz = 25;
         this.onUpdate = null;
         this.lastGamepadTimestamp = 0;
-        this._boundPoll = this._poll.bind(this);
 
         // Gamepad events
         this._onConnected = (e) => this._handleGamepadConnected(e);
         this._onDisconnected = (e) => this._handleGamepadDisconnected(e);
         window.addEventListener('gamepadconnected', this._onConnected);
         window.addEventListener('gamepaddisconnected', this._onDisconnected);
+        this._onBlur = () => this._resetButtons();
+        this._onVisibility = () => { if (document.hidden) this._resetButtons(); };
+        window.addEventListener('blur', this._onBlur);
+        window.addEventListener('mavlinkConnectionState', this._onBlur);
+        document.addEventListener('visibilitychange', this._onVisibility);
 
         this.loadConfig();
     }
@@ -70,13 +107,18 @@ export class JoystickManager {
         const gp = navigator.getGamepads()[index];
         if (!gp) return false;
 
+        if (this.gamepadIndex !== index || this.gamepadId !== gp.id) {
+            if (this.enabled) this._releaseAllChannels();
+            this.channelValues.fill(RELEASE);
+            this._resetButtons();
+        }
         this.gamepadIndex = index;
         this.gamepadId = gp.id;
         STATE.joystickConnected = true;
 
         // Build axis map for this gamepad's axes count
-        const axisCount = gp.axes.length;
-        this.rawAxisValues = new Array(axisCount).fill(0);
+        const axisCount = Math.max(MIN_INPUTS, gp.axes.length, this.axisMap.length);
+        this.rawAxisValues = new Array(axisCount).fill(null);
 
         // Preserve existing mappings, fill defaults for new axes
         const newMap = [];
@@ -84,12 +126,13 @@ export class JoystickManager {
             if (this.axisMap[i]) {
                 newMap.push({ ...this.axisMap[i] });
             } else if (DEFAULT_AXIS_MAP[i]) {
-                newMap.push({ ...DEFAULT_AXIS_MAP[i] });
+                newMap.push(normalizeAxis(DEFAULT_AXIS_MAP[i], i));
             } else {
-                newMap.push({ channel: 0, inverted: false, deadzone: 0.05, expo: 0.0 });
+                newMap.push(normalizeAxis(null, i));
             }
         }
         this.axisMap = newMap;
+        this._startPolling(); // Preview and local FPV work without RC override.
         this.saveConfig();
         this._notify();
         return true;
@@ -101,10 +144,10 @@ export class JoystickManager {
      * pad is selected afterwards.
      */
     reselectGamepad() {
-        if (this.gamepadIndex !== null && navigator.getGamepads()[this.gamepadIndex]) return true;
+        if (this.gamepadIndex !== null && navigator.getGamepads()[this.gamepadIndex]?.id === this.gamepadId) return true;
         const pads = this.detectGamepads();
         let pick = this.gamepadId ? pads.find(p => p.id === this.gamepadId) : null;
-        if (!pick && pads.length === 1) pick = pads[0];
+        if (!pick && !this.gamepadId && pads.length === 1) pick = pads[0];
         if (!pick) return false;
         return this.selectGamepad(pick.index);
     }
@@ -120,6 +163,7 @@ export class JoystickManager {
      * Disables RC throttle failsafe so ArduPilot won't disarm without a physical receiver
      */
     async enable() {
+        if (this.enabled) return true;
         if (this.gamepadIndex === null && !this.reselectGamepad()) return false;
         this.enabled = true;
         this.suspended = false;
@@ -149,10 +193,10 @@ export class JoystickManager {
         }
 
         try {
-            // Clear bit 8 (256) in RC_OPTIONS to allow overrides
+            // RC_OPTIONS bit 1 (2) ignores GCS overrides. Bit 8 is CRSF passthrough.
             this._savedRcOptions = (STATE.parameters.get('RC_OPTIONS') || {}).value;
             const current = this._savedRcOptions || 0;
-            const cleared = current & ~256; // Clear "Ignore Overrides" bit
+            const cleared = current & ~2;
             if (cleared !== current) {
                 await setParameter('RC_OPTIONS', cleared);
                 console.log('[Joystick] Cleared RC_OPTIONS ignore-override bit:', current, '->', cleared);
@@ -180,7 +224,7 @@ export class JoystickManager {
     }
 
     /**
-     * Disable joystick - stop polling, release all channels
+     * Disable RC sending and release channels; local inputs keep polling.
      * Restores RC throttle failsafe
      */
     disable() {
@@ -190,14 +234,14 @@ export class JoystickManager {
         STATE.joystickEnabled = false;
         STATE.rcOverrideActive = false;
         this._stopSending();
-        this._stopPolling();
         // Release all channels
-        this._releaseAllChannels();
+        if (wasEnabled) this._releaseAllChannels();
         this.channelValues.fill(RELEASE);
         this.rawAxisValues.fill(0);
         if (wasEnabled) this._notify();
 
-        // Restore original parameters
+        // Restore original parameters only after an active RC session.
+        if (!wasEnabled) return;
         if (this._savedSysidMygcs !== undefined && this._savedSysidMygcs !== null) {
             setParameter('SYSID_MYGCS', this._savedSysidMygcs).catch(() => {});
             console.log('[Joystick] Restored SYSID_MYGCS to', this._savedSysidMygcs);
@@ -234,14 +278,104 @@ export class JoystickManager {
      */
     setAxisConfig(axisIndex, config) {
         if (!this.axisMap[axisIndex]) return;
-        Object.assign(this.axisMap[axisIndex], config);
+        this.axisMap[axisIndex] = normalizeAxis({ ...this.axisMap[axisIndex], ...config }, axisIndex);
         this.saveConfig();
+    }
+
+    setServoConfig(index, config) {
+        if (!this.servoMap[index]) return;
+        this.servoMap[index] = normalizeServo({ ...this.servoMap[index], ...config }, index);
+        this._resetButtons();
+        this.saveConfig();
+    }
+
+    setViewButton(direction, button) {
+        if (!LOOK_DIRECTIONS.includes(direction)) return;
+        this.viewMap[direction] = buttonIndex(button);
+        this._resetButtons();
+        this.saveConfig();
+    }
+
+    setServoButtonsEnabled(enabled) {
+        this.servoButtonsEnabled = !!enabled;
+        this.servoStatus = enabled ? 'Ready - release held buttons before commanding' : 'Disabled';
+        this._resetButtons();
+        this._notify();
+    }
+
+    clearGamepad() {
+        this.gamepadIndex = null;
+        this.gamepadId = null;
+        this.servoButtonsEnabled = false;
+        this.servoStatus = 'Disabled';
+        STATE.joystickConnected = false;
+        this.disable();
+        this._stopPolling();
+        this._resetButtons();
+        this.saveConfig();
+        this._notify();
+    }
+
+    _resetButtons() {
+        this._previousButtons = null;
+        this._buttonTarget = null;
+        this.pressedButtons = [];
+        lookAroundInput.release('gamepad');
+    }
+
+    _readSource(gp, cfg) {
+        const raw = cfg.sourceType === 'axis' ? gp.axes[cfg.sourceIndex]
+            : cfg.sourceType === 'button' ? gp.buttons[cfg.sourceIndex]?.value : null;
+        if (!Number.isFinite(raw)) return null;
+        return cfg.sourceType === 'button' ? clamp(raw, 0, 1, 0) * 2 - 1 : clamp(raw, -1, 1, 0);
+    }
+
+    _pollButtons(gp) {
+        const buttons = gp.buttons.map(b => !!b.pressed || b.value > 0.5);
+        this.pressedButtons = buttons.flatMap((pressed, i) => pressed ? [i] : []);
+        if (document.hidden || !document.hasFocus()) {
+            this._resetButtons();
+            return;
+        }
+        const view = {};
+        const viewAllowed = canLookAround();
+        for (const dir of LOOK_DIRECTIONS) view[dir] = viewAllowed && buttons[this.viewMap[dir]];
+        lookAroundInput.setGamepad(view);
+
+        // Prime edges again after reconnect/focus/config changes: a held button
+        // must never become a new servo command on a different connection.
+        const target = STATE.connected ? `${STATE.connectionType}:${STATE.systemId}:${STATE.componentId}` : null;
+        if (this._previousButtons && target !== null && target === this._buttonTarget && this.servoButtonsEnabled) {
+            this.servoMap.forEach((cfg, index) => {
+                if (buttons[cfg.button] && this._previousButtons[cfg.button] === false) this._sendServo(index, cfg);
+            });
+        }
+        this._previousButtons = buttons;
+        this._buttonTarget = target;
+    }
+
+    async _sendServo(index, cfg) {
+        if (this._servoPending.has(index)) return;
+        this._servoPending.add(index);
+        // Match the existing servo test: 0..100% represents 1000..2000 us.
+        const pwm = Math.round(1000 + cfg.percent * 10);
+        try {
+            const result = await sendServoTest(cfg.servo, pwm);
+            if (result?.success === false) throw new Error(result.error || 'Send failed');
+            this.servoStatus = `Sent S${cfg.servo}: ${cfg.percent}% (${pwm} us)`;
+        } catch (error) {
+            this.servoStatus = `S${cfg.servo}: ${error.message}`;
+            console.warn('[Joystick] Servo command:', error.message);
+        } finally {
+            this._servoPending.delete(index);
+            this._notify();
+        }
     }
 
     // --- Polling ---
     // Uses setInterval instead of requestAnimationFrame so gamepad polling
-    // runs at a guaranteed fixed rate, independent of the 3D render loop.
-    // This ensures RC input is never dropped or delayed by heavy rendering.
+    // is independent of render scheduling. Both still share the renderer thread;
+    // the stale-data check releases RC channels after a polling interruption.
 
     _startPolling() {
         if (this.pollHandle !== null) return;
@@ -257,23 +391,23 @@ export class JoystickManager {
     }
 
     _poll() {
-        if (!this.enabled) return;
-
         const gamepads = navigator.getGamepads();
         const gp = gamepads[this.gamepadIndex];
 
-        if (!gp) {
+        if (!gp || gp.id !== this.gamepadId) {
+            this._resetButtons();
+            this.rawAxisValues.fill(null);
             // Gamepad API returns null while the window has no focus (Chromium
             // hides pads from unfocused pages) or right after an unplug. The
             // 500 ms failsafe in _sendOverride releases the channels; here we
             // only wait for the pad to come back (same index, or same id on a
             // replug).
             const now = Date.now();
-            if (now - this._lastNullWarn > 2000) {
+            if (this.enabled && now - this._lastNullWarn > 2000) {
                 this._lastNullWarn = now;
                 console.warn('[Joystick] No gamepad data (window unfocused or pad unplugged)');
             }
-            if (this.suspended && this.reselectGamepad()) {
+            if (this.reselectGamepad()) {
                 // reselect swapped the index; data resumes on the next tick
             }
             return;
@@ -290,12 +424,12 @@ export class JoystickManager {
         this.channelValues.fill(RELEASE);
 
         // Process each axis
-        for (let i = 0; i < gp.axes.length && i < this.axisMap.length; i++) {
-            let value = gp.axes[i];
+        for (let i = 0; i < this.axisMap.length; i++) {
+            const cfg = this.axisMap[i];
+            let value = this._readSource(gp, cfg);
             this.rawAxisValues[i] = value;
 
-            const cfg = this.axisMap[i];
-            if (cfg.channel === 0) continue; // Unmapped
+            if (cfg.channel === 0 || value === null) continue; // Unmapped/unavailable
 
             // Inversion
             if (cfg.inverted) value = -value;
@@ -316,8 +450,12 @@ export class JoystickManager {
             }
         }
 
-        // Update callback for UI
-        if (this.onUpdate) this.onUpdate();
+        this._pollButtons(gp);
+        // The controls run at 100 Hz; DOM previews need at most 25 Hz.
+        if (this.onUpdate && Date.now() - this._lastPreview >= 40) {
+            this._lastPreview = Date.now();
+            this.onUpdate();
+        }
     }
 
     _applyDeadzone(value, deadzone) {
@@ -411,6 +549,8 @@ export class JoystickManager {
     }
 
     _handleLostGamepad() {
+        this._resetButtons();
+        this.rawAxisValues.fill(null);
         // Keep gamepadId so the same pad is re-selected on replug.
         this.gamepadIndex = null;
         STATE.joystickConnected = false;
@@ -432,7 +572,9 @@ export class JoystickManager {
             gamepadIndex: this.gamepadIndex,
             gamepadId: this.gamepadId,
             sendRateHz: this.sendRateHz,
-            axisMap: this.axisMap
+            axisMap: this.axisMap,
+            servoMap: this.servoMap,
+            viewMap: this.viewMap
         };
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
@@ -451,13 +593,13 @@ export class JoystickManager {
                 this.sendRateHz = Math.max(1, Math.min(50, config.sendRateHz));
             }
             if (Array.isArray(config.axisMap)) {
-                this.axisMap = config.axisMap.map(m => ({
-                    channel: Number.isInteger(m?.channel) && m.channel >= 0 && m.channel <= 18 ? m.channel : 0,
-                    inverted: !!(m && m.inverted),
-                    deadzone: Number.isFinite(m?.deadzone) ? Math.max(0, Math.min(0.9, m.deadzone)) : 0.05,
-                    expo: Number.isFinite(m?.expo) ? Math.max(0, Math.min(1, m.expo)) : 0
-                }));
+                this.axisMap = Array.from({ length: Math.max(MIN_INPUTS, Math.min(64, config.axisMap.length)) },
+                    (_, i) => normalizeAxis(config.axisMap[i] ?? DEFAULT_AXIS_MAP[i], i));
             }
+            if (Array.isArray(config.servoMap)) {
+                this.servoMap = this.servoMap.map((cfg, i) => normalizeServo(config.servoMap[i], i));
+            }
+            for (const dir of LOOK_DIRECTIONS) this.viewMap[dir] = buttonIndex(config.viewMap?.[dir]);
         } catch (e) { /* ignore */ }
     }
 
@@ -466,7 +608,13 @@ export class JoystickManager {
      */
     destroy() {
         this.disable();
+        this.servoButtonsEnabled = false;
+        this._stopPolling();
+        this._resetButtons();
         window.removeEventListener('gamepadconnected', this._onConnected);
         window.removeEventListener('gamepaddisconnected', this._onDisconnected);
+        window.removeEventListener('blur', this._onBlur);
+        window.removeEventListener('mavlinkConnectionState', this._onBlur);
+        document.removeEventListener('visibilitychange', this._onVisibility);
     }
 }

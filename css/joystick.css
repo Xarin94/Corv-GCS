@@ -3,7 +3,9 @@
    ============================================ */
 
 #joystick-panel {
-    width: 520px;
+    width: 780px;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 /* Gamepad select row */
@@ -51,11 +53,49 @@
 }
 
 /* Channel select within axis row */
-.joystick-axis-row .cfg-select {
+#joystick-panel .joystick-axis-row .cfg-select {
     width: auto;
     min-width: 64px;
     padding: 2px 4px;
     font-size: 10px;
+}
+
+#joystick-panel .joystick-axis-row .joystick-source-select {
+    width: 155px;
+}
+
+.joystick-servo-row {
+    display: grid;
+    grid-template-columns: 50px minmax(100px, 1fr) minmax(90px, 1fr) minmax(80px, 1fr);
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+#joystick-view-mapping {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.joystick-servo-row label,
+#joystick-view-mapping label {
+    font-family: var(--font-ui);
+    font-size: 9px;
+    color: var(--text-dim);
+    min-width: 0;
+}
+
+.joystick-servo-row .cfg-select,
+#joystick-view-mapping .cfg-select {
+    margin-top: 4px;
+}
+
+@media (max-width: 800px) {
+    .joystick-axis-row { flex-wrap: wrap; }
+    #joystick-view-mapping { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .joystick-servo-row { grid-template-columns: 44px repeat(3, minmax(0, 1fr)); }
 }
 
 /* Invert checkbox */

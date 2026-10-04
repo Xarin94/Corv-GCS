@@ -658,7 +658,12 @@ export async function sendRCChannelsOverride(channels) {
         type: 'RC_CHANNELS_OVERRIDE',
         targetSystem: STATE.systemId,
         targetComponent: STATE.componentId,
-        channels: channels
+        // The application uses 0 for release on every channel. MAVLink's
+        // extension fields CH9-18 require UINT16_MAX-1 instead of 0 (ignore).
+        channels: Array.from({ length: 18 }, (_, i) => {
+            const value = channels[i] ?? 0;
+            return i >= 8 && value === 0 ? 65534 : value;
+        })
     });
 }
 

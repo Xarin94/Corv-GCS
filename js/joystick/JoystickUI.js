@@ -4,8 +4,78 @@
 
 import { JoystickManager } from './JoystickManager.js';
 import { STATE } from '../core/state.js';
+import { LOOK_DIRECTIONS } from '../input/LookAroundInput.js';
 
 let manager = null;
+let renderedDevice = '';
+
+function currentGamepad() {
+    return manager?.gamepadIndex === null ? null : navigator.getGamepads()[manager.gamepadIndex];
+}
+
+function buildButtonOptions(selected) {
+    let html = '<option value="-1">Unmapped</option>';
+    const count = currentGamepad()?.buttons.length || 0;
+    for (let i = 0; i < count; i++) {
+        html += `<option value="${i}"${selected === i ? ' selected' : ''}>Button ${i}</option>`;
+    }
+    if (selected >= count && selected >= 0) html += `<option value="${selected}" selected>Button ${selected} (unavailable)</option>`;
+    return html;
+}
+
+function buildSourceOptions(cfg) {
+    const gp = currentGamepad();
+    let html = `<option value="none:0"${cfg.sourceType === 'none' ? ' selected' : ''}>Unmapped</option>`;
+    for (const type of ['axis', 'button']) {
+        const count = (type === 'axis' ? gp?.axes.length : gp?.buttons.length) || 0;
+        const label = type === 'axis' ? 'Axis' : 'Button';
+        for (let i = 0; i < count; i++) {
+            const selected = cfg.sourceType === type && cfg.sourceIndex === i;
+            html += `<option value="${type}:${i}"${selected ? ' selected' : ''}>${label} ${i}</option>`;
+        }
+        if (cfg.sourceType === type && cfg.sourceIndex >= count) {
+            html += `<option value="${type}:${cfg.sourceIndex}" selected>${label} ${cfg.sourceIndex} (unavailable)</option>`;
+        }
+    }
+    return html;
+}
+
+function renderButtonMappings() {
+    const servos = document.getElementById('joystick-servo-mapping');
+    if (servos) {
+        servos.innerHTML = manager.servoMap.map((cfg, i) => `
+            <div class="joystick-servo-row">
+                <span class="joystick-axis-label">CMD ${i + 1}</span>
+                <label>BUTTON<select class="cfg-select" data-servo-button="${i}">${buildButtonOptions(cfg.button)}</select></label>
+                <label>OUTPUT<select class="cfg-select" data-servo-output="${i}">${Array.from({ length: 16 }, (_, n) => `<option value="${n + 1}"${cfg.servo === n + 1 ? ' selected' : ''}>Servo ${n + 1}</option>`).join('')}</select></label>
+                <label>POSITION %<input class="cfg-select" type="number" min="0" max="100" step="1" data-servo-percent="${i}" value="${cfg.percent}"></label>
+            </div>`).join('');
+        for (const [attr, field] of [['button', 'button'], ['output', 'servo'], ['percent', 'percent']]) {
+            servos.querySelectorAll(`[data-servo-${attr}]`).forEach(el => {
+                el.addEventListener('change', () => {
+                    const index = Number(el.getAttribute(`data-servo-${attr}`));
+                    const value = el.value === '' ? NaN : Number(el.value);
+                    manager.setServoConfig(index, { [field]: value });
+                    el.value = String(manager.servoMap[index][field]);
+                });
+            });
+        }
+    }
+    const view = document.getElementById('joystick-view-mapping');
+    if (view) {
+        view.innerHTML = LOOK_DIRECTIONS.map(dir => `<label>${dir.toUpperCase()}<select class="cfg-select" data-view-button="${dir}">${buildButtonOptions(manager.viewMap[dir])}</select></label>`).join('');
+        view.querySelectorAll('[data-view-button]').forEach(el => el.addEventListener('change', () => {
+            manager.setViewButton(el.dataset.viewButton, Number(el.value));
+        }));
+    }
+}
+
+function renderMappings() {
+    const gp = currentGamepad();
+    renderedDevice = JSON.stringify([gp?.id, gp?.axes.length, gp?.buttons.length, manager.axisMap.length]);
+    renderAxisRows();
+    renderButtonMappings();
+}
 
 /**
  * Build channel option HTML for axis mapping selects
@@ -23,7 +93,7 @@ function buildChannelOptions(selected) {
  */
 function renderAxisRows() {
     const container = document.getElementById('joystick-axes-container');
-    if (!container || !manager || manager.gamepadIndex === null) return;
+    if (!container || !manager) return;
 
     const axisCount = manager.axisMap.length;
     if (axisCount === 0) {
@@ -37,8 +107,9 @@ function renderAxisRows() {
         const dzPct = Math.round(cfg.deadzone * 100);
         html += `
         <div class="joystick-axis-row" data-axis="${i}">
-            <span class="joystick-axis-label">AX ${i}</span>
-            <select class="cfg-select joystick-ch-select" data-axis="${i}">
+            <span class="joystick-axis-label">IN ${i + 1}</span>
+            <select class="cfg-select joystick-source-select" data-axis="${i}" aria-label="Input ${i + 1} source">${buildSourceOptions(cfg)}</select>
+            <select class="cfg-select joystick-ch-select" data-axis="${i}" aria-label="Input ${i + 1} RC channel">
                 ${buildChannelOptions(cfg.channel)}
             </select>
             <label class="joystick-inv-label">
@@ -46,7 +117,7 @@ function renderAxisRows() {
             </label>
             <div class="joystick-dz-group">
                 <span class="joystick-dz-label">DZ</span>
-                <input type="range" class="joystick-deadzone" data-axis="${i}" min="0" max="50" value="${dzPct}">
+                <input type="range" class="joystick-deadzone" data-axis="${i}" min="0" max="90" value="${dzPct}" aria-label="Input ${i + 1} deadzone">
                 <span class="joystick-dz-val" data-dz-val="${i}">${dzPct}%</span>
             </div>
             <div class="joystick-bar-container">
@@ -79,6 +150,12 @@ function renderChannelPreview() {
  * Bind events on dynamically created axis config rows
  */
 function bindAxisEvents() {
+    document.querySelectorAll('.joystick-source-select').forEach(sel => {
+        sel.addEventListener('change', () => {
+            const [sourceType, sourceIndex] = sel.value.split(':');
+            manager.setAxisConfig(Number(sel.dataset.axis), { sourceType, sourceIndex: Number(sourceIndex) });
+        });
+    });
     // Channel select
     document.querySelectorAll('.joystick-ch-select').forEach(sel => {
         sel.addEventListener('change', (e) => {
@@ -112,6 +189,9 @@ function bindAxisEvents() {
  */
 function updateLivePreview() {
     if (!manager) return;
+    // Avoid querying hidden setup controls every gamepad tick during flight.
+    const panel = document.getElementById('subtab-joystick');
+    if (document.hidden || !panel?.classList.contains('active') || panel.offsetParent === null) return;
 
     // Update axis bars
     for (let i = 0; i < manager.rawAxisValues.length; i++) {
@@ -119,7 +199,7 @@ function updateLivePreview() {
         const valEl = document.querySelector(`[data-axis-val="${i}"]`);
 
         if (bar) {
-            const raw = manager.rawAxisValues[i];
+            const raw = manager.rawAxisValues[i] ?? 0;
             // Bar: value -1..+1 mapped to 0%..100% position
             const pct = (raw + 1) / 2 * 100;
             if (raw >= 0) {
@@ -131,7 +211,7 @@ function updateLivePreview() {
             }
         }
         if (valEl) {
-            valEl.textContent = manager.rawAxisValues[i].toFixed(2);
+            valEl.textContent = manager.rawAxisValues[i]?.toFixed(2) ?? '--';
         }
     }
 
@@ -153,17 +233,23 @@ function updateLivePreview() {
 
     // Update status
     updateStatus();
+    const pressed = document.getElementById('joystick-pressed-buttons');
+    if (pressed) pressed.textContent = manager.pressedButtons.join(', ') || '—';
 }
 
 /**
  * Update status text
  */
 function updateStatus() {
+    const servoStatus = document.getElementById('joystick-servo-status');
+    if (servoStatus) servoStatus.textContent = !manager.servoButtonsEnabled ? 'Disabled'
+        : manager.gamepadIndex === null ? 'Waiting for gamepad'
+        : !STATE.connected ? 'Waiting for connection' : manager.servoStatus;
     const statusEl = document.getElementById('joystick-status');
     if (!statusEl) return;
 
     if (!manager.enabled) {
-        statusEl.textContent = manager.gamepadIndex === null ? 'Disabled - No gamepad (press SCAN)' : 'Disabled';
+        statusEl.textContent = manager.gamepadIndex === null ? 'Disabled - No gamepad (press SCAN)' : 'RC disabled - input preview / FPV available';
         statusEl.className = 'cfg-val';
     } else if (manager.suspended || manager.gamepadIndex === null) {
         // Channels released; resumes by itself when the pad is readable again
@@ -175,7 +261,7 @@ function updateStatus() {
         statusEl.textContent = `SENDING (${manager.sendRateHz}Hz)`;
         statusEl.className = 'cfg-val joystick-status-active';
     } else if (STATE.connected) {
-        statusEl.textContent = `Active (${manager.sendRateHz}Hz) - Not connected`;
+        statusEl.textContent = `Starting (${manager.sendRateHz}Hz)`;
         statusEl.className = 'cfg-val joystick-status-warning';
     } else {
         statusEl.textContent = `Active (${manager.sendRateHz}Hz) - Waiting connection`;
@@ -193,7 +279,7 @@ function refreshGamepadList() {
     const gamepads = manager.detectGamepads();
     const prevValue = select.value;
 
-    select.innerHTML = '<option value="">-- No gamepad detected --</option>';
+    select.innerHTML = '<option value="">-- Select gamepad --</option>';
     gamepads.forEach(gp => {
         const opt = document.createElement('option');
         opt.value = gp.index;
@@ -212,7 +298,7 @@ function refreshGamepadList() {
     if (wanted !== undefined && wanted !== '' && select.querySelector(`option[value="${wanted}"]`)) {
         select.value = String(wanted);
         if (manager.gamepadIndex !== parseInt(wanted) && manager.selectGamepad(parseInt(wanted))) {
-            renderAxisRows();
+            renderMappings();
         }
     } else {
         select.value = '';
@@ -228,14 +314,18 @@ function syncFromManager() {
     if (!manager) return;
     const enableCb = document.getElementById('joystick-enable');
     if (enableCb && enableCb.checked !== manager.enabled) enableCb.checked = manager.enabled;
+    const servoCb = document.getElementById('joystick-servo-enable');
+    if (servoCb) servoCb.checked = manager.servoButtonsEnabled;
     const select = document.getElementById('joystick-gamepad-select');
     if (select) {
         const cur = manager.gamepadIndex === null ? '' : String(manager.gamepadIndex);
-        if (select.value !== cur) refreshGamepadList();
+        if (cur === '') select.value = '';
+        else if (select.value !== cur) refreshGamepadList();
     }
-    if (manager.gamepadIndex !== null && document.querySelectorAll('.joystick-axis-row').length === 0) {
-        renderAxisRows();
-    }
+    const gp = currentGamepad();
+    const signature = JSON.stringify([gp?.id, gp?.axes.length, gp?.buttons.length, manager.axisMap.length]);
+    if (signature !== renderedDevice) renderMappings();
+    updateStatus();
     updateLivePreview();
 }
 
@@ -259,6 +349,7 @@ export function initJoystick() {
 
     // Build channel preview grid
     renderChannelPreview();
+    renderMappings();
 
     // Only bind static DOM events once (buttons, selects that don't get re-rendered)
     if (!initialized) {
@@ -278,13 +369,12 @@ export function initJoystick() {
             gpSelect.addEventListener('change', (e) => {
                 const idx = e.target.value;
                 if (idx === '') {
-                    if (manager) manager.disable();
-                    document.getElementById('joystick-axes-container').innerHTML =
-                        '<div class="joystick-placeholder">Connect a gamepad and click SCAN</div>';
+                    if (manager) manager.clearGamepad();
+                    renderMappings();
                     return;
                 }
                 if (manager && manager.selectGamepad(parseInt(idx))) {
-                    renderAxisRows();
+                    renderMappings();
                 }
             });
         }
@@ -325,6 +415,9 @@ export function initJoystick() {
         }
 
         // Send rate
+        document.getElementById('joystick-servo-enable')?.addEventListener('change', e => {
+            manager.setServoButtonsEnabled(e.target.checked);
+        });
         const rateSelect = document.getElementById('joystick-send-rate');
         if (rateSelect) {
             rateSelect.addEventListener('change', (e) => {
