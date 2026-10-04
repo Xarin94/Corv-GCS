@@ -1,6 +1,6 @@
 ---
 title: Simulator
-nav_order: 9
+nav_order: 11
 description: ArduPilot SITL with one click, the ROV on Lake Garda, and connecting to your own simulator
 ---
 
@@ -23,9 +23,15 @@ works against it: missions, modes, parameters, failsafes, logs. ArduPilot:
 | **HOME POSITION** | Latitude and longitude of the start; the altitude is taken from the terrain under it (0 m for a ROV, see below) |
 | **SPEED MULTIPLIER** | Run the simulation up to 10× faster than real time |
 
-**LAUNCH & CONNECT** downloads the firmware the first time (from `firmware.ardupilot.org`, kept in the
-app's data folder), starts it and connects over TCP. **STOP** disconnects and ends it. On Windows the
-Linux binary runs inside **WSL**, which must be installed.
+| Button | |
+|--------|---|
+| **DOWNLOAD** | Downloads the firmware of the chosen vehicle and version only (from `firmware.ardupilot.org`, kept in the app's data folder) — do it while you have a network, to launch later offline. |
+| **LAUNCH & CONNECT** | Downloads the firmware if it is not there yet, starts the simulator and connects to it over TCP. |
+| **STOP** | Disconnects and ends the simulator. |
+
+The line underneath shows the state (*Not running*, downloading, running, an error). On Windows the
+Linux binary runs inside **WSL**, which must be installed (`wsl --install` in an administrator
+terminal, then a reboot).
 
 | Vehicle | Model |
 |---------|-------|
@@ -47,7 +53,7 @@ southern basin of Lake Garda (45.4960 N, 10.6490 E). It is set up as a sonar sur
 2 m/s on the lanes, a 5 m/s southerly with gusts, and 0.5 m waves 12 m long coming from the south, so
 the hull rolls, pitches and heaves in the telemetry. SITL's boat makes waves only once armed, and heaves
 only with `SIM_WAVE_ENABLE 2`. The `garda` scene of `scripts/rosbridge-sim.js` maps the same water: see
-[ROS](ROS.md#6-testing-without-a-vehicle).
+[ROS](ROS.md#9-testing-without-a-vehicle).
 
 ## The ROV
 
@@ -64,7 +70,7 @@ Launching it switches the [relative navigation mode](3D-NAVIGATION.md#5-navigati
 **STOP** puts it back as it was. ArduSub's simulator has a flat bottom 50 m under the surface, so
 neither ROV dives deeper.
 
-Driving a ROV: a gamepad in [SETUP → Joystick](setup.md#joystick), or `MANUAL_CONTROL` from another
+Driving a ROV: a gamepad in [SETUP → Joystick / RC](setup.md#joystick--rc), or `MANUAL_CONTROL` from another
 program on the simulator's second port (TCP 5762). ArduSub only takes pilot input from its own GCS
 system ID (`SYSID_MYGCS`, 255), and reacts when that input stops for a few seconds
 ([pilot control failsafe](https://ardupilot.org/sub/docs/pilot-control-failsafe.html)) — in the

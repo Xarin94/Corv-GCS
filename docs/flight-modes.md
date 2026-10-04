@@ -1,6 +1,6 @@
 ---
 title: Flight modes
-nav_order: 4
+nav_order: 5
 description: Every flight mode CORV GCS offers per vehicle, which ones need a position, with the ArduPilot page for each
 ---
 

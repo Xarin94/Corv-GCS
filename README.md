@@ -15,14 +15,21 @@
   <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
   <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey" alt="Platform"/>
-  <a href="https://xarin94.github.io/Corv-GCS/"><img src="https://img.shields.io/badge/docs-user%20guide-2ea44f" alt="User guide"/></a>
+  <a href="https://xarin94.github.io/Corv-GCS/"><img src="https://img.shields.io/badge/wiki-user%20guide-2ea44f" alt="Wiki"/></a>
 </p>
 
+<h3 align="center">
+  📖 <a href="https://xarin94.github.io/Corv-GCS/">Wiki — the complete user guide</a>
+</h3>
+
 <p align="center">
-  <a href="https://xarin94.github.io/Corv-GCS/"><b>User guide</b></a> ·
-  <a href="https://github.com/Xarin94/Corv-GCS/releases/latest"><b>Download</b></a> ·
+  Every screen, button and setting explained, page by page:
   <a href="https://xarin94.github.io/Corv-GCS/getting-started.html">Getting started</a> ·
-  <a href="https://xarin94.github.io/Corv-GCS/flight-modes.html">Flight modes</a>
+  <a href="https://xarin94.github.io/Corv-GCS/flight-screen.html">Flight screen</a> ·
+  <a href="https://xarin94.github.io/Corv-GCS/mission-planning.html">Mission planning</a> ·
+  <a href="https://xarin94.github.io/Corv-GCS/setup.html">Setup</a> ·
+  <a href="https://xarin94.github.io/Corv-GCS/ROS.html">ROS</a> ·
+  <a href="https://github.com/Xarin94/Corv-GCS/releases/latest"><b>Download</b></a>
 </p>
 
 ---
@@ -151,7 +158,10 @@ Any LiDAR, echo sounder or sonar running under ROS (1 or 2) reaches the GCS thro
 ground under an aircraft, the bed under a boat or a ROV, the walls of an underwater cave, drawn as a
 mesh of grey lines over a transparent body, averaged in 30 cm cells instead of millions of points,
 in absolute or relative navigation. A preview in the settings shows how the sensor is mounted and
-the zone it collects from.
+the zone it collects from. The wiki's [ROS page](https://xarin94.github.io/Corv-GCS/ROS.html) walks
+through it step by step: rosbridge on the companion computer, every setting, the on-screen strip,
+troubleshooting, and worked examples for an aerial LiDAR, a SLAM map, an echo sounder, a survey sonar
+and a ROV in a cave.
 
 ## Under water, and without GPS
 
@@ -249,15 +259,17 @@ no keys or passwords (cellular key, NTRIP credentials are masked).
 
 ## Documentation
 
-The **[user guide](https://xarin94.github.io/Corv-GCS/)** covers every screen and feature, with
+The **[wiki](https://xarin94.github.io/Corv-GCS/)** covers every screen, button and setting, with
 the ArduPilot documentation page for each flight mode, mission command, failsafe and calibration:
 [getting started](https://xarin94.github.io/Corv-GCS/getting-started.html),
 [flight screen](https://xarin94.github.io/Corv-GCS/flight-screen.html),
+[side panel](https://xarin94.github.io/Corv-GCS/side-panel.html),
 [flight modes](https://xarin94.github.io/Corv-GCS/flight-modes.html),
 [mission planning](https://xarin94.github.io/Corv-GCS/mission-planning.html),
 [radio link](https://xarin94.github.io/Corv-GCS/radio-link.html),
 [3D view, water and ROVs](https://xarin94.github.io/Corv-GCS/3D-NAVIGATION.html),
 [vehicle setup](https://xarin94.github.io/Corv-GCS/setup.html),
+[GCS settings](https://xarin94.github.io/Corv-GCS/sys-config.html),
 [simulator](https://xarin94.github.io/Corv-GCS/simulator.html),
 [LiDAR](https://xarin94.github.io/Corv-GCS/LIDAR.html),
 [ROS surface](https://xarin94.github.io/Corv-GCS/ROS.html),

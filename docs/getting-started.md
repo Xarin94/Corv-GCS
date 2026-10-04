@@ -47,8 +47,12 @@ The tabs along the top:
 |-----|---|
 | **FLIGHT DATA** | The 3D view, the HUD and the command bar — see [Flight screen](flight-screen.md) |
 | **FLIGHT PLAN** | The mission editor — see [Mission planning](mission-planning.md) |
-| **SETUP** | Connection, calibration, failsafes, tuning, parameters, simulator, LiDAR — see [Vehicle setup](setup.md) |
-| **SYS CONFIG** | Flight stack, navigation mode, language, 3D model, HUD fields, offline data — see [Vehicle setup](setup.md#sys-config) |
+| **SETUP** | Connection, calibration, failsafes, tuning, parameters, simulator, LiDAR, ROS — see [Vehicle setup](setup.md) |
+| **SYS CONFIG** | Flight stack, navigation mode, language, 3D model, HUD fields, offline data, stream rates — see [GCS settings](sys-config.md) |
+
+On the flight screen, the **arrow on the right edge** opens the [side panel](side-panel.md): set
+home, reboot, mute the GCS, ADS-B traffic, RTL options, a target, the message log and log replay.
+The window has no frame: move the mouse to the top edge for the minimise / maximise / close buttons.
 
 ## Terrain and imagery
 

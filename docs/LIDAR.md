@@ -1,6 +1,6 @@
 ---
 title: LiDAR point cloud
-nav_order: 10
+nav_order: 12
 description: Livox Mid-360 point cloud mapped live from the telemetry, saved as .ply
 ---
 
@@ -105,6 +105,40 @@ after *LIVE POINTS FADE AFTER* seconds (default 3). The operator keeps seeing
 what the sensor sees on the ground, before take-off, or with a degraded fix;
 only georeferenced points enter the map, the `.ply` export and the raw
 recording.
+
+### Every setting (SETUP → TOOLS → LIDAR)
+
+**LIDAR · LIVOX MID-360** panel:
+
+| Setting | Default | |
+|---------|---------|---|
+| **POINT CLOUD** | off | Connects to the LiDAR and draws the 3D map; unticking stops it. A green dot beside LIDAR in the SETUP menu means points are flowing. |
+| **LIDAR IP** | 192.168.1.12 | The sensor's address, `192.168.1.1XX` with XX the last two digits of its serial number. `127.0.0.2` for the emulator (§5). |
+| **HOST IP (POINT DESTINATION)** | AUTO | The address of this PC the LiDAR sends its points to. AUTO picks the network interface on the LiDAR's subnet; choose one by hand behind a router. |
+| **POINT FORMAT** | Cartesian 32-bit (mm) | 32-bit ≈ 24 Mbit/s, or 16-bit (cm) ≈ 14 Mbit/s for a narrower link. |
+| **TELEMETRY LAG (ms)** | 0 | How much later than the point packets the telemetry reaches the GCS (see *Telemetry lag* above). |
+| **ACCUMULATE ONLY WITH** | GPS 3D fix, ≥ 8 satellites, HDOP ≤ 2, EKF healthy | The accumulation gate (above): minimum fix (3D, DGPS, RTK float, RTK fixed), **SATS ≥**, **HDOP ≤**, and **EKF healthy (position flags + variances)**. |
+| **LIVE POINTS (NOT GEOREFERENCED) FADE AFTER (s)** | 3 | How long the points drawn around the aircraft while the gate is closed stay on screen. |
+| **RECORD RAW POINTS (.PLY)** | off | Streams every filtered, georeferenced point (before the voxel filter) to `data/lidar/raw-*.ply` with a timestamp, for post-processing. Large files. |
+| **CLEAR MAP** / **SAVE MAP .PLY** | | Drop the map / save it as `data/lidar/map-*.ply` (§2). |
+| **STATUS** | | The link state with the sensor model and serial number; LiDAR → host addresses; packets, points and kbit a second; the gate (open, or the reason it is closed) with fix, satellites, HDOP and EKF variance; the map's points of MAX POINTS with points added, filtered and live a second; the raw recording, when on; the last error. |
+
+**MOUNT & FILTERS** panel:
+
+| Setting | Default | |
+|---------|---------|---|
+| **MOUNT ATTITUDE VS IMU (ROLL / PITCH / YAW °)** + **Preset…** | 0, 0, 0 | ZYX Euler angles of the LiDAR body relative to the aircraft body. Presets: *Upright, connector aft (Z up)* 0, 0, 0; *Inverted under the belly (Z down)* 180, 0, 0; *Inverted, rotated 90°* 180, 0, 90; *Upright, nose-down 45°* 0, −45, 0; *Forward-looking (Z fwd)* 0, −90, 0. |
+| **LEVER ARM IMU → LIDAR (X FWD / Y RIGHT / Z DOWN, m)** | 0, 0, 0 | The LiDAR's optical centre from the autopilot's IMU. |
+| **MOUNT PREVIEW** | | The aircraft, the LiDAR with its axes and its 360° × −7…+52° band, turned by the mount. |
+| **MIN RANGE — DISCARD CLOSER THAN (m)** | 2.5 | Drops the echoes of the airframe (rudder, landing gear, antennas). |
+| **MAX RANGE (m)** | 70 | Drops farther returns (fewer, noisier points). |
+| **VOXEL SIZE (m) / MAX POINTS** | 0.25 / 3 000 000 | One point kept per voxel; the map's capacity. |
+| **NOISE FILTER** | on | Drops the points the Livox tags as noise (rain, dust, edges). |
+| **COLOR BY / POINT SIZE (px)** | Height / 2 | Colour by height or by reflectivity; point size 1–8 pixels. |
+| **DRAW THROUGH THE TERRAIN MESH** | on | The cloud is drawn over the SRTM terrain even where it is under it (SRTM is coarser than the LiDAR). |
+
+On the flight screen the **LIDAR** strip shows a state LED, the state (**ACCUMULATING**, **LIVE ONLY ·
+reason**, **DEMO · SYNTHETIC SCAN**), the number of points, **CLEAR MAP** and **SAVE**.
 
 ## 2. What the GCS does with a packet
 
