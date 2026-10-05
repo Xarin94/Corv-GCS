@@ -2219,8 +2219,9 @@ function init() {
     loadTopographyAtStart();
     checkConnectivity();
     
-    // Start ADS-B auto-polling (OpenSky + MAVLink ADSB_VEHICLE)
-    startADSBPolling();
+    // Start ADS-B auto-polling (OpenSky + MAVLink ADSB_VEHICLE) — unless the
+    // saved setting already turned it off (restoreGcsSettings ran before init)
+    if (STATE.adsbEnabled) startADSBPolling();
 
     // Start animation loop
     animate();
@@ -2270,10 +2271,14 @@ window.clearTrail = function() {
 // ADS-B auto-polling (OpenSky every 30s, MAVLink comes via message handler)
 const ADSB_POLL_INTERVAL = 30000;
 let adsbPollTimer = null;
+let adsbStartTimer = null; // the 3 s delay before the first poll
 
 async function adsbPoll() {
+    if (!STATE.adsbEnabled) return;
     try {
         const result = await fetchADSBData();
+        // Switched off while the request was in flight: drop what it merged
+        if (!STATE.adsbEnabled) STATE.traffic = [];
         if (result.error) return;
     } catch (e) {
         // Silently retry next interval
@@ -2281,15 +2286,20 @@ async function adsbPoll() {
 }
 
 function startADSBPolling() {
-    if (adsbPollTimer) return;
-    setTimeout(() => {
+    if (adsbPollTimer || adsbStartTimer) return;
+    adsbStartTimer = setTimeout(() => {
+        adsbStartTimer = null;
         adsbPoll();
         adsbPollTimer = setInterval(adsbPoll, ADSB_POLL_INTERVAL);
     }, 3000);
 }
 
+function stopADSBPolling() {
+    if (adsbStartTimer) { clearTimeout(adsbStartTimer); adsbStartTimer = null; }
+    if (adsbPollTimer) { clearInterval(adsbPollTimer); adsbPollTimer = null; }
+}
+
 // ADS-B enable/disable toggle
-let _adsbEnabled = true;
 
 /**
  * Show/hide the traffic table. The bottom-right cluster also needs to know,
@@ -2304,12 +2314,12 @@ function setTrafficBarVisible(visible) {
 }
 
 window.toggleADSB = function(enabled) {
-    _adsbEnabled = enabled;
+    STATE.adsbEnabled = enabled;
     setTrafficBarVisible(enabled);
     if (enabled) {
         startADSBPolling();
     } else {
-        if (adsbPollTimer) { clearInterval(adsbPollTimer); adsbPollTimer = null; }
+        stopADSBPolling();
         STATE.traffic = [];
         updateTrafficOverlay(); // remove dots from 2D map immediately
     }
@@ -2366,13 +2376,13 @@ window.updateBatteryVoltageRange = function() {
     // ADS-B toggle
     const adsbSaved = localStorage.getItem('adsb-enabled');
     if (adsbSaved === '0') {
-        _adsbEnabled = false;
+        STATE.adsbEnabled = false;
         setTrafficBarVisible(false);
         const sidebarChk = document.getElementById('chk-adsb-enable');
         const syscfgChk = document.getElementById('syscfg-adsb-enable');
         if (sidebarChk) sidebarChk.checked = false;
         if (syscfgChk) syscfgChk.checked = false;
-        if (adsbPollTimer) { clearInterval(adsbPollTimer); adsbPollTimer = null; }
+        stopADSBPolling();
     }
 
     // ROTOR LOAD: fold the old separate sidebar switch into the shared setting

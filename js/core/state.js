@@ -173,6 +173,8 @@ export const STATE = {
     terrainFeedErrors: 0,     // count of elevation lookups that returned null
 
     // ADS-B traffic (from OpenSky API or MAVLink ADSB_VEHICLE)
+    // Off (sidebar / SYS CONFIG switch): neither source feeds the list below
+    adsbEnabled: true,
     // Array of { icao24, callsign, lat, lon, alt, velocity, heading, vertRate, onGround, dist }
     traffic: []
 };

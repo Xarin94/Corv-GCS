@@ -632,6 +632,7 @@ function rebuildTrafficIndex() {
 }
 
 function mapAdsbVehicle(data) {
+    if (!STATE.adsbEnabled) return;
     const icao24 = (data.ICAO_address || data.icaoAddress || 0).toString(16).padStart(6, '0');
     const callsign = (data.callsign || '').trim();
     const lat = (data.lat !== undefined ? data.lat : 0) / 1e7;
