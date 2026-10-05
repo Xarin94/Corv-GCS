@@ -2406,6 +2406,24 @@
                     </select>
                 </div>
                 <div class="cfg-row">
+                    <label>3D SATELLITE RADIUS</label>
+                    <select id="satellite-radius-select" class="cfg-select" title="How far around the aircraft the 3D terrain gets satellite imagery; beyond it the terrain is coloured by height. A wider radius downloads more tiles and draws more">
+                        <option value="5000">5 KM</option>
+                        <option value="10000">10 KM (DEFAULT)</option>
+                        <option value="15000">15 KM</option>
+                        <option value="20000">20 KM</option>
+                        <option value="30000">30 KM</option>
+                    </select>
+                </div>
+                <div class="cfg-row">
+                    <label>3D TERRAIN RADIUS</label>
+                    <select id="terrain-radius-select" class="cfg-select" title="How far around the aircraft the 3D terrain is built. The haze follows it: a farther edge, thinner haze. A wider radius loads more elevation data and draws more">
+                        <option value="35000">35 KM (DEFAULT)</option>
+                        <option value="50000">50 KM</option>
+                        <option value="70000">70 KM</option>
+                    </select>
+                </div>
+                <div class="cfg-row">
                     <label>DEVTOOLS</label>
                     <button id="btn-devtools" class="file-upload-btn" type="button" onclick="openDevTools()">OPEN DEVTOOLS</button>
                 </div>

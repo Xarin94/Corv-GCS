@@ -32,7 +32,7 @@ import {
     setSkyColor, setSchematicView, setOutlineBrightness, setLightTheme,
     setMissionActiveSeq, updateOwnshipMarker,
     setGroundGridVisible, updateWaterView, isSchematicView,
-    getRenderPerformanceStats, setRenderQuality
+    getRenderPerformanceStats, setRenderQuality, setTerrainFogRadius
 } from './engine/Scene3D.js';
 import { readRenderQuality } from './engine/RenderQuality.js';
 import { OVERLAY_LAYER } from './engine/Layers.js';
@@ -52,7 +52,8 @@ import {
     refreshNearbyChunkTextures, resetTextureRefreshPosition,
     setMapBrightness,
     getMemoryStats,
-    getWaterSurfaceAt, lowAltGridStrength, LOW_ALT_GRID, setTerrainChunksVisible, setTerrainSubWater
+    getWaterSurfaceAt, lowAltGridStrength, LOW_ALT_GRID, setTerrainChunksVisible, setTerrainSubWater,
+    setTerrainRadius, setSatelliteRadius, TERRAIN_RADIUS_OPTIONS, SATELLITE_RADIUS_OPTIONS, DEFAULT_SATELLITE_RADIUS
 } from './terrain/TerrainManager.js';
 
 // HUD imports
@@ -1192,6 +1193,38 @@ function setupSatDetailSelect() {
     });
 }
 
+// How far the 3D terrain and its satellite imagery reach (TerrainManager); the
+// sky fog follows the terrain radius (Scene3D)
+const TERRAIN_RADIUS_KEY = 'terrainRadiusM';
+const SATELLITE_RADIUS_KEY = 'satelliteRadiusM';
+
+function setupLoadingRadiusSelects() {
+    const saved = (key, options, fallback) => {
+        try {
+            const value = Number(localStorage.getItem(key));
+            if (options.includes(value)) return value;
+        } catch (_) {}
+        return fallback;
+    };
+    const applyTerrain = (radius) => { setTerrainRadius(radius); setTerrainFogRadius(radius); };
+    const terrain = saved(TERRAIN_RADIUS_KEY, TERRAIN_RADIUS_OPTIONS, VISIBILITY_RADIUS);
+    const satellite = saved(SATELLITE_RADIUS_KEY, SATELLITE_RADIUS_OPTIONS, DEFAULT_SATELLITE_RADIUS);
+    applyTerrain(terrain);
+    setSatelliteRadius(satellite);
+    for (const [id, value, apply, key] of [
+        ['terrain-radius-select', terrain, applyTerrain, TERRAIN_RADIUS_KEY],
+        ['satellite-radius-select', satellite, setSatelliteRadius, SATELLITE_RADIUS_KEY]
+    ]) {
+        const select = document.getElementById(id);
+        if (!select) continue;
+        select.value = String(value);
+        select.addEventListener('change', () => {
+            apply(Number(select.value));
+            try { localStorage.setItem(key, select.value); } catch (_) {}
+        });
+    }
+}
+
 function setupRenderFpsSelect() {
     const select = document.getElementById('render-fps-select');
     let saved = 60;
@@ -2018,6 +2051,7 @@ function init() {
     setupRenderFpsSelect();
     setupRenderQualitySelect();
     setupSatDetailSelect();
+    setupLoadingRadiusSelects();
     setupStreamRates();
     setupModelSelector();
 

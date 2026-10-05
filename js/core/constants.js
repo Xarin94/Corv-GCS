@@ -5,8 +5,9 @@
 
 export const ORIGIN = { lat: 47.2603, lon: 11.3439 };
 export const CAMERA_FOV = 60;
-// 35 km: oltre questa distanza il FogExp2 della scena (densità 0.00005) lascia
-// visibile meno del ~5% del terreno — generare chunk più lontani è lavoro sprecato.
+// Raggio del terreno di default: SYS CONFIG → 3D TERRAIN RADIUS lo porta a 50 o
+// 70 km. Il FogExp2 della scena lo segue (Scene3D): al bordo lascia visibile
+// meno del ~5% del terreno — generare chunk più lontani è lavoro sprecato.
 export const VISIBILITY_RADIUS = 35000;
 export const RELOAD_DISTANCE = 5000;
 export const RAD = 180 / Math.PI;

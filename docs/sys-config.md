@@ -1,7 +1,7 @@
 ---
 title: GCS settings (SYS CONFIG)
 nav_order: 10
-description: Every SYS CONFIG panel field by field — flight stack, navigation, language, terrain, 3D model, frame rate, satellite detail, debug log, ADS-B, ground clamp, battery, rotor load, camera stream, offline download, HUD fields, stream rates
+description: Every SYS CONFIG panel field by field — flight stack, navigation, language, terrain, 3D model, frame rate, satellite detail, satellite and terrain radius, debug log, ADS-B, ground clamp, battery, rotor load, camera stream, offline download, HUD fields, stream rates
 ---
 
 # GCS settings (SYS CONFIG)
@@ -15,7 +15,7 @@ RATES** and, indirectly, the flight stack's suggested link.
 |-------|---|
 | [FLIGHT STACK](#flight-stack) | ArduPilot, INAV or Betaflight |
 | [NAVIGATION](#navigation) | absolute (GPS) or relative position |
-| [SYSTEM CONFIG](#system-config) | language, altitude offset, terrain folder, 3D model, light, smoothing, frame rate, satellite detail, DevTools, debug log |
+| [SYSTEM CONFIG](#system-config) | language, altitude offset, terrain folder, 3D model, light, smoothing, frame rate, satellite detail, satellite and terrain radius, DevTools, debug log |
 | [GCS OPTIONS](#gcs-options) | ADS-B traffic, ground clamp, battery voltage range |
 | [ROTOR LOAD](#rotor-load) | the motor output schematic |
 | [SIYI CAMERA STREAM](#siyi-camera-stream) | the FPV video address |
@@ -61,6 +61,8 @@ GPS — is in [navigation without GPS](3D-NAVIGATION.md#5-navigation-without-gps
 | **ATTITUDE SMOOTHING** | 0.15 | 0 to 0.5. How much the aircraft's attitude is interpolated between telemetry samples in the 3D view and HUD: 0 = raw (jerky at low telemetry rates), 0.5 = fully interpolated (smooth, slightly behind). |
 | **3D FRAME RATE** | 60 FPS | *60 FPS* or *30 FPS (ECO)*: 30 halves the rendering work — use it on battery or on a weak GPU. |
 | **3D SATELLITE DETAIL (ZOOM)** | 18 · 0.4 m | The sharpest imagery drawn around the aircraft: 16 (off) to 20 (0.1 m per pixel). Each step doubles the detail and the download — see [satellite detail](flight-screen.md#satellite-detail). |
+| **3D SATELLITE RADIUS** | 10 km | How far around the aircraft the 3D terrain has satellite imagery: 5, 10, 15, 20 or 30 km. Beyond it the terrain is coloured by height. A wider radius downloads more tiles (for offline flights, make the [offline download](#offline-data-download) box cover it) and asks more of the computer: on a weak one stay at 10–15 km. See [terrain range and haze](flight-screen.md#terrain-range-and-haze). |
+| **3D TERRAIN RADIUS** | 35 km | How far around the aircraft the 3D terrain is built: 35, 50 or 70 km. The haze follows it: a farther edge, thinner haze. 50 km builds about twice the terrain of 35 km and 70 km four times, with more elevation tiles in memory (25 MB each). |
 | **DEVTOOLS** → **OPEN DEVTOOLS** | | Opens the Chromium developer tools (console, network) in a separate window — for troubleshooting with support. |
 | **DEBUG LOG (LAST 5 MIN)** → **SAVE COPY…** | | Saves one file with the last 5 minutes of this session and of the previous one (connections, errors, autopilot messages, commands sent): **send it to support** when reporting a problem. The path saved to is shown underneath. |
 | **SHOW FILE** | | Shows the live debug log file in the file manager (`data/debug/corv-gcs-debug.log`, rewritten every few seconds). |

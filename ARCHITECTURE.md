@@ -139,7 +139,7 @@ Corv-GCS/
 │   ├── terrain/                Terrain elevation & mesh generation
 │   │   ├── TerrainManager.js   HGT loading, chunked 3D mesh, LOD textures
 │   │   ├── SatelliteDetail.js  Zoom 17–20 imagery around the aircraft (toroidal clipmap over the chunk textures)
-│   │   ├── TerrainWorker.js    Web Worker: chunk elevation samples
+│   │   ├── TerrainWorker.js    Web Worker pool: HGT decode, chunk elevation samples
 │   │   ├── TileWorker.js       Web Worker: satellite tile download
 │   │   ├── TextureCompressWorker.js Web Worker: BC1 compression + mips
 │   │   └── TextureCullWorker.js Web Worker: frustum culling
@@ -315,8 +315,8 @@ Corv-GCS/
 
 | File | Key Exports | Purpose |
 |------|-------------|---------|
-| `TerrainManager.js` | `initTerrain()`, `updateTerrainChunks()`, `getTerrainElevationCached()`, `getTerrainElevationFromHGT()`, `getTerrainElevationChecked()` (null on a missing tile or a void, for the vehicle's terrain), `addHGTFile()`, `updateTerrainHillshading()`, `setMapBrightness()`, `setTerrainSatelliteEnabled()`, `setTerrainLowAltGrid()`, `getWaterSurfaceAt()`, `lowAltGridStrength()`, `updateTerrainInstances()`, `getMemoryStats()`, `SCHEMATIC_RADIUS` | Main terrain engine (58KB). Loads SRTM HGT elevation data, generates chunked 3D meshes (5000m × 5000m, 50km visibility radius), dual-zoom LOD satellite textures (zoom 15), frustum culling, LRU texture cache (1500 capacity), max 24 concurrent tile loads. With the satellite imagery off the terrain shader draws the schematic style: near-black ground with a fixed north-west hillshade (green ground and dark lines with the light UI theme, `setTerrainSchematicLight()`), isolines every 10 / 50 / 250 m that fade out level by level where they would crowd closer than a few pixels (fwidth), a faint 1 km grid; water (SRTM flattens lakes to one height and the sea to 0: 13 equal samples, the same test as `getWaterSurfaceAt()`) drawn dark blue with the triangle grid in blue and marked in alpha so the outline pass lets what is under it show; bathymetry below 0 tinted blue with the isolines as depth contours; below 200 m above the ground a faint grid of 25 m triangles draped over the relief within 500 m of the aircraft, as a height cue (`setTerrainLowAltGrid()`; skipped by the shader everywhere else), and nothing beyond `SCHEMATIC_RADIUS` (30 km) from the camera |
-| `TerrainWorker.js` | Web Worker | Extracts a chunk's Int16 elevation samples (and their min / max) from the HGT grid at its LOD step. Positions, normals, hillshade and the height palette are rebuilt from them in the terrain vertex shader |
+| `TerrainManager.js` | `initTerrain()`, `updateTerrainChunks()`, `getTerrainElevationCached()`, `getTerrainElevationFromHGT()`, `getTerrainElevationChecked()` (null on a missing tile or a void, for the vehicle's terrain), `addHGTFile()`, `updateTerrainHillshading()`, `setMapBrightness()`, `setTerrainSatelliteEnabled()`, `setTerrainLowAltGrid()`, `getWaterSurfaceAt()`, `lowAltGridStrength()`, `updateTerrainInstances()`, `getMemoryStats()`, `setTerrainRadius()`, `setSatelliteRadius()`, `SCHEMATIC_RADIUS` | Main terrain engine (58KB). Loads SRTM HGT elevation data, generates chunked 3D meshes (1/30° chunks out to the terrain radius, 35 / 50 / 70 km; satellite imagery out to the satellite radius, 5–30 km; both set in SYS CONFIG), dual-zoom LOD satellite textures (zoom 15), frustum culling, LRU texture cache (1500 capacity), max 24 concurrent tile loads. With the satellite imagery off the terrain shader draws the schematic style: near-black ground with a fixed north-west hillshade (green ground and dark lines with the light UI theme, `setTerrainSchematicLight()`), isolines every 10 / 50 / 250 m that fade out level by level where they would crowd closer than a few pixels (fwidth), a faint 1 km grid; water (SRTM flattens lakes to one height and the sea to 0: 13 equal samples, the same test as `getWaterSurfaceAt()`) drawn dark blue with the triangle grid in blue and marked in alpha so the outline pass lets what is under it show; bathymetry below 0 tinted blue with the isolines as depth contours; below 200 m above the ground a faint grid of 25 m triangles draped over the relief within 500 m of the aircraft, as a height cue (`setTerrainLowAltGrid()`; skipped by the shader everywhere else), and nothing beyond `SCHEMATIC_RADIUS` (30 km) from the camera |
+| `TerrainWorker.js` | Web Worker (pool) | Decodes HGT tiles and extracts a chunk's Int16 elevation samples (and their min / max) from the HGT grid at its LOD step. With `SharedArrayBuffer` (enabled in `main.js`) up to 4 workers: each tile is read in blocks and decoded once, by one worker, into shared memory that the UI thread and the other workers read as is; without it a single worker keeps its own copy. Positions, normals, hillshade and the height palette are rebuilt from the samples in the terrain vertex shader |
 | `TileWorker.js` | Web Worker | Satellite tile downloading and image decoding |
 | `TextureCullWorker.js` | Web Worker | Camera frustum culling for texture loading priority |
 
@@ -458,7 +458,7 @@ TerrainManager.updateTerrainChunks()
     │ determine chunks needed (50km visibility radius)
     │ queue chunk creation
     │
-    ├── TerrainWorker.js       Int16 elevation samples of each chunk
+    ├── TerrainWorker.js       HGT decode (shared memory), Int16 samples of each chunk
     ├── TileWorker.js          download satellite tiles
     ├── TextureCompressWorker.js  BC1-compress each chunk texture (+ mip chain)
     └── TextureCullWorker.js   frustum culling for load priority

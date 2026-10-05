@@ -1,12 +1,17 @@
 /**
  * TerrainWorker.js - Off-thread terrain chunk data preparation
  *
- * Extracts a chunk's elevation samples straight from the HGT grid. Positions
- * and normals are rebuilt from them in the terrain vertex shader (see the GPU
- * TERRAIN section of TerrainManager.js).
+ * Decodes HGT tiles and extracts a chunk's elevation samples straight from the
+ * HGT grid. Positions and normals are rebuilt from them in the terrain vertex
+ * shader (see the GPU TERRAIN section of TerrainManager.js).
+ *
+ * One of a pool when SharedArrayBuffer is available: the worker that decodes
+ * a tile writes it into shared memory, the UI thread registers that same grid
+ * in the other workers (registerHgt), and any of them can build any chunk.
+ * Without it there is a single worker, holding its own copy of every grid.
  */
 
-import { decodeHgt } from './HgtDecoder.js';
+import { decodeHgt, readHgtShared } from './HgtDecoder.js';
 
 const hgtBuffers = new Map();
 
@@ -64,15 +69,32 @@ self.onmessage = async (e) => {
         try {
             const start = performance.now();
             // Blob/File structured cloning does not copy a 25 MB JS buffer on
-            // the UI thread. Read, convert and copy for elevation queries here.
+            // the UI thread. Read and convert here.
+            if (data.shared && typeof SharedArrayBuffer === 'function') {
+                // Posting shared memory hands over the grid itself, not a copy
+                const tile = await readHgtShared(data.file);
+                hgtBuffers.set(data.key, tile);
+                self.postMessage({ type: 'hgtReady', id: data.id, key: data.key, size: tile.size,
+                    elevations: tile.data, shared: true, prepareMs: performance.now() - start });
+                return;
+            }
+            // Keep the decoded grid; the UI thread gets a copy for elevation queries
             const tile = decodeHgt(await data.file.arrayBuffer());
             hgtBuffers.set(data.key, tile);
             const elevations = tile.data.slice();
-            self.postMessage({ type: 'hgtReady', id: data.id, key: data.key,
-                size: tile.size, elevations, prepareMs: performance.now() - start }, [elevations.buffer]);
+            self.postMessage({ type: 'hgtReady', id: data.id, key: data.key, size: tile.size,
+                elevations, shared: false, prepareMs: performance.now() - start }, [elevations.buffer]);
         } catch (error) {
             self.postMessage({ type: 'hgtFailed', id: data.id, key: data.key, reason: error.message });
         }
+        return;
+    }
+
+    if (data.type === 'registerHgt') {
+        // A grid another worker of the pool decoded into shared memory. Stored
+        // before this worker reads its next message: the chunk jobs the UI
+        // thread sends after this one find the tile.
+        hgtBuffers.set(data.key, { size: data.size, data: data.elevations });
         return;
     }
 

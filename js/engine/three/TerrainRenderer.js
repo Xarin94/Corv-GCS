@@ -17,11 +17,11 @@ const SCHEMATIC_RADIUS = world.terrainStyle.schematicRadius;
 // with texelFetch. Every chunk built on the same grid shares one triangle list
 // and one UV set.
 //
-// Chunks without a satellite map (everything beyond SATELLITE_RADIUS: ~390 of
-// ~420 resident) are drawn as instances of one InstancedMesh per grid — a
-// handful of draw calls — after a per-chunk frustum test in
-// updateTerrainInstances(). Chunks with a map keep a mesh of their own (the map
-// differs per chunk), on the same shared grid geometry. This replaced ~420
+// Chunks without a satellite map (everything beyond the satellite radius: at
+// the default 10 km, ~390 of ~420 resident) are drawn as instances of one
+// InstancedMesh per grid — a handful of draw calls — after a per-chunk frustum
+// test in updateTerrainInstances(). Chunks with a map keep a mesh of their own
+// (the map differs per chunk), on the same shared grid geometry. This replaced ~420
 // meshes, each with its own position and normal buffers, which cost three.js a
 // culling test, a matrix update and a draw call per chunk on every frame.
 
@@ -482,9 +482,16 @@ function restoreHeightStores() {
     for (const store of heightStores.values()) uploadWholeHeightStore(store);
 }
 
-/** Twice the layers. The texture object stays (the materials point at it); its WebGL storage is replaced. */
+// The GPU caps the layers of an array texture (2048 on desktop). A wide terrain
+// radius at high latitude could ask for more chunks of one grid size than that:
+// those beyond the cap are skipped rather than the whole texture failing.
+const gl = renderer.getContext();
+const maxHeightLayers = gl.getParameter?.(gl.MAX_ARRAY_TEXTURE_LAYERS) || 2048;
+let heightLayersFullWarned = false;
+
+/** Twice the layers, up to the GPU's cap. The texture object stays (the materials point at it); its WebGL storage is replaced. */
 function growHeightStore(store) {
-    store.capacity *= 2;
+    store.capacity = Math.min(store.capacity * 2, maxHeightLayers);
     const data = new Int16Array(store.geoW * store.geoW * store.capacity);
     data.set(store.data);
     store.data = data;
@@ -493,9 +500,20 @@ function growHeightStore(store) {
     uploadWholeHeightStore(store);
 }
 
+/** @returns {number} the layer, or -1 when the array is at the GPU's cap and full */
 function allocHeightLayer(store, heights) {
     const layer = store.free.length ? store.free.pop() : store.next++;
-    if (layer >= store.capacity) growHeightStore(store);
+    if (layer >= store.capacity) {
+        if (store.capacity >= maxHeightLayers) {
+            store.next--;
+            if (!heightLayersFullWarned) {
+                heightLayersFullWarned = true;
+                console.warn(`[terrain] ${maxHeightLayers} elevation layers for ${store.geoW}² chunks (GPU limit): further chunks are not drawn — reduce the 3D terrain radius`);
+            }
+            return -1;
+        }
+        growHeightStore(store);
+    }
     store.used.add(layer);
     store.data.set(heights, layer * store.geoW * store.geoW);
     if (!store.fullUpload) store.texture.addLayerUpdate(layer);
@@ -531,7 +549,7 @@ function setChunkHeights(mesh, record) {
 
 // ---- Instanced batches (chunks without a map) ------------------------------
 const instanceBatches = new Map(); // geoW -> batch
-const INSTANCE_CAPACITY = 1024;    // > MAX_ACTIVE_CHUNKS
+const INSTANCE_CAPACITY = 4096;    // > the chunk budget at the widest terrain radius (70 km: 2200)
 let chunksVisible = true;
 
 function getInstanceBatch(geoW) {
@@ -615,6 +633,7 @@ function updateTerrainInstances(cameraData, { camera, aircraft, pixelAngle, sate
     for (let n = 0; n < chunkList.length; n++) {
         const mesh = chunkList[n];
         const ud = mesh.userData;
+        if (ud.heightLayer < 0) { mesh.visible = false; continue; }   // no elevation layer (GPU cap)
         const s = ud.sphere;
         // Sphere against the six frustum planes (same test as Frustum.intersectsSphere)
         let visible = chunksVisible && Math.hypot(s.x - cx, s.z - cz) - s.r <= clipRadius;

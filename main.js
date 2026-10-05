@@ -21,6 +21,14 @@ const { initLteKeyHandlers } = require('./lte-link');
 app.commandLine.appendSwitch('force_high_performance_gpu');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
+// SharedArrayBuffer for the terrain worker pool: each HGT grid is decoded once
+// into shared memory and read by the UI thread and every terrain worker
+// (TerrainManager.js). Chromium otherwise exposes it only to cross-origin
+// isolated pages, which would need COOP/COEP headers here and CORP/CORS on
+// every imagery server. The page runs only the app's own code. Chromium reads
+// a single enable-features switch: add any other feature to this list.
+app.commandLine.appendSwitch('enable-features', 'SharedArrayBuffer');
+
 // IPC handler to list 3D models in the models folder
 ipcMain.handle('models-list', async () => {
   const modelsDir = path.join(__dirname, 'models');

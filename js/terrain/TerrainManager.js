@@ -27,14 +27,23 @@ const ZOOM_BANDS = [
 ];
 const BASE_BAND = 2;        // zoom used for the first pass, before the aircraft has a position
 // Terrain radius of the schematic view (satellite imagery off). Chunks exist
-// out to VISIBILITY_RADIUS around the aircraft, which leaves room for the
-// chase camera to sit up to 2.5 km away from it.
+// out to the terrain radius around the aircraft (35 km at least), which leaves
+// room for the chase camera to sit up to 2.5 km away from it.
 export const SCHEMATIC_RADIUS = 30000;
 const TILE_ZOOM = ZOOM_BANDS[BASE_BAND].zoom;
 // Absolute ceiling, clamped to the GPU's real maxTextureSize in initTerrain() so
 // weak GPUs (4096 limit) degrade instead of crashing.
 let MAX_CANVAS_DIM = 4096;
-const SATELLITE_RADIUS = 10000; // 10km - raggio della mappa satellitare (in metri)
+
+// ============== LOADING RADII ==============
+// Both chosen in SYS CONFIG (setTerrainRadius, setSatelliteRadius). Chunks are
+// built out to the terrain radius, and the sky fog follows it (Scene3D); the
+// chunks within the satellite radius get imagery, the others the height palette.
+export const TERRAIN_RADIUS_OPTIONS = [35000, 50000, 70000];
+export const SATELLITE_RADIUS_OPTIONS = [5000, 10000, 15000, 20000, 30000];
+export const DEFAULT_SATELLITE_RADIUS = 10000;
+let terrainRadius = VISIBILITY_RADIUS;
+let satelliteRadius = DEFAULT_SATELLITE_RADIUS;
 
 /** Band index for a distance in metres. */
 function bandForDistance(dist) {
@@ -85,6 +94,8 @@ export function getMemoryStats() {
             tiles: Object.keys(hgtElevationData).length,
             queryMB: +(Object.values(hgtElevationData).reduce((n, t) => n + t.data.byteLength, 0) / 1048576).toFixed(2),
             workerTiles: hgtRegisteredInWorker.size,
+            workers: terrainPool.length,
+            shared: workerAvailable && sharedHgt,
             pending: hgtPreparations.size,
             workerDecodes: hgtWorkerDecodes,
             fallbackDecodes: hgtFallbackDecodes,
@@ -315,8 +326,10 @@ export function isTileNetworkEnabled() { return tileNetworkEnabled; }
 // is ready; the loading overlay uses it to know the texture phase has begun.
 let firstTexturePassStarted = false;
 
-// Chunk creation queue
-const CHUNKS_PER_FRAME = 5; // Aumentato per velocizzare
+// Chunk creation queue. Chunks handed out per frame, per terrain worker (or
+// built per frame on the UI thread without one). A worker extracts a chunk in
+// well under a millisecond: this rate, not the worker, paces the base terrain.
+const CHUNKS_PER_FRAME = 5;
 const chunkCreationQueue = [];
 let isProcessingChunks = false;
 
@@ -378,14 +391,59 @@ function sanitizeLodStep(step, vertsPerChunk) {
     return (step > 1 && vertsPerChunk % step === 0) ? step : 1;
 }
 
-// Cleanup settings (più aggressivi)
-const CLEANUP_RADIUS = VISIBILITY_RADIUS * 1.05; // poco oltre la visibilità
+// Cleanup settings (più aggressivi): both follow the terrain radius
+const CLEANUP_MARGIN = 1.05; // poco oltre la visibilità
+let cleanupRadius = terrainRadius * CLEANUP_MARGIN;
 // Chunks resident at once. At 30 per tile axis a chunk is ~9 km², and the
 // 35 km visibility disc holds roughly 460 of them, so this is the disc plus
-// headroom for the cleanup hysteresis rather than an arbitrary cap.
-const MAX_ACTIVE_CHUNKS = 550;
-const HGT_CACHE_RADIUS = CLEANUP_RADIUS * 1.2; // raggio cache HGT
-// Tiles acknowledged by the terrain worker, which owns its native Int16 grid.
+// headroom for the cleanup hysteresis rather than an arbitrary cap. It grows
+// with the disc's area.
+const ACTIVE_CHUNKS_AT_35KM = 550;
+let maxActiveChunks = chunkBudget(terrainRadius);
+
+function chunkBudget(radius) {
+    return Math.round(ACTIVE_CHUNKS_AT_35KM * (radius / 35000) ** 2);
+}
+
+/**
+ * Terrain radius (SYS CONFIG → 3D TERRAIN RADIUS): chunks are built out to it.
+ * A wider disc is built at once, a narrower one trimmed at once. The sky fog
+ * that hides its edge is set by the caller (Scene3D.setTerrainFogRadius).
+ * @param {number} radiusM metres; never under the schematic view's 30 km + 5 km
+ */
+export function setTerrainRadius(radiusM) {
+    const r = Math.min(100000, Math.max(SCHEMATIC_RADIUS + 5000, Number(radiusM) || VISIBILITY_RADIUS));
+    if (r === terrainRadius) return;
+    terrainRadius = r;
+    cleanupRadius = r * CLEANUP_MARGIN;
+    maxActiveChunks = chunkBudget(r);
+    if (satelliteRadius > r) satelliteRadius = r;
+    if (terrainView && hgtListReady) {
+        updateTerrainChunks();
+        cleanupDistantChunks();
+    }
+}
+
+/**
+ * Satellite radius (SYS CONFIG → 3D SATELLITE RADIUS): chunks within it get
+ * imagery. The new ring is textured at once; beyond a narrower radius the
+ * same pass unloads the textures.
+ * @param {number} radiusM metres, at most the terrain radius
+ */
+export function setSatelliteRadius(radiusM) {
+    const r = Math.min(terrainRadius, Math.max(1000, Number(radiusM) || DEFAULT_SATELLITE_RADIUS));
+    if (r === satelliteRadius) return;
+    satelliteRadius = r;
+    resetTextureRefreshPosition();
+    refreshNearbyChunkTextures();
+}
+
+export function getLoadingRadii() {
+    return { terrain: terrainRadius, satellite: satelliteRadius };
+}
+
+// Tiles every terrain worker can read: registered in the whole pool (shared
+// grids), or acknowledged by the single worker that owns its own copy.
 const hgtRegisteredInWorker = new Set();
 const WORKER_STALE_MS = 30000; // 30s: worker can be slow on large HGT tiles
 const BASE_READY_FORCE_MS = 10000;
@@ -409,12 +467,18 @@ const TRI_GRID_FULL_AGL = TERRAIN_GRID.fullAgl;
 const TRI_GRID_MAX_AGL = TERRAIN_GRID.maxAgl;
 let rendererRef = null;
 
-// Worker-based chunk generation (optional)
+// Worker-based chunk generation (optional). With SharedArrayBuffer, a pool:
+// each HGT tile is decoded once, by one worker, into shared memory that the
+// other workers and the UI thread's elevation queries read as they are. Tiles
+// decode in parallel and chunk jobs go to whichever worker is least busy.
+// Without it, a single worker keeps its own copy of every grid.
 const USE_TERRAIN_WORKER = true;
-const MAX_WORKER_INFLIGHT = 8;
-let terrainWorker = null;
+const TERRAIN_POOL_MAX = 4;
+const MAX_WORKER_INFLIGHT = 8;     // chunk jobs per worker
+const terrainPool = [];            // { worker, inflight, decodes }
+let sharedHgt = false;
 let workerAvailable = false;
-let workerInflight = 0;
+let workerInflight = 0;            // chunk jobs in flight, whole pool
 const workerPending = new Map();
 
 // Worker-based tile streaming (optional)
@@ -444,7 +508,7 @@ function getChunkDistanceToPlayer(item) {
     return Math.sqrt(dx * dx + dz * dz);
 }
 
-function isChunkInRange(item, radius = VISIBILITY_RADIUS) {
+function isChunkInRange(item, radius = terrainRadius) {
     return getChunkDistanceToPlayer(item) <= radius;
 }
 
@@ -523,84 +587,126 @@ function initTerrainWorker() {
     terrainWorkerInitAttempted = true;
     if (!USE_TERRAIN_WORKER || typeof Worker === 'undefined') return;
 
+    // Two cores stay for the UI thread and the GPU process; chunk jobs are
+    // light, the pool is for decoding the tiles of an area at the same time.
+    sharedHgt = typeof SharedArrayBuffer === 'function';
+    const poolSize = sharedHgt
+        ? Math.max(1, Math.min(TERRAIN_POOL_MAX, (navigator.hardwareConcurrency || 2) - 2))
+        : 1;
     try {
-        terrainWorker = new Worker(new URL('./TerrainWorker.js', import.meta.url), { type: 'module' });
+        for (let i = 0; i < poolSize; i++) {
+            const entry = {
+                worker: new Worker(new URL('./TerrainWorker.js', import.meta.url), { type: 'module' }),
+                inflight: 0, decodes: 0
+            };
+            entry.worker.onmessage = (e) => onTerrainWorkerMessage(entry, e.data || {});
+            entry.worker.onerror = (e) => disableTerrainWorker(e?.message || 'unknown error');
+            entry.worker.onmessageerror = () => disableTerrainWorker('Unreadable worker reply');
+            terrainPool.push(entry);
+        }
         workerAvailable = true;
-        hgtRegisteredInWorker.clear(); // fresh worker holds no tiles
-
-        terrainWorker.onmessage = (e) => {
-            const data = e.data || {};
-            if (data.type === 'hgtReady' || data.type === 'hgtFailed') {
-                const request = hgtWorkerRequests.get(data.id);
-                if (!request || request.key !== data.key) return;
-                hgtWorkerRequests.delete(data.id);
-                clearTimeout(request.timer);
-                if (data.type === 'hgtFailed') {
-                    request.reject(new Error(data.reason));
-                } else {
-                    // Registration is acknowledged before any buildChunk is sent.
-                    hgtRegisteredInWorker.add(data.key);
-                    hgtWorkerDecodes++;
-                    hgtLastPrepareMs = data.prepareMs;
-                    request.resolve({ data: data.elevations, size: data.size });
-                }
-                return;
-            }
-            if (data.type === 'chunkBuilt') {
-                const item = workerPending.get(data.chunkKey);
-                if (!item) return;
-                workerPending.delete(data.chunkKey);
-                workerInflight = Math.max(0, workerInflight - 1);
-                markChunkActivity();
-
-                const existing = activeChunks[data.chunkKey];
-                if (item.lodRebuild) {
-                    // LOD rebuild: the chunk keeps its mesh and its satellite
-                    // texture (same area, same UV layout); only its elevation
-                    // layer and grid change.
-                    if (existing) {
-                        setChunkHeights(existing, item, data.step, data.heights, data.minH, data.maxH);
-                        existing.data.lodRebuildQueued = false;
-                    }
-                    return;
-                }
-                if (!existing && isChunkInRange(item)) {
-                    addChunkMesh(item, data.step, data.heights, data.minH, data.maxH);
-                    noteChunkCreated(true);
-                }
-                return;
-            }
-
-            if (data.type === 'chunkFailed') {
-                const item = workerPending.get(data.chunkKey);
-                if (!item) return;
-                workerPending.delete(data.chunkKey);
-                workerInflight = Math.max(0, workerInflight - 1);
-                markChunkActivity();
-                if (item.lodRebuild) {
-                    // Keep the current grid; a later pass may retry
-                    if (activeChunks[data.chunkKey]) activeChunks[data.chunkKey].data.lodRebuildQueued = false;
-                    return;
-                }
-                if (!activeChunks[data.chunkKey] && isChunkInRange(item)) {
-                    createSingleChunk(item);
-                }
-            }
-        };
-
-        terrainWorker.onerror = (e) => disableTerrainWorker(e?.message || 'unknown error');
-        terrainWorker.onmessageerror = () => disableTerrainWorker('Unreadable worker reply');
+        hgtRegisteredInWorker.clear(); // fresh workers hold no tiles
+        console.log(`[terrain] ${poolSize} terrain worker${poolSize > 1 ? 's' : ''}, HGT grids ${sharedHgt ? 'in shared memory' : 'copied to the worker'}`);
     } catch (err) {
+        for (const entry of terrainPool) entry.worker.terminate();
+        terrainPool.length = 0;
         workerAvailable = false;
-        terrainWorker = null;
     }
+}
+
+function onTerrainWorkerMessage(entry, data) {
+    if (data.type === 'hgtReady' || data.type === 'hgtFailed') {
+        const request = hgtWorkerRequests.get(data.id);
+        if (!request || request.key !== data.key) return;
+        hgtWorkerRequests.delete(data.id);
+        clearTimeout(request.timer);
+        entry.decodes = Math.max(0, entry.decodes - 1);
+        if (data.type === 'hgtFailed') {
+            request.reject(new Error(data.reason));
+            return;
+        }
+        hgtWorkerDecodes++;
+        hgtLastPrepareMs = data.prepareMs;
+        if (sharedHgt && !data.shared) {
+            // A worker without shared memory although the page has it: the
+            // other workers cannot read its grid. Keep the copy it sent and
+            // build chunks here, rather than mix the two modes in one pool.
+            request.resolve({ data: data.elevations, size: data.size });
+            disableTerrainWorker('shared memory unavailable in the terrain worker');
+            return;
+        }
+        if (data.shared) {
+            // Same memory, no copy. Each worker stores it before reading the
+            // chunk jobs sent after this message (one message queue per worker).
+            for (const other of terrainPool) {
+                if (other !== entry) other.worker.postMessage({ type: 'registerHgt', key: data.key, size: data.size, elevations: data.elevations });
+            }
+        }
+        // Registered before any buildChunk is sent.
+        hgtRegisteredInWorker.add(data.key);
+        request.resolve({ data: data.elevations, size: data.size });
+        return;
+    }
+
+    if (data.type !== 'chunkBuilt' && data.type !== 'chunkFailed') return;
+    const item = workerPending.get(data.chunkKey);
+    // No job, or a stale reply: the job went back to the queue and maybe to another worker
+    if (!item || item.worker !== entry) return;
+    releaseChunkJob(item);
+    markChunkActivity();
+
+    if (data.type === 'chunkBuilt') {
+        const existing = activeChunks[data.chunkKey];
+        if (item.lodRebuild) {
+            // LOD rebuild: the chunk keeps its mesh and its satellite
+            // texture (same area, same UV layout); only its elevation
+            // layer and grid change.
+            if (existing) {
+                setChunkHeights(existing, item, data.step, data.heights, data.minH, data.maxH);
+                existing.data.lodRebuildQueued = false;
+            }
+            return;
+        }
+        if (!existing && isChunkInRange(item)) {
+            addChunkMesh(item, data.step, data.heights, data.minH, data.maxH);
+            noteChunkCreated(true);
+        }
+        return;
+    }
+
+    if (item.lodRebuild) {
+        // Keep the current grid; a later pass may retry
+        if (activeChunks[data.chunkKey]) activeChunks[data.chunkKey].data.lodRebuildQueued = false;
+        return;
+    }
+    if (!activeChunks[data.chunkKey] && isChunkInRange(item)) {
+        createSingleChunk(item);
+    }
+}
+
+/** A chunk job leaves the worker it was sent to: answered, stale or abandoned. */
+function releaseChunkJob(item) {
+    workerPending.delete(item.chunkKey);
+    if (item.worker) item.worker.inflight = Math.max(0, item.worker.inflight - 1);
+    workerInflight = Math.max(0, workerInflight - 1);
+}
+
+/** Least busy worker that can take another chunk job, or null. One decoding a tile comes last. */
+function pickChunkWorker() {
+    let best = null, bestLoad = Infinity;
+    for (const entry of terrainPool) {
+        if (entry.inflight >= MAX_WORKER_INFLIGHT) continue;
+        const load = entry.inflight + entry.decodes * MAX_WORKER_INFLIGHT;
+        if (load < bestLoad) { best = entry; bestLoad = load; }
+    }
+    return best;
 }
 
 function disableTerrainWorker(reason) {
     console.warn(`[terrain] TerrainWorker unavailable: ${reason}; using cooperative HGT decoding`);
     workerAvailable = false;
-    terrainWorker?.terminate();
-    terrainWorker = null;
+    for (const entry of terrainPool) entry.worker.terminate();
+    terrainPool.length = 0;
     hgtRegisteredInWorker.clear();
     for (const request of hgtWorkerRequests.values()) {
         clearTimeout(request.timer);
@@ -608,6 +714,7 @@ function disableTerrainWorker(reason) {
     }
     hgtWorkerRequests.clear();
     for (const item of workerPending.values()) {
+        item.worker = null;
         if (!activeChunks[item.chunkKey] || item.lodRebuild) chunkCreationQueue.unshift(item);
     }
     workerPending.clear();
@@ -623,14 +730,18 @@ function prepareHgt(file, key) {
     if (hgtPreparations.has(key)) return hgtPreparations.get(key);
     const job = (async () => {
         let tile;
-        if (workerAvailable && terrainWorker) {
+        if (workerAvailable && terrainPool.length) {
             try {
                 tile = await new Promise((resolve, reject) => {
                     const id = ++hgtRequestId;
+                    // The tiles of an area decode side by side, one per worker
+                    const entry = terrainPool.reduce((a, b) =>
+                        (b.decodes < a.decodes || (b.decodes === a.decodes && b.inflight < a.inflight)) ? b : a);
                     const timer = setTimeout(() => disableTerrainWorker('HGT preparation timed out'), 60000);
                     hgtWorkerRequests.set(id, { key, resolve, reject, timer });
+                    entry.decodes++;
                     try {
-                        terrainWorker.postMessage({ type: 'prepareHgt', id, key, file });
+                        entry.worker.postMessage({ type: 'prepareHgt', id, key, file, shared: sharedHgt });
                     } catch (error) {
                         disableTerrainWorker(error.message);
                     }
@@ -1104,11 +1215,16 @@ export async function updateTerrainChunks() {
     // the old ±2° window — up to 25 x 25 MB — just delayed the first terrain.
     // Nearest cell first, so the ground under the aircraft appears first.
     const HGT_MARGIN_M = 5000;
+    const reach = terrainRadius + HGT_MARGIN_M;
+    // The cells the reach can touch: with a 70 km radius it spans more than
+    // one degree of longitude above ~48° of latitude
+    const latSpan = reach / 111320;
+    const lonSpan = latSpan / Math.max(0.05, Math.cos(currentLat * Math.PI / 180));
     const candidates = [];
-    for (let la = Math.floor(currentLat - 1); la <= Math.floor(currentLat + 1); la++) {
-        for (let lo = Math.floor(currentLon - 1); lo <= Math.floor(currentLon + 1); lo++) {
+    for (let la = Math.floor(currentLat - latSpan); la <= Math.floor(currentLat + latSpan); la++) {
+        for (let lo = Math.floor(currentLon - lonSpan); lo <= Math.floor(currentLon + lonSpan); lo++) {
             const dist = hgtTileDistance(currentLat, currentLon, la, lo);
-            if (dist <= VISIBILITY_RADIUS + HGT_MARGIN_M) candidates.push({ la, lo, dist });
+            if (dist <= reach) candidates.push({ la, lo, dist });
         }
     }
     candidates.sort((a, b) => a.dist - b.dist);
@@ -1178,7 +1294,7 @@ function processHGTFile(file, latBase, lonBase) {
     }
 
     // Share the preparation with imports and elevation queries. Enqueue only
-    // after the worker has acknowledged that its native grid is available.
+    // once every terrain worker can read the tile's grid.
     if (hgtReadInProgress.has(key)) return;
     hgtReadInProgress.add(key);
 
@@ -1201,13 +1317,13 @@ function enqueueChunksForTile(latBase, lonBase, size) {
     const vertsPerChunk = Math.floor((size - 1) / chunksPerAxis);
     const playerPos = latLonToMeters(STATE.lat, STATE.lon);
 
-    // The tile scan reaches +-2 degrees but the visibility disc is ~0.3 degrees, so
-    // most tiles cannot contribute a single chunk. Reject them on their nearest
-    // corner instead of testing 900 chunk centres each.
+    // A tile can be called here while it is out of the visibility disc (the
+    // scan's margin, an elevation query, a move). Reject it on its nearest
+    // corner instead of testing 900 chunk centres.
     const nearLat = Math.min(Math.max(STATE.lat, latBase), latBase + 1);
     const nearLon = Math.min(Math.max(STATE.lon, lonBase), lonBase + 1);
     const nearWorld = latLonToMeters(nearLat, nearLon);
-    if (Math.hypot(nearWorld.x - playerPos.x, nearWorld.z - playerPos.z) > VISIBILITY_RADIUS) return;
+    if (Math.hypot(nearWorld.x - playerPos.x, nearWorld.z - playerPos.z) > terrainRadius) return;
 
     const chunksList = [];
     for (let cx = 0; cx < chunksPerAxis; cx++) {
@@ -1223,7 +1339,7 @@ function enqueueChunksForTile(latBase, lonBase, size) {
                 (centerWorld.z - playerPos.z) ** 2
             );
             
-            if (dist <= VISIBILITY_RADIUS) {
+            if (dist <= terrainRadius) {
                 chunksList.push({
                     cx, cy, dist, chunkKey,
                     latBase, lonBase, size, vertsPerChunk,
@@ -1261,8 +1377,7 @@ function processChunkQueue() {
             const requestedAt = item.requestedAt || 0;
             if (requestedAt && now - requestedAt > WORKER_STALE_MS) {
                 console.warn(`[terrain] Worker stale for chunk ${chunkKey}, re-queueing`);
-                workerPending.delete(chunkKey);
-                workerInflight = Math.max(0, workerInflight - 1);
+                releaseChunkJob(item);
                 if ((!activeChunks[chunkKey] || item.lodRebuild) && isChunkInRange(item)) {
                     chunkCreationQueue.unshift(item);
                 } else if (item.lodRebuild && activeChunks[chunkKey]) {
@@ -1275,6 +1390,8 @@ function processChunkQueue() {
 
     if (workerInflight > workerPending.size) {
         workerInflight = workerPending.size;
+        for (const entry of terrainPool) entry.inflight = 0;
+        for (const item of workerPending.values()) if (item.worker) item.worker.inflight++;
     }
 
     if (chunkCreationQueue.length === 0) {
@@ -1311,18 +1428,23 @@ function processChunkQueue() {
 
     isProcessingChunks = true;
 
-    if (workerAvailable && terrainWorker) {
+    if (workerAvailable && terrainPool.length) {
         let scheduled = 0;
-        while (scheduled < CHUNKS_PER_FRAME && chunkCreationQueue.length > 0 && workerInflight < MAX_WORKER_INFLIGHT) {
+        const perFrame = CHUNKS_PER_FRAME * terrainPool.length;
+        while (scheduled < perFrame && chunkCreationQueue.length > 0) {
+            const entry = pickChunkWorker();
+            if (!entry) break; // every worker has its fill of jobs
             const item = chunkCreationQueue.shift();
             if (!activeChunks[item.chunkKey] || item.lodRebuild) {
                 if (!isChunkInRange(item)) {
                     continue;
                 }
                 item.requestedAt = performance.now();
+                item.worker = entry;
                 workerPending.set(item.chunkKey, item);
+                entry.inflight++;
                 workerInflight++;
-                terrainWorker.postMessage({
+                entry.worker.postMessage({
                     type: 'buildChunk',
                     chunkKey: item.chunkKey,
                     hgtKey: item.hgtKey,
@@ -1412,17 +1534,18 @@ function addChunkMesh(item, step, heights, minH, maxH) {
 
 /**
  * Resolution band for a chunk, from its centre distance to the aircraft.
- * Until the first pass of base textures has landed everything uses BASE_BAND, so
- * the whole visible area gets covered quickly before any chunk spends time on a
- * 4096² texture.
+ * Until the first pass of base textures has landed nothing is finer than
+ * BASE_BAND, so the whole radius gets covered quickly before any chunk spends
+ * time on a 4096² texture. Chunks beyond that band (a satellite radius wider
+ * than 12 km) take their own coarser band at once: BASE_BAND there would mean
+ * downloading tiles only to drop to fewer of them on the next pass.
  * @returns {number} index into ZOOM_BANDS
  */
 function getBandForChunk(latTop, latBottom, lonLeft, lonRight) {
-    if (!initialTexturesLoaded) return BASE_BAND;
     const centerLat = (latTop + latBottom) / 2;
     const centerLon = (lonLeft + lonRight) / 2;
-    const dist = calculateDistance(STATE.lat, STATE.lon, centerLat, centerLon);
-    return bandForDistance(dist);
+    const band = bandForDistance(calculateDistance(STATE.lat, STATE.lon, centerLat, centerLon));
+    return initialTexturesLoaded ? band : Math.max(BASE_BAND, band);
 }
 
 /**
@@ -1641,7 +1764,7 @@ function enqueueCompositeTexture(mesh, canvas) {
 function enqueueChunkTexture(mesh, ud, dist, forceReload = false) {
     if (!mesh || !ud || ud.textureQueued) return;
     if (!forceReload && ud.textureLoaded) return;
-    if (dist > SATELLITE_RADIUS) return;
+    if (dist > satelliteRadius) return;
     ud.textureQueued = true;
     chunkTextureQueue.push({ mesh, ud, dist });
     if (!isProcessingChunkTextureQueue) {
@@ -1679,7 +1802,7 @@ function processChunkTextureQueue() {
         const dx = centerWorld.x - playerPos.x;
         const dz = centerWorld.z - playerPos.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist <= SATELLITE_RADIUS) {
+        if (dist <= satelliteRadius) {
             // LOD swap: keep the current texture visible until the new one is
             // ready (applyCompositeTexture disposes it on swap). Unloading
             // first left the chunk white for the whole tile download.
@@ -2023,7 +2146,7 @@ export function setTerrainSatelliteEnabled(enabled) {
     console.log(`[terrain] Satellite ${on ? 'ENABLED' : 'DISABLED'} — activeChunks=${Object.keys(activeChunks).length}, queue=${chunkCreationQueue.length}, workerPending=${workerPending.size}`);
 
     // Enabling needs no per-chunk pass: refreshNearbyChunkTextures() below
-    // queues the chunks inside SATELLITE_RADIUS, nearest first. Texturing every
+    // queues the chunks inside the satellite radius, nearest first. Texturing every
     // resident chunk here (as this loop used to) built ~400 textures for chunks
     // beyond the radius — tile loads, compositing and BC1 compression — only for
     // the texture cull to throw them away, every time the satellite came back on
@@ -2080,13 +2203,13 @@ function cleanupDistantChunks() {
             (centerWorld.z - playerPos.z) ** 2
         );
 
-        if (dist > CLEANUP_RADIUS) {
+        if (dist > cleanupRadius) {
             disposeChunk(key, mesh);
             removed++;
         }
     }
 
-    if (Object.keys(activeChunks).length > MAX_ACTIVE_CHUNKS) {
+    if (Object.keys(activeChunks).length > maxActiveChunks) {
         const sorted = Object.entries(activeChunks)
             .map(([key, mesh]) => {
                 const ud = mesh.data;
@@ -2102,7 +2225,7 @@ function cleanupDistantChunks() {
             })
             .sort((a, b) => b.dist - a.dist);
 
-        const toRemove = sorted.slice(0, sorted.length - MAX_ACTIVE_CHUNKS);
+        const toRemove = sorted.slice(0, sorted.length - maxActiveChunks);
         for (const item of toRemove) {
             if (item.mesh) {
                 disposeChunk(item.key, item.mesh);
@@ -2212,8 +2335,9 @@ function requeueChunkForLod(chunkKey, mesh, dist) {
 function cleanupHgtCache() {
     // Intentionally left empty: hgtElevationData entries are retained for the
     // full session lifetime. SRTM3 uses 2.75 MiB, SRTM1 uses 24.73 MiB per
-    // native grid; the worker retains another grid and the File is also kept.
-    // A bounded cache requires coordinated eviction with pending chunk jobs.
+    // native grid, shared with the terrain workers (without SharedArrayBuffer
+    // the worker retains another grid); the File is also kept. A bounded cache
+    // requires coordinated eviction with pending chunk jobs and every worker.
 }
 
 /**
@@ -2352,7 +2476,7 @@ export function resetTextureRefreshPosition() {
 
 /**
  * Check if nearby chunks need texture refresh based on position and speed
- * Carica texture HD per tutti i chunk entro SATELLITE_RADIUS (10km)
+ * Carica texture HD per tutti i chunk entro il raggio satellitare (10 km di default)
  */
 export function refreshNearbyChunkTextures() {
     if (!window.satelliteEnabled) return;
@@ -2405,7 +2529,7 @@ export function refreshNearbyChunkTextures() {
             (centerWorld.z - playerPos.z) ** 2
         );
 
-        if (dist > SATELLITE_RADIUS) {
+        if (dist > satelliteRadius) {
             if (ud.textureLoaded) {
                 cullCandidates.push({ key, centerX: centerWorld.x, centerZ: centerWorld.z });
             }
@@ -2457,7 +2581,7 @@ export function refreshNearbyChunkTextures() {
             textureCullWorker.postMessage({
                 type: 'cullTextures',
                 playerPos: { x: playerPos.x, z: playerPos.z },
-                radius: SATELLITE_RADIUS,
+                radius: satelliteRadius,
                 chunks: cullCandidates
             });
         } else if (!textureCullWorkerAvailable) {

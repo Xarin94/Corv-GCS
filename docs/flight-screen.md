@@ -114,6 +114,20 @@ Each step up doubles the detail, and the tiles downloaded when flying low and fa
 the 2D map; where none is available the terrain texture shows. **RELOADING MAP…** in the middle of the
 screen means the terrain around the aircraft is being rebuilt (a jump to a new area, a log loaded).
 
+## Terrain range and haze
+
+The 3D terrain is built out to **35 km** around the aircraft, and the haze thickens towards that
+edge so that the end of the terrain never shows. Satellite imagery covers the nearer **10 km**;
+beyond it the terrain is coloured by height. Both distances are set in **SYS CONFIG → SYSTEM
+CONFIG**:
+
+- **3D TERRAIN RADIUS** — 35, 50 or 70 km. The haze moves with the edge: at 70 km the ground 25 km
+  away is about a third hazed instead of four fifths at 35 km. Each step loads more elevation tiles
+  and draws more terrain.
+- **3D SATELLITE RADIUS** — 5, 10, 15, 20 or 30 km. Imagery farther out is drawn at lower zooms:
+  going from 10 to 30 km adds about 15 MB of video memory but about a thousand tiles to download
+  the first time an area is seen.
+
 ## Schematic chart
 
 With the satellite imagery off (**M**) the terrain becomes a chart, in the style of the mission

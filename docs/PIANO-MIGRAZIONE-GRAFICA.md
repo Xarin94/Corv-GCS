@@ -52,6 +52,17 @@ una griglia nel renderer e una nel worker, oltre al File: un SRTM1 3601² costa
 24,73 MiB per griglia. La cache resta per l'intera sessione; un limite alla RAM
 richiede in seguito una LRU coordinata con i job di quota, chunk e missione.
 
+**Aggiornamento del 5 ottobre 2026:** il worker è diventato un pool di fino a 4
+worker con le griglie in `SharedArrayBuffer` (abilitato da `main.js`). Ogni tile è
+letto a blocchi e decodificato una sola volta, da un worker, in memoria condivisa;
+il thread UI e gli altri worker leggono la stessa griglia, quindi la copia per le
+quote non esiste più (−24,73 MiB per tile SRTM1 nel renderer). I tile di un'area
+si decodificano in parallelo e i chunk vengono distribuiti, 5 per worker a frame.
+Misure sul PC della prova, 3 esecuzioni: terreno base completo da 2,26–2,34 s a
+1,26–1,31 s dall'avvio; spostamento in un'altra area da 1,69–1,73 s a 0,66–0,89 s;
+stessi frame lenti e stessi dati campione per campione. Senza `SharedArrayBuffer`
+resta il worker singolo descritto sopra.
+
 ### Confine iniziale del backend e risoluzione
 
 `RenderBackend.js` possiede creazione, dimensionamento, passaggi e statistiche

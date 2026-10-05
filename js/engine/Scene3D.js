@@ -4,7 +4,7 @@
  * overlays drawn over the terrain: flight trail, mission route, home.
  */
 
-import { CAMERA_FOV } from '../core/constants.js';
+import { CAMERA_FOV, VISIBILITY_RADIUS } from '../core/constants.js';
 import { STATE } from '../core/state.js';
 import { latLonToMeters } from '../core/utils.js';
 import { setLodViewParams, setTerrainSchematicLight, updateTerrainInstances } from '../terrain/TerrainManager.js';
@@ -85,7 +85,10 @@ let sunlightEnabled = true;
 // a pale blue gradient (drawn by the outline pass) and the fog its horizon
 // colour. In AR the backdrop is black and fog-free, since the canvas is
 // screen-blended over the camera feed.
-const SKY_FOG_DENSITY = 0.00005;
+// The sky fog hides the edge of the terrain, so it follows the terrain radius
+// (setTerrainFogRadius): ~95 % fog at the edge, 0.00005 at the default 35 km.
+const SKY_FOG_EDGE = 1.75;                  // density × terrain radius
+let skyFogDensity = SKY_FOG_EDGE / VISIBILITY_RADIUS;
 const SCHEMATIC_FOG_DENSITY = 0.00003;
 const LIGHT_SKY_HORIZON = 0xe2eef7;
 const LIGHT_SKY_ZENITH = 0x86bbe8;
@@ -115,7 +118,7 @@ let ownship = null;         // ring around the aircraft in the chase view
 export function init3D(container) {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(skyColor);
-    scene.fog = new THREE.FogExp2(skyColor, SKY_FOG_DENSITY);
+    scene.fog = new THREE.FogExp2(skyColor, skyFogDensity);
 
     camera = new THREE.PerspectiveCamera(
         CAMERA_FOV,
@@ -225,11 +228,22 @@ function applyBackdrop() {
         return;
     }
     const color = schematicView ? (lightTheme ? LIGHT_SKY_HORIZON : 0x000000) : skyColor;
-    const density = schematicView ? SCHEMATIC_FOG_DENSITY : SKY_FOG_DENSITY;
+    const density = schematicView ? SCHEMATIC_FOG_DENSITY : skyFogDensity;
     scene.background.setHex(color);
     if (!scene.fog) scene.fog = new THREE.FogExp2(color, density);
     scene.fog.color.setHex(color);
     scene.fog.density = density;
+}
+
+/**
+ * Sky fog for a terrain radius (SYS CONFIG → 3D TERRAIN RADIUS): a farther
+ * edge, thinner fog. The schematic view keeps its own.
+ * @param {number} radiusM metres
+ */
+export function setTerrainFogRadius(radiusM) {
+    if (!(radiusM > 0)) return;
+    skyFogDensity = SKY_FOG_EDGE / radiusM;
+    applyBackdrop();
 }
 
 /** Light schematic look: light UI theme, satellite imagery off, not in AR. */
