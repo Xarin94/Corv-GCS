@@ -224,7 +224,12 @@ function createWindow() {
       : path.join(__dirname, 'assets', 'icons', 'icon-256x256.png'),
     webPreferences: {
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      // A ground station keeps working minimized, behind another window or
+      // with the screen off: Chromium would slow the page's timers to once a
+      // second, then once a minute, and the ROS surface's 20 Hz pose feed
+      // (RosController) would stop placing points
+      backgroundThrottling: false
     }
   });
 

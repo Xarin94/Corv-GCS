@@ -49,11 +49,34 @@ export function polygonAreaXY(poly) {
  * Area of a polygon (x east, y north, metres from the anchor) the surface
  * covers: filled cells whose centre is inside, m². A tile wholly inside counts
  * its filled cells at once; only the tiles on the edge are looked at cell by cell.
+ * With `block` > 1 the area is counted in blocks of block × block cells — the
+ * holes the mesh fills (SurfaceRaster.fillLevelsFor) — a block covered when
+ * any of its cells has data and its centre is inside: a sector sonar's sweeps
+ * metres apart cover the area they are drawn over.
  */
-export function coveredArea(surface, poly) {
+export function coveredArea(surface, poly, block = 1) {
     const c = surface.cell, span = TILE * c, cell2 = c * c;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [x, y] of poly) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    if (block > 1) {
+        const seen = new Set(), bs = block * c;
+        let n = 0;
+        for (const t of surface.tiles.values()) {
+            if (!t.filled) continue;
+            const tx0 = t.tx * span, ty0 = t.ty * span;
+            if (tx0 + span < x0 - bs || tx0 > x1 + bs || ty0 + span < y0 - bs || ty0 > y1 + bs) continue;
+            for (let k = 0; k < TILE * TILE; k++) {
+                if (!(t.w[k] > 0)) continue;
+                const i = k % TILE, j = (k - i) / TILE;
+                const bi = Math.floor((t.tx * TILE + i) / block), bj = Math.floor((t.ty * TILE + j) / block);
+                const key = bi * 1048576 + bj;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                if (inPolygon((bi + 0.5) * bs, (bj + 0.5) * bs, poly)) n++;
+            }
+        }
+        return n * bs * bs;
+    }
     let covered = 0;
     for (const t of surface.tiles.values()) {
         if (!t.filled) continue;

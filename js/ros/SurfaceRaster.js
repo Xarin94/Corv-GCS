@@ -20,20 +20,33 @@
  *   - a cell with data takes a coarser level only if that level agrees with
  *     its own height within JUMP;
  *   - an empty cell is filled only by interpolation — the four coarse cells
- *     around it valid and agreeing, at most FILL_LEVELS (1.2 m at 30 cm) —
- *     never extended past the edge of the data;
+ *     around it valid and agreeing, at most `fillLevels` (FILL_LEVELS: 4
+ *     cells, 1.2 m at 30 cm; up to 16 cells for a sensor that samples in
+ *     lines, a sector sonar's sweeps metres apart) — never extended past the
+ *     edge of the data;
  *   - a triangle whose corners span more than JUMP over its size is not drawn.
  * `jumps: false` turns these off (the behaviour before them; tests compare).
  */
 
 export const EMPTY = -1e9;
 export const LEVELS = 4;              // coarsest: 2^4 = 16 cells
-const FILL_LEVELS = 2;                // empty cells: interpolated from 2 or 4-cell levels only
+export const FILL_LEVELS = 2;         // empty cells: interpolated from 2 or 4-cell levels only, by default
 const JUMP_MIN = 0.4;                 // m
 const JUMP_SLOPE = 1.5;               // tan 56°
 
 export function jumpTolerance(spanCells, cell) {
     return Math.max(JUMP_MIN, JUMP_SLOPE * spanCells * cell);
+}
+
+/**
+ * Levels holes are interpolated from for "fill holes up to `metres`" at a cell
+ * size: the coarsest level no wider than that (1 … LEVELS); 0 or less: the
+ * default FILL_LEVELS. Also the block of cells the coverage of an area is
+ * counted in (2^levels cells), so it measures what is drawn.
+ */
+export function fillLevelsFor(metres, cell) {
+    if (!(metres > 0)) return FILL_LEVELS;
+    return Math.max(1, Math.min(LEVELS, Math.floor(Math.log2(metres / cell) + 1e-9)));
 }
 
 // Scratch levels per grid size: sum, weight, min, max of the cells below
@@ -60,11 +73,12 @@ function levelsFor(w, h) {
  * @param {number} w           cells per row
  * @param {number} h           rows
  * @param {Float32Array} out   2 × w × h
- * @param {{minSamples?: number, cell?: number, jumps?: boolean}} [opts]
+ * @param {{minSamples?: number, cell?: number, jumps?: boolean, fillLevels?: number}} [opts]
  * @returns {Uint32Array} cells drawn per level
  */
 export function rasterize(data, wts, w, h, out, opts = {}) {
     const minW = opts.minSamples ?? 1, cell = opts.cell ?? 0.3, guard = opts.jumps !== false;
+    const fillLevels = opts.fillLevels ?? FILL_LEVELS;
     const levels = levelsFor(w, h);
     // Pull
     let fine = null, fw = w, fh = h;
@@ -93,7 +107,7 @@ export function rasterize(data, wts, w, h, out, opts = {}) {
             const p = j * w + i, own = wts[p] > 0, v = data[p];
             out[p * 2] = EMPTY; out[p * 2 + 1] = 0;
             if (own && wts[p] >= minW) { out[p * 2] = v; count[0]++; continue; }
-            const top = own || !guard ? LEVELS : FILL_LEVELS;
+            const top = own || !guard ? LEVELS : fillLevels;
             for (let k = 0; k < top; k++) {
                 const L = levels[k], f = 2 << k, tol = jumpTolerance(f, cell);
                 const u = (i + 0.5) / f - 0.5, t = (j + 0.5) / f - 0.5;

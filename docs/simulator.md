@@ -52,8 +52,11 @@ terminal, then a reboot).
 southern basin of Lake Garda (45.4960 N, 10.6490 E). It is set up as a sonar survey boat: at most
 2 m/s on the lanes, a 5 m/s southerly with gusts, and 0.5 m waves 12 m long coming from the south, so
 the hull rolls, pitches and heaves in the telemetry. SITL's boat makes waves only once armed, and heaves
-only with `SIM_WAVE_ENABLE 2`. The `garda` scene of `scripts/rosbridge-sim.js` maps the same water: see
-[ROS](ROS.md#9-testing-without-a-vehicle).
+only with `SIM_WAVE_ENABLE 2`. The `garda` scene of `scripts/rosbridge-sim.js` maps the same water —
+the lake bed with a wreck, a car, a container, a light aircraft, a pipeline and more on it — and its
+sonars (an imaging sonar, a sector-scanning sonar) are ray-cast from the boat's true pose: see
+[ROS](ROS.md#9-testing-without-a-vehicle). Parameters changed while the simulator runs (WP_SPEED,
+for one) are kept in its storage and are still there at the next launch.
 
 ## The ROV
 

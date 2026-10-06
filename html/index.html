@@ -286,7 +286,7 @@
             <span class="lidar-strip-title">ROS</span>
             <span class="lidar-strip-state" id="ros-strip-state">OFF</span>
             <span class="lidar-strip-count" id="ros-strip-grid">&mdash;</span>
-            <button class="lidar-strip-btn ros-strip-color" id="ros-strip-color" type="button" title="Colour: grey; red (near) to blue (far) by distance from the vehicle; or roughness: grey where the bed is flat, level or sloping, redder the further it departs from its local plane">GRAY</button>
+            <button class="lidar-strip-btn ros-strip-color" id="ros-strip-color" type="button" title="Colour: grey lines; or a solid surface, red (near) to blue (far) by distance from the vehicle; or a solid surface by roughness: blue where it departs from its local plane no more than on average, red well above that">GRAY</button>
             <button class="lidar-strip-btn" id="ros-strip-view" type="button" title="Show or hide the surface (it keeps accumulating)">VIEW ON</button>
             <button class="lidar-strip-btn" id="ros-strip-clear" type="button" title="Clear the averaged surface">CLEAR</button>
         </div>
@@ -1999,6 +1999,7 @@
                         <select id="ros-profile" class="cfg-select" title="Choosing one fills in its usual mount, range, sampling and cell size">
                             <option value="aerial">Aerial LiDAR &middot; terrain under the aircraft</option>
                             <option value="seabed">Sea bed &middot; echo sounder or sonar on a boat / ROV</option>
+                            <option value="sector">Sector sonar &middot; mechanical scanning head, one beam per ping</option>
                         </select>
                     </div>
                     <div class="cfg-row">
@@ -2087,6 +2088,13 @@
                         </div>
                     </div>
                     <div class="cfg-row">
+                        <label>VERTICAL REFERENCE</label>
+                        <select id="ros-vertical" class="cfg-select" title="The height the sensor is placed at: the vehicle's altitude, or — for a boat — the water surface at home (the altitude it was armed at), so the EKF's barometric drift does not lift or sink the bed">
+                            <option value="vehicle">Vehicle altitude (EKF)</option>
+                            <option value="water">Water surface at home &middot; a boat</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
                         <label>MIN CELL (m) / MIN SAMPLES / MEMORY (samples) / MAX TILES</label>
                         <div class="cfg-row-inline">
                             <input type="number" id="ros-cell" class="failsafe-input" value="0.3" step="0.05" min="0.05" max="10" title="Finest cell: the mesh is this fine where the data allow; changing it clears the surface">
@@ -2094,6 +2102,15 @@
                             <input type="number" id="ros-grid-memory" class="failsafe-input" value="20" step="1" min="1" max="1000" title="A cell averages over at most this many samples (messages), then follows a moving average">
                             <input type="number" id="ros-max-tiles" class="failsafe-input" value="2048" step="256" min="16" max="16384" title="Tiles of 30 × 30 cells kept; past this the farthest from the vehicle are dropped (2048 ≈ 16 ha at 30 cm)">
                         </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>FILL HOLES UP TO</label>
+                        <select id="ros-fill" class="cfg-select" title="Empty cells between data are interpolated from the cells around them up to this size (at most 16 cells), never past the edge of the data or across a jump; the coverage of a planned area is counted the same way">
+                            <option value="0">4 cells (1.2 m at 30 cm)</option>
+                            <option value="2">2 m</option>
+                            <option value="4">4 m</option>
+                            <option value="8">8 m &middot; sensors that sample in lines (sector sonar, echo sounder)</option>
+                        </select>
                     </div>
                     <div class="cfg-row">
                         <label>TRIANGLE FILL OPACITY (%)</label>

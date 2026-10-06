@@ -243,6 +243,19 @@ export function compileRoute(route, ctx) {
         push({ command: 21, lat: lastNav.lat, lng: lastNav.lng, alt: 0, loc: true, segId: null, derived: false, param1: 0, param2: 0, param3: 0, param4: 0, landing: true });
     }
 
+    // ── A boat's first speed ──────────────────────────────────────────────────
+    // ArduRover starts AUTO on a boat in loiter (Rover ModeAuto::_enter →
+    // start_loiter): a DO_CHANGE_SPEED run before the first waypoint goes to
+    // the loiter, not to the waypoints, and the boat runs at WP_SPEED. After
+    // the first navigation item it runs as that leg starts.
+    if (ctx.vehicleType === 11) {
+        const isNav = (it) => it.loc && !it.isHome && !it.roi;
+        const first = out.findIndex(isNav);
+        const early = first > 0 ? out.slice(0, first).filter(it => it.command === 178) : [];
+        for (const it of early) { out.splice(out.indexOf(it), 1); it.firstLeg = true; }
+        if (early.length) out.splice(out.findIndex(isNav) + 1, 0, ...early);
+    }
+
     // ── Terrain-following waypoints (AGL mode, opt-in) ────────────────────────
     let items = out;
     if (P.altMode === 'agl' && P.terrainWaypoints) items = subdivideForTerrain(out, +P.aglTolerance || 10, terrain);
@@ -284,7 +297,9 @@ export function compileRoute(route, ctx) {
     const minClear = +P.minClearance || 0;
     const maxAgl = +P.maxAgl || 0;
     const below = new Set(), low = new Set(), high = new Set();
-    for (const it of flying) {
+    // A rover, a boat or a sub goes on (or under) the surface the elevation
+    // model holds — a lake's is its water: no clearance to keep from it
+    for (const it of onSurface ? [] : flying) {
         if (it.terrain === null) continue;
         const agl = it.altMsl - it.terrain;
         if (agl <= 0) below.add(it.segId);
@@ -293,7 +308,7 @@ export function compileRoute(route, ctx) {
     }
     // Legs: the straight line between two safe waypoints may clip a ridge
     let legMinAgl = null;
-    for (let i = 1; i < navLocated.length; i++) {
+    for (let i = 1; i < (onSurface ? 0 : navLocated.length); i++) {
         const a = navLocated[i - 1], b = navLocated[i];
         if (a.landing || b.landing || b.isHome || a.isHome) continue;   // climb-out and descent are vertical
         const hit = legClearance(a, b, terrain);
@@ -666,6 +681,8 @@ function buildStats(route, items, navLocated, segStats, homeElev, home) {
     // Length & duration follow the item sequence so speed changes are honoured
     let speed = 0, prev = null, len = 0, dur = 0;
     const P = route.params;
+    // (a boat's first speed comes after the first waypoint, for the first leg too)
+    for (const it of items) if (it.firstLeg) speed = it.param2;
     if (items.some(it => it.kind === 'takeoff')) dur += (+P.takeoffAlt || 30) / CLIMB_RATE;
     for (const it of items) {
         if (it.command === 178) { speed = it.param2; continue; }

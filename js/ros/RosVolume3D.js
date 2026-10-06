@@ -27,7 +27,8 @@ import { latLonToMeters } from '../core/utils.js';
 import { rosShared, rosView, ROS_RAMP_GLSL } from './RosMesh3D.js';
 
 const RANGE_MS = 250;
-const ROUGH_FULL_SPREAD = 0.1;     // 1 − |mean normal| drawn full red (~25°)
+const ROUGH_SIGMAS = 3;            // full red this many standard deviations above the mean spread
+const ROUGH_MIN_SPAN = 0.02;       // … and at least this far above it (1 − |mean normal|)
 
 const VERTEX = `
 attribute vec3 bary;
@@ -36,10 +37,12 @@ uniform vec3 uVehicle;
 varying vec3 vBary;
 varying float vDist;
 varying float vRough;
+varying vec3 vWorld;
 void main() {
     vBary = bary;
     vRough = rough;
     vec4 world = modelMatrix * vec4(position, 1.0);
+    vWorld = world.xyz;
     vDist = distance(world.xyz, uVehicle);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`;
@@ -50,27 +53,27 @@ uniform float uFill;
 uniform float uMode;
 uniform float uNear;
 uniform float uFar;
+uniform float uSpreadMean;
+uniform float uSpreadFull;
 varying vec3 vBary;
 varying float vDist;
 varying float vRough;
+varying vec3 vWorld;
 ${ROS_RAMP_GLSL}
 void main() {
+    // The colour modes: a solid surface, each face shaded flat, no lines
+    if (uMode > 0.5) {
+        vec3 c = uMode > 1.5 ? roughRamp(vRough, uSpreadMean, uSpreadFull)
+            : ramp(clamp((vDist - uNear) / max(uFar - uNear, 1.0), 0.0, 1.0));
+        gl_FragColor = vec4(shade(c, cross(dFdx(vWorld), dFdy(vWorld))), 1.0);
+        return;
+    }
     vec3 fw = max(fwidth(vBary), vec3(1e-6));
     vec3 e = smoothstep(fw * 0.5, fw * 1.5, vBary);
     float edge = 1.0 - min(min(e.x, e.y), e.z);
     float keep = 1.0 - smoothstep(0.15, 0.35, max(fw.x, max(fw.y, fw.z)));   // triangle under ~5 px: no lines
-    vec3 col = uColor;
-    float fill = uFill;
-    if (uMode > 1.5) {
-        float t = clamp(vRough / ${ROUGH_FULL_SPREAD.toFixed(3)}, 0.0, 1.0);
-        col = roughRamp(uColor, t);
-        fill *= 1.0 + 3.5 * t;
-    } else if (uMode > 0.5) {
-        col = ramp(clamp((vDist - uNear) / max(uFar - uNear, 1.0), 0.0, 1.0));
-        fill *= 2.5;
-    }
-    float a = edge * keep * 0.85 + fill;
-    gl_FragColor = vec4(col, min(a, 1.0));
+    float a = edge * keep * 0.85 + uFill;
+    gl_FragColor = vec4(uColor, min(a, 1.0));
 }`;
 
 let group = null;
@@ -80,7 +83,10 @@ let cell = 0.3;
 let builtOffset = null;
 let lastRange = 0;
 let range = { near: 0, far: 20 };
-const chunks = new Map();          // key → { mesh, triangles }
+const chunks = new Map();          // key → { mesh, triangles, spread: { n, sum, sq } }
+let solidStyle = null;
+// The roughness (spread of the face normals) the colours are scaled to
+const spread = { uSpreadMean: { value: 0 }, uSpreadFull: { value: ROUGH_MIN_SPAN } };
 let bary = new Float32Array(0);
 
 export function initRosVolume(scene) {
@@ -90,7 +96,7 @@ export function initRosVolume(scene) {
     group.visible = false;
     scene.add(group);
     material = new THREE.ShaderMaterial({
-        uniforms: rosShared,
+        uniforms: { ...rosShared, ...spread },
         vertexShader: VERTEX,
         fragmentShader: FRAGMENT,
         transparent: true,
@@ -161,14 +167,28 @@ export function applyRosVolume(m) {
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
         geo.setAttribute('bary', new THREE.BufferAttribute(baryFor(pos.length / 3), 3));
-        geo.setAttribute('rough', new THREE.BufferAttribute(normalSpread(pos), 1));
+        const rough = normalSpread(pos);
+        geo.setAttribute('rough', new THREE.BufferAttribute(rough, 1));
         geo.computeBoundingSphere();
         const mesh = new THREE.Mesh(geo, material);
         mesh.renderOrder = 3;
         mesh.layers.set(OVERLAY_LAYER);
         group.add(mesh);
-        chunks.set(key, { mesh, triangles: pos.length / 9 });
+        let sum = 0, sq = 0;
+        for (const r of rough) { sum += r; sq += r * r; }
+        chunks.set(key, { mesh, triangles: pos.length / 9, spread: { n: rough.length, sum, sq } });
     }
+    updateSpreadScale();
+}
+
+// Blue up to the mean spread of the normals, red from ROUGH_SIGMAS above it
+function updateSpreadScale() {
+    let n = 0, sum = 0, sq = 0;
+    for (const c of chunks.values()) { n += c.spread.n; sum += c.spread.sum; sq += c.spread.sq; }
+    if (!n) return;
+    const mean = sum / n, sd = Math.sqrt(Math.max(0, sq / n - mean * mean));
+    spread.uSpreadMean.value = mean;
+    spread.uSpreadFull.value = mean + Math.max(ROUGH_SIGMAS * sd, ROUGH_MIN_SPAN);
 }
 
 function dropChunk(key) {
@@ -189,8 +209,14 @@ export function updateRosVolume() {
     if (!group) return;
     group.visible = rosView.visible && rosView.shown && chunks.size > 0;
     if (!group.visible || !anchor) return;
-    if (material.depthTest === rosView.overTerrain) {
-        material.depthTest = !rosView.overTerrain;
+    // Grey lines over a transparent body, or in a colour mode a solid surface
+    // (it is meant for the inside of a cave: depth-tested whenever solid)
+    const solid = rosShared.uMode.value !== 0, style = `${solid}|${rosView.overTerrain}`;
+    if (style !== solidStyle) {
+        solidStyle = style;
+        material.transparent = !solid;
+        material.depthWrite = solid;
+        material.depthTest = solid || !rosView.overTerrain;
         material.needsUpdate = true;
     }
     const offset = STATE.offsetAlt || 0;
@@ -235,6 +261,12 @@ function updateRange() {
 
 /** Distance range of the colour ramp, m. */
 export function getRosVolumeColorRange() { return range; }
+
+/** Roughness colour scale, degrees of spread of the face normals: blue up to `mean`, red from `full`. */
+export function getRosVolumeRoughScale() {
+    const deg = (s) => Math.acos(Math.max(-1, Math.min(1, 1 - s))) * 180 / Math.PI;
+    return { mean: deg(spread.uSpreadMean.value), full: deg(spread.uSpreadFull.value) };
+}
 
 /** What is drawn now (status line, tests). */
 export function getRosVolumeStats() {

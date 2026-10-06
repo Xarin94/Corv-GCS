@@ -461,10 +461,12 @@ function createPlaceholderModel() {
 /**
  * The vehicle is drawn again in the overlay layer: the schematic view writes
  * no depth for a water surface there, so a vehicle under water stays visible
- * instead of being hidden by the surface (Scene3D).
+ * instead of being hidden by the surface (Scene3D). It is also drawn after the
+ * ROS surface's solid modes (render order 10; RosMesh3D clears the depth under
+ * a sea bed drawn through the terrain), so a boat stays in front of its bed.
  */
 function drawOverWater(object) {
-    object.traverse(o => o.layers.enable(OVERLAY_LAYER));
+    object.traverse(o => { o.layers.enable(OVERLAY_LAYER); o.renderOrder = 10; });
 }
 
 function setCameraMode(mode) {

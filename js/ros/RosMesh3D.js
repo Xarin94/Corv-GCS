@@ -5,13 +5,21 @@
  * cells) as a triangle mesh with grey lines on the edges and a transparent
  * body, so terrain, imagery and the vehicle stay visible through it: terrain
  * under an aircraft, a sea bed under a boat. A cave's 3D surface is drawn by
- * RosVolume3D.js with the same uniforms and look. Colour can switch to a red →
- * blue ramp by distance from the vehicle: red is the nearest surface, blue is
- * NEAR + max(20 m, 2 × NEAR) away; or to ROUGHNESS: grey where the surface is
- * flat (level or sloping), redder the further it departs from its local plane
- * (SurfaceRaster.roughness: RMS about the plane fitted within 1.5 m; full red
- * at ROUGH_FULL), so rocks, a wreck, a scarp or a bad average stand out of a
- * flat bed.
+ * RosVolume3D.js with the same uniforms and look. The two colour modes draw a
+ * SOLID surface instead — opaque, shaded from the north-west with normals from
+ * the heights (relief ×2), no lines: DISTANCE, a red → blue ramp by distance
+ * from the vehicle (red the nearest surface, blue NEAR + max(20 m, 2 × NEAR)
+ * away); ROUGHNESS, blue where the surface departs from its local plane no
+ * more than it does on average, red from 3 standard deviations above that
+ * (SurfaceRaster.roughness: RMS about the plane fitted within 1.5 m; the mean
+ * and spread over what is drawn), so rocks, a wreck, a scarp or a bad average
+ * stand out of the bed whatever its own texture.
+ *
+ * A solid surface drawn through the terrain (the default, below) still has to
+ * hide its own far side: each block first resets the depth under its
+ * footprint to the far plane (a colour-less pass), then draws depth-tested and
+ * depth-writing, all in the opaque queue before the vehicle model (render
+ * order 10, main.js) so the vehicle stays in front of the bed it floats over.
  *
  * Adaptive resolution (SurfaceRaster.js). The cell size is the finest the
  * mesh gets: each cell is drawn at the finest of 30 cm, 60 cm, 1.2, 2.4, 4.8 m
@@ -54,7 +62,7 @@ import { STATE } from '../core/state.js';
 import { ORIGIN } from '../core/constants.js';
 import { latLonToMeters } from '../core/utils.js';
 import { TILE, tileKey } from './SurfaceTiles.js';
-import { EMPTY, LEVELS, rasterize, roughness, triangulate } from './SurfaceRaster.js';
+import { EMPTY, LEVELS, rasterize, roughness, triangulate, fillLevelsFor } from './SurfaceRaster.js';
 
 const BLOCK_TILES = 8;
 const BLOCK = BLOCK_TILES * TILE;          // cells per block side
@@ -64,8 +72,11 @@ const MIN_TRI_PX = 6;
 const REBUILD_QUADS_PER_FRAME = 70000;     // rebuild budget
 const RANGE_MS = 250;
 const GHOST_ALPHA = 0.35;
-const ROUGH_FULL = 0.5;                    // m RMS about the local plane: full red
+const ROUGH_SIGMAS = 3;                    // full red this many standard deviations above the mean roughness
+const ROUGH_MIN_SPAN = 0.05;               // m: … and at least this far above it
+const RELIEF = 2;                          // shading of a solid surface: heights ×2
 const MODES = { gray: 0, distance: 1, rough: 2 };
+const ORDER = { mask: 1, solid: 2, ghost: 2, lines: 3 };
 
 const VERTEX = `
 uniform highp sampler2D uHeights;
@@ -78,6 +89,12 @@ varying vec2 vCell;
 varying float vDist;
 varying float vLevel;
 varying float vRough;
+varying vec3 vNormal;
+// A neighbour's height, this vertex's where there is none
+float near(ivec2 p, float h) {
+    float v = texelFetch(uHeights, clamp(p, ivec2(0), ivec2(${TEX - 1})), 0).r;
+    return v < -1e8 ? h : v;
+}
 void main() {
     ivec2 g = ivec2(gl_VertexID % uW, gl_VertexID / uW) * uStep;
     vec2 hl = texelFetch(uHeights, g, 0).rg;     // height, resolution level
@@ -86,19 +103,32 @@ void main() {
     vec4 local = vec4((float(g.x) + 0.5) * uCell, hl.r, -(float(g.y) + 0.5) * uCell, 1.0);
     vCell = vec2(g);
     vDist = distance((modelMatrix * local).xyz, uVehicle);
+    // Normal of y = h(x, z), x east, z = −north, from the neighbours at this level of detail
+    float ds = 2.0 * float(uStep) * uCell / ${RELIEF.toFixed(1)};
+    float dx = near(g + ivec2(uStep, 0), hl.r) - near(g - ivec2(uStep, 0), hl.r);
+    float dn = near(g + ivec2(0, uStep), hl.r) - near(g - ivec2(0, uStep), hl.r);
+    vNormal = normalize(mat3(modelMatrix) * vec3(-dx / ds, 1.0, dn / ds));
     gl_Position = projectionMatrix * modelViewMatrix * local;
+#ifdef ROS_MASK
+    gl_Position.z = gl_Position.w * 0.999999;    // the far plane: clears the depth under the surface
+#endif
 }`;
 
-// Distance colour ramp, red (near) → violet → blue (far); roughness: the grey
-// of the lines (flat) → amber → red (irregular). Also RosVolume3D's
+// Distance colour ramp, red (near) → violet → blue (far); roughness the same
+// ramp the other way: blue (as rough as the surface is on average, or less)
+// → red (well above); a solid surface's shading. Also RosVolume3D's
 export const ROS_RAMP_GLSL = `
 vec3 ramp(float t) {
     const vec3 R = vec3(1.0, 0.22, 0.16), M = vec3(0.72, 0.30, 0.88), B = vec3(0.18, 0.45, 1.0);
     return t < 0.5 ? mix(R, M, t * 2.0) : mix(M, B, t * 2.0 - 1.0);
 }
-vec3 roughRamp(vec3 base, float t) {
-    const vec3 A = vec3(1.0, 0.68, 0.18), R = vec3(1.0, 0.16, 0.12);
-    return t < 0.5 ? mix(base, A, t * 2.0) : mix(A, R, t * 2.0 - 1.0);
+vec3 roughRamp(float r, float mean, float full) {
+    return ramp(1.0 - clamp((r - mean) / max(full - mean, 1e-3), 0.0, 1.0));
+}
+vec3 shade(vec3 col, vec3 n) {
+    if (!gl_FrontFacing) n = -n;
+    const vec3 L = vec3(-0.5, 0.707, 0.5);      // from the north-west, 45° up (x east, y up, z south)
+    return col * (0.42 + 0.68 * max(dot(normalize(n), L), 0.0));
 }`;
 
 const FRAGMENT = `
@@ -108,11 +138,13 @@ uniform float uAlpha;
 uniform float uMode;
 uniform float uNear;
 uniform float uFar;
+uniform float uRoughMean;
 uniform float uRoughFull;
 varying vec2 vCell;
 varying float vDist;
 varying float vLevel;
 varying float vRough;
+varying vec3 vNormal;
 ${ROS_RAMP_GLSL}
 // Triangle edges of a lattice: along x, y and the x = y diagonal; faded out
 // where its cells are smaller than a few pixels
@@ -128,6 +160,13 @@ float levelLines(float k) {
     return lattice((vCell - 0.5 * (s - 1.0)) / s);
 }
 void main() {
+    // The colour modes: a solid, shaded surface, no lines
+    if (uMode > 0.5) {
+        vec3 c = uMode > 1.5 ? roughRamp(vRough, uRoughMean, uRoughFull)
+            : ramp(clamp((vDist - uNear) / max(uFar - uNear, 1.0), 0.0, 1.0));
+        gl_FragColor = vec4(shade(c, vNormal), uAlpha);
+        return;
+    }
     float k0 = floor(vLevel + 1e-3);
     float minor = mix(levelLines(k0), levelLines(k0 + 1.0), clamp(vLevel - k0, 0.0, 1.0));
     // Tile edges every 30 cells, readable from further away
@@ -135,19 +174,12 @@ void main() {
     vec2 ft = max(fwidth(t), vec2(1e-6));
     vec2 lt = 1.0 - smoothstep(vec2(0.6), vec2(1.6), abs(fract(t + 0.5) - 0.5) / ft);
     float major = max(lt.x, lt.y) * smoothstep(3.0, 6.0, 1.0 / max(ft.x, ft.y));
-    vec3 col = uColor;
-    float fill = uFill;
-    if (uMode > 1.5) {
-        float t = clamp(vRough / uRoughFull, 0.0, 1.0);
-        col = roughRamp(uColor, t);
-        fill *= 1.0 + 3.5 * t;
-    } else if (uMode > 0.5) {
-        col = ramp(clamp((vDist - uNear) / max(uFar - uNear, 1.0), 0.0, 1.0));
-        fill *= 2.5;
-    }
-    float a = max(minor * 0.85, major * 0.6) + fill;
-    gl_FragColor = vec4(col, min(a, 1.0) * uAlpha);
+    float a = max(minor * 0.85, major * 0.6) + uFill;
+    gl_FragColor = vec4(uColor, min(a, 1.0) * uAlpha);
 }`;
+
+// The depth-reset pass of a solid surface drawn through the terrain: no colour
+const MASK_FRAGMENT = `void main() { gl_FragColor = vec4(0.0); }`;
 
 // ============== SHARED STATE ==============
 // Also read by RosVolume3D.js: one look, one set of switches for both surfaces
@@ -159,9 +191,10 @@ const shared = {
     uVehicle: { value: new THREE.Vector3() },
     uNear: { value: 0 },
     uFar: { value: 20 },
-    uRoughFull: { value: ROUGH_FULL }
+    uRoughMean: { value: 0 },
+    uRoughFull: { value: ROUGH_MIN_SPAN }
 };
-const view = { visible: false, shown: true, overTerrain: true, minSamples: 1, range: { near: 0, far: 20 }, lastRange: 0 };
+const view = { visible: false, shown: true, overTerrain: true, minSamples: 1, fillM: 0, range: { near: 0, far: 20 }, lastRange: 0, lastRough: 0 };
 export { shared as rosShared, view as rosView };
 const scratchIndex = new Uint16Array(BLOCK * BLOCK * 6);
 const frustum = new THREE.Frustum();
@@ -251,14 +284,19 @@ class SurfaceLayer {
         roughTex.unpackAlignment = 1;                              // rows of 241 bytes
         const uniforms = { ...shared, uHeights: { value: tex }, uRough: { value: roughTex }, uStep: { value: 1 }, uW: { value: TEX }, uAlpha: { value: 1 } };
         const common = { vertexShader: VERTEX, fragmentShader: FRAGMENT, transparent: true, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true };
-        const mat = new THREE.ShaderMaterial({ ...common, uniforms, depthTest: !view.overTerrain });
+        const mat = new THREE.ShaderMaterial({ ...common, uniforms });
         const ghostMat = new THREE.ShaderMaterial({ ...common, uniforms: { ...uniforms, uAlpha: { value: GHOST_ALPHA } }, depthFunc: THREE.GreaterDepth });
+        const maskMat = new THREE.ShaderMaterial({
+            vertexShader: VERTEX, fragmentShader: MASK_FRAGMENT, uniforms, defines: { ROS_MASK: 1 },
+            colorWrite: false, depthTest: false, depthWrite: true, side: THREE.DoubleSide
+        });
         const b = {
-            bx, by, data, wts, texData, tex, rough, roughTex, roughDone: false, mat, ghostMat, tiles: new Set(),
-            geo: null, mesh: null, ghost: null, capacity: 0, triangles: 0,
+            bx, by, data, wts, texData, tex, rough, roughTex, roughDone: false, roughStats: null, mat, ghostMat, maskMat, tiles: new Set(),
+            geo: null, mesh: null, ghost: null, mask: null, capacity: 0, triangles: 0, solid: null,
             step: 0, dirty: true, box: new THREE.Box3(), levelCount: new Uint32Array(LEVELS + 1)
         };
         this.setGeometry(b, 1024);
+        styleBlock(b);
         this.blocks.set(tileKey(bx, by), b);
         this.placeBlock(b);
         // The aprons: first column / row of the tiles east and north, and the corner
@@ -286,7 +324,8 @@ class SurfaceLayer {
         if (!b.mesh) {
             b.mesh = new THREE.Mesh(geo, b.mat);
             b.ghost = new THREE.Mesh(geo, b.ghostMat);
-            for (const [m, order] of [[b.mesh, 3], [b.ghost, 2]]) {
+            b.mask = new THREE.Mesh(geo, b.maskMat);
+            for (const [m, order] of [[b.mesh, ORDER.lines], [b.ghost, ORDER.ghost], [b.mask, ORDER.mask]]) {
                 m.frustumCulled = false;        // culled per block in update(); no vertex buffer to bound
                 m.matrixAutoUpdate = false;     // placed by placeBlock()
                 m.renderOrder = order;
@@ -297,15 +336,18 @@ class SurfaceLayer {
         } else {
             b.mesh.geometry = geo;
             b.ghost.geometry = geo;
+            b.mask.geometry = geo;
         }
     }
 
     disposeBlock(key, b) {
         this.group.remove(b.mesh);
         this.group.remove(b.ghost);
+        this.group.remove(b.mask);
         b.geo.dispose();
         b.mat.dispose();
         b.ghostMat.dispose();
+        b.maskMat.dispose();
         b.tex.dispose();
         b.roughTex.dispose();
         this.blocks.delete(key);
@@ -327,7 +369,7 @@ class SurfaceLayer {
         b.matrix = b.matrix || new THREE.Matrix4();
         b.matrix.makeScale(kx, 1, kz).premultiply(new THREE.Matrix4().makeTranslation(
             base.x + enu[0] * kx, a.alt + this.offset + enu[2], base.z - enu[1] * kz)).multiply(this.permute);
-        for (const m of [b.mesh, b.ghost]) { m.matrix.copy(b.matrix); m.matrixWorldNeedsUpdate = true; }
+        for (const m of [b.mesh, b.ghost, b.mask]) { m.matrix.copy(b.matrix); m.matrixWorldNeedsUpdate = true; }
         let minH = Infinity, maxH = -Infinity;
         for (const key of b.tiles) {
             const t = this.tiles.get(key);
@@ -341,13 +383,22 @@ class SurfaceLayer {
     // The drawn heights (SurfaceRaster.rasterize: adaptive level per cell,
     // holes interpolated, nothing across a jump). Uploads.
     fillBlock(b) {
-        b.levelCount = rasterize(b.data, b.wts, TEX, TEX, b.texData, { minSamples: view.minSamples, cell: this.cell });
+        b.levelCount = rasterize(b.data, b.wts, TEX, TEX, b.texData,
+            { minSamples: view.minSamples, cell: this.cell, fillLevels: fillLevelsFor(view.fillM, this.cell) });
         b.tex.needsUpdate = true;
         // Roughness only while it is shown; switching to it refills the blocks
         b.roughDone = shared.uMode.value === MODES.rough;
         if (b.roughDone) {
             roughness(b.texData, TEX, TEX, b.rough, { cell: this.cell });
             b.roughTex.needsUpdate = true;
+            // The block's share of the mean and spread the colours are scaled to (cm)
+            let n = 0, sum = 0, sq = 0;
+            for (let p = 0; p < TEX * TEX; p++) {
+                if (!(b.texData[p * 2] > EMPTY)) continue;
+                const r = b.rough[p];
+                n++; sum += r; sq += r * r;
+            }
+            b.roughStats = { n, sum, sq };
         }
         b.dirty = false;
     }
@@ -369,7 +420,7 @@ class SurfaceLayer {
         b.geo.setDrawRange(0, n);
         b.triangles = n / 3;
         b.step = s;
-        for (const m of [b.mat, b.ghostMat]) { m.uniforms.uStep.value = s; m.uniforms.uW.value = W; }
+        for (const m of [b.mat, b.ghostMat, b.maskMat]) { m.uniforms.uStep.value = s; m.uniforms.uW.value = W; }
         return (W - 1) * (W - 1);
     }
 
@@ -395,8 +446,10 @@ class SurfaceLayer {
                 if (b.dirty || s !== b.step) todo.push([d, this, b, s]);
             }
             const draw = inView && b.triangles > 0;
+            styleBlock(b);
             b.mesh.visible = draw;
             b.ghost.visible = draw && !view.overTerrain;
+            b.mask.visible = draw && b.solid && view.overTerrain;
         }
     }
 
@@ -484,8 +537,23 @@ export function setRosMeshColorMode(mode) {
     }
 }
 
-/** RMS about the local plane drawn full red, m. */
-export function getRosRoughFull() { return shared.uRoughFull.value; }
+/** Roughness colour scale, m RMS about the local plane: blue up to `mean`, red from `full`. */
+export function getRosRoughScale() { return { mean: shared.uRoughMean.value, full: shared.uRoughFull.value }; }
+
+// The mean and spread of the roughness over what is drawn, for its colours
+function updateRoughScale() {
+    let n = 0, sum = 0, sq = 0;
+    for (const l of Object.values(layers)) {
+        for (const b of l.blocks.values()) {
+            if (!b.roughStats || !b.triangles) continue;
+            n += b.roughStats.n; sum += b.roughStats.sum; sq += b.roughStats.sq;
+        }
+    }
+    if (!n) return;
+    const mean = sum / n, sd = Math.sqrt(Math.max(0, sq / n - mean * mean));
+    shared.uRoughMean.value = mean / 100;
+    shared.uRoughFull.value = (mean + Math.max(ROUGH_SIGMAS * sd, ROUGH_MIN_SPAN * 100)) / 100;
+}
 
 /** Samples a cell needs to be drawn at its own size; fewer: a coarser level. */
 export function setRosMeshMinSamples(n) {
@@ -495,12 +563,18 @@ export function setRosMeshMinSamples(n) {
     for (const l of Object.values(layers)) for (const b of l.blocks.values()) b.dirty = true;
 }
 
+/** Holes interpolated up to this many metres (0: 4 cells, the default). */
+export function setRosMeshFill(m) {
+    const v = Math.max(0, Number(m) || 0);
+    if (v === view.fillM) return;
+    view.fillM = v;
+    for (const l of Object.values(layers)) for (const b of l.blocks.values()) b.dirty = true;
+}
+
 /** Draw through the terrain mesh (true) or depth-tested with a faint hidden pass. */
 export function setRosMeshOverTerrain(over) {
     view.overTerrain = !!over;
-    for (const l of Object.values(layers)) {
-        for (const b of l.blocks.values()) { b.mat.depthTest = !view.overTerrain; b.mat.needsUpdate = true; }
-    }
+    for (const l of Object.values(layers)) for (const b of l.blocks.values()) styleBlock(b);
 }
 
 /** Distance range of the colour ramp, m (nearest surface → blue). */
@@ -517,6 +591,10 @@ export function updateRosMesh() {
     const veh = latLonToMeters(STATE.lat, STATE.lon);
     shared.uVehicle.value.set(veh.x, (STATE.rawAlt || 0) + (STATE.offsetAlt || 0), veh.z);
     const now = performance.now();
+    if (shared.uMode.value === MODES.rough && now - view.lastRough > RANGE_MS) {
+        view.lastRough = now;
+        updateRoughScale();
+    }
     if (shared.uMode.value === MODES.distance && now - view.lastRange > RANGE_MS) {
         view.lastRange = now;
         const near = Math.min(...all.map(l => l.nearest(shared.uVehicle.value)));
@@ -545,7 +623,25 @@ export function updateRosMesh() {
         budget -= l.buildIndex(b, s);
         b.mesh.visible = b.triangles > 0;
         b.ghost.visible = b.mesh.visible && !view.overTerrain;
+        b.mask.visible = b.mesh.visible && b.solid && view.overTerrain;
     }
+}
+
+// Grey lines over a transparent body (drawn through the terrain or depth-tested),
+// or a solid surface in a colour mode: opaque, depth-tested and depth-writing,
+// after its depth-reset pass when drawn through the terrain
+function styleBlock(b) {
+    const solid = shared.uMode.value !== MODES.gray;
+    const key = `${solid}|${view.overTerrain}`;
+    if (b.style === key) return;
+    b.style = key;
+    b.solid = solid;
+    const m = b.mat;
+    m.transparent = !solid;
+    m.depthWrite = solid;
+    m.depthTest = solid || !view.overTerrain;
+    m.needsUpdate = true;
+    b.mesh.renderOrder = solid ? ORDER.solid : ORDER.lines;
 }
 
 /** Tiles drawn now, as the worker sent them (diagnostics, tests). */

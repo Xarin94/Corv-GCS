@@ -677,15 +677,24 @@ The GCS subscribes to one ROS topic (`sensor_msgs/PointCloud2`, `LaserScan` or
 ```
 rosbridge ── CBOR, throttle_rate, queue 1 ──▶ RosWorker ── sample ≤ N points/message
 STATE pose (absolute or relative) + arrival times, body rates, velocity ──▶ projected to the points' time
+   (a LaserScan with time_increment — a sector sonar, one beam per ping — beam by beam, each at its own time)
    ▼  mount → body → NED → ENU from an anchor
- floor: SurfaceTiles (30 cm cells, 30×30 tiles) ──'tiles'──▶ RosMesh3D (RG32F blocks, SurfaceRaster levels / jumps)
+ floor: SurfaceTiles (30 cm cells, 30×30 tiles) ──'tiles'──▶ RosMesh3D (RG32F blocks, SurfaceRaster levels / jumps / fill)
  cave:  SurfaceVolume (TSDF 16³ chunks, surface nets) ──'volume'──▶ RosVolume3D (mesh per chunk)
 ```
 
-Only changed tiles or chunk meshes leave the worker (≤ 4 Hz). `scripts/rosbridge-sim.js`
-emulates rosbridge with synthetic sensors ray-cast from SITL's true pose;
-`scripts/test-ros-surface.js` and `scripts/test-ros-cave.js` check the chain
-offline. See `docs/ROS.md`.
+Only changed tiles or chunk meshes leave the worker (≤ 4 Hz). GRAY draws grey
+lines over a transparent body; DIST and ROUGH a solid shaded surface (normals from
+the heights), which — drawn through the terrain — first resets the depth under its
+footprint, then draws depth-tested in the opaque queue before the vehicle model
+(render order 10). ROUGH is scaled to the surface's own mean and spread. `scripts/rosbridge-sim.js`
+emulates rosbridge with synthetic sensors ray-cast from SITL's true pose — among
+them a mechanical sector-scanning sonar stepping on the SITL's clock — against the
+scenes of `scripts/ros-sim-scenes.js` (the Lake Garda bed with objects on it, ray-cast
+exactly); `scripts/test-ros-surface.js`, `scripts/test-ros-cave.js` and
+`scripts/test-ros-sector.js` (the worker itself on a moving boat) check the chain
+offline, and `scripts/garda-map.js` draws the scene or a surveyed surface as a
+bathymetric map. See `docs/ROS.md`.
 
 ## 5. Key Integration Patterns
 

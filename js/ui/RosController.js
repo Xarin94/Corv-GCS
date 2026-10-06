@@ -30,9 +30,9 @@ import { drawMountPreview } from './MountPreview.js';
 import { getRoute } from '../mission/RouteModel.js';
 import {
     applyRosTiles, clearRosMesh, setRosMeshVisible, setRosMeshShown, setRosMeshFillOpacity,
-    setRosMeshColorMode, setRosMeshOverTerrain, setRosMeshMinSamples, getRosColorRange, getRosMeshStats, getRosRoughFull
+    setRosMeshColorMode, setRosMeshOverTerrain, setRosMeshMinSamples, setRosMeshFill, getRosColorRange, getRosMeshStats, getRosRoughScale
 } from '../ros/RosMesh3D.js';
-import { applyRosVolume, clearRosVolume, getRosVolumeStats, getRosVolumeColorRange } from '../ros/RosVolume3D.js';
+import { applyRosVolume, clearRosVolume, getRosVolumeStats, getRosVolumeColorRange, getRosVolumeRoughScale } from '../ros/RosVolume3D.js';
 
 const STORAGE_KEY = 'ros-config';
 const POSE_MS = 50;
@@ -56,21 +56,28 @@ const FIELDS = {
     'ros-despike':      { key: 'despike',    parse: v => (v === 'off' ? 'off' : 'on') },
     'ros-lag':          { key: 'lagMs',      parse: num(0) },
     'ros-time-base':    { key: 'timeBase',   parse: v => String(v) },
+    'ros-vertical':     { key: 'vertical',   parse: v => (v === 'water' ? 'water' : 'vehicle') },
     'ros-cell':         { key: 'cell',       parse: num(0.3) },
     'ros-grid-memory':  { key: 'memory',     parse: num(20) },
     'ros-max-tiles':    { key: 'maxTiles',   parse: num(2048) },
     'ros-min-samples':  { key: 'minSamples', parse: num(1), local: true },
+    'ros-fill':         { key: 'fillM',      parse: num(0) },
     'ros-layers':       { key: 'layers',     parse: v => String(v) },
     'ros-fill-opacity': { key: 'fillPct',    parse: num(10), local: true },
     'ros-over-terrain': { key: 'overTerrain', parse: v => !!v, checkbox: true, local: true }
 };
 
 // What choosing a sensor fills in: an aerial Livox inverted under the belly;
-// a down-looking echo sounder or sonar (Range / LaserScan measure along x).
-// 30 cm cells need points: ~10 000 a second to fill a 100 m swath at 8 m/s.
+// a down-looking echo sounder or sonar (Range / LaserScan measure along x); a
+// mechanical sector-scanning sonar, head down and sweeping across the track,
+// one beam per ping (its LaserScans carry time_increment: each beam is placed
+// at its own time). 30 cm cells need points: ~10 000 a second to fill a
+// 100 m swath at 8 m/s.
 const PROFILES = {
-    aerial: { mountRoll: 180, mountPitch: 0, mountYaw: 0, minRange: 2.5, maxRange: 100, rateHz: 10, maxPoints: 5000 },
-    seabed: { mountRoll: 0, mountPitch: -90, mountYaw: 0, minRange: 0.5, maxRange: 100, rateHz: 10, maxPoints: 1000 }
+    aerial: { mountRoll: 180, mountPitch: 0, mountYaw: 0, minRange: 2.5, maxRange: 100, rateHz: 10, maxPoints: 5000, fillM: 0 },
+    seabed: { mountRoll: 0, mountPitch: -90, mountYaw: 0, minRange: 0.5, maxRange: 100, rateHz: 10, maxPoints: 1000, fillM: 0 },
+    // its sweeps 5–10 m apart along the track: holes filled up to 8 m
+    sector: { mountRoll: 0, mountPitch: -90, mountYaw: 0, minRange: 0.75, maxRange: 100, rateHz: 10, maxPoints: 1000, fillM: 8 }
 };
 const KEY_TO_ID = Object.fromEntries(Object.entries(FIELDS).map(([id, f]) => [f.key, id]));
 
@@ -127,6 +134,7 @@ function applyView() {
     setRosMeshFillOpacity((cfg.fillPct ?? 10) / 100);
     setRosMeshOverTerrain(cfg.overTerrain !== false);
     setRosMeshMinSamples(cfg.minSamples ?? 1);
+    setRosMeshFill(cfg.fillM ?? 0);
     setRosMeshColorMode(cfg.colorMode);
     setRosMeshShown(cfg.shown !== false);
     if (els.colorBtn) {
@@ -377,13 +385,19 @@ function renderStatus(st) {
     const lines = [];
     lines.push(`<span class="${st.link === 'CONNECTED' ? 'ok' : 'warn'}">${esc(st.link)}</span> ${esc(st.url || '')}`);
     if (st.topic) lines.push(`${esc(st.topic)} · ${esc(shortType(st.type))}${st.frameId ? ` · frame ${esc(st.frameId)} → ${FRAME_LABEL[st.frame] || ''}` : ''}`);
+    if (st.timedSpan > 0 && st.frame === 'sensor') lines.push(`beams measured over ${fmt(st.timedSpan, 2)} s a message (time_increment): each placed with the pose of its own time`);
     if (st.stampOff !== null && st.stampOff !== undefined) lines.push(`<span class="warn">header.stamp ${fmt(st.stampOff / 1000, 1)} s from this clock: not synced, arrival time used</span>`);
     const r = st.rate || {};
     lines.push(`${fmt(r.msgs)} msg/s · ${fmt(r.pointsIn)} pts/s in · ${fmt(r.sampled)} sampled · ${fmt(r.used)} averaged`
         + (st.despike === 'on' ? ` · ${fmt(r.spikes || 0)} spikes dropped (${fmt(100 * (r.spikes || 0) / Math.max(1, r.sampled), 1)} %)`
             : st.despike === 'unordered' ? ' · spike filter idle: the scan has no order' : ''));
     const drops = [];
-    if (r.noPose) drops.push(`${fmt(r.noPose)} msg/s without pose`);
+    if (r.noPose) {
+        const m = st.poseMiss;
+        // (points later than the newest telemetry: the telemetry lags; earlier than the oldest kept: the points do)
+        drops.push(`${fmt(r.noPose)} msg/s without pose` + (m && m.att !== null
+            ? ` (points ${m.att >= 0 ? `${fmt(m.att)} ms after the newest attitude` : `${fmt(-m.att)} ms before it`}, ${fmt(m.oldest)} ms after the oldest kept, clock ×${fmt(m.clockRate, 1)})` : ''));
+    }
     if (r.noHome) drops.push(`${fmt(r.noHome)} msg/s without home`);
     if (drops.length) lines.push(`<span class="warn">${drops.join(' · ')}</span>`);
     const g = st.surface || {};
@@ -401,6 +415,7 @@ function renderStatus(st) {
         lines.push(`drawn ${fmt(m.blocksDrawn)} / ${fmt(m.blocks)} blocks · ${fmt(m.triangles)} triangles · resolution ${res}`);
     }
     lines.push(`<span class="${ok ? 'ok' : 'warn'}">${esc(st.state)}</span> · pose ${isRelativeMode() ? 'relative (local frame)' : 'absolute (GPS)'}`
+        + (st.vertical === 'water' ? ` · height: the water surface at home${st.waterAlt !== null && st.waterAlt !== undefined ? ` (${fmt(st.waterAlt, 1)} m)` : ', no home yet'}` : '')
         + (st.clockRate && Math.abs(st.clockRate - 1) > 0.1 ? ` · autopilot clock ×${fmt(st.clockRate, 1)} (SITL speedup)` : ''));
     if (st.error && st.link !== 'CONNECTED') lines.push(`<span class="err">${esc(st.error)}</span>`);
     el.innerHTML = lines.join('\n');
@@ -420,7 +435,9 @@ function updateStrip(st) {
         const r = cave ? getRosVolumeColorRange() : getRosColorRange();
         text += ` · ${fmt(r.near)}–${fmt(r.far)} m`;
     } else if (cfg.colorMode === 'rough' && have) {
-        text += cave ? ' · flat → 25° of spread' : ` · flat → ${fmt(getRosRoughFull(), 1)} m off-plane`;
+        const r = cave ? getRosVolumeRoughScale() : getRosRoughScale();
+        text += cave ? ` · blue ≤ ${fmt(r.mean)}° · red ≥ ${fmt(r.full)}° of spread`
+            : ` · blue ≤ ${fmt(r.mean * 100)} cm · red ≥ ${fmt(r.full * 100)} cm off-plane`;
     }
     if (!cave && g.coverage && g.coverage.length) {
         const a = g.coverage.reduce((s, c) => s + c.area, 0), c = g.coverage.reduce((s, x) => s + x.covered, 0);

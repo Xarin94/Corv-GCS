@@ -21,14 +21,36 @@
  *                                                across the vehicle (y–z plane: a level passage's
  *                                                cross-section), one level (x–y: a shaft's), 2 × 400
  *                                                beams, 40 m
+ *   /sonar/sector       sensor_msgs/LaserScan    sector_sonar  mechanical sector-scanning sonar (below)
  * plus a few topics of other types, listed by rosapi and never published.
+ *
+ * Sector-scanning sonar (a Ping360, Imagenex 881, Tritech Micron class head):
+ * ONE beam per ping, the head stepping --sector-step (1.8°) between pings,
+ * back and forth over --sector-aperture (120°) in the sensor's x–y plane —
+ * mounted with --sector-mount (0,-90,0: x down, the sweep across the track).
+ * A ping lasts the echo's travel to --sector-range and back (2 R / 1480 m/s)
+ * plus 12 ms to step the head: 12–17 pings a second, a sweep every 4–6 s,
+ * so each beam is measured from a different pose. The bottom is where the
+ * echo crosses a threshold: rays across the beam — --sector-beam (2°) in the
+ * sweep plane by --sector-fan (2°; 25° for a Ping360) across it — weighted by
+ * its pattern, and the range by which a quarter of the echo's energy has come
+ * back, reported on the beam's axis as a sector sonar cannot tell: objects
+ * come out wider by part of the beam's footprint, and an oblique bed a little
+ * shallow (5–20 cm at 45–60° off nadir in 15 m of water). The pings are
+ * published as LaserScans of about --sector-batch (1 s) of the sweep — each
+ * sweep cut in equal parts, never across a turn of the head — with
+ * header.stamp the first ping and time_increment the ping period
+ * (sensor_msgs/LaserScan): the GCS places every beam at its own time. The head steps on
+ * the SITL's clock (its speed-up from ATTITUDE.time_boot_ms), so a survey run
+ * faster than real time keeps the sonar's sampling along the track.
  *
  * Scenes (scripts/ros-sim-scenes.js): 'terrain' (hills under an aircraft),
  * 'seabed' (a lake bed 5–25 m under the surface the vehicle started on),
  * 'cave' (an underwater cave from a basin at the start, for a ROV) or
  * 'garda' (5 km² of Lake Garda's southern basin, fixed to the map: its origin
  * is the survey area's corner, not the vehicle's start; the water surface is
- * still the home altitude).
+ * still the home altitude) or 'garda-complex' (the same, with a ridge, a
+ * scarp, a pinnacle, boulders and sand waves around the objects).
  *
  * Imaging sonar disturbances (--sonar-clean turns them off): the return comes
  * from anywhere in the beam's vertical aperture (--sonar-elevation, 10°) but
@@ -44,13 +66,19 @@
  * decoding, sampling, mount, attitude, position, frames, averaging — is right.
  *
  *   node scripts/rosbridge-sim.js [--port 9090] [--mav tcp:127.0.0.1:5762]
- *        [--scene terrain|seabed] [--ros1] [--lidar-mount 180,0,0]
+ *        [--scene terrain|seabed|cave|garda|garda-complex] [--ros1] [--lidar-mount 180,0,0]
  *        [--down-mount 0,-90,0] [--profiler-mount 0,0,0] [--lever 0,0,0] [--lidar-points 10000]
+ *        [--sector-mount 0,-90,0] [--sector-aperture 120] [--sector-step 1.8] [--sector-range 40]
+ *        [--sector-beam 2] [--sector-fan 2] [--sector-batch 1]
  *        [--anchor lat,lon,alt] [--pose e,n,up,yaw]
  *
  * --pose holds the vehicle still at east / north / up metres from the anchor
  * (default 0,0,0), level, heading yaw degrees, with no SITL at all: for
- * offline tests (scripts/test-ros-surface.js).
+ * offline tests (scripts/test-ros-surface.js). With --speed v it moves along
+ * that heading at v m/s, level, from --pose-t0 (epoch ms; default: start), so
+ * a test can feed the GCS the same track (scripts/test-ros-sector.js).
+ * --sector-untimed publishes the sector sonar with time_increment 0, as a
+ * republisher that forgot it: for tests, to see what per-beam time is worth.
  *
  * Start it before the vehicle moves: the scene is anchored at the first
  * position (home), with the ground at the home altitude (MAVLink
@@ -93,9 +121,27 @@ const SONAR = {
     elevation: parseFloat(arg('sonar-elevation', '10')),
     clean: argv.includes('--sonar-clean')
 };
+const SOUND_SPEED = 1480;          // m/s in fresh water
+const SECTOR = {
+    mount: arg('sector-mount', '0,-90,0').split(',').map(Number),
+    aperture: parseFloat(arg('sector-aperture', '120')),
+    step: parseFloat(arg('sector-step', '1.8')),
+    range: parseFloat(arg('sector-range', '40')),
+    beam: parseFloat(arg('sector-beam', '2')),
+    fan: parseFloat(arg('sector-fan', '2')),
+    batch: parseFloat(arg('sector-batch', '1')),
+    untimed: argv.includes('--sector-untimed'),
+    minRange: 0.75
+};
+// The echo's travel to the range and back, plus stepping the head
+SECTOR.period = 2 * SECTOR.range / SOUND_SPEED + 0.012;
+SECTOR.sweepPings = Math.floor(SECTOR.aperture / SECTOR.step + 1e-9) + 1;
+SECTOR.half = (SECTOR.sweepPings - 1) * SECTOR.step / 2;       // the steps centred on the axis
+// Pings per message: the sweep in equal parts of about --sector-batch
+SECTOR.perBatch = Math.ceil(SECTOR.sweepPings / Math.max(1, Math.round(SECTOR.sweepPings * SECTOR.period / SECTOR.batch)));
 const POSE_ARG = arg('pose', null);
 const SCENE = SCENES[SCENE_NAME];
-if (!SCENE) { console.error(`unknown scene ${SCENE_NAME} (terrain | seabed)`); process.exit(1); }
+if (!SCENE) { console.error(`unknown scene ${SCENE_NAME} (${Object.keys(SCENES).join(' | ')})`); process.exit(1); }
 
 const DEG = Math.PI / 180;
 const T = (pkg, name) => ROS1 ? `${pkg}/${name}` : `${pkg}/msg/${name}`;
@@ -287,11 +333,17 @@ if (ANCHOR_ARG || POSE_ARG) {
 }
 if (POSE_ARG) {
     const [e, n, u, yaw] = POSE_ARG.split(',').map(Number);
-    Object.assign(pose, {
-        lat: anchor.lat + n / anchor.mPerLat, lon: anchor.lon + e / anchor.mPerLon, alt: anchor.alt + u,
-        yaw: (yaw || 0) * DEG, have: true, src: 'fixed (--pose)'
-    });
-    setInterval(() => { pose.t = Date.now(); }, 50);
+    const v = parseFloat(arg('speed', '0')), t0 = parseFloat(arg('pose-t0', String(Date.now())));
+    const ya = (yaw || 0) * DEG, vn = v * Math.cos(ya), ve = v * Math.sin(ya);
+    const place = () => {
+        const now = Date.now(), dt = (now - t0) / 1000;
+        Object.assign(pose, {
+            lat: anchor.lat + (n + vn * dt) / anchor.mPerLat, lon: anchor.lon + (e + ve * dt) / anchor.mPerLon, alt: anchor.alt + u,
+            yaw: ya, vn, ve, vd: 0, t: now, tAtt: now, have: true, src: v ? `moving ${v} m/s (--pose --speed)` : 'fixed (--pose)'
+        });
+    };
+    place();
+    setInterval(place, 50);
 }
 
 function tryAnchor() {
@@ -357,7 +409,8 @@ function connectMavlink() {
                     if (!truthAlt) { pose.alt = msg.alt / 1000; pose.vn = msg.vx / 100; pose.ve = msg.vy / 100; pose.vd = msg.vz / 100; }
                 }
                 break;
-            case 30:       // ATTITUDE: fallback
+            case 30:       // ATTITUDE: the autopilot's clock; attitude fallback
+                onBootTime(msg.timeBootMs, now);
                 if (!truthLL) {
                     pose.roll = msg.roll; pose.pitch = msg.pitch; pose.yaw = msg.yaw;
                     pose.p = msg.rollspeed; pose.q = msg.pitchspeed; pose.r = msg.yawspeed; pose.tAtt = now;
@@ -367,6 +420,34 @@ function connectMavlink() {
         // Without GPS, wait for a true altitude before anchoring
         if (pose.have && (homeAlt !== null || truthAlt)) tryAnchor();
     });
+}
+
+// ============== AUTOPILOT CLOCK ==============
+// A SITL runs at its speed-up: ATTITUDE.time_boot_ms against arrival over the
+// last 3 s gives the rate (1 with --pose, where there is no autopilot). The
+// pose is projected and the sector sonar's head steps on this clock.
+const simClock = { rate: 1, ring: [] };          // ring: [wall ms, boot ms]
+function onBootTime(boot, now) {
+    const r = simClock.ring;
+    if (r.length && boot < r[r.length - 1][1]) r.length = 0;     // SITL restarted
+    r.push([now, boot]);
+    while (r.length > 2 && now - r[0][0] > 3000) r.shift();
+    const [w0, b0] = r[0];
+    if (now - w0 >= 500 && boot > b0) simClock.rate = Math.max(0.05, Math.min(100, (boot - b0) / (now - w0)));
+}
+function simRate() { return POSE_ARG ? 1 : simClock.rate; }
+// Sensor time (s) at a wall time, and back
+function sensorTime(wall) {
+    const r = simClock.ring;
+    if (POSE_ARG || !r.length) return wall / 1000;
+    const [w, b] = r[r.length - 1];
+    return (b + (wall - w) * simClock.rate) / 1000;
+}
+function wallTime(s) {
+    const r = simClock.ring;
+    if (POSE_ARG || !r.length) return s * 1000;
+    const [w, b] = r[r.length - 1];
+    return w + (s * 1000 - b) / simClock.rate;
 }
 
 // ============== SENSORS ==============
@@ -380,21 +461,23 @@ function eulerToMatrix(roll, pitch, yaw, out = new Float64Array(9)) {
 const R_LIDAR = eulerToMatrix(LIDAR_MOUNT[0] * DEG, LIDAR_MOUNT[1] * DEG, LIDAR_MOUNT[2] * DEG);
 const R_DOWN = eulerToMatrix(DOWN_MOUNT[0] * DEG, DOWN_MOUNT[1] * DEG, DOWN_MOUNT[2] * DEG);
 const R_PROFILER = eulerToMatrix(PROFILER_MOUNT[0] * DEG, PROFILER_MOUNT[1] * DEG, PROFILER_MOUNT[2] * DEG);
+const R_SECTOR = eulerToMatrix(SECTOR.mount[0] * DEG, SECTOR.mount[1] * DEG, SECTOR.mount[2] * DEG);
 const Ra = new Float64Array(9);
 
 // Sensor origin and the mapping of sensor-frame directions to ENU, at the pose
-// projected to now (velocity; body rates through the Euler kinematics, so a
-// scan taken in a turn is not drawn with the attitude of up to 50 ms ago).
-// The inverse of what the GCS does with the points.
-function rig(Rm) {
+// projected to `at` (wall ms; velocity; body rates through the Euler
+// kinematics, so a scan taken in a turn is not drawn with the attitude of up
+// to 50 ms ago), on the autopilot's clock. The inverse of what the GCS does
+// with the points.
+function rig(Rm, at = Date.now()) {
     if (!anchor || !pose.have) return null;
-    const now = Date.now();
-    const dt = Math.min(0.5, (now - pose.t) / 1000);
+    const k = simRate();
+    const dt = Math.min(0.5, k * (at - pose.t) / 1000);
     const lat = pose.lat + pose.vn * dt / anchor.mPerLat;
     const lon = pose.lon + pose.ve * dt / anchor.mPerLon;
     const alt = pose.alt - pose.vd * dt;
     let roll = pose.roll, pitch = pose.pitch, yaw = pose.yaw;
-    const da = Math.min(0.5, (now - pose.tAtt) / 1000), n = Math.max(1, Math.ceil(da / 0.02)), h = da / n;
+    const da = Math.min(0.5, k * (at - pose.tAtt) / 1000), n = Math.max(1, Math.ceil(Math.abs(da) / 0.02)), h = da / n;
     for (let k = 0; k < n; k++) {
         const sr = Math.sin(roll), cr = Math.cos(roll), qr = pose.q * sr + pose.r * cr;
         roll += h * (pose.p + qr * Math.tan(pitch));
@@ -426,9 +509,8 @@ function gaussRand() {
 }
 
 let headerSeq = 0;
-function header(frameId) {
-    const now = Date.now();
-    const sec = Math.floor(now / 1000), ns = (now % 1000) * 1e6;
+function header(frameId, ms = Date.now()) {
+    const sec = Math.floor(ms / 1000), ns = Math.round((ms - sec * 1000) * 1e6);
     return ROS1 ? { seq: headerSeq++, stamp: { secs: sec, nsecs: ns }, frame_id: frameId }
         : { stamp: { sec, nanosec: ns }, frame_id: frameId };
 }
@@ -574,8 +656,101 @@ const GEN = {
             header: header('ping1d'), radiation_type: 0, field_of_view: 0.52, min_range: 0.5, max_range: 100,
             range: d ? d + (Math.random() - 0.5) * 0.1 : Infinity
         };
-    }
+    },
+    // The sweeps the head has finished (see SECTOR SCANNING SONAR)
+    '/sonar/sector': () => sector.ready.shift() || null
 };
+
+// ============== SECTOR SCANNING SONAR ==============
+// Rays across the beam: its axis, rings at half and full half-power width
+// (--sector-beam in the sweep plane, --sector-fan across it) and, for a wide
+// fan, a line along it every 1.5°; each weighted by the beam's power pattern
+// (a Gaussian, half power at the edge of the -3 dB width).
+const SECTOR_RAYS = (() => {
+    const hb = SECTOR.beam / 2 * DEG, hf = SECTOR.fan / 2 * DEG, out = [[0, 0]];
+    for (const f of [0.5, 1]) for (let k = 0; k < 8; k++) out.push([f * hb * Math.cos(k * Math.PI / 4), f * hf * Math.sin(k * Math.PI / 4)]);
+    const nf = Math.floor(SECTOR.fan / 1.5);
+    for (let k = 1; k < nf; k++) out.push([0, hf * k / nf], [0, -hf * k / nf]);
+    const w = ([a, z]) => Math.exp(-Math.LN2 * ((hb ? (a / hb) ** 2 : 0) + (hf ? (z / hf) ** 2 : 0)));
+    return out.map(r => [r[0], r[1], w(r)]);
+})();
+const SECTOR_DETECT = 0.25;        // the bottom: where this much of the echo's energy is back
+const echoRays = SECTOR_RAYS.map(() => [0, 0]);
+
+const sector = { angle: -SECTOR.half, dir: 1, next: null, batch: null, ready: [], pings: 0 };
+
+function sectorEcho(r, a) {
+    // The echo: each ray's return, in order of range, until DETECT of the energy
+    let n = 0, total = 0;
+    for (const [da, dz, w] of SECTOR_RAYS) {
+        const az = a + da, cz = Math.cos(dz);
+        const t = shoot(r, cz * Math.cos(az), cz * Math.sin(az), Math.sin(dz), SECTOR.range);
+        total += w;
+        if (t) { echoRays[n][0] = t; echoRays[n][1] = w; n++; }
+    }
+    const hits = echoRays.slice(0, n).sort((x, y) => x[0] - y[0]);
+    let d = 0, acc = 0;
+    for (const [t, w] of hits) { acc += w; if (acc >= SECTOR_DETECT * total) { d = t; break; } }
+    if (!SONAR.clean) {
+        // A transducer on a pole sees less aeration than one in the hull
+        const motion = Math.hypot(pose.p, pose.q) + 0.05 * Math.hypot(pose.vn, pose.ve);
+        const bubbles = Math.min(0.12, 0.005 + 0.2 * motion);
+        if (Math.random() < 0.02) d = 0;                                          // no return
+        else if (Math.random() < bubbles) d = 0.8 + Math.random() * 3;             // aeration
+        else if (d && Math.random() < 0.004) d = 2 + Math.random() * (d - 2);      // fish, particles
+        if (d) {
+            const bin = SECTOR.range / 1200;                                       // 1 200 samples over the range
+            d = Math.round((d + (0.03 + 0.002 * d) * gaussRand()) / bin) * bin;
+        }
+    }
+    return d >= SECTOR.minRange ? d : Infinity;
+}
+
+// One ping at sensor time s (seconds on the autopilot's clock), then the head
+// steps; at the end of the sector it turns back
+function sectorPing(s) {
+    const wall = wallTime(s);
+    const r = rig(R_SECTOR, wall);
+    if (!r) return;
+    if (!sector.batch) sector.batch = { s0: s, wall0: wall, angle0: sector.angle, dir: sector.dir, ranges: [] };
+    sector.batch.ranges.push(sectorEcho(r, sector.angle * DEG));
+    sector.pings++;
+    const half = SECTOR.half + 1e-9;
+    let next = sector.angle + sector.dir * SECTOR.step;
+    const turn = next > half || next < -half;
+    if (turn) { sector.dir = -sector.dir; next = sector.angle + sector.dir * SECTOR.step; }
+    sector.angle = next;
+    if (turn || sector.batch.ranges.length >= SECTOR.perBatch) sectorFlush();
+}
+
+// The pings so far as one LaserScan: first ping's stamp, the ping period as
+// time_increment, the head's step (signed: the sweep's direction) as angle_increment
+function sectorFlush() {
+    const b = sector.batch;
+    sector.batch = null;
+    if (!b || !b.ranges.length) return;
+    const n = b.ranges.length, inc = b.dir * SECTOR.step * DEG;
+    sector.ready.push({
+        header: header('sector_sonar', b.wall0),
+        angle_min: b.angle0 * DEG, angle_max: b.angle0 * DEG + (n - 1) * inc, angle_increment: inc,
+        time_increment: SECTOR.untimed ? 0 : SECTOR.period, scan_time: SECTOR.period * SECTOR.sweepPings,
+        range_min: SECTOR.minRange, range_max: SECTOR.range,
+        ranges: Float32Array.from(b.ranges), intensities: new Float32Array(0)
+    });
+    // Like rosbridge, a subscriber gets what is published after it subscribed
+    let listened = false;
+    for (const c of clients) if (c.subs.has('/sonar/sector')) listened = true;
+    if (!listened) sector.ready.length = 0;
+    else if (sector.ready.length > 8) sector.ready.shift();
+}
+
+setInterval(() => {
+    if (!anchor || !pose.have) { sector.next = null; return; }
+    const s = sensorTime(Date.now());
+    // Start, a SITL restart, or too far behind (a stalled loop): from now
+    if (sector.next === null || s - sector.next > 2 || sector.next - s > 2) { sectorFlush(); sector.next = s; }
+    while (sector.next <= s) { sectorPing(sector.next); sector.next += SECTOR.period; }
+}, 5);
 
 // name → { name, type, rate (Hz), gen }
 const TOPICS = new Map([
@@ -586,6 +761,7 @@ const TOPICS = new Map([
     ['/ping1d/range', T('sensor_msgs', 'Range'), 10],
     ['/sonar/profiler', T('sensor_msgs', 'PointCloud2'), 10],
     ['/sonar/imaging', T('sensor_msgs', 'PointCloud2'), SONAR.rate],
+    ['/sonar/sector', T('sensor_msgs', 'LaserScan'), 100],
     ['/rosout', ROS1 ? 'rosgraph_msgs/Log' : 'rcl_interfaces/msg/Log', 0],
     ['/tf', T('tf2_msgs', 'TFMessage'), 0],
     ['/camera/image_raw', T('sensor_msgs', 'Image'), 0],
@@ -637,13 +813,18 @@ setInterval(() => {
     const parts = [];
     for (const t of TOPICS.values()) if (t.sent) { parts.push(`${t.name} ${(t.sent / dt).toFixed(1)}/s`); t.sent = 0; }
     const p = pose.have ? `${pose.lat.toFixed(6)}, ${pose.lon.toFixed(6)}, ${pose.alt.toFixed(1)} m (${pose.src})` : 'no pose yet';
-    log(`${clients.size} client(s) · ${p} · truth ${(stats.poses / dt).toFixed(1)} Hz · ${parts.join(' · ') || 'nothing published'} · ${(stats.bytes / dt / 1024).toFixed(0)} KB/s${stats.dropped ? ` · ${stats.dropped} dropped` : ''}`);
+    const clock = simRate() !== 1 ? ` · clock ×${simRate().toFixed(1)}` : '';
+    const pings = sector.pings ? ` · sector ${(sector.pings / dt).toFixed(1)} pings/s` : '';
+    sector.pings = 0;
+    log(`${clients.size} client(s) · ${p}${clock} · truth ${(stats.poses / dt).toFixed(1)} Hz${pings} · ${parts.join(' · ') || 'nothing published'} · ${(stats.bytes / dt / 1024).toFixed(0)} KB/s${stats.dropped ? ` · ${stats.dropped} dropped` : ''}`);
     stats.bytes = 0;
     stats.poses = 0;
 }, 5000);
 
 server.listen(PORT, () => {
     log(`listening on ws://0.0.0.0:${PORT} · scene ${SCENE_NAME} · ${ROS1 ? 'ROS 1' : 'ROS 2'} type names`);
-    log(`mount: lidar ${LIDAR_MOUNT.join(',')} · down-looking ${DOWN_MOUNT.join(',')} · profiler ${PROFILER_MOUNT.join(',')} · lever ${LEVER.join(',')}`);
+    log(`mount: lidar ${LIDAR_MOUNT.join(',')} · down-looking ${DOWN_MOUNT.join(',')} · profiler ${PROFILER_MOUNT.join(',')} · sector ${SECTOR.mount.join(',')} · lever ${LEVER.join(',')}`);
+    log(`sector sonar: ±${SECTOR.half}° in ${SECTOR.step}° steps, ${SECTOR.range} m, beam ${SECTOR.beam}° × ${SECTOR.fan}°, `
+        + `${(1 / SECTOR.period).toFixed(1)} pings/s, a sweep every ${(SECTOR.period * SECTOR.sweepPings).toFixed(1)} s, ${SECTOR_RAYS.length} rays a ping`);
 });
 if (!POSE_ARG) connectMavlink();

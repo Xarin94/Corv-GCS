@@ -158,10 +158,13 @@ Any LiDAR, echo sounder or sonar running under ROS (1 or 2) reaches the GCS thro
 ground under an aircraft, the bed under a boat or a ROV, the walls of an underwater cave, drawn as a
 mesh of grey lines over a transparent body, averaged in 30 cm cells instead of millions of points,
 in absolute or relative navigation. A preview in the settings shows how the sensor is mounted and
-the zone it collects from. The wiki's [ROS page](https://xarin94.github.io/Corv-GCS/ROS.html) walks
+the zone it collects from. A mechanical sector-scanning sonar, one beam per ping, has each beam
+placed with the pose of its own time, and a survey boat can take its depths from the water surface
+rather than from a drifting barometric altitude. The wiki's [ROS page](https://xarin94.github.io/Corv-GCS/ROS.html) walks
 through it step by step: rosbridge on the companion computer, every setting, the on-screen strip,
-troubleshooting, and worked examples for an aerial LiDAR, a SLAM map, an echo sounder, a survey sonar
-and a ROV in a cave.
+troubleshooting, and worked examples for an aerial LiDAR, a SLAM map, an echo sounder, a survey sonar,
+a ROV in a cave and a sector-scanning sonar on a boat — with a simulated survey of a Lake Garda bed
+strewn with a wreck, a car, a container and a light aircraft to try it on.
 
 ## Under water, and without GPS
 

@@ -188,7 +188,8 @@ In AGL mode each waypoint sits at its height above the ground under it and the v
 from one to the next. With **Terrain-following waypoints** on, intermediate waypoints are added so the
 straight legs stay within the **AGL tolerance** of the terrain. Every leg — not just every waypoint —
 is checked against the terrain: a leg that dips under **Min clearance** is a warning, one that goes
-through the ground an error; **Max altitude AGL** warns above a ceiling. The autopilot's own terrain
+through the ground an error; **Max altitude AGL** warns above a ceiling. A rover, a boat or a sub is
+not checked: it goes on (or under) the surface the elevation model holds — on a lake, its water. The autopilot's own terrain
 following (with its terrain database) is described in ArduPilot's
 [terrain following](https://ardupilot.org/copter/docs/terrain-following.html) page; the GCS does the
 work in advance, so the mission flies the same with or without it.
@@ -230,8 +231,13 @@ overlap**, and the card says which of the two limited it. A 90° sonar with 90 m
 sweeps 60 m: 30 m between lanes with 50 % overlap. Choose the design distance from the shallowest
 water that must be covered: the swath narrows with depth, so lanes spaced for 30 m leave gaps where
 the bed is shallower than 15 m. With 50 % overlap the bed under each lane is also seen by the next
-lane's outer beams, where the water under a hull is noisy. A boat's mission has no take-off; no
-camera is triggered. During the survey the ROS strip shows how much of each planned area is covered
+lane's outer beams, where the water under a hull is noisy. A mechanical sector-scanning sonar
+(Ping360, Imagenex 881, Tritech Micron class) sweeps its sector one ping at a time — a sweep every
+4–6 s — so its swath is its sector, but how close its samples fall along the track is set by the
+speed: 1–1.5 m/s for a sweep every 5–7 m. A boat's mission has no take-off; no
+camera is triggered. ArduRover starts AUTO on a boat in loiter, and a speed change ahead of the first
+waypoint would set the loiter's speed instead of the survey's: the planner puts a boat's first speed
+change just after the first waypoint, where it takes effect as the boat sets off. During the survey the ROS strip shows how much of each planned area is covered
 ([ROS](ROS.md#5-worked-examples)).
 
 ## Map layers

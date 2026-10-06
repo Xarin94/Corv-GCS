@@ -6,20 +6,30 @@
  *     average once a cell's memory is full, incremental changes, the tile
  *     budget, a small detail kept.
  *  2. RosPoints: PointCloud2 (livox_ros_driver2 layout, base64 and binary,
- *     float64 big endian), LaserScan (typed array, JSON nulls), Range,
- *     sampling, range limits, frame detection.
+ *     float64 big endian), LaserScan (typed array, JSON nulls, the time of
+ *     each beam from time_increment), Range, sampling, range limits, frame
+ *     detection.
  *  3. Georeferencing: mounts, attitude, lever arm, world ENU / NED frames.
  *  4. End to end without SITL: scripts/rosbridge-sim.js with a fixed pose,
  *     the vendored roslib over a real WebSocket, CBOR and JSON, rosapi topic
- *     listing, throttle_rate; the averaged surface compared with the scene.
+ *     listing, throttle_rate; the averaged surface compared with the scene;
+ *     the sector sonar over the Garda objects (a moving boat and the real
+ *     worker: scripts/test-ros-sector.js).
  *
  *   node scripts/test-ros-surface.js
  */
 
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
-const { SCENES } = require('./ros-sim-scenes');
+
+// roslib needs the WebSocket global: Node 22 has it, Node 20 behind a flag
+if (typeof WebSocket === 'undefined') {
+    const r = spawnSync(process.execPath, ['--experimental-websocket', __filename, ...process.argv.slice(2)], { stdio: 'inherit' });
+    process.exit(r.status ?? 1);
+}
+
+const { SCENES, GARDA } = require('./ros-sim-scenes');
 
 const ROOT = path.join(__dirname, '..');
 // The renderer's ES modules, in a package Node reads as CommonJS: imported
@@ -201,6 +211,18 @@ async function main() {
         const tagged = Buffer.alloc(8); tagged.writeFloatLE(12, 0); tagged.writeFloatLE(13, 4);
         const c = P.decodePoints('scan', { ...scan, angle_min: 0, ranges: { tag: 85, contents: new Uint8Array(tagged) } }, out, 100);
         check('LaserScan undecoded RFC 8746 tag 85', c.count === 2 && near(out[0], 12, 1e-5));
+        // A sector sonar's batch: one beam per ping, 66 ms apart, the head turning back (negative step)
+        const times = new Float32Array(1000);
+        const sweep = { angle_min: 30 * DEG, angle_increment: -1.8 * DEG, time_increment: 0.066, range_min: 0.75, range_max: 40,
+            ranges: new Float32Array([20, Infinity, 19, 18.5, 0.2, 18]) };
+        const t = P.decodePoints('scan', sweep, out, 100, 0.5, 100, times);
+        check('LaserScan time_increment: each beam its time, the span of the message', t.count === 4 && near(t.span, 5 * 0.066, 1e-9)
+            && near(times[0], 0, 1e-9) && near(times[1], 0.132, 1e-6) && near(times[3], 0.33, 1e-6)
+            && near(Math.atan2(out[1 * 3 + 1], out[1 * 3]) / DEG, 30 - 2 * 1.8, 1e-4),
+            `span ${t.span.toFixed(3)} s · times ${Array.from(times.subarray(0, t.count), x => x.toFixed(3)).join(' ')}`);
+        const u = P.decodePoints('scan', { ...sweep, time_increment: 0 }, out, 100, 0.5, 100, times);
+        const v = P.decodePoints('scan', { ...sweep, time_increment: NaN }, out, 100, 0.5, 100, times);
+        check('… time_increment 0 or missing: one instant', u.span === 0 && v.span === 0 && u.count === 4);
     }
     {
         const out = new Float32Array(30);
@@ -286,6 +308,15 @@ async function main() {
         for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); for (let c = 0; c < 3; c++) [sh[i * 3 + c], sh[j * 3 + c]] = [sh[j * 3 + c], sh[i * 3 + c]]; }
         const u = P.despike(sh, n);
         check('spike filter: a cloud without order is left alone', !u.ordered && u.removed === 0);
+        // The beams' times follow their points through the compaction
+        const tf = Float32Array.from(orig), tt = Float32Array.from({ length: n }, (_, i) => i * 0.066);
+        const kept = P.despike(tf, n, {}, tt);
+        let timesOk = kept.count > 0;
+        for (let k = 0; k < kept.count; k++) {
+            const i = Math.round(tt[k] / 0.066);
+            if (Math.abs(tf[k * 3] - orig[i * 3]) > 1e-6 || Math.abs(tf[k * 3 + 1] - orig[i * 3 + 1]) > 1e-6) timesOk = false;
+        }
+        check('spike filter: each kept point keeps its time', timesOk, `${kept.count} kept`);
         // A cave profile: a near wall then a far one, the edge between them kept
         const cv = new Float32Array(80 * 3);
         for (let i = 0; i < 80; i++) { const a = i / 80 * Math.PI, d = i < 40 ? 3 : 15; cv[i * 3] = Math.cos(a) * d; cv[i * 3 + 1] = Math.sin(a) * d; }
@@ -307,6 +338,58 @@ async function main() {
         const at = (i, j) => out[j * w + i];
         check('roughness: a sloping bed is flat, a boulder is not', at(10, 10) <= 3 && at(50, 50) <= 3 && at(40, 20) >= 25 && at(10, 50) === 0,
             `slope ${at(10, 10)} / ${at(50, 50)} cm · boulder ${at(40, 20)} cm · hole ${at(10, 50)}`);
+
+        // A sector sonar's sweeps: lines of cells 5 m apart (every 10th row of
+        // 0.5 m cells) on a sloping bed. By default the holes between them stay
+        // (4 cells at most); filled up to 8 m they join into one surface, on the slope
+        const n = 96, data = new Float32Array(n * n).fill(R.EMPTY), wts = new Float32Array(n * n), drawn = new Float32Array(n * n * 2);
+        for (let j = 0; j < n; j += 10) for (let i = 0; i < n; i++) { data[j * n + i] = -12 + 0.02 * i + 0.03 * j; wts[j * n + i] = 1; }
+        const share = (opts) => {
+            R.rasterize(data, wts, n, n, drawn, { cell: 0.5, ...opts });
+            let k = 0, worst = 0;
+            for (let j = 0; j <= 90; j++) for (let i = 8; i < 88; i++) {
+                const v = drawn[(j * n + i) * 2];
+                if (v > R.EMPTY) { k++; worst = Math.max(worst, Math.abs(v - (-12 + 0.02 * i + 0.03 * j))); }
+            }
+            return { share: k / (91 * 80), worst };
+        };
+        const def = share({}), wide = share({ fillLevels: R.fillLevelsFor(8, 0.5) });
+        check('fill levels: 8 m at 0.5 m cells = 16 cells; 0 = the default 4; capped at 16 cells', R.fillLevelsFor(8, 0.5) === 4 && R.fillLevelsFor(0, 0.3) === 2
+            && R.fillLevelsFor(2, 0.5) === 2 && R.fillLevelsFor(8, 0.3) === 4 && R.fillLevelsFor(1, 0.5) === 1);
+        // (a coarse cell's mean stands at its centre: on a slope, a few cm off where its data are not centred)
+        check('fill: sweeps 5 m apart stay lines by default, join when holes are filled up to 8 m', def.share < 0.5 && wide.share > 0.95 && wide.worst < 0.15,
+            `drawn ${(100 * def.share).toFixed(0)} % by default, ${(100 * wide.share).toFixed(0)} % filled up to 8 m (worst ${wide.worst.toFixed(3)} m off the slope)`);
+        // … and the coverage of an area is counted in the same blocks
+        const st = new SurfaceTiles({ cell: 0.5 });
+        const pts = [];
+        for (let y = 0.25; y < 64; y += 5) for (let x = 0.25; x < 64; x += 0.5) pts.push(x, y, -12);
+        st.add(new Float64Array(pts), pts.length / 3);
+        const sq = [[0, 0], [64, 0], [64, 64], [0, 64]];
+        const fine = T.coveredArea(st, sq) / 4096, blocks = T.coveredArea(st, sq, 16) / 4096;
+        check('coverage in the fill blocks: the area the sweeps are drawn over', fine < 0.15 && blocks > 0.95,
+            `${(100 * fine).toFixed(0)} % of the cells, ${(100 * blocks).toFixed(0)} % in 8 m blocks`);
+    }
+
+    // ---------- The complex Garda bed: no relief stepped through ----------
+    {
+        // castRay marches by 0.4 of the clearance: right only while slopes stay
+        // ≤ 1.5. Against a 2 cm march over the ridge, scarp, pinnacle, boulders,
+        // sand waves and the objects, along sector-sonar rays
+        const { castRay } = require('./ros-sim-scenes');
+        const g = SCENES['garda-complex'];
+        const march = (oe, on, de, dn, du) => { for (let t = 0; t <= 40; t += 0.02) if (t * du <= g.height(oe + t * de, on + t * dn)) return t; return 0; };
+        let worst = 0, missed = 0, n = 0;
+        for (let k = 0; k < 1000; k++) {
+            const oe = 215 + ((k * 0.618034) % 1) * 235, on = 195 + ((k * 0.754877) % 1) * 285;
+            const az = k * 2.399963, off = (((k * 0.569840) % 1) * 2 - 1) * 60 * DEG;
+            const de = Math.sin(off) * Math.cos(az), dn = Math.sin(off) * Math.sin(az), du = -Math.cos(off);
+            const a = castRay(g, oe, on, 0, de, dn, du, 40), b = march(oe, on, de, dn, du);
+            n++;
+            if (!a !== !b) missed++;
+            else worst = Math.max(worst, Math.abs(a - b));
+        }
+        check('garda-complex: rays never step through its relief (vs a 2 cm march)', missed === 0 && worst <= 0.021,
+            `${n} rays · ${missed} hit / miss disagreements · worst ${(worst * 100).toFixed(1)} cm`);
     }
 
     // ---------- 4. End to end: emulator + roslib over WebSocket ----------
@@ -365,6 +448,7 @@ async function main() {
         }
         return { sampled, total };
     }
+    process.on('exit', () => { for (const p of sims) p.kill(); });
     try {
         await startSim(19090, ['--pose', `${AIR.e},${AIR.n},${AIR.u},${AIR.yaw}`, '--scene', 'terrain', '--lidar-points', '8000']);
         await startSim(19091, ['--pose', '0,0,0,0', '--scene', 'seabed', '--ros1']);
@@ -372,7 +456,7 @@ async function main() {
         const ros = await connect(19090);
         const topics = await new Promise((res, rej) => ros.getTopics(res, rej));
         const usable = topics.topics.filter((_, i) => P.kindOf(topics.types[i]));
-        check('rosapi lists the topics; 7 of 11 are drawable types', topics.topics.length === 11 && usable.length === 7, usable.join(' '));
+        check('rosapi lists the topics; 8 of 12 are drawable types', topics.topics.length === 12 && usable.length === 8, usable.join(' '));
 
         const t0 = Date.now();
         const livox = await collect(ros, '/livox/lidar', 'sensor_msgs/msg/PointCloud2', 'cbor', 2000, 200);
@@ -461,6 +545,55 @@ async function main() {
         check('cave shaft: profiler returns on the rock, the wall all around', prof.length >= 5 && n > 1000 && on / n > 0.99 && around.size === 8,
             `${n} returns, ${(100 * on / n).toFixed(1)} % within 5 cm of the rock, wall seen in ${around.size} of 8 directions`);
         ros2.close();
+
+        // Sector sonar, boat still over the container on the Garda bed, a
+        // pencil beam with no disturbances: one beam per ping, the sweep in
+        // parts, back and forth — every return exactly on the scene
+        const SECT = { e: 335, n: 455, u: 0, yaw: 15 };
+        const garda = ['--scene', 'garda', '--anchor', `${GARDA.origin.lat},${GARDA.origin.lon},0`, '--pose', `${SECT.e},${SECT.n},0,${SECT.yaw}`, '--sonar-clean'];
+        await startSim(19093, [...garda, '--sector-beam', '0.001', '--sector-fan', '0.001']);
+        await startSim(19094, garda);
+        const rp = await connect(19093);
+        const pencil = await collect(rp, '/sonar/sector', 'sensor_msgs/msg/LaserScan', 'cbor', 9500, 100);
+        rp.close();
+        const up = pencil.filter(m => m.angle_increment > 0).length, down = pencil.filter(m => m.angle_increment < 0).length;
+        const pings = pencil.reduce((a, m) => a + m.ranges.length, 0);
+        check('sector sonar: LaserScans of a quarter of a sweep, both ways, time_increment = ping period', up >= 2 && down >= 2
+            && pencil.every(m => near(m.time_increment, 2 * 40 / 1480 + 0.012, 1e-6) && m.ranges.length >= 10 && m.ranges.length <= 17 && m.header.frame_id === 'sector_sonar'),
+            `${pencil.length} messages (${up} sweeping one way, ${down} back), ${pings} pings in 9.5 s`);
+        g = new SurfaceTiles({ cell: 0.3 }); gt = new SurfaceTiles({ cell: 0.3 });
+        st = georef(pencil, 'scan', [0, -90, 0], SECT, g, { truth: gt, scene: SCENES.garda, rMin: 0.75, rMax: 40 });
+        d = diff(g, gt);
+        const cont = GARDA.objects.find(o => o.name.startsWith('Container'));
+        const top = Math.max(...[...cellsOf(g)].map(p => p.h));
+        check('… pencil beam: every return on the scene, the container on top of the bed', d.same && d.rms < 0.01 && near(top, -cont.depth + cont.proud, 0.1),
+            `${st.sampled} returns · ${d.cells} cells · chain error RMS ${d.rms.toFixed(4)} m · highest ${top.toFixed(2)} m, container top ${(-cont.depth + cont.proud).toFixed(2)} m`);
+        // A 2° beam: the bottom is where a quarter of the echo is back, put on
+        // the beam's axis — the bed within centimetres where it is level, a
+        // little shallow at the swath's edges, the container's top found, its
+        // walls smeared by the footprint
+        const rb = await connect(19094);
+        const wide = await collect(rb, '/sonar/sector', 'sensor_msgs/msg/LaserScan', 'cbor', 9500, 100);
+        rb.close();
+        const spts = new Float32Array(2000 * 3), senu = new Float64Array(2000 * 3);
+        const Rm = P.eulerToMatrix(0, -90 * DEG, 0), Ra = P.eulerToMatrix(0, 0, SECT.yaw * DEG);
+        const errs = [], inner = [];
+        let highest = -Infinity;
+        for (const m of wide) {
+            const r = P.decodePoints('scan', m, spts, 2000, 0.75, 40);
+            P.sensorToEnu(spts, r.count, Rm, [0, 0, 0], Ra, [SECT.e, SECT.n, 0], senu);
+            for (let k = 0; k < r.count; k++) {
+                const dz = senu[k * 3 + 2] - SCENES.garda.height(senu[k * 3], senu[k * 3 + 1]);
+                errs.push(Math.abs(dz));
+                // within 30° of nadir: away from the oblique edges of the swath
+                if (Math.hypot(spts[k * 3 + 1], spts[k * 3 + 2]) < 0.5 * Math.hypot(spts[k * 3], spts[k * 3 + 1], spts[k * 3 + 2])) inner.push(Math.abs(dz));
+                highest = Math.max(highest, senu[k * 3 + 2]);
+            }
+        }
+        const q = (a, f) => a.slice().sort((x, y) => x - y)[Math.floor(f * (a.length - 1))];
+        check('… 2° beam: the bed within cm near nadir, the container\'s top found', errs.length > 100 && q(inner, 0.5) < 0.05 && q(errs, 0.8) < 0.25
+            && near(highest, -cont.depth + cont.proud, 0.15),
+            `${errs.length} returns · |error| median ${q(errs, 0.5).toFixed(3)} m (within 30° of nadir ${q(inner, 0.5).toFixed(3)} m), 80 % ${q(errs, 0.8).toFixed(2)} m, worst ${q(errs, 1).toFixed(2)} m · highest ${highest.toFixed(2)} m`);
     } catch (e) {
         check('end-to-end run', false, e.message);
     } finally {

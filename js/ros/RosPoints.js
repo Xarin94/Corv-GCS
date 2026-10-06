@@ -14,6 +14,13 @@
  * the sensor frame; NaN, ±Inf and the (0, 0, 0) "no return" points are
  * dropped.
  *
+ * Time of each beam. A LaserScan with a time_increment was not measured at
+ * one instant: beam i was measured i × time_increment after the first. For a
+ * 2D LiDAR that is a few ms over a sweep; for a mechanical sector-scanning
+ * sonar, one beam per ping, it is seconds — the vehicle moves metres in a
+ * message. decodePoints gives each sampled beam its time from the first
+ * (seconds) so the worker can place it with the pose of its own time.
+ *
  * rosbridge sends uint8[] (PointCloud2.data) as base64 in JSON and as a CBOR
  * byte string; float32[] (LaserScan.ranges) as a JSON array (non-finite values
  * become null) or a CBOR typed array (RFC 8746 tag 85). Both are read here.
@@ -104,52 +111,57 @@ function stride(total, max) {
 
 /**
  * Decode the sampled points of one message into `out` (x, y, z in the
- * message frame).
- * @returns {{count: number, total: number}} points written, points the message carried
+ * message frame) and, for a LaserScan with a time_increment, each point's
+ * time after the first beam into `times` (seconds).
+ * @returns {{count: number, total: number, span: number}} points written,
+ *          points the message carried, seconds from its first beam to its
+ *          last (0: all measured at once)
  */
-export function decodePoints(kind, msg, out, max, rMin = 0, rMax = Infinity) {
-    const cap = Math.min(max, Math.floor(out.length / 3));
+export function decodePoints(kind, msg, out, max, rMin = 0, rMax = Infinity, times = null) {
+    const cap = Math.min(max, Math.floor(out.length / 3), times ? times.length : Infinity);
     const r2min = rMin * rMin, r2max = rMax * rMax;
     let count = 0;
-    const keep = (x, y, z) => {
+    const keep = (x, y, z, t = 0) => {
         if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return;
         const r2 = x * x + y * y + z * z;
         if (r2 === 0 || r2 < r2min || r2 > r2max) return;
         out[count * 3] = x; out[count * 3 + 1] = y; out[count * 3 + 2] = z;
+        if (times) times[count] = t;
         count++;
     };
 
     if (kind === 'range') {
         const r = msg.range;
         if (typeof r === 'number' && r >= (msg.min_range || 0) && r <= (msg.max_range || Infinity)) keep(r, 0, 0);
-        return { count, total: 1 };
+        return { count, total: 1, span: 0 };
     }
 
     if (kind === 'scan') {
         const ranges = floatsOf(msg.ranges);
-        if (!ranges) return { count: 0, total: 0 };
+        if (!ranges) return { count: 0, total: 0, span: 0 };
         const total = ranges.length;
         const lo = Math.max(msg.range_min || 0, rMin), hi = Math.min(msg.range_max || Infinity, rMax);
+        const dt = Math.abs(+msg.time_increment) || 0;
         const s = stride(total, cap);
         for (let k = 0; k < s.n; k++) {
             const idx = Math.floor(s.start + k * s.step);
             const r = ranges[idx];
             if (typeof r !== 'number' || !(r >= lo && r <= hi)) continue;
             const a = msg.angle_min + idx * msg.angle_increment;
-            keep(r * Math.cos(a), r * Math.sin(a), 0);
+            keep(r * Math.cos(a), r * Math.sin(a), 0, idx * dt);
         }
-        return { count, total };
+        return { count, total, span: Number.isFinite(dt) ? dt * Math.max(0, total - 1) : 0 };
     }
 
     if (kind === 'cloud') {
         const bytes = bytesOf(msg.data);
         const total = (msg.width || 0) * (msg.height || 0);
-        if (!bytes || !total || !msg.point_step) return { count: 0, total };
+        if (!bytes || !total || !msg.point_step) return { count: 0, total, span: 0 };
         const fields = {};
         for (const f of msg.fields || []) fields[f.name] = f;
         const fx = fields.x, fy = fields.y, fz = fields.z;
         if (!fx || !fy || !fz || !FIELD_READ[fx.datatype] || !FIELD_READ[fy.datatype] || !FIELD_READ[fz.datatype]) {
-            return { count: 0, total };
+            return { count: 0, total, span: 0 };
         }
         const rx = FIELD_READ[fx.datatype], ry = FIELD_READ[fy.datatype], rz = FIELD_READ[fz.datatype];
         const le = !msg.is_bigendian;
@@ -163,9 +175,9 @@ export function decodePoints(kind, msg, out, max, rMin = 0, rMax = Infinity) {
             if (o > last) break;
             keep(rx(dv, o + fx.offset, le), ry(dv, o + fy.offset, le), rz(dv, o + fz.offset, le));
         }
-        return { count, total };
+        return { count, total, span: 0 };
     }
-    return { count: 0, total: 0 };
+    return { count: 0, total: 0, span: 0 };
 }
 
 // Scratch for despike(), grown on demand
@@ -196,9 +208,10 @@ function medianOf(a, n) {
  * dropped. A profile is ordered when the median step from one point to the
  * next is small against the spread of its ranges.
  * @param {Float32Array} pts  x, y, z in the sensor frame (decodePoints), compacted in place
+ * @param {Float32Array} [times]  each point's time (decodePoints), compacted with them
  * @returns {{count: number, removed: number, ordered: boolean}}
  */
-export function despike(pts, count, opts = {}) {
+export function despike(pts, count, opts = {}, times = null) {
     const half = opts.half ?? 4, abs = opts.abs ?? 0.5, rel = opts.rel ?? 0.08;
     const win = 2 * half + 1;
     if (count < win) return { count, removed: 0, ordered: false };
@@ -232,7 +245,10 @@ export function despike(pts, count, opts = {}) {
     let out = 0;
     for (let k = 0; k < count; k++) {
         if (!keep[k]) continue;
-        if (out !== k) { pts[out * 3] = pts[k * 3]; pts[out * 3 + 1] = pts[k * 3 + 1]; pts[out * 3 + 2] = pts[k * 3 + 2]; }
+        if (out !== k) {
+            pts[out * 3] = pts[k * 3]; pts[out * 3 + 1] = pts[k * 3 + 1]; pts[out * 3 + 2] = pts[k * 3 + 2];
+            if (times) times[out] = times[k];
+        }
         out++;
     }
     return { count: out, removed: count - out, ordered: true };
