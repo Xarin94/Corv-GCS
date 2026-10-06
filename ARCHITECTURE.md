@@ -2,7 +2,7 @@
 
 > Desktop Ground Control Station for ArduPilot — Electron + Three.js + Leaflet
 
-**Version:** 1.8.1 | **License:** Apache-2.0 | **Repository:** [github.com/Xarin94/Corv-GCS](https://github.com/Xarin94/Corv-GCS)
+**Version:** 1.8.2 | **License:** Apache-2.0 | **Repository:** [github.com/Xarin94/Corv-GCS](https://github.com/Xarin94/Corv-GCS)
 
 The terrain, camera and Livox rendering boundary introduced in 1.8.1 is documented
 in [Rendering architecture](docs/ARCHITETTURA-RENDERING.md). Their data models are
