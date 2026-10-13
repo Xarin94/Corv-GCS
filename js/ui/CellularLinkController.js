@@ -1,12 +1,16 @@
 /**
  * CellularLinkController.js - SETUP → COMMS → CELLULAR LINK
  *
- * Connects to one LTEtelem cellular module through a CRV2 relay: the operator
+ * Connects to one LTEtelem cellular module through a relay: the operator
  * gives the module ID and its AES-256 key, the relay address is entered once.
+ * The relay knows no keys (CRV3 access), so a wrong key is not refused: the
+ * module just stays offline. The key fingerprint shown then is the one to
+ * compare with e2e_key_fp on the module.
  * The link itself lives in the main process (lte-link.js) and feeds the normal
  * MAVLink pipeline, so everything else in the GCS works as on any other link.
  *
- * Module ID and relay settings persist in localStorage under 'lte-link-config'.
+ * Module ID and relay settings persist in localStorage under 'lte-link-config';
+ * the relay host defaults to the CORV relay.
  * The key is never written there: with REMEMBER KEY it is stored encrypted by
  * the OS keychain (Electron safeStorage) through window.lteKey.
  */
@@ -16,6 +20,7 @@ import { connect, disconnect } from '../mavlink/ConnectionManager.js';
 import { setNavDot } from './TabController.js';
 
 const STORAGE_KEY = 'lte-link-config';
+const DEFAULT_RELAY_HOST = '94.177.202.247';   // CORV relay (Aruba VPS)
 const $ = (id) => document.getElementById(id);
 
 const STATE_LABELS = {
@@ -71,7 +76,8 @@ function render(st) {
     const receiving = online && st.recordsIn > 0 && st.lastRxAge !== null && st.lastRxAge < 3000;
     $('lte-st-air').textContent = !online ? '--' :
         receiving ? `${st.moduleId} — receiving` :
-        st.airOnline ? `${st.moduleId} — online, waiting for data` : `${st.moduleId} — offline on the relay`;
+        st.airOnline ? `${st.moduleId} — online, waiting for data` :
+        `${st.moduleId} — offline on the relay (key fingerprint ${st.keyFingerprint}: same as e2e_key_fp on the module?)`;
     $('lte-st-session').textContent = st.vehicleSession || '--';
 
     if (st.tls) {
@@ -95,7 +101,7 @@ export async function initCellularLink() {
 
     const cfg = loadConfig();
     $('lte-module-id').value = cfg.moduleId || '';
-    $('lte-relay-host').value = cfg.host || '';
+    $('lte-relay-host').value = cfg.host || DEFAULT_RELAY_HOST;
     $('lte-relay-port').value = cfg.port || 5765;
     $('lte-relay-cert').value = cfg.certSha256 || '';
     $('lte-key-remember').checked = !!cfg.rememberKey;

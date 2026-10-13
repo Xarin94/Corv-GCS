@@ -1,15 +1,21 @@
 /**
- * lte-link.js - Cellular link to an LTEtelem module through a CRV2 relay
+ * lte-link.js - Cellular link to an LTEtelem module through a relay
  *
- * The module (Teensy + cellular modem on the vehicle) and this GCS both dial
- * out to a relay server; the relay pairs them by module ID. Everything after
- * the handshake is end-to-end encrypted between module and GCS, so the relay
- * forwards records it can neither read nor modify.
+ * The module (ESP32-C6 + cellular modem on the vehicle) and this GCS both dial
+ * out to a relay server. Every module has its own key and the relay stores
+ * none (CRV3 access): it pairs module and GCS by an Ed25519 public key derived
+ * from the module key. Everything after the handshake is end-to-end encrypted
+ * between module and GCS, so the relay forwards records it can neither read
+ * nor modify.
  *
  * Handshake (TLS to the relay's GCS port):
  *   relay -> "CRV2-GCS <challenge hex>\n"
- *   GCS   -> "<module id> <hex HMAC-SHA256(authKey, 'CRV2-GCS-AUTH ' || challenge || id)>\n"
+ *   GCS   -> "CRV3 <module id> <public key hex> <signature hex>\n"
+ *            signature = Ed25519('CRV3-GCS-AUTH ' || challenge || public key || id)
  *   relay -> "OK <module id> air=online|offline\n"  or  "ERR auth\n"
+ * The module signs the relay's UDP challenge with the same key pair. A wrong
+ * key is not refused (the relay knows no keys): it just never meets the
+ * module, which stays offline. The module ID is only a name.
  * Records (both directions):
  *   C7 | type | length (u16 LE) | body
  *   DATA (0x01):      session id (8) | counter (4, BE) | ciphertext | tag (16)
@@ -17,7 +23,8 @@
  * AES-256-GCM, nonce = session id || counter. From the 256-bit module key:
  *   up   = HMAC-SHA256(key, "CRV2 air->gcs")  telemetry, module -> GCS
  *   down = HMAC-SHA256(key, "CRV2 gcs->air")  commands, GCS -> module
- *   auth = HMAC-SHA256(key, "CRV2 gcs-auth")  the only value the relay holds
+ *   sign = Ed25519 seed HMAC-SHA256(key, "CRV3 relay-sign"); the relay only
+ *          sees its public key, which does not reveal the module key
  * AAD is the record header; GCS -> module records also bind the module's
  * current session id, so a command captured in an earlier session is refused.
  * Replay: sliding window of 32 records per session id (as in IPsec), since a
@@ -51,13 +58,23 @@ const BATCH_MS = 20;
 const HANDSHAKE_TIMEOUT_MS = 20000;
 const RECONNECT_MS = [1000, 2000, 5000, 10000];
 
+const ED25519_PKCS8_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
+
 const hmac = (key, data) => crypto.createHmac('sha256', key).update(data).digest();
 
 function deriveKeys(key) {
+    const seed = hmac(key, 'CRV3 relay-sign');
+    const sign = crypto.createPrivateKey({
+        key: Buffer.concat([ED25519_PKCS8_PREFIX, seed]), format: 'der', type: 'pkcs8'
+    });
+    seed.fill(0);
     return {
         up: hmac(key, 'CRV2 air->gcs'),
         down: hmac(key, 'CRV2 gcs->air'),
-        auth: hmac(key, 'CRV2 gcs-auth')
+        sign,
+        pub: crypto.createPublicKey(sign).export({ format: 'der', type: 'spki' }).subarray(-32),
+        // same as e2e_key_fp on the module (~cfg GET): first 4 bytes of SHA-256(key)
+        fingerprint: crypto.createHash('sha256').update(key).digest().subarray(0, 4).toString('hex')
     };
 }
 
@@ -110,7 +127,7 @@ class LteLink extends EventEmitter {
      * @param {object} opts
      * @param {string} opts.host        relay host
      * @param {number} opts.port        relay GCS port
-     * @param {string} opts.moduleId    module (vehicle) ID registered on the relay
+     * @param {string} opts.moduleId    module (vehicle) ID, only a name for relay and logs
      * @param {string} opts.keyHex      256-bit module key, 64 hex chars
      * @param {string} [opts.certSha256] relay certificate SHA-256 to pin (empty = not verified)
      */
@@ -133,6 +150,8 @@ class LteLink extends EventEmitter {
         this.batchTimer = null;
         this.status = {
             state: 'idle', moduleId: opts.moduleId, relay: `${opts.host}:${this.opts.port}`,
+            // compare with e2e_key_fp on the module and with "[chiave ...]" in the relay log
+            keyFingerprint: this.keys.fingerprint, relayIdentity: this.keys.pub.subarray(0, 4).toString('hex'),
             airOnline: false, vehicleSession: null, tls: null, lastError: null,
             bytesRx: 0, bytesTx: 0, recordsIn: 0, recordsOut: 0,
             authFail: 0, replay: 0, droppedNoSession: 0, reconnects: 0, lastRxAge: null
@@ -216,16 +235,17 @@ class LteLink extends EventEmitter {
                     const m = /^CRV2-GCS ([0-9a-f]{32})$/i.exec(line);
                     if (!m) { clearTimeout(hsTimer); this._fail(socket, `Unexpected relay banner: ${line}`, true); return; }
                     const challenge = Buffer.from(m[1], 'hex');
-                    const proof = hmac(this.keys.auth, Buffer.concat([
-                        Buffer.from('CRV2-GCS-AUTH '), challenge, Buffer.from(this.opts.moduleId)
-                    ])).toString('hex');
-                    this._write(Buffer.from(`${this.opts.moduleId} ${proof}\n`));
+                    const sig = crypto.sign(null, Buffer.concat([
+                        Buffer.from('CRV3-GCS-AUTH '), challenge, this.keys.pub, Buffer.from(this.opts.moduleId)
+                    ]), this.keys.sign).toString('hex');
+                    this._write(Buffer.from(`CRV3 ${this.opts.moduleId} ${this.keys.pub.toString('hex')} ${sig}\n`));
                     stage = 'reply';
                 } else {
                     clearTimeout(hsTimer);
                     if (!line.startsWith('OK')) {
-                        // wrong module ID or key: retrying cannot help
-                        this._fail(socket, line.startsWith('ERR') ? 'Relay refused: wrong module ID or AES key' : `Relay: ${line}`, true);
+                        // the relay accepts any valid signature: a refusal means it does not
+                        // speak CRV3 (not updated) or is full, and retrying cannot help
+                        this._fail(socket, line.startsWith('ERR') ? 'Relay refused the key signature (relay without CRV3 access?)' : `Relay: ${line}`, true);
                         return;
                     }
                     handshakeDone = true;

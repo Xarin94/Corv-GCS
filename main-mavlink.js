@@ -428,8 +428,8 @@ function initMAVLinkHandlers(win) {
         }
     });
 
-    // Connect to an LTEtelem cellular module through a CRV2 relay (lte-link.js):
-    // TLS to the relay, module ID + key challenge-response, then AES-256-GCM
+    // Connect to an LTEtelem cellular module through a relay (lte-link.js):
+    // TLS to the relay, challenge signed with the module key (CRV3), then AES-256-GCM
     // end-to-end records. The link reconnects by itself after drops, so the
     // connection state only goes DISCONNECTED on an explicit disconnect.
     ipcMain.handle('mavlink-connect-lte', async (event, opts) => {

@@ -53,13 +53,19 @@ A link over the mobile network to an **LTEtelem** module on the vehicle, through
 Everything after the handshake is encrypted end to end with AES-256: the relay forwards the records
 but cannot read or alter them.
 
+Every module has its own key, and the relay holds none: modules do not have to be registered on it.
+The module and the GCS both prove they have the key by signing the relay's challenge with an Ed25519
+key derived from it, and the relay pairs them by that key. A wrong key is therefore not refused: the
+GCS simply never meets the module, which stays *offline on the relay*. The MODULE line then shows the
+key fingerprint, to compare with `e2e_key_fp` on the module (`~cfg GET`).
+
 | Panel / field | |
 |---------------|---|
-| **CELLULAR MODULE → MODULE ID** | The module's ID (e.g. `CRV-001`). |
+| **CELLULAR MODULE → MODULE ID** | The module's ID (e.g. `CRV-4B58`), shown by the relay and in the status; the key, not the ID, selects the module. |
 | **AES-256 KEY** + **SHOW** | The module's 64-hex-character key; SHOW reveals it while typing. |
 | **REMEMBER KEY ON THIS COMPUTER** | Stores the key encrypted by the operating system's keychain (never in plain text). |
 | **CONNECT / DISCONNECT** | Starts / stops the link. Once up, it is the vehicle link: the command bar shows `LTE` and the signal in dBm. |
-| **RELAY → HOST / PORT** | The relay server (port 5765 by default). |
+| **RELAY → HOST / PORT** | The relay server: the CORV relay `94.177.202.247`, port 5765, by default. |
 | **CERT SHA-256** + **PIN** | Optional TLS certificate pinning: PIN takes the fingerprint of the certificate the relay presented on the last connection, after which a different certificate is refused. |
 | **LINK STATUS** | STATE, MODULE (online or not), MODULE SESSION, RELAY TLS, RECORDS IN / OUT, REJECTED (records failing authentication or replayed), TRAFFIC, LAST DATA (age), RECONNECTS, LAST ERROR. |
 
