@@ -57,6 +57,9 @@ const BATCH_BYTES = 800;
 const BATCH_MS = 20;
 const HANDSHAKE_TIMEOUT_MS = 20000;
 const RECONNECT_MS = [1000, 2000, 5000, 10000];
+// MAVLink written before the module's first record (stream requests sent right
+// after connecting) waits for its session id instead of being dropped
+const MAX_PENDING_BYTES = 8192;
 
 const ED25519_PKCS8_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
 
@@ -148,6 +151,8 @@ class LteLink extends EventEmitter {
         this.batch = [];
         this.batchLen = 0;
         this.batchTimer = null;
+        this.pending = [];
+        this.pendingLen = 0;
         this.status = {
             state: 'idle', moduleId: opts.moduleId, relay: `${opts.host}:${this.opts.port}`,
             // compare with e2e_key_fp on the module and with "[chiave ...]" in the relay log
@@ -293,6 +298,8 @@ class LteLink extends EventEmitter {
         this.myCtr = 0;
         this.seen = new Map();                  // module session id (hex) -> { top, mask }
         this.airSid = null;
+        this.pending = [];
+        this.pendingLen = 0;
     }
 
     // ── receive ────────────────────────────────────────────────────────────
@@ -325,7 +332,16 @@ class LteLink extends EventEmitter {
         const sidHex = sid.toString('hex');
         const ctr = nonce.readUInt32BE(SID);
         if (!this._acceptCounter(sidHex, ctr)) { this.status.replay++; return null; }
+        const firstSession = !this.airSid;
         this.airSid = Buffer.from(sid);         // commands are bound to this session
+        if (firstSession && this.pendingLen) {  // what the GCS wrote while waiting
+            const queued = Buffer.concat(this.pending);
+            this.pending = [];
+            this.pendingLen = 0;
+            for (let off = 0; off < queued.length; off += MAX_PLAIN) {
+                this._write(this._seal(queued.subarray(off, off + MAX_PLAIN)));
+            }
+        }
         this.status.vehicleSession = sidHex;
         this.status.airOnline = true;
         this.status.recordsIn++;
@@ -367,7 +383,12 @@ class LteLink extends EventEmitter {
         this.batch = [];
         this.batchLen = 0;
         if (!this.airSid) {                     // no telemetry yet: module session unknown
-            this.status.droppedNoSession++;
+            if (this.pendingLen + plain.length > MAX_PENDING_BYTES) {
+                this.status.droppedNoSession++;
+                return;
+            }
+            this.pending.push(plain);
+            this.pendingLen += plain.length;
             return;
         }
         for (let off = 0; off < plain.length; off += MAX_PLAIN) {

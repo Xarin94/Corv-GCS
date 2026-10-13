@@ -160,6 +160,13 @@ autopilot's SERIAL0 port, normally its USB):
 **READ STREAM RATES** loads the vehicle's values; **WRITE STREAM RATES** sends all nine (each field
 flashes green when written, red on failure). Lower them on a slow radio (a 19 200-baud link cannot
 carry everything at 10 Hz); raise POSITION and EXTRA1 to 10 Hz or more for the [LiDAR](LIDAR.md) and
-[ROS](ROS.md) surfaces, which place every point with the telemetry pose. A telemetry radio on
-TELEM1 or TELEM2 uses that port's `SR1_*` or `SR2_*`: set those in [PARAMETERS](setup.md#parameters)
-with the same values.
+[ROS](ROS.md) surfaces, which place every point with the telemetry pose.
+
+WRITE also applies the rates to the link in use, whatever port of the autopilot it arrives on (a
+radio or the cellular module on TELEM1 or TELEM2): it requests each group at the new rate and pins
+ATTITUDE, ATTITUDE_QUATERNION, VFR_HUD, RAW_IMU and VIBRATION to it. These link rates last until the
+autopilot restarts; to keep them, set that port's `SR1_*` or `SR2_*` in
+[PARAMETERS](setup.md#parameters) as well. The autopilot refuses a rate above what its main loop
+allows (STATUSTEXT *Requested rate … too fast. Increase SCHED_LOOP_RATE*). On the
+[cellular link](setup.md#cellular-link) the GCS asks for the rates again whenever the module
+restarts, for example when the drone is powered up.

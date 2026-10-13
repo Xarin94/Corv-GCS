@@ -17,6 +17,7 @@
 
 import { STATE } from '../core/state.js';
 import { connect, disconnect } from '../mavlink/ConnectionManager.js';
+import { requestAllDataStreams } from '../mavlink/CommandSender.js';
 import { setNavDot } from './TabController.js';
 
 const STORAGE_KEY = 'lte-link-config';
@@ -34,6 +35,11 @@ const STATE_LABELS = {
 };
 
 let lastFingerprint = null;
+// A new module session means the module restarted, usually with the flight
+// controller (the drone was powered up): the autopilot is back on its default
+// stream rates, so ask for them again. The first session is covered by the
+// request ConnectionManager sends after connecting.
+let lastModuleSession = null;
 
 function loadConfig() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch (e) { return {}; }
@@ -79,6 +85,10 @@ function render(st) {
         st.airOnline ? `${st.moduleId} — online, waiting for data` :
         `${st.moduleId} — offline on the relay (key fingerprint ${st.keyFingerprint}: same as e2e_key_fp on the module?)`;
     $('lte-st-session').textContent = st.vehicleSession || '--';
+    if (st.vehicleSession && st.vehicleSession !== lastModuleSession) {
+        if (lastModuleSession) setTimeout(() => requestAllDataStreams().catch(() => {}), 1000);
+        lastModuleSession = st.vehicleSession;
+    }
 
     if (st.tls) {
         lastFingerprint = st.tls.fingerprint || null;
@@ -131,6 +141,7 @@ export async function initCellularLink() {
         const f = readForm();
         const problem = validate(f);
         if (problem) { alert(problem); return; }
+        lastModuleSession = null;   // a new link: its first session is not a restart
 
         saveConfig({ moduleId: f.moduleId, host: f.host, port: f.port,
                      certSha256: f.certSha256, rememberKey: f.rememberKey && keychain });

@@ -77,7 +77,7 @@ import { updateUI, toggleConfig, toggleTelemetry, updateOffset, updateAGLDisplay
 
 // MAVLink imports
 import { initMAVLink, onMessage } from './mavlink/MAVLinkManager.js';
-import { setParameter, requestParameter } from './mavlink/CommandSender.js';
+import { setParameter, requestParameter, requestDataStream, setMessageInterval } from './mavlink/CommandSender.js';
 import { initTerrainFeeder } from './mavlink/TerrainFeeder.js';
 import { computeAeroAngles } from './mavlink/MAVLinkStateMapper.js';
 
@@ -1867,6 +1867,28 @@ const SR_PARAMS = [
     'SR0_RAW_SENS', 'SR0_EXT_STAT', 'SR0_RC_CHAN', 'SR0_RAW_CTRL',
     'SR0_POSITION', 'SR0_EXTRA1', 'SR0_EXTRA2', 'SR0_EXTRA3', 'SR0_PARAMS'
 ];
+// SR0_* are the rates of the autopilot's USB port only: a link on a TELEM
+// port (radio, cellular module) runs on its own SRn_*. WRITE also applies the
+// rates to the link in use — REQUEST_DATA_STREAM per stream group, plus
+// SET_MESSAGE_INTERVAL for the messages requestAllDataStreams pinned, since a
+// pinned interval overrides the stream rate.
+const SR_LINK = {
+    SR0_RAW_SENS: { stream: 1, msgs: [27] },        // RAW_IMU
+    SR0_EXT_STAT: { stream: 2 },
+    SR0_RC_CHAN:  { stream: 3 },
+    SR0_RAW_CTRL: { stream: 4 },
+    SR0_POSITION: { stream: 6 },
+    SR0_EXTRA1:   { stream: 10, msgs: [30, 31] },   // ATTITUDE, ATTITUDE_QUATERNION
+    SR0_EXTRA2:   { stream: 11, msgs: [74] },       // VFR_HUD
+    SR0_EXTRA3:   { stream: 12, msgs: [241] }       // VIBRATION
+};
+
+async function applyRatesToLink(param, rate) {
+    const link = SR_LINK[param];
+    if (!link) return;
+    await requestDataStream(link.stream, rate, rate > 0 ? 1 : 0);
+    for (const id of link.msgs || []) await setMessageInterval(id, rate);
+}
 
 function setupStreamRates() {
     // Read button: request each SR param from vehicle
@@ -1887,6 +1909,7 @@ function setupStreamRates() {
                 if (!isNaN(val)) {
                     try {
                         await setParameter(inp.dataset.param, val);
+                        await applyRatesToLink(inp.dataset.param, val);
                         inp.style.borderColor = '#44ff44';
                         setTimeout(() => { inp.style.borderColor = ''; }, 2000);
                     } catch (e) {
