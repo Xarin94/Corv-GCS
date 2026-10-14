@@ -52,6 +52,7 @@ folds on a click on its title (▼), so you can keep open only what you use.
 | **MUTE GCS OUTPUT** | off | Stops **everything the GCS sends** to the vehicle: heartbeats, commands, mode changes, parameter writes, joystick RC override, RTK corrections, mission uploads. The GCS keeps receiving and displaying. For listening in on a vehicle flown by another ground station without interfering, or for replaying a link. The HUD says *GCS output MUTED — no messages will be sent*. **It is remembered between sessions**: if buttons seem to do nothing, check here first. Note that with the output muted the vehicle sees no GCS heartbeat, which can trigger its GCS failsafe if one is configured. |
 | **SHOW ADS-B TRAFFIC** | on | Manned-aircraft traffic in the 3D view, on the mini-map and in the traffic table. The same switch as SYS CONFIG → GCS OPTIONS → ADS-B TRAFFIC. See [ADS-B traffic](flight-screen.md#ads-b-traffic). |
 | **SHOW ROTOR LOAD** | on | The rotor load schematic at the bottom right. The same switch as SYS CONFIG → ROTOR LOAD → SCHEMATIC. See [rotor load](sys-config.md#rotor-load). |
+| **LTE OVERLAY** | on | The LTE cell rows of the position panel, on the cellular link. The cell sites on the maps have their own switch in CELLULAR LINK. See [LTE cells](flight-screen.md#lte-cells). |
 | **CLEAR TRAIL** | | Erases the red trail of the path flown, in 3D and on the mini-map; it starts again from the current position. |
 
 ## RTL OPTIONS

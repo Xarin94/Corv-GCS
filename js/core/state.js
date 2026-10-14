@@ -67,6 +67,7 @@ export const STATE = {
     linkQuality: 0,
     rssi: null,       // local RX RSSI from RADIO_STATUS (0-254, 255=invalid)
     remRssi: null,    // remote RSSI from RADIO_STATUS (0-254, 255=invalid)
+    cell: null,       // LTE cell from CORV_CELL_INFO (LTEtelem module), see mapCellInfo
     heartbeatCount: 0,
     lastHeartbeatTime: 0,
     systemId: 1,
@@ -307,6 +308,7 @@ export function resetReplayState() {
     STATE.linkQuality = 0;
     STATE.rssi = null;
     STATE.remRssi = null;
+    STATE.cell = null;
     STATE.heartbeatCount = 0;
     STATE.lastHeartbeatTime = 0;
 

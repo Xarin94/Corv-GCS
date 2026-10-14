@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CORV GCS v1.8.3</title>
+    <title>CORV GCS v1.8.4</title>
 
     <!-- Critical inline styles to prevent flash of unstyled content -->
     <style>
@@ -219,7 +219,7 @@
 
                 <!-- Position / Nav data -->
                 <!-- In the relative navigation mode: VX / VY / VZ (NED velocity) instead -->
-                <div class="bottom-bar">
+                <div class="bottom-bar" id="position-bar">
                     <div class="stat-item">
                         <div class="stat-lbl" id="disp-lat-lbl">LATITUDE</div>
                         <div class="stat-val"><span id="disp-lat">--.----</span><span class="stat-unit" id="disp-lat-unit"></span></div>
@@ -228,9 +228,39 @@
                         <div class="stat-lbl" id="disp-lon-lbl">LONGITUDE</div>
                         <div class="stat-val"><span id="disp-lon">--.----</span><span class="stat-unit" id="disp-lon-unit"></span></div>
                     </div>
-                    <div class="stat-item">
-                        <div class="stat-lbl" id="disp-ralt-lbl">RADAR ALT</div>
-                        <div class="stat-val"><span id="disp-ralt">---</span><span class="stat-unit" id="disp-ralt-unit">m</span></div>
+                    <!-- VZ · DOWN, in the relative navigation mode only -->
+                    <div class="stat-item" style="display:none">
+                        <div class="stat-lbl" id="disp-ralt-lbl"></div>
+                        <div class="stat-val"><span id="disp-ralt">---</span><span class="stat-unit" id="disp-ralt-unit"></span></div>
+                    </div>
+                    <!-- LTE cell of a cellular module (CORV_CELL_INFO): shown only while it reports -->
+                    <div class="stat-item cell-stat">
+                        <div class="stat-lbl">LTE CELL</div>
+                        <div class="stat-val" id="disp-cell">---</div>
+                    </div>
+                    <div class="stat-item cell-stat">
+                        <div class="stat-lbl">BAND · PCI</div>
+                        <div class="stat-val" id="disp-cell-band">---</div>
+                    </div>
+                    <div class="stat-item cell-stat">
+                        <div class="stat-lbl">RSSI</div>
+                        <div class="stat-val"><span id="disp-cell-rssi">---</span><span class="stat-unit">dBm</span></div>
+                    </div>
+                    <div class="stat-item cell-stat">
+                        <div class="stat-lbl">RSRP · SINR</div>
+                        <div class="stat-val"><span id="disp-cell-sig">---</span><span class="stat-unit">dBm · dB</span></div>
+                    </div>
+                    <div class="stat-item cell-stat">
+                        <div class="stat-lbl">NEIGHBOURS</div>
+                        <div class="stat-val" id="disp-cell-nb">---</div>
+                    </div>
+                    <div class="stat-item cell-stat">
+                        <div class="stat-lbl">CELL CHANGES</div>
+                        <div class="stat-val" id="disp-cell-ho">---</div>
+                    </div>
+                    <div class="stat-item cell-stat">
+                        <div class="stat-lbl">MAST DIST</div>
+                        <div class="stat-val"><span id="disp-cell-dist">---</span><span class="stat-unit" id="disp-cell-dist-unit">km</span></div>
                     </div>
                 </div>
 
@@ -762,6 +792,34 @@
                     <div class="cfg-row"><label>LAST DATA</label><span class="cfg-val" id="lte-st-age">--</span></div>
                     <div class="cfg-row"><label>RECONNECTS</label><span class="cfg-val" id="lte-st-reconnects">--</span></div>
                     <div class="cfg-row"><label>LAST ERROR</label><span class="cfg-val" id="lte-st-error">--</span></div>
+                </div>
+                <div class="setup-panel">
+                    <div class="panel-header">LTE CELL MAP</div>
+                    <div class="cfg-row"><label>SERVING CELL</label><span class="cfg-val" id="lte-cell-serving">--</span></div>
+                    <div class="cfg-row"><label>SIGNAL</label><span class="cfg-val" id="lte-cell-signal">--</span></div>
+                    <div class="cfg-row"><label>NEIGHBOURS</label><span class="cfg-val" id="lte-cell-neighbours">--</span></div>
+                    <div class="cfg-row"><label>CELL CHANGES</label><span class="cfg-val" id="lte-cell-changes">--</span></div>
+                    <div class="cfg-row"><label>MAST</label><span class="cfg-val" id="lte-cell-mast">--</span></div>
+                    <div class="cfg-row">
+                        <label class="gcs-checkbox" title="Cell sites within 100 km and a dashed line to the serving cell, on the 2D map">
+                            <input type="checkbox" id="lte-cell-show">
+                            SHOW CELL SITES ON THE MAP
+                        </label>
+                    </div>
+                    <div class="cfg-row">
+                        <label class="gcs-checkbox" title="Off: only the network of the serving cell">
+                            <input type="checkbox" id="lte-cell-all">
+                            ALL OPERATORS
+                        </label>
+                    </div>
+                    <div class="cfg-row"><label>DATABASE</label><span class="cfg-val" id="lte-celldb-status">--</span></div>
+                    <div class="cfg-row">
+                        <label>DOWNLOAD</label>
+                        <select id="lte-celldb-country" class="cfg-select"></select>
+                        <button class="gcs-btn gcs-btn-sm" id="lte-celldb-download" title="Download every cell of the country now, for use without internet">DOWNLOAD</button>
+                        <button class="gcs-btn gcs-btn-sm" id="lte-celldb-clear" title="Delete the downloaded cells">CLEAR</button>
+                    </div>
+                    <div class="cfg-note">Cells within 100 km of the vehicle are downloaded by themselves when the module reports its cell. Positions are <b>OpenCelliD</b> estimates from crowd measurements (CC BY-SA 4.0, copy published on Source Cooperative): they can be hundreds of metres off, and sites built after the copy are missing.</div>
                 </div>
             </div>
 
@@ -2925,6 +2983,10 @@
                     <label class="gcs-checkbox">
                         <input type="checkbox" id="chk-rotor-load" checked onchange="toggleRotorLoad(this.checked)">
                         <span>SHOW ROTOR LOAD</span>
+                    </label>
+                    <label class="gcs-checkbox" title="LTE cell rows in the position panel, on the cellular link">
+                        <input type="checkbox" id="chk-lte-overlay" checked>
+                        <span>LTE OVERLAY</span>
                     </label>
                     <button class="gcs-btn" style="margin-top:6px;" onclick="clearTrail()">CLEAR TRAIL</button>
                 </div>

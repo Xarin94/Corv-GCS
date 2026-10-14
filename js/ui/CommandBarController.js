@@ -571,7 +571,7 @@ export function updateCommandBar() {
     // RSSI — prefer RADIO_STATUS values; fall back to SYS_STATUS linkQuality
     updateSignalBars();
     if (STATE.rssi !== null) {
-        // The LTE module reports AT+CSQ in the same SiK scale: show it in dBm
+        // The LTE module reports the serving cell RSSI in the same SiK scale: show it in dBm
         els.rssi.textContent = STATE.connectionType === 'mavlink-lte'
             ? `${Math.round(rssiToDbm(STATE.rssi))} dBm` : STATE.rssi;
         if (STATE.remRssi !== null && els.remRssi) {
@@ -588,7 +588,8 @@ export function updateCommandBar() {
 }
 
 // RADIO_STATUS rssi is in SiK units: dBm = rssi / 1.9 - 127 (the LTE module
-// maps its AT+CSQ reading onto the same scale)
+// maps the RSSI of its serving cell onto the same scale — the RSSI row of the
+// position panel)
 function rssiToDbm(rssi) {
     return rssi / 1.9 - 127;
 }

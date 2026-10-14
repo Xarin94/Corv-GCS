@@ -68,6 +68,7 @@ key fingerprint, to compare with `e2e_key_fp` on the module (`~cfg GET`).
 | **RELAY → HOST / PORT** | The relay server: the CORV relay `94.177.202.247`, port 5765, by default. |
 | **CERT SHA-256** + **PIN** | Optional TLS certificate pinning: PIN takes the fingerprint of the certificate the relay presented on the last connection, after which a different certificate is refused. |
 | **LINK STATUS** | STATE, MODULE (online or not), MODULE SESSION, RELAY TLS, RECORDS IN / OUT, REJECTED (records failing authentication or replayed), TRAFFIC, LAST DATA (age), RECONNECTS, LAST ERROR. |
+| **LTE CELL MAP** | The cell the module reports (`CORV_CELL_INFO`, every 2 s): SERVING CELL (operator, eNB, sector, PCI, EARFCN, band), SIGNAL (RSRP, RSRQ, SINR, RSSI), NEIGHBOURS, CELL CHANGES, MAST (position from the cell database, or not in it). **SHOW CELL SITES ON THE MAP** and **ALL OPERATORS** set the map overlay ([LTE cells](flight-screen.md#lte-cells)); **DATABASE** shows the downloaded cells, **DOWNLOAD** fetches a whole country ahead, **CLEAR** deletes them. Positions come from OpenCelliD (CC BY-SA 4.0, copy of June 2024). |
 
 ### Telemetry forward
 

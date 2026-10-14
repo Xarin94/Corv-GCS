@@ -7,6 +7,7 @@ import { STATE, currentGLoad } from '../core/state.js';
 import { RAD } from '../core/constants.js';
 import { getNearestTraffic } from '../adsb/ADSBManager.js';
 import { isRelativeMode } from '../core/RelativeNav.js';
+import { cellIsLive, cellMapInfo, operatorShort, getCellMapSettings } from '../maps/CellTowerLayer.js';
 import { t } from '../core/i18n.js';
 
 // Cached DOM references for high-frequency updates (avoids ~29 queries/frame)
@@ -83,8 +84,12 @@ function ensureDomCache() {
         dispLon: document.getElementById('disp-lon'),
         dispAb: document.getElementById('disp-ab'),
         dispRalt: document.getElementById('disp-ralt'),
+        positionBar: document.getElementById('position-bar'),
+        cell: ['disp-cell', 'disp-cell-band', 'disp-cell-rssi', 'disp-cell-sig', 'disp-cell-nb', 'disp-cell-ho', 'disp-cell-dist', 'disp-cell-dist-unit']
+            .map(id => document.getElementById(id)),
         // Labels and units of that table, relabelled in the relative mode
         navLabels: ['disp-lat-lbl', 'disp-lon-lbl', 'disp-ralt-lbl'].map(id => document.getElementById(id)),
+        navRow3: document.getElementById('disp-ralt-lbl')?.parentElement,
         navUnits: ['disp-lat-unit', 'disp-lon-unit', 'disp-ralt-unit'].map(id => document.getElementById(id)),
 
         // Telemetry panel elements
@@ -125,7 +130,7 @@ function ensureDomCache() {
 }
 
 const NAV_TABLE = {
-    absolute: { labels: ['LATITUDE', 'LONGITUDE', 'RADAR ALT'], units: ['', '', 'm'] },
+    absolute: { labels: ['LATITUDE', 'LONGITUDE', ''], units: ['', '', ''] },
     relative: { labels: ['VX · NORTH', 'VY · EAST', 'VZ · DOWN'], units: ['m/s', 'm/s', 'm/s'] }
 };
 let navTableRelative = null;
@@ -137,6 +142,43 @@ function setNavTableMode(dom, relative) {
     const table = relative ? NAV_TABLE.relative : NAV_TABLE.absolute;
     dom.navLabels.forEach((el, i) => { if (el) el.textContent = t(table.labels[i]); });
     dom.navUnits.forEach((el, i) => { if (el) el.textContent = table.units[i]; });
+    // third row: VZ in the relative mode only
+    if (dom.navRow3) dom.navRow3.style.display = relative ? '' : 'none';
+    if (dom.positionBar) dom.positionBar.classList.toggle('nav-relative', relative);
+}
+
+/**
+ * LTE cell rows of the position panel (CORV_CELL_INFO from a cellular module),
+ * shown only on the cellular link while the module reports and LTE OVERLAY
+ * (GCS OPTIONS) is on; text rewritten at most 4 times a second.
+ */
+let cellRowsAt = 0, cellRowsLive = null, cellRowsChanged = null;
+function updateCellRows(dom) {
+    const bar = dom.positionBar;
+    if (!bar) return;
+    const live = STATE.connectionType === 'mavlink-lte' && cellIsLive() && getCellMapSettings().table;
+    if (live !== cellRowsLive) { cellRowsLive = live; bar.classList.toggle('cell-live', live); }
+    if (!live) return;
+    const now = Date.now();
+    const c = STATE.cell;
+    const changed = !!c.changedAt && now - c.changedAt < 5000;
+    if (changed !== cellRowsChanged) { cellRowsChanged = changed; bar.classList.toggle('cell-changed', changed); }
+    if (now - cellRowsAt < 250) return;
+    cellRowsAt = now;
+    const [cell, band, rssi, sig, nb, ho, dist, distUnit] = dom.cell;
+    const v = (x) => (x === null || x === undefined ? '-' : String(x));
+    if (cell) cell.textContent = c.eci ? `${operatorShort(c.mcc, c.mnc)} ${c.enb}/${c.sector}` : `NO CELL (${c.state})`;
+    if (band) band.textContent = c.eci ? `B${c.band} · ${c.pci}` : '---';
+    if (rssi) rssi.textContent = v(c.rssi);
+    if (sig) sig.textContent = `${v(c.rsrp)} · ${v(c.sinr)}`;
+    if (nb) nb.textContent = String(c.neighbours ?? 0);
+    if (ho) ho.textContent = String(c.handovers ?? 0);
+    if (dist) {
+        const notInDb = c.eci && cellMapInfo.servingFound === false;
+        dist.textContent = cellMapInfo.distanceKm !== null ? cellMapInfo.distanceKm.toFixed(1) : notInDb ? 'NOT IN DB' : '---';
+        dist.classList.toggle('cell-warn', !!notInDb);
+        if (distUnit) distUnit.textContent = cellMapInfo.distanceKm !== null ? 'km' : '';
+    }
 }
 
 /**
@@ -157,10 +199,10 @@ export function updateUI() {
         if (dom.dispLon) dom.dispLon.textContent = fmt(STATE.ve || 0);
         if (dom.dispRalt) dom.dispRalt.textContent = fmt(STATE.vd || 0);
     } else {
-        if (dom.dispRalt) dom.dispRalt.textContent = STATE.rangefinderDist != null ? STATE.rangefinderDist.toFixed(1) : '---';
         if (dom.dispLat) dom.dispLat.textContent = STATE.lat.toFixed(5);
         if (dom.dispLon) dom.dispLon.textContent = STATE.lon.toFixed(5);
     }
+    updateCellRows(dom);
     if (dom.dispVs) dom.dispVs.textContent = STATE.vs.toFixed(1);
     if (dom.dispAb) dom.dispAb.textContent = `${(STATE.aoa * RAD).toFixed(1)}° / ${(STATE.ssa * RAD).toFixed(1)}°`;
 

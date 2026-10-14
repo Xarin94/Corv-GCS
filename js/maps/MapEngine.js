@@ -6,6 +6,7 @@
 import { STATE } from '../core/state.js';
 import { RAD } from '../core/constants.js';
 import { cachedTileLayer } from './CachedTileLayer.js';
+import { createCellTowerLayer, onCellMapSettings } from './CellTowerLayer.js';
 
 let map = null;
 let marker = null;
@@ -26,6 +27,9 @@ let missionPolyline = null;
 let homeMarker = null;
 let targetMarkerInner = null;
 let targetMarkerOuter = null;
+
+// LTE cell sites and the serving cell (CORV_CELL_INFO from a cellular module)
+let cellLayer = null;
 
 // ADS-B traffic markers on mini-map
 const trafficMarkersMap = new Map(); // icao24 → L.CircleMarker
@@ -78,6 +82,9 @@ export function initMap(containerId) {
         weight: 2,
         opacity: 0.85
     }).addTo(map);
+
+    cellLayer = createCellTowerLayer(map);
+    onCellMapSettings(() => cellLayer.refresh());
 }
 
 /**
@@ -137,6 +144,9 @@ export function updateMap() {
 
     // Update ADS-B traffic dots
     updateTrafficOverlay();
+
+    // LTE cell sites and the link to the serving cell
+    if (cellLayer) cellLayer.update(newLatLng);
 }
 
 /**
@@ -197,6 +207,7 @@ export function updateTrafficOverlay() {
  */
 export function setMapRelativeFrame(on) {
     relativeFrame = !!on;
+    if (cellLayer) cellLayer.setRelative(relativeFrame);
     if (!map || !satelliteLayer) return;
     if (relativeFrame) map.removeLayer(satelliteLayer);
     else if (!map.hasLayer(satelliteLayer)) satelliteLayer.addTo(map);

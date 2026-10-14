@@ -599,6 +599,19 @@ button.ui-btn.recording {
     margin-left: 0.35em;
 }
 
+/* LTE cell rows of the position panel: only while a cellular module reports */
+.bottom-bar .cell-stat { display: none; }
+.bottom-bar.cell-live .cell-stat { display: flex; }
+/* without the cell rows the last visible row is LONGITUDE (VZ in the relative mode) */
+#position-bar:not(.cell-live):not(.nav-relative) .stat-item:nth-child(2),
+#position-bar.nav-relative:not(.cell-live) .stat-item:nth-child(3) {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+/* a cell change: the cell rows turn amber for 5 s */
+.bottom-bar.cell-changed .cell-stat .stat-val { color: #ffaa00; }
+.bottom-bar .cell-stat .stat-val.cell-warn { color: #ffaa00; }
+
 /* ADS-B TRAFFIC BAR */
 .traffic-bar {
     min-width: clamp(195px, 17vw, 330px);

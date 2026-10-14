@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.8.3-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.8.4-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"/>
   <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
   <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
@@ -197,6 +197,7 @@ radio that is the difference between two packets and several minutes.
 - **Sensor calibration**: the six-position accelerometer calibration, level, gyro and baro, and the onboard compass calibration with a 3D sphere of the magnetometer samples that turns green where the autopilot has coverage.
 - **Joystick**: fly with a gamepad through RC override, with per-axis calibration.
 - **Telemetry forwarding**: mirror the link over UDP or output MAVLink / LTM to an antenna tracker.
+- **Cellular link**: an LTEtelem module flies the link over the mobile network, end-to-end encrypted through a relay; the LTE cell it uses, the signal and the cell changes are in the position panel, and the serving mast with the cell sites around it is on the map and in 3D.
 - **ADS-B traffic**: nearby aircraft on the map, and in 3D as red circles with callsign and relative height, trailing the path they flew.
 - **Offline maps**: satellite tiles and elevation data cached on disk, so the app starts and works without a network.
 
@@ -205,9 +206,9 @@ radio that is the difference between two packets and several minutes.
 ## Installation
 
 Installers are on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
-**Windows** `CORV GCS Setup 1.8.3.exe`, **macOS** `CORV GCS-1.8.3-arm64.dmg` (Apple silicon) and
-`CORV GCS-1.8.3-x64.dmg` (Intel), **Linux** `CORV GCS-1.8.3.AppImage` (portable) and
-`corv-gcs_1.8.3_amd64.deb` (Debian / Ubuntu).
+**Windows** `CORV GCS Setup 1.8.4.exe`, **macOS** `CORV GCS-1.8.4-arm64.dmg` (Apple silicon) and
+`CORV GCS-1.8.4-x64.dmg` (Intel), **Linux** `CORV GCS-1.8.4.AppImage` (portable) and
+`corv-gcs_1.8.4_amd64.deb` (Debian / Ubuntu).
 
 The macOS app is not signed with an Apple Developer ID: after copying it to Applications, run
 `xattr -dr com.apple.quarantine "/Applications/CORV GCS.app"` once, or macOS reports it as damaged.

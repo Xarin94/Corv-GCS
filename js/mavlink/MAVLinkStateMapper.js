@@ -156,6 +156,7 @@ export function mapMessageToState(msgId, data) {
         case 65: mapRcChannels(data); break;
         case 74: mapVfrHud(data); break;
         case 109: mapRadioStatus(data); break;
+        case 52200: mapCellInfo(data); break;   // CORV_CELL_INFO, corv-mavlink.js
         case 77: mapCommandAck(data); break;
         case 127: mapGpsRtk(data); break;
         case 132: mapDistanceSensor(data); break;
@@ -189,6 +190,43 @@ function mapRadioStatus(data) {
     // rssi/remrssi: 0-254 are valid RSSI counts; 255 = invalid/unknown
     STATE.rssi    = data.rssi    < 255 ? data.rssi    : null;
     STATE.remRssi = data.remrssi < 255 ? data.remrssi : null;
+}
+
+// CORV_CELL_INFO (52200) from an LTEtelem cellular module: the LTE cell it is
+// camped on. INT16_MAX / INT8_MAX mark values the modem did not report.
+// The EG800Q reports NOCONN (3) even while data flows, so 3 is only "camped".
+const CELL_STATES = ['?', 'SEARCH', 'LIMITED', 'CAMPED', 'CONNECTED'];
+function mapCellInfo(data) {
+    if (!Number.isFinite(data.eci)) return;
+    const now = Date.now();
+    const prev = STATE.cell;
+    const dbm = (v) => (Number.isFinite(v) && v !== 32767 ? v : null);
+    const db = (v) => (Number.isFinite(v) && v !== 127 ? v : null);
+    const nb = [];
+    for (let i = 0; i < 4; i++) {
+        const pci = data.nbPci?.[i];
+        if (!Number.isFinite(pci) || pci === 65535) continue;
+        nb.push({ pci, earfcn: data.nbEarfcn?.[i], rsrp: dbm(data.nbRsrp?.[i]) });
+    }
+    const changed = !!(prev && prev.eci && data.eci && prev.eci !== data.eci);
+    // SINR jumps by 10 dB from one reading to the next: the link colour
+    // (CellTowerLayer.linkQuality) follows an average of the last few
+    const sinr = db(data.sinr);
+    const sinrAvg = sinr === null ? (prev ? prev.sinrAvg : null)
+        : (prev && prev.sinrAvg !== null ? prev.sinrAvg * 0.7 + sinr * 0.3 : sinr);
+    if (changed) {
+        console.log(`[cell] cell change: eNB ${prev.enb}/${prev.sector} PCI ${prev.pci} -> `
+            + `eNB ${Math.floor(data.eci / 256)}/${data.eci & 255} PCI ${data.pci}, RSRP ${dbm(data.rsrp)} dBm`);
+    }
+    STATE.cell = {
+        eci: data.eci, enb: Math.floor(data.eci / 256), sector: data.eci & 255,
+        mcc: data.mcc, mnc: data.mnc, tac: data.tac, pci: data.pci, earfcn: data.earfcn, band: data.band,
+        state: CELL_STATES[data.state] || '?',
+        rsrp: dbm(data.rsrp), rssi: dbm(data.rssi), rsrq: db(data.rsrq), sinr, sinrAvg,
+        handovers: data.handovers, neighbours: data.nNeighbours, nb,
+        receivedAt: now,
+        changedAt: changed ? now : (prev ? prev.changedAt : 0),
+    };
 }
 
 function mapSysStatus(data) {

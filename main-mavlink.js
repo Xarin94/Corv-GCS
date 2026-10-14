@@ -15,6 +15,7 @@ const trace = require('./mavlink-trace');
 // Lazy-load native modules to avoid ABI mismatch at startup
 let SerialPort = null;
 let MavLinkPacketSplitter, MavLinkPacketParser, MavLinkProtocolV2, send, minimal, common;
+let createSplitter; // splitter that also knows our own messages (corv-mavlink.js)
 let messageRegistry = null; // Maps msgId -> message class for deserialization
 
 function ensureMAVLinkLoaded() {
@@ -57,6 +58,10 @@ function ensureMAVLinkLoaded() {
             if (!messageRegistry.has(Number(id))) messageRegistry.set(Number(id), clazz);
         }
     }
+    // Our own messages (CORV_CELL_INFO from the LTEtelem module)
+    const corv = require('./corv-mavlink');
+    createSplitter = corv.createSplitter;
+    for (const [id, clazz] of Object.entries(corv.REGISTRY)) messageRegistry.set(Number(id), clazz);
 }
 
 function ensureSerialLoaded() {
@@ -240,7 +245,7 @@ function initMAVLinkHandlers(win) {
             });
 
             // Set up MAVLink parsing pipeline with TLOG tap
-            const splitter = new MavLinkPacketSplitter();
+            const splitter = createSplitter();
             const tlogTap = createTlogTap();
             const parser = new MavLinkPacketParser();
 
@@ -288,7 +293,7 @@ function initMAVLinkHandlers(win) {
         try {
             const socket = dgram.createSocket('udp4');
             const passthrough = new PassThrough();
-            const splitter = new MavLinkPacketSplitter();
+            const splitter = createSplitter();
             const tlogTap = createTlogTap();
             const parser = new MavLinkPacketParser();
 
@@ -361,7 +366,7 @@ function initMAVLinkHandlers(win) {
 
             let socket = new net.Socket();
             const passthrough = new PassThrough();
-            const splitter = new MavLinkPacketSplitter();
+            const splitter = createSplitter();
             const tlogTap = createTlogTap();
             const parser = new MavLinkPacketParser();
 
@@ -440,7 +445,7 @@ function initMAVLinkHandlers(win) {
         const { LteLink } = require('./lte-link');
         const link = new LteLink(opts || {});
         const passthrough = new PassThrough();
-        const splitter = new MavLinkPacketSplitter();
+        const splitter = createSplitter();
         const tlogTap = createTlogTap();
         const parser = new MavLinkPacketParser();
         passthrough.pipe(splitter).pipe(tlogTap).pipe(parser);
@@ -1209,7 +1214,7 @@ function emitFakeMavlinkMessage({ msgId, data, sysId = 1, compId = 1 }) {
 function getReplayParserBuilder() {
     ensureMAVLinkLoaded();
     return () => ({
-        splitter: new MavLinkPacketSplitter(),
+        splitter: createSplitter(),
         parser: new MavLinkPacketParser()
     });
 }

@@ -14,6 +14,7 @@ const { initMissionStoreHandlers } = require('./mission-store');
 const { initMSPHandlers, cleanup: cleanupMSP } = require('./msp-manager');
 const { initLidarHandlers, cleanup: cleanupLidar, onMavlinkMessage: lidarOnMavlink } = require('./lidar-manager');
 const { initLteKeyHandlers } = require('./lte-link');
+const { initCellDbHandlers } = require('./cell-db');
 
 // Hide the application menu (will be set when app is ready)
 
@@ -272,6 +273,10 @@ function createWindow() {
 
   // Mission library / data root (creates data/, missions/, logs/ and index.json)
   initMissionStoreHandlers();
+
+  // LTE cell sites (OpenCelliD) for the cellular link map overlay; after the
+  // mission store, whose data root holds the cache
+  initCellDbHandlers(win);
 
   // MSP (INAV / Betaflight) telemetry adapter
   initMSPHandlers(win);

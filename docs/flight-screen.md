@@ -268,12 +268,39 @@ imagery. It grows when the mouse is over it. **Click it** to swap it with the 3D
 becomes the main view); **click the 3D view** (now small) to swap back. In the relative navigation
 mode the map is empty (no real position to show).
 
+### LTE cells
+
+With an LTEtelem cellular module (SETUP → COMMS → CELLULAR LINK) the module reports the LTE cell
+it is camped on every 2 s (`CORV_CELL_INFO`). While these reports arrive the map shows:
+
+- the **cell sites** within 10 km of the vehicle — white dots for the network of the serving cell,
+  grey for the other operators when **ALL OPERATORS** is on; hover a dot for the operator, the eNB
+  and its sectors. The serving site is shown however far it is;
+- the **serving site** as a ring, joined to the vehicle by a **dashed line**: the mast that
+  carries the link. Its colour is the link quality: **green** with RSRP from −100 dBm and SINR
+  (averaged over the last readings) from 5 dB, **red** under −110 dBm or 0 dB or with no cell report
+  for 5 s, **orange** in between;
+- the cell figures (operator, band, signal, neighbours, cell changes, distance to the mast) are in
+  the [position panel](#bottom-right-rotor-load-position-traffic), not on the map.
+
+The 3D view shows the same sites (the serving one and those within 10 km) as thin red poles 10 m tall on the terrain, and, in the
+chase view, the same dashed line in the same colour from the vehicle to the top of the serving pole
+(fainter where the terrain hides it). The first-person view has no line: it would start at the
+camera; the mini-map always shows it.
+A pole appears once the elevation tile under it is loaded.
+
+Positions come from OpenCelliD (crowd measurements, CC BY-SA 4.0): they are estimates, often a few
+hundred metres off, and sites built after the copy (June 2024) are missing. The cells within
+100 km of the vehicle are downloaded on their own the first time and kept on disk; a whole country can be
+downloaded ahead with **DOWNLOAD** in the CELLULAR LINK page, which also shows the serving cell and
+the neighbours in detail and turns the overlay off with **SHOW CELL SITES ON THE MAP**.
+
 ## Bottom right: rotor load, position, traffic
 
 | Panel | |
 |-------|---|
 | **ROTOR LOAD** | For multirotors: a schematic of the frame with each motor coloured by its output — blue stopped, green, orange, red as the PWM rises past the thresholds. A motor that runs much harder than the others shows a weight imbalance, a failing motor or a bent arm. Plane and helicopter show the main rotor only. On/off with **SHOW ROTOR LOAD** in the side panel or in SYS CONFIG; frame and thresholds in [SYS CONFIG → ROTOR LOAD](sys-config.md#rotor-load). |
-| **Position** | LATITUDE, LONGITUDE and RADAR ALT (the rangefinder distance). In the relative navigation mode: **VX · NORTH, VY · EAST, VZ · DOWN** velocities in m/s instead. |
+| **Position** | LATITUDE and LONGITUDE. In the relative navigation mode: **VX · NORTH, VY · EAST, VZ · DOWN** velocities in m/s instead. On the cellular link, while the module reports its cell, also: **LTE CELL** (operator, eNB/sector), **BAND · PCI**, **RSSI** (the same value as the signal in the command bar), **RSRP · SINR**, **NEIGHBOURS** (cells the modem measures besides the serving one), **CELL CHANGES** since the module started, **MAST DIST** (to the serving site of the [mini-map](#lte-cells); NOT IN DB when the site is not in the cell database). The cell rows turn amber for 5 s after a cell change; **LTE OVERLAY** in the side panel's GCS OPTIONS hides them. The rangefinder distance is in the HUD cell **LiDAR**. |
 | **Traffic** | The 4 nearest ADS-B aircraft — see [ADS-B traffic](#ads-b-traffic). Hidden when ADS-B is off. |
 
 ## Command bar

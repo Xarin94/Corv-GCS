@@ -19,6 +19,7 @@ import { STATE } from '../core/state.js';
 import { connect, disconnect } from '../mavlink/ConnectionManager.js';
 import { requestAllDataStreams } from '../mavlink/CommandSender.js';
 import { setNavDot } from './TabController.js';
+import { getCellMapSettings, setCellMapSettings, cellIsLive, cellMapInfo, operatorName } from '../maps/CellTowerLayer.js';
 
 const STORAGE_KEY = 'lte-link-config';
 const DEFAULT_RELAY_HOST = '94.177.202.247';   // CORV relay (Aruba VPS)
@@ -170,4 +171,93 @@ export async function initCellularLink() {
     });
 
     window.mavlink.onLteStatus(render);
+    initCellMap();
+}
+
+// ── LTE cell map (CORV_CELL_INFO + OpenCelliD cache) ─────────────────────────
+
+// Boxes for the DOWNLOAD button: south, west, north, east
+const COUNTRIES = {
+    'Italy': [35.4, 6.6, 47.1, 18.6],
+    'Switzerland': [45.8, 5.9, 47.9, 10.5],
+    'Austria': [46.4, 9.5, 49.0, 17.2],
+    'Slovenia': [45.4, 13.4, 46.9, 16.6],
+    'France': [42.3, -4.8, 51.1, 8.2],
+    'Germany': [47.3, 5.9, 55.1, 15.0],
+    'Spain': [36.0, -9.3, 43.8, 3.3],
+};
+
+function renderCellDbStatus(st) {
+    if (!st) return;
+    $('lte-celldb-status').textContent = st.blocks
+        ? `${st.cells.toLocaleString()} LTE cells in ${st.blocks} areas, ${formatBytes(st.bytes)}${st.date ? `, data of ${st.date}` : ''}`
+        : 'empty';
+}
+
+function renderCell() {
+    const c = STATE.cell;
+    if (!c || !cellIsLive()) {
+        for (const id of ['serving', 'signal', 'neighbours', 'changes', 'mast']) $(`lte-cell-${id}`).textContent = '--';
+        if (c) $('lte-cell-serving').textContent = 'no CORV_CELL_INFO for 10 s';
+        return;
+    }
+    $('lte-cell-serving').textContent = c.eci
+        ? `${operatorName(c.mcc, c.mnc)} eNB ${c.enb} sector ${c.sector} (ECI ${c.eci}), TAC ${c.tac}, PCI ${c.pci}, EARFCN ${c.earfcn}, band ${c.band}, ${c.state}`
+        : `no cell (${c.state})`;
+    const v = (x, unit) => (x === null ? '-' : `${x} ${unit}`);
+    $('lte-cell-signal').textContent = `RSRP ${v(c.rsrp, 'dBm')}, RSRQ ${v(c.rsrq, 'dB')}, SINR ${v(c.sinr, 'dB')}, RSSI ${v(c.rssi, 'dBm')}`;
+    $('lte-cell-neighbours').textContent = c.neighbours
+        ? `${c.neighbours}: ` + c.nb.map((n) => `PCI ${n.pci}${n.earfcn !== c.earfcn ? `/${n.earfcn}` : ''} ${v(n.rsrp, 'dBm')}`).join(', ')
+        : '0';
+    $('lte-cell-changes').textContent = `${c.handovers}` + (c.changedAt ? `, last ${Math.round((Date.now() - c.changedAt) / 1000)} s ago` : '');
+    const site = cellMapInfo.servingSite;
+    $('lte-cell-mast').textContent = cellMapInfo.error ? `database: ${cellMapInfo.error}`
+        : site ? `${site.lat.toFixed(5)}, ${site.lon.toFixed(5)} (estimate from ${site.cells.length} cells of the eNB)`
+        : cellMapInfo.servingFound === false ? 'not in the database (site newer than the copy, or never measured)'
+        : 'shown when the map is open';
+}
+
+async function initCellMap() {
+    const s = getCellMapSettings();
+    $('lte-cell-show').checked = s.show;
+    $('lte-cell-all').checked = s.allOperators;
+    $('lte-cell-show').addEventListener('change', (e) => setCellMapSettings({ show: e.target.checked }));
+    $('lte-cell-all').addEventListener('change', (e) => setCellMapSettings({ allOperators: e.target.checked }));
+    // GCS OPTIONS (sidebar) → LTE OVERLAY: the cell rows of the position panel
+    const overlay = $('chk-lte-overlay');
+    if (overlay) {
+        overlay.checked = s.table;
+        overlay.addEventListener('change', (e) => setCellMapSettings({ table: e.target.checked }));
+    }
+    setInterval(renderCell, 1000);
+
+    const sel = $('lte-celldb-country');
+    for (const name of Object.keys(COUNTRIES)) sel.add(new Option(name, name));
+    if (!window.cellDb) {
+        $('lte-celldb-status').textContent = 'not available';
+        return;
+    }
+    renderCellDbStatus(await window.cellDb.status().catch(() => null));
+    window.cellDb.onProgress((p) => {
+        $('lte-celldb-status').textContent = `downloading: area ${p.done} of ${p.total}, ${p.cells.toLocaleString()} cells`
+            + (p.failed ? `, ${p.failed} failed` : '');
+    });
+    $('lte-celldb-download').addEventListener('click', async () => {
+        const [south, west, north, east] = COUNTRIES[sel.value];
+        $('lte-celldb-download').disabled = true;
+        try {
+            const r = await window.cellDb.downloadBox({ south, west, north, east });
+            renderCellDbStatus(r.status);
+            if (r.failed) alert(`${r.failed} of ${r.blocks} areas could not be downloaded: try again later.`);
+        } catch (e) {
+            alert('Cell download failed: ' + String(e.message || e).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
+        } finally {
+            $('lte-celldb-download').disabled = false;
+        }
+    });
+    $('lte-celldb-clear').addEventListener('click', async () => {
+        if (!confirm('Delete all downloaded cells?')) return;
+        renderCellDbStatus(await window.cellDb.clear());
+        setCellMapSettings({});   // the map queries again
+    });
 }

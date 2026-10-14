@@ -187,6 +187,15 @@ contextBridge.exposeInMainWorld('lteKey', {
   forget: () => ipcRenderer.invoke('lte-key-forget')
 });
 
+// LTE cell sites around the vehicle, OpenCelliD cache (cell-db.js)
+contextBridge.exposeInMainWorld('cellDb', {
+  query: (q) => ipcRenderer.invoke('celldb-query', q),
+  status: () => ipcRenderer.invoke('celldb-status'),
+  clear: () => ipcRenderer.invoke('celldb-clear'),
+  downloadBox: (box) => ipcRenderer.invoke('celldb-download-box', box),
+  onProgress: (callback) => ipcRenderer.on('celldb-progress', (event, p) => callback(p))
+});
+
 // MSP / MSP2 API bridge (INAV, Betaflight). Telemetry arrives on the same
 // 'mavlink-message' channel as everything else — see msp-manager.js.
 contextBridge.exposeInMainWorld('msp', {

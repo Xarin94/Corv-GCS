@@ -13,6 +13,7 @@ import { SymbolLayer, SHAPE, makeLabel, fitLabel, disposeLabel, setSymbolHalo, s
 import { WORLD_LAYER, OVERLAY_LAYER, toOverlayLayer } from './Layers.js';
 import { setCorridorColor } from './TrajectoryCorridor3D.js';
 import { initTraffic3D, updateTraffic3D, animateTraffic3D, resizeTraffic3D, setTrafficColor } from './Traffic3D.js';
+import { initCell3D, animateCell3D } from './Cell3D.js';
 import { initMission3D, updateMission3D, setMission3DActiveSeq, clearMission3D, setMission3DPalette, resizeMission3D } from './Mission3D.js';
 import { initWater3D, updateWater3D } from './Water3D.js';
 import { ThreeWebGLBackend } from './RenderBackend.js';
@@ -204,6 +205,7 @@ function initOverlays() {
     ownship.setVisible(false);
 
     initTraffic3D(scene);
+    initCell3D(scene);
 }
 
 /**
@@ -461,6 +463,7 @@ export function render() {
         dir[0] = currentSunDirection.x; dir[1] = currentSunDirection.y; dir[2] = currentSunDirection.z;
         updateTerrainInstances(camera);
         animateTraffic3D(camera, renderer.getSize(_viewport).y);
+        animateCell3D();
         flushThickLines();
         // AR forces the schematic terrain too (FPVController), and its
         // outlines are what shows over the camera feed

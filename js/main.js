@@ -34,6 +34,7 @@ import {
     setGroundGridVisible, updateWaterView, isSchematicView,
     getRenderPerformanceStats, setRenderQuality, setTerrainFogRadius
 } from './engine/Scene3D.js';
+import { setCell3DFirstPerson } from './engine/Cell3D.js';
 import { readRenderQuality } from './engine/RenderQuality.js';
 import { OVERLAY_LAYER } from './engine/Layers.js';
 import { isRelativeMode, applyRelativeToState, resetRelNav } from './core/RelativeNav.js';
@@ -471,6 +472,7 @@ function drawOverWater(object) {
 
 function setCameraMode(mode) {
     cameraMode = mode === 'THIRD' ? 'THIRD' : 'FIRST';
+    setCell3DFirstPerson(cameraMode === 'FIRST');
 
     const btn = document.getElementById('btn-cam');
     if (btn) {

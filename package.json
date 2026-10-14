@@ -1,6 +1,6 @@
 {
   "name": "corv-gcs",
-  "version": "1.8.3",
+  "version": "1.8.4",
   "description": "CORV SYSTEMS Ground Control Station",
   "main": "main.js",
   "scripts": {
@@ -12,6 +12,7 @@
     "test:architecture": "node scripts/test-render-architecture.js",
     "test:joystick": "node scripts/test-joystick.js",
     "test:joystick-ui": "node scripts/test-joystick-ui.js",
+    "test:celldb": "node scripts/test-cell-db.js",
     "measure:runtime": "node scripts/measure-runtime.js",
     "build": "electron-builder --win --linux",
     "build:win": "electron-builder --win",
