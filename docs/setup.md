@@ -59,6 +59,10 @@ key derived from it, and the relay pairs them by that key. A wrong key is theref
 GCS simply never meets the module, which stays *offline on the relay*. The MODULE line then shows the
 key fingerprint, to compare with `e2e_key_fp` on the module (`~cfg GET`).
 
+The flight controller behind the module may speak MAVLink (ArduPilot) or CORV-2 binary (CORV
+board): the GCS tells them apart by themselves, packet by packet, and keeps the module's own MAVLink
+(signal and LTE cell) apart from the vehicle's telemetry. A CORV board is shown as on the USB link.
+
 | Panel / field | |
 |---------------|---|
 | **CELLULAR MODULE → MODULE ID** | The module's ID (e.g. `CRV-4B58`), shown by the relay and in the status; the key, not the ID, selects the module. |

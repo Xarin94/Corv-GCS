@@ -16,6 +16,8 @@ const trace = require('./mavlink-trace');
 let SerialPort = null;
 let MavLinkPacketSplitter, MavLinkPacketParser, MavLinkProtocolV2, send, minimal, common;
 let createSplitter; // splitter that also knows our own messages (corv-mavlink.js)
+let corvMavlink = null;
+const { LinkDemux } = require('./link-demux');
 let messageRegistry = null; // Maps msgId -> message class for deserialization
 
 function ensureMAVLinkLoaded() {
@@ -59,9 +61,9 @@ function ensureMAVLinkLoaded() {
         }
     }
     // Our own messages (CORV_CELL_INFO from the LTEtelem module)
-    const corv = require('./corv-mavlink');
-    createSplitter = corv.createSplitter;
-    for (const [id, clazz] of Object.entries(corv.REGISTRY)) messageRegistry.set(Number(id), clazz);
+    corvMavlink = require('./corv-mavlink');
+    createSplitter = corvMavlink.createSplitter;
+    for (const [id, clazz] of Object.entries(corvMavlink.REGISTRY)) messageRegistry.set(Number(id), clazz);
 }
 
 function ensureSerialLoaded() {
@@ -437,6 +439,9 @@ function initMAVLinkHandlers(win) {
     // TLS to the relay, challenge signed with the module key (CRV3), then AES-256-GCM
     // end-to-end records. The link reconnects by itself after drops, so the
     // connection state only goes DISCONNECTED on an explicit disconnect.
+    // The flight controller behind the module may speak MAVLink or CORV-2
+    // binary, and the module adds MAVLink of its own (RADIO_STATUS,
+    // CORV_CELL_INFO) either way: link-demux.js sorts the two by CRC.
     ipcMain.handle('mavlink-connect-lte', async (event, opts) => {
         // Module id and relay only, never the key
         console.log(`[mavlink] connect LTE module ${opts && opts.moduleId} via ${opts && opts.host}:${opts && opts.port} requested`);
@@ -450,9 +455,21 @@ function initMAVLinkHandlers(win) {
         const parser = new MavLinkPacketParser();
         passthrough.pipe(splitter).pipe(tlogTap).pipe(parser);
 
+        let corvSeen = false;
+        const demux = new LinkDemux({
+            magicNumbers: corvMavlink.MAGIC_NUMBERS,
+            onMavlink: (frame) => passthrough.write(frame),
+            onCorv: (type, payload) => {
+                if (!corvSeen) {
+                    corvSeen = true;
+                    console.log(`[lte] CORV-2 binary telemetry on the cellular link (module ${opts.moduleId})`);
+                }
+                corvHandlePacket(type, payload);
+            }
+        });
         link.on('data', (data) => {
             linkBytesRx += data.length;
-            passthrough.write(data);
+            demux.push(data);
         });
         link.on('status', (status) => {
             logLteStatus(status);
@@ -550,11 +567,7 @@ function initMAVLinkHandlers(win) {
                     const crcRecv = corvBuf[total - 2] | (corvBuf[total - 1] << 8);
 
                     if (crcCalc === crcRecv) {
-                        const payload = Buffer.from(corvBuf.subarray(5, 5 + pLen));
-                        if (pType === 0x01) corvEmitNavigation(payload);
-                        else if (pType === 0x02) corvEmitDebug(payload);
-                        else if (pType === 0x03) corvEmitRawSensor(payload);
-                        else if (pType === 0x11) corvEmitConfigResponse(payload);
+                        corvHandlePacket(pType, Buffer.from(corvBuf.subarray(5, 5 + pLen)));
                         corvBuf.copyWithin(0, total, corvLen);
                         corvLen -= total;
                         again = true;
@@ -1233,6 +1246,14 @@ function corvCRC16(buf, offset, length) {
         }
     }
     return crc;
+}
+
+/** A CORV-2 packet with a good CRC, from the USB serial port or the cellular link. */
+function corvHandlePacket(type, payload) {
+    if (type === 0x01) corvEmitNavigation(payload);
+    else if (type === 0x02) corvEmitDebug(payload);
+    else if (type === 0x03) corvEmitRawSensor(payload);
+    else if (type === 0x11) corvEmitConfigResponse(payload);
 }
 
 /**

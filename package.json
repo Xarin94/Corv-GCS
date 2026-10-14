@@ -13,6 +13,7 @@
     "test:joystick": "node scripts/test-joystick.js",
     "test:joystick-ui": "node scripts/test-joystick-ui.js",
     "test:celldb": "node scripts/test-cell-db.js",
+    "test:demux": "node scripts/test-link-demux.js",
     "measure:runtime": "node scripts/measure-runtime.js",
     "build": "electron-builder --win --linux",
     "build:win": "electron-builder --win",
