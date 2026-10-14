@@ -162,8 +162,16 @@
 }
 
 /* While a replay is loaded the bottom-right LAT/LON/RADAR-ALT + ADS-B
-   stack would otherwise cover the timeline. Hide it: the same lat/lon
-   is visible in the 3D scene, on the map trail, and in the HUD tapes. */
+   tables would otherwise cover the timeline. Hide them: the same lat/lon
+   is visible in the 3D scene, on the map trail, and in the HUD tapes.
+   The ROTOR LOAD schematic above them stays — it replays the logged motor
+   outputs. visibility, not display, so the tables keep their room and the
+   schematic stays above the timeline instead of dropping onto it. */
 body.log-replay-active .bottom-bar-group {
-    display: none !important;
+    pointer-events: none;
+}
+
+body.log-replay-active .bottom-bar-group > .bottom-bar,
+body.log-replay-active .bottom-bar-group > #traffic-bar {
+    visibility: hidden !important;
 }

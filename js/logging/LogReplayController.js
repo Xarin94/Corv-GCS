@@ -15,8 +15,6 @@ import { latLonToMeters } from '../core/utils.js';
 import { setTrailPoints, resetTrail, setTrailFrozen } from '../engine/Scene3D.js';
 import { setMapTrail, unfreezeMapTrail } from '../maps/MapEngine.js';
 
-const REPLAY_MODEL = 'plane.glb';
-
 // Vertical offset (metres) applied to the full-flight trail. Drawing the red
 // line slightly below the recorded altitude keeps it from running straight
 // through the camera viewpoint — instead it passes just under it.
@@ -28,7 +26,6 @@ let replayPlaying = false;
 let userIsScrubbing = false;
 let seekDebounceTimer = null;
 let liveConnected = false;  // derived from mavlinkConnectionState events
-let previousModelName = null;  // model selected before replay took over
 // First valid coord from the loaded log's GPS track. Used to seed STATE.lat/lon
 // at load and after each seek so the 2D map doesn't snap to Innsbruck (the
 // global ORIGIN default) or to (0,0) before the first GPS message streams in.
@@ -102,33 +99,6 @@ function setOpenBtnEnabled(enabled) {
     els.openBtn.disabled = !enabled;
     els.openBtn.style.opacity = enabled ? '' : '0.4';
     els.openBtn.style.pointerEvents = enabled ? '' : 'none';
-}
-
-/**
- * Switch the 3D model to the one we use for log replay (plane.glb) if it exists
- * in the model list. Remembers the previous selection for later restoration.
- */
-function switchToReplayModel() {
-    const select = document.getElementById('model-select');
-    if (!select) return;
-    const opt = Array.from(select.options).find(o => o.value.toLowerCase() === REPLAY_MODEL);
-    if (!opt) return;  // model not present in the folder
-    if (select.value === opt.value) return;  // already selected
-    previousModelName = select.value;
-    select.value = opt.value;
-    select.dispatchEvent(new Event('change'));
-}
-
-function restorePreviousModel() {
-    if (!previousModelName) return;
-    const select = document.getElementById('model-select');
-    if (!select) { previousModelName = null; return; }
-    const exists = Array.from(select.options).some(o => o.value === previousModelName);
-    if (exists && select.value !== previousModelName) {
-        select.value = previousModelName;
-        select.dispatchEvent(new Event('change'));
-    }
-    previousModelName = null;
 }
 
 async function handleOpenFile() {
@@ -250,7 +220,8 @@ function onState(state) {
             // only while STATE.mode === 'LIVE' && !STATE.connected.
             STATE.mode = 'REPLAY';
             document.body.classList.add('log-replay-active');
-            switchToReplayModel();
+            // No model switch here: the replayed HEARTBEAT carries the
+            // vehicle type from the log, and main.js follows it like live.
         }
     } else if (s === 'UNLOADED') {
         replayLoaded = false;
@@ -269,7 +240,6 @@ function onState(state) {
             setTrailFrozen(false);
             resetTrail();
             unfreezeMapTrail();
-            restorePreviousModel();
             replayInitialPos = null;
         }
     }

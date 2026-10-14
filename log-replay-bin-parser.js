@@ -15,6 +15,8 @@
  * that MAVLinkStateMapper already handles (30/33/24/74/1/0/253/35/36/241/242).
  * NKF1/XKF1 are not emitted as MAVLink messages — they only feed the NED
  * velocity carry-over used by the AHR2-derived GLOBAL_POSITION_INT.
+ * VER/PARM are not emitted either: they identify the vehicle, so the replayed
+ * HEARTBEAT carries the MAV_TYPE the autopilot would have sent live.
  */
 
 const fs = require('fs');
@@ -26,7 +28,8 @@ const FMT_RECORD_LENGTH = 89;
 
 const WHITELIST = new Set([
     'ATT', 'AHR2', 'GPS', 'BARO', 'ARSP', 'BAT', 'MODE', 'MSG',
-    'RCIN', 'RCOU', 'VIBE', 'ORGN',
+    'RCIN', 'RCOU', 'RCO2', 'VIBE', 'ORGN',
+    'VER', 'PARM',  // vehicle identification → HEARTBEAT.type
     'NKF1', 'XKF1', // EKF2/EKF3 state — provides NED velocity at IMU rate
     'GPI'           // Custom GLOBAL_POSITION_INT pre-log — VN/VE/VD at IMU rate
 ]);
@@ -132,6 +135,53 @@ function smoothLatLonTrack(track) {
     return out;
 }
 
+// VER.BU (APM_BUILD_DIRECTORY) → firmware
+const BUILD_BY_ID = {
+    1: 'rover', 2: 'copter', 3: 'plane', 4: 'tracker', 7: 'sub', 12: 'blimp', 13: 'heli'
+};
+
+// First word of the firmware banner ("ArduCopter V4.7.1 (dbe79216)") → firmware,
+// for logs older than VER.BU
+const BUILD_BY_BANNER = [
+    [/^ArduCopter/i, 'copter'], [/^ArduPlane/i, 'plane'], [/^(ArduRover|APMrover2|Rover)/i, 'rover'],
+    [/^ArduSub/i, 'sub'], [/^Blimp/i, 'blimp'], [/^AntennaTracker/i, 'tracker']
+];
+
+// Copter FRAME_CLASS → MAV_TYPE, as ArduCopter's get_frame_mav_type() maps it
+const COPTER_MAV_TYPE_BY_FRAME_CLASS = {
+    0: 2, 1: 2,         // UNDEFINED, QUAD → QUADROTOR
+    2: 13, 5: 13,       // HEXA, Y6 → HEXAROTOR
+    3: 14, 4: 14,       // OCTA, OCTAQUAD → OCTOROTOR
+    6: 4, 11: 4, 13: 4, // HELI, HELI_DUAL, HELI_QUAD → HELICOPTER
+    7: 15,              // TRI → TRICOPTER
+    8: 3, 9: 3, 10: 3,  // SINGLE, COAX, TAILSITTER → COAXIAL
+    12: 29,             // DODECAHEXA → DODECAROTOR
+    14: 27              // DECA → DECAROTOR
+};
+
+/**
+ * MAV_TYPE the autopilot that wrote the log announces in its HEARTBEAT, from
+ * the firmware and its frame parameters. Falls back to FIXED_WING — what
+ * replay always assumed — when the log does not say.
+ */
+function resolveMavType(build, params) {
+    switch (build) {
+        case 'copter': {
+            const fc = params.FRAME_CLASS;
+            return fc === undefined ? 2 : (COPTER_MAV_TYPE_BY_FRAME_CLASS[fc] ?? 0);
+        }
+        case 'heli': return 4;
+        case 'plane':
+            // A quadplane reports Q_MAV_TYPE when set, plain FIXED_WING otherwise
+            return (params.Q_ENABLE > 0 && params.Q_MAV_TYPE > 0) ? params.Q_MAV_TYPE : 1;
+        case 'rover': return params.FRAME_CLASS === 2 ? 11 : 10;  // boat / ground rover
+        case 'sub': return 12;
+        case 'blimp': return 7;
+        case 'tracker': return 5;
+        default: return 1;
+    }
+}
+
 /**
  * Parse the file and return { index, totalMs, totalMessages }.
  * index entries: { tsMs, msgId, data, sysId, compId }
@@ -186,6 +236,18 @@ function indexBinFile(filePath) {
     let gpsFix = 0;
     let gpsNumSat = 0;
     let gpsHdop = 99.9;
+
+    // Vehicle identification, resolved once the whole file has been read: PARM
+    // and VER can come after the first MODE, so HEARTBEAT.type is filled in
+    // afterwards on every emitted heartbeat.
+    let build = null;
+    const params = {};
+    const heartbeats = [];
+    let firstModeNum = null;
+
+    // RCOU carries outputs 1-14 and RCO2 15-18; SERVO_OUTPUT_RAW has all 16,
+    // so each RCOU sample is emitted with the latest RCO2 values alongside.
+    const servo = new Array(16).fill(0);
 
     let offset = 0;
     while (offset + 3 <= buf.length) {
@@ -409,21 +471,36 @@ function indexBinFile(filePath) {
             }
             case 'MODE': {
                 const modeNum = fm.Mode || 0;
-                items.push({
-                    tsUs, msgId: 0, sysId: 1, compId: 1,
-                    data: {
-                        type: 1,          // MAV_TYPE_FIXED_WING (ArduPlane)
-                        autopilot: 3,     // MAV_AUTOPILOT_ARDUPILOTMEGA
-                        baseMode: 209,    // armed + custom mode + auto
-                        customMode: modeNum,
-                        systemStatus: 4,  // MAV_STATE_ACTIVE
-                        mavlinkVersion: 3
-                    }
-                });
+                if (firstModeNum === null) firstModeNum = modeNum;
+                const hb = {
+                    type: 1,          // filled in from VER/PARM after the scan
+                    autopilot: 3,     // MAV_AUTOPILOT_ARDUPILOTMEGA
+                    baseMode: 209,    // armed + custom mode + auto
+                    customMode: modeNum,
+                    systemStatus: 4,  // MAV_STATE_ACTIVE
+                    mavlinkVersion: 3
+                };
+                heartbeats.push(hb);
+                items.push({ tsUs, msgId: 0, sysId: 1, compId: 1, data: hb });
+                break;
+            }
+            case 'VER': {
+                if (BUILD_BY_ID[fm.BU]) build = BUILD_BY_ID[fm.BU];
+                break;
+            }
+            case 'PARM': {
+                // Only the first value counts: the vehicle cannot change frame mid-flight
+                if (fm.Name && !(fm.Name in params) && Number.isFinite(fm.Value)) {
+                    params[fm.Name] = fm.Value;
+                }
                 break;
             }
             case 'MSG': {
                 const text = fm.Message || '';
+                if (!build) {
+                    const hit = BUILD_BY_BANNER.find(([re]) => re.test(text));
+                    if (hit) build = hit[1];
+                }
                 if (text) {
                     items.push({
                         tsUs, msgId: 253, sysId: 1, compId: 1,
@@ -446,15 +523,15 @@ function indexBinFile(filePath) {
                 break;
             }
             case 'RCOU': {
-                items.push({
-                    tsUs, msgId: 36, sysId: 1, compId: 1,
-                    data: {
-                        servo1Raw: fm.C1 || 0, servo2Raw: fm.C2 || 0,
-                        servo3Raw: fm.C3 || 0, servo4Raw: fm.C4 || 0,
-                        servo5Raw: fm.C5 || 0, servo6Raw: fm.C6 || 0,
-                        servo7Raw: fm.C7 || 0, servo8Raw: fm.C8 || 0
-                    }
-                });
+                for (let ch = 1; ch <= 14; ch++) servo[ch - 1] = fm['C' + ch] || 0;
+                const data = {};
+                for (let ch = 1; ch <= 16; ch++) data['servo' + ch + 'Raw'] = servo[ch - 1];
+                items.push({ tsUs, msgId: 36, sysId: 1, compId: 1, data });
+                break;
+            }
+            case 'RCO2': {
+                servo[14] = fm.C15 || 0;
+                servo[15] = fm.C16 || 0;
                 break;
             }
             case 'VIBE': {
@@ -491,6 +568,20 @@ function indexBinFile(filePath) {
 
     if (minUs === null) minUs = 0;
 
+    // Stamp the vehicle type on every heartbeat, and announce it at the very
+    // start of the log too: the first MODE can be minutes in, and until a
+    // heartbeat arrives the 3D model and the rotor schematic don't know
+    // what is flying.
+    const mavType = resolveMavType(build, params);
+    for (const hb of heartbeats) hb.type = mavType;
+    items.push({
+        tsUs: minUs, msgId: 0, sysId: 1, compId: 1,
+        data: {
+            type: mavType, autopilot: 3, baseMode: 209,
+            customMode: firstModeNum ?? 0, systemStatus: 4, mavlinkVersion: 3
+        }
+    });
+
     // Light, fixed trajectory smoothing: a centred 5-point moving average over
     // the valid GPS fixes. Applied to the trail overlay AND written back into
     // the replayed GLOBAL_POSITION_INT positions so the model and the red trail
@@ -516,7 +607,7 @@ function indexBinFile(filePath) {
     index.sort((a, b) => a.tsMs - b.tsMs);
 
     const totalMs = index.length ? index[index.length - 1].tsMs : 0;
-    return { index, totalMs, totalMessages: index.length, gpsTrack };
+    return { index, totalMs, totalMessages: index.length, gpsTrack, mavType };
 }
 
 module.exports = { indexBinFile, smoothLatLonTrack };
