@@ -258,7 +258,10 @@ function evaluate(now) {
     if (STATE.batteryVoltage > 0 && STATE.batteryRemaining >= 0 &&
         STATE.batteryRemaining <= BATT_LOW_PCT) on.add('battLow');
 
-    if (hbFresh && (STATE.linkQuality < LINK_WEAK_PCT ||
+    // Link quality only exists where SYS_STATUS does: CORV-2 telemetry never
+    // sends it, and its 0% default used to raise LINK over a good LTE signal.
+    const lqWeak = (now - STATE.sysStatusTime < STALE_MS) && STATE.linkQuality < LINK_WEAK_PCT;
+    if (hbFresh && (lqWeak ||
         (STATE.rssi !== null && STATE.rssi < RSSI_WEAK))) on.add('linkWeak');
 
     // Warning beats its caution twin
