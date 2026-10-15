@@ -280,7 +280,7 @@ it is camped on every 2 s (`CORV_CELL_INFO`). While these reports arrive the map
   carries the link. Its colour is the link quality: **green** with RSRP from −100 dBm and SINR
   (averaged over the last readings) from 5 dB, **red** under −110 dBm or 0 dB or with no cell report
   for 5 s, **orange** in between;
-- the cell figures (operator, band, signal, neighbours, cell changes, distance to the mast) are in
+- the cell figures (operator, frequency, signal, neighbours, cell changes, distance to the mast) are in
   the [position panel](#bottom-right-rotor-load-position-traffic), not on the map.
 
 The 3D view shows the same sites (the serving one and those within 10 km) as thin red poles 10 m tall on the terrain, and, in the
@@ -289,18 +289,30 @@ chase view, the same dashed line in the same colour from the vehicle to the top 
 camera; the mini-map always shows it.
 A pole appears once the elevation tile under it is loaded.
 
-Positions come from OpenCelliD (crowd measurements, CC BY-SA 4.0): they are estimates, often a few
-hundred metres off, and sites built after the copy (June 2024) are missing. The cells within
-100 km of the vehicle are downloaded on their own the first time and kept on disk; a whole country can be
-downloaded ahead with **DOWNLOAD** in the CELLULAR LINK page, which also shows the serving cell and
-the neighbours in detail and turns the overlay off with **SHOW CELL SITES ON THE MAP**.
+Positions are estimates from crowd measurements, often a few hundred metres off, not surveyed
+masts. Italy, San Marino and Vatican City come with the installer and work offline: about 580,000
+LTE cells merged from [OpenCelliD](https://opencellid.org) (the export of the installer's date and
+the June 2024 copy, CC BY-SA 4.0) and the final export of the Mozilla Location Service (March
+2024, public domain), which holds many sites OpenCelliD never had. Elsewhere the cells within
+100 km of the vehicle are downloaded on their own from the June 2024 OpenCelliD copy and kept on
+disk. When the serving cell is in none of these:
+- it is searched by its cell identity under the other networks of the country: a cell shared by two
+  operators (Iliad and WindTre, TIM and Vodafone in small towns) is often listed under the
+  partner's code. The CELLULAR LINK page then says *shared cell, listed under …*;
+- if still missing it is looked up online in [beaconDB](https://beacondb.net) (and in the
+  OpenCelliD API first, with a token), only that cell's identifiers being sent, and kept on disk.
+
+The CELLULAR LINK page shows the serving cell and the neighbours in detail, where each position
+comes from, the databases in use, and turns the overlay off with **SHOW CELL SITES ON THE MAP**;
+there you can also add newer data: **DOWNLOAD FROM OPENCELLID** (today's file of a country, with a
+free OpenCelliD token) or **IMPORT CSV** (any file in the OpenCelliD or MLS layout).
 
 ## Bottom right: rotor load, position, traffic
 
 | Panel | |
 |-------|---|
 | **ROTOR LOAD** | For multirotors: a schematic of the frame with each motor coloured by its output — blue stopped, green, orange, red as the PWM rises past the thresholds. A motor that runs much harder than the others shows a weight imbalance, a failing motor or a bent arm. Plane and helicopter show the main rotor only. On/off with **SHOW ROTOR LOAD** in the side panel or in SYS CONFIG; frame and thresholds in [SYS CONFIG → ROTOR LOAD](sys-config.md#rotor-load). |
-| **Position** | LATITUDE and LONGITUDE. In the relative navigation mode: **VX · NORTH, VY · EAST, VZ · DOWN** velocities in m/s instead. On the cellular link, while the module reports its cell, also: **LTE CELL** (operator, eNB/sector), **BAND · PCI**, **RSSI** (the same value as the signal in the command bar), **RSRP · SINR**, **NEIGHBOURS** (cells the modem measures besides the serving one), **CELL CHANGES** since the module started, **MAST DIST** (to the serving site of the [mini-map](#lte-cells); NOT IN DB when the site is not in the cell database). The cell rows turn amber for 5 s after a cell change; **LTE OVERLAY** in the side panel's GCS OPTIONS hides them. The rangefinder distance is in the HUD cell **LiDAR**. |
+| **Position** | LATITUDE and LONGITUDE. In the relative navigation mode: **VX · NORTH, VY · EAST, VZ · DOWN** velocities in m/s instead. On the cellular link, while the module reports its cell, also: **LTE CELL** (operator, eNB/sector), **FREQ · PCI** (downlink carrier frequency in MHz, from the EARFCN; the band, e.g. B20, if the frequency is not known), **RSSI** (the same value as the signal in the command bar), **RSRP · SINR**, **NEIGHBOURS** (cells the modem measures besides the serving one), **CELL CHANGES** since the module started, **MAST DIST** (to the serving site of the [mini-map](#lte-cells); NOT IN DB when the site is neither in the cell database nor found online). The cell rows turn amber for 5 s after a cell change; **LTE OVERLAY** in the side panel's GCS OPTIONS hides them. The rangefinder distance is in the HUD cell **LiDAR**. |
 | **Traffic** | The 4 nearest ADS-B aircraft — see [ADS-B traffic](#ads-b-traffic). Hidden when ADS-B is off. |
 
 ## Command bar

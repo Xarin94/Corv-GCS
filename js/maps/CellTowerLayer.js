@@ -8,11 +8,15 @@
  * other sites within 10 km of the vehicle. The cell
  * figures go in the position panel (UIController), not on the map.
  *
- * Sites come from the OpenCelliD cache (cell-db.js, through window.cellDb)
- * within 100 km — wide, so the serving site is found even when far — and are
- * fetched again when the vehicle has moved 10 km from the last query centre,
- * when the serving network changes, or when the settings change. The ones
- * drawn are picked again every 250 m and at every cell change.
+ * Sites come from the cell database (cell-db.js, through window.cellDb:
+ * the cells shipped with the installer, files the user added, the OpenCelliD
+ * PMTiles copy) within 100 km — wide, so the serving site is found even when
+ * far — and are fetched again when the vehicle has moved 10 km from the last
+ * query centre, when the serving network changes, or when the settings
+ * change. The ones drawn are picked again every 250 m and at every cell change.
+ * A serving cell missing from the sites is asked again with its ECI (found
+ * under another operator's code when the cell is shared), then looked up
+ * online (beaconDB / OpenCelliD API) and added as a site of its own.
  * Settings persist in localStorage under 'lte-cell-map'.
  */
 
@@ -42,6 +46,12 @@ export function linkQuality() {
     else if (c.rsrp !== null && c.rsrp >= -100 && c.sinrAvg !== null && c.sinrAvg >= 5) level = 'good';
     return { level, color: QUALITY_COLORS[level] };
 }
+
+// Where a cell position comes from (cell-db.js src)
+export const SOURCE_NAMES = {
+    'ocid': 'OpenCelliD', 'ocid-2024': 'OpenCelliD 2024', 'mls': 'Mozilla MLS 2024',
+    'beacondb': 'beaconDB (online)', 'ocid-api': 'OpenCelliD API (online)', 'bundle': 'built-in',
+};
 
 // Italian networks by MNC (MCC 222); elsewhere the PLMN code is shown
 const OPERATORS_222 = { 1: 'TIM', 10: 'Vodafone', 50: 'Iliad', 88: 'WindTre', 99: 'WindTre (3)', 43: 'TIM', 48: 'TIM' };
@@ -75,7 +85,7 @@ export function setCellMapSettings(patch) {
  * settings page: servingFound is null until the sites around the vehicle are
  * known, then whether the serving eNB is among them; distanceKm to its mast.
  */
-export const cellMapInfo = { servingSite: null, servingFound: null, distanceKm: null, sites: 0, date: null, missing: 0, error: null };
+export const cellMapInfo = { servingSite: null, servingFound: null, lookingUp: false, distanceKm: null, sites: 0, date: null, missing: 0, error: null };
 
 function distanceKm(a, b) {
     const r = Math.PI / 180;
@@ -112,10 +122,12 @@ export function createCellTowerLayer(map) {
     let filterCentre = null, filterServing = null, filterSites = null;
     let queryKey = null, queryCentre = null, querying = false;
     let servingSite = null, servingEci = null, tooltipSite = null;
+    let requeriedEci = null, lookupEci = null, lookingUp = false;
 
     function siteTooltip(s, serving) {
         const cells = s.cells.map((c) => c.eci & 255).sort((a, b) => a - b).join(', ');
-        return `${serving ? '<b>SERVING</b> · ' : ''}${operatorName(s.mcc, s.mnc)}<br>eNB ${s.enb} · sectors ${cells}`;
+        const src = [...new Set(s.cells.map((c) => SOURCE_NAMES[c.src] || c.src))].join(', ');
+        return `${serving ? '<b>SERVING</b> · ' : ''}${operatorName(s.mcc, s.mnc)}<br>eNB ${s.enb} · sectors ${cells}<br>${src}`;
     }
 
     /** The serving site and the sites within SHOW_KM of the vehicle. */
@@ -150,13 +162,32 @@ export function createCellTowerLayer(map) {
         servingEci = c ? c.eci : null;
         servingSite = null;
         if (!c || !c.eci) return;
-        for (const s of sites) {
-            if (s.mcc === c.mcc && s.mnc === c.mnc && s.enb === c.enb) {
-                // the eNB is found even when this sector is missing from the database
-                servingSite = s;
-                break;
-            }
-        }
+        // the eNB is found even when this sector is missing from the database
+        servingSite = sites.find((s) => s.mcc === c.mcc && s.mnc === c.mnc && s.enb === c.enb)
+            // a shared cell, in the database under the partner's network code
+            || sites.find((s) => s.mcc === c.mcc && s.cells.some((x) => x.eci === c.eci))
+            || null;
+        if (servingSite || querying || !queryCentre) return;
+        if (requeriedEci !== c.eci) {
+            requeriedEci = c.eci;
+            queryCentre = null;           // the next update asks again with this ECI
+        } else lookupServing(c);
+    }
+
+    /** The serving cell from beaconDB / the OpenCelliD API, added to the sites. */
+    function lookupServing(c) {
+        if (lookupEci === c.eci) return;
+        lookupEci = c.eci;
+        lookingUp = true;
+        window.cellDb.lookup({ mcc: c.mcc, mnc: c.mnc, tac: c.tac, eci: c.eci }).then((hit) => {
+            if (!hit || !STATE.cell || STATE.cell.eci !== c.eci) return;
+            const cell = { eci: c.eci, tac: c.tac, lat: hit.lat, lon: hit.lon, range: hit.range, samples: hit.samples, src: hit.src };
+            sites = [...sites, { mcc: c.mcc, mnc: c.mnc, enb: c.enb, lat: hit.lat, lon: hit.lon, cells: [cell] }];
+            findServing();
+        }).catch((e) => {
+            lookupEci = null;              // offline: try again at the next cell change
+            console.warn('[cell] lookup:', e.message || e);
+        }).finally(() => { lookingUp = false; });
     }
 
     async function query(centre) {
@@ -167,13 +198,14 @@ export function createCellTowerLayer(map) {
         try {
             const r = await window.cellDb.query({
                 lat: centre.lat, lon: centre.lng, radiusKm: RADIUS_KM,
-                mcc: settings.allOperators ? null : c.mcc, mnc: settings.allOperators ? null : c.mnc,
+                mcc: settings.allOperators ? null : c.mcc, mnc: settings.allOperators ? null : c.mnc, eci: c.eci,
             });
             sites = r.sites;
             cellMapInfo.sites = sites.length;
             cellMapInfo.date = r.date;
             cellMapInfo.missing = r.missing;
             cellMapInfo.error = null;
+            querying = false;
             findServing();
         } catch (e) {
             cellMapInfo.error = String(e.message || e);
@@ -242,7 +274,8 @@ export function createCellTowerLayer(map) {
             }
             cellMapInfo.servingSite = servingSite;
             overlay.serving = servingSite;
-            cellMapInfo.servingFound = querying || !queryCentre ? null : !!servingSite;
+            cellMapInfo.lookingUp = lookingUp;
+            cellMapInfo.servingFound = querying || !queryCentre || lookingUp ? null : !!servingSite;
             cellMapInfo.distanceKm = servingSite && valid
                 ? distanceKm(vehicle, { lat: servingSite.lat, lng: servingSite.lon }) : null;
         },

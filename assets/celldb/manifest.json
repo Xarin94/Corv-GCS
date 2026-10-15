@@ -1,0 +1,38 @@
+{
+  "file": "cells-lte.csv.gz",
+  "built": "2026-10-15",
+  "mcc": [
+    222,
+    292,
+    225
+  ],
+  "cells": 581117,
+  "bySource": {
+    "ocid": 96928,
+    "ocid-2024": 45999,
+    "mls": 438190
+  },
+  "sources": [
+    {
+      "src": "ocid",
+      "name": "OpenCelliD",
+      "date": "2026-10-05",
+      "licence": "CC BY-SA 4.0",
+      "url": "https://opencellid.org"
+    },
+    {
+      "src": "ocid-2024",
+      "name": "OpenCelliD (Source Cooperative PMTiles)",
+      "date": "2024-06-15",
+      "licence": "CC BY-SA 4.0",
+      "url": "https://source.coop/smartmaps/opencellid"
+    },
+    {
+      "src": "mls",
+      "name": "Mozilla Location Service, final export",
+      "date": "2024-03-19",
+      "licence": "Public domain (CC0)",
+      "url": "https://archive.org/details/MLS-full-cell-export-final.csv.gz"
+    }
+  ]
+}

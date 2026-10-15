@@ -187,11 +187,15 @@ contextBridge.exposeInMainWorld('lteKey', {
   forget: () => ipcRenderer.invoke('lte-key-forget')
 });
 
-// LTE cell sites around the vehicle, OpenCelliD cache (cell-db.js)
+// LTE cell sites around the vehicle: bundled, downloaded and looked-up cells (cell-db.js)
 contextBridge.exposeInMainWorld('cellDb', {
   query: (q) => ipcRenderer.invoke('celldb-query', q),
+  lookup: (cell) => ipcRenderer.invoke('celldb-lookup', cell),
   status: () => ipcRenderer.invoke('celldb-status'),
   clear: () => ipcRenderer.invoke('celldb-clear'),
+  settings: (patch) => ipcRenderer.invoke('celldb-settings', patch || null),
+  downloadOpenCellid: (mcc) => ipcRenderer.invoke('celldb-download-ocid', mcc),
+  importCsv: () => ipcRenderer.invoke('celldb-import'),
   downloadBox: (box) => ipcRenderer.invoke('celldb-download-box', box),
   onProgress: (callback) => ipcRenderer.on('celldb-progress', (event, p) => callback(p))
 });

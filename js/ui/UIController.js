@@ -9,6 +9,7 @@ import { getNearestTraffic } from '../adsb/ADSBManager.js';
 import { isRelativeMode } from '../core/RelativeNav.js';
 import { cellIsLive, cellMapInfo, operatorShort, getCellMapSettings } from '../maps/CellTowerLayer.js';
 import { t } from '../core/i18n.js';
+import { frequencyText } from '../core/lte-bands.js';
 
 // Cached DOM references for high-frequency updates (avoids ~29 queries/frame)
 let domCache = null;
@@ -168,7 +169,7 @@ function updateCellRows(dom) {
     const [cell, band, rssi, sig, nb, ho, dist, distUnit] = dom.cell;
     const v = (x) => (x === null || x === undefined ? '-' : String(x));
     if (cell) cell.textContent = c.eci ? `${operatorShort(c.mcc, c.mnc)} ${c.enb}/${c.sector}` : `NO CELL (${c.state})`;
-    if (band) band.textContent = c.eci ? `B${c.band} · ${c.pci}` : '---';
+    if (band) band.textContent = c.eci ? `${frequencyText(c.earfcn, c.band, '-')} · ${c.pci}` : '---';
     if (rssi) rssi.textContent = v(c.rssi);
     if (sig) sig.textContent = `${v(c.rsrp)} · ${v(c.sinr)}`;
     if (nb) nb.textContent = String(c.neighbours ?? 0);

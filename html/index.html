@@ -239,7 +239,7 @@
                         <div class="stat-val" id="disp-cell">---</div>
                     </div>
                     <div class="stat-item cell-stat">
-                        <div class="stat-lbl">BAND · PCI</div>
+                        <div class="stat-lbl">FREQ · PCI</div>
                         <div class="stat-val" id="disp-cell-band">---</div>
                     </div>
                     <div class="stat-item cell-stat">
@@ -812,14 +812,33 @@
                             ALL OPERATORS
                         </label>
                     </div>
-                    <div class="cfg-row"><label>DATABASE</label><span class="cfg-val" id="lte-celldb-status">--</span></div>
+                    <div class="cfg-row"><label>BUILT-IN</label><span class="cfg-val" id="lte-celldb-bundle">--</span></div>
+                    <div class="cfg-row"><label>ADDED</label><span class="cfg-val" id="lte-celldb-files">--</span></div>
+                    <div class="cfg-row"><label>DOWNLOADED</label><span class="cfg-val" id="lte-celldb-status">--</span></div>
+                    <div class="cfg-row"><label>ONLINE LOOKUPS</label><span class="cfg-val" id="lte-celldb-lookups">--</span></div>
                     <div class="cfg-row">
-                        <label>DOWNLOAD</label>
-                        <select id="lte-celldb-country" class="cfg-select"></select>
-                        <button class="gcs-btn gcs-btn-sm" id="lte-celldb-download" title="Download every cell of the country now, for use without internet">DOWNLOAD</button>
-                        <button class="gcs-btn gcs-btn-sm" id="lte-celldb-clear" title="Delete the downloaded cells">CLEAR</button>
+                        <label class="gcs-checkbox" title="A serving cell in no database is asked to beaconDB (and to the OpenCelliD API with a token): only its identifiers are sent">
+                            <input type="checkbox" id="lte-celldb-online">
+                            LOOK UP MISSING CELLS ONLINE
+                        </label>
                     </div>
-                    <div class="cfg-note">Cells within 100 km of the vehicle are downloaded by themselves when the module reports its cell. Positions are <b>OpenCelliD</b> estimates from crowd measurements (CC BY-SA 4.0, copy published on Source Cooperative): they can be hundreds of metres off, and sites built after the copy are missing.</div>
+                    <div class="cfg-row">
+                        <label>OPENCELLID TOKEN</label>
+                        <input type="password" id="lte-celldb-token" class="gcs-input" placeholder="free at opencellid.org" autocomplete="off" spellcheck="false">
+                        <button class="gcs-btn gcs-btn-sm" id="lte-celldb-token-save" title="Keep the token: used for the online lookup and DOWNLOAD FROM OPENCELLID">SAVE</button>
+                    </div>
+                    <div class="cfg-row">
+                        <label>COUNTRY</label>
+                        <select id="lte-celldb-country" class="cfg-select"></select>
+                        <button class="gcs-btn gcs-btn-sm" id="lte-celldb-ocid" title="Today's OpenCelliD file of the country (needs the token; twice a day at most)">DOWNLOAD FROM OPENCELLID</button>
+                        <button class="gcs-btn gcs-btn-sm" id="lte-celldb-download" title="The whole country from the June 2024 OpenCelliD copy, for use without internet">DOWNLOAD 2024 COPY</button>
+                    </div>
+                    <div class="cfg-row">
+                        <label>FILES</label>
+                        <button class="gcs-btn gcs-btn-sm" id="lte-celldb-import" title="Add a cell CSV in the OpenCelliD or Mozilla MLS layout (.csv or .csv.gz)">IMPORT CSV</button>
+                        <button class="gcs-btn gcs-btn-sm" id="lte-celldb-clear" title="Delete downloaded, imported and looked-up cells (the built-in ones stay)">CLEAR</button>
+                    </div>
+                    <div class="cfg-note">Italy, San Marino and Vatican City are <b>built in</b> and work offline: OpenCelliD of the installer's date, the 2024 OpenCelliD copy and the final Mozilla Location Service export. Elsewhere cells within 100 km of the vehicle are downloaded by themselves from the 2024 OpenCelliD copy. A file DOWNLOADED FROM OPENCELLID or imported takes precedence. A serving cell in none of them is looked up online and kept. Positions are estimates from crowd measurements, not surveyed masts: they can be hundreds of metres off. Data: <b>OpenCelliD</b> (CC BY-SA 4.0), Mozilla Location Service and beaconDB (public domain).</div>
                 </div>
             </div>
 
