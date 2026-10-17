@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.8.4-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.8.5-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"/>
   <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
   <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
@@ -56,6 +56,9 @@ same conventions as a Garmin or Boeing HUD, so the picture reads at a glance.
 Around the aircraft the satellite imagery is as sharp as on the 2D map, down to 10 cm per pixel
 (zoom 20; 40 cm by default, set in **SYS CONFIG → 3D SATELLITE DETAIL**), loaded as the aircraft
 flies: low over the ground you see the cars, the fences and the power lines you are flying over.
+Between telemetry samples (25 a second from ArduPilot, in bursts over a cellular link) the view
+carries the aircraft along on its velocity, acceleration and rotation rates, so low and fast the
+ground streams past at the full frame rate instead of in steps.
 
 Turn the satellite imagery off (**M**) and the terrain becomes a schematic chart, in the style of
 the mission simulations in *Top Gun: Maverick*: black sky, contour lines every 10 m with brighter
@@ -206,9 +209,9 @@ radio that is the difference between two packets and several minutes.
 ## Installation
 
 Installers are on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
-**Windows** `CORV GCS Setup 1.8.4.exe`, **macOS** `CORV GCS-1.8.4-arm64.dmg` (Apple silicon) and
-`CORV GCS-1.8.4-x64.dmg` (Intel), **Linux** `CORV GCS-1.8.4.AppImage` (portable) and
-`corv-gcs_1.8.4_amd64.deb` (Debian / Ubuntu).
+**Windows** `CORV GCS Setup 1.8.5.exe`, **macOS** `CORV GCS-1.8.5-arm64.dmg` (Apple silicon) and
+`CORV GCS-1.8.5-x64.dmg` (Intel), **Linux** `CORV GCS-1.8.5.AppImage` (portable) and
+`corv-gcs_1.8.5_amd64.deb` (Debian / Ubuntu).
 
 The macOS app is not signed with an Apple Developer ID: after copying it to Applications, run
 `xattr -dr com.apple.quarantine "/Applications/CORV GCS.app"` once, or macOS reports it as damaged.

@@ -41,6 +41,9 @@ export const STATE = {
     // Arrival time (Date.now()) of the ATTITUDE and GLOBAL_POSITION_INT the
     // values above come from: what the ROS surface projects the pose from
     attTime: 0, posTime: 0,
+    // The vehicle's time_boot_ms of the same messages (null when the source
+    // sends none): the 3D view times its samples by it (PoseSmoother.js)
+    attBootMs: null, posBootMs: null,
     terrainHeight: null,
     gHistory: new Array(300).fill(1.0),
     lastUpdatePos: { x: 0, z: 0 },
@@ -285,7 +288,7 @@ export function resetReplayState() {
     STATE.ax = 0; STATE.ay = 0; STATE.az = 0;
     STATE.rollRate = 0; STATE.pitchRate = 0; STATE.yawRate = 0;
     STATE.vn = 0; STATE.ve = 0; STATE.vd = 0;
-    STATE.attTime = 0; STATE.posTime = 0;
+    STATE.attTime = 0; STATE.posTime = 0; STATE.attBootMs = null; STATE.posBootMs = null;
     POSE_HISTORY.att.length = 0; POSE_HISTORY.pos.length = 0;
     STATE.terrainHeight = null;
     STATE.gHistory.fill(1.0);

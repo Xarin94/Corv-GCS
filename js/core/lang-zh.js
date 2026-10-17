@@ -574,7 +574,7 @@ export const ZH = {
     'MODEL SCALE:': '模型缩放:',
     'TIME OF DAY (DEBUG):': '时刻 (调试):',
     'MAP BRIGHTNESS (STATIC):': '地图亮度 (静态):',
-    'ATTITUDE SMOOTHING:': '姿态平滑:',
+    'MOTION SMOOTHING:': '运动平滑:',
     '3D FRAME RATE': '3D 帧率',
     '30 FPS (ECO)': '30 FPS (节能)',
     '30 FPS halves the rendering and compositing work — use it on battery': '30 FPS 可将渲染和合成负载减半 — 电池供电时使用',

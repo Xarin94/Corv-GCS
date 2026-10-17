@@ -367,6 +367,7 @@ function mapAttitude(data) {
     STATE.pitch = data.pitch;
     STATE.yaw = data.yaw;
     STATE.attTime = Date.now();
+    STATE.attBootMs = Number.isFinite(data.timeBootMs) ? data.timeBootMs : null;
     // Body angular rates (rad/s) — feed the trajectory predictor's bank model
     if (Number.isFinite(data.rollspeed)) STATE.rollRate = data.rollspeed;
     if (Number.isFinite(data.pitchspeed)) STATE.pitchRate = data.pitchspeed;
@@ -387,6 +388,7 @@ function mapGlobalPositionInt(data) {
     if (!Number.isFinite(data.lat) || !Number.isFinite(data.lon)) return;
     _lastGlobalPosTs = Date.now();
     STATE.posTime = _lastGlobalPosTs;
+    STATE.posBootMs = Number.isFinite(data.timeBootMs) ? data.timeBootMs : null;
 
     // Reject boot-time nulls: exact-zero raw integers ((0,0), (0,X), (X,0))
     // before the GPS has a fix. Exact-int check keeps real fixes near the

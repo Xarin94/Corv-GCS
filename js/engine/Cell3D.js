@@ -18,6 +18,7 @@
 import { ThickLine } from './ThickLine.js';
 import { latLonToMeters } from '../core/utils.js';
 import { STATE } from '../core/state.js';
+import { vehiclePose } from '../core/PoseSmoother.js';
 import { isRelativeMode } from '../core/RelativeNav.js';
 import { getTerrainElevationFromHGT } from '../terrain/TerrainManager.js';
 import { getCellOverlay, linkQuality } from '../maps/CellTowerLayer.js';
@@ -114,7 +115,7 @@ export function animateCell3D() {
         linkColor = color;
         link.setColor(color);
     }
-    const v = latLonToMeters(STATE.lat, STATE.lon);
-    link.setPoints([{ x: v.x, y: STATE.rawAlt + offset, z: v.z }, servingTop]);
+    const pose = vehiclePose.pose, v = latLonToMeters(pose.lat, pose.lon);
+    link.setPoints([{ x: v.x, y: pose.alt + offset, z: v.z }, servingTop]);
     if (!link.visible) link.setVisible(true);
 }

@@ -5,6 +5,8 @@
  */
 
 import { STATE, gHistoryBuffer, isDemoMode } from '../core/state.js';
+// Attitude as the 3D view draws it, so the ladder stays on the world horizon
+import { vehiclePose } from '../core/PoseSmoother.js';
 
 // HUD state
 let canvas = null;
@@ -618,7 +620,7 @@ function drawHeading(x, y, stepRange, bottom) {
     ctx.translate(x, y);
 
     const mf = bottom ? -1 : 1;
-    const value = STATE.yaw * (180 / Math.PI);
+    const value = vehiclePose.pose.yaw * (180 / Math.PI);
 
     // Value indicator box
     const fontSize = 20 * style.font.scale;
@@ -791,7 +793,7 @@ function drawBankArc() {
     ctx.stroke();
 
     // Sky pointer: rotates with the horizon (same convention as pitch ladder)
-    ctx.rotate(-STATE.roll);
+    ctx.rotate(-vehiclePose.pose.roll);
     ctx.beginPath();
     ctx.moveTo(0, -radius + 3);
     ctx.lineTo(-7, -radius + 16);
@@ -965,7 +967,7 @@ function drawWind() {
     const DEG = Math.PI / 180;
     const x = Math.max(20, size.width / 2 - 290);
     const y = 104;
-    const headingDeg = STATE.yaw * (180 / Math.PI);
+    const headingDeg = vehiclePose.pose.yaw * (180 / Math.PI);
     // WIND.direction is where the wind comes FROM; arrow points where it goes
     const rot = (STATE.windDir + 180 - headingDeg) * DEG;
 
@@ -1161,8 +1163,8 @@ export function drawHUD() {
     ctx.translate(size.width / 2, size.height / 2);
 
     // Get state values (all in radians)
-    const pitch = STATE.pitch;
-    const roll = STATE.roll;
+    const pitch = vehiclePose.pose.pitch;
+    const roll = vehiclePose.pose.roll;
     const flightPitch = STATE.gamma;  // flight path angle
     const flightHeading = STATE.ssa;  // sideslip angle
     // Ladder shift for the current pitch reference: normally the camera
@@ -1202,7 +1204,7 @@ export function drawHUD() {
     // vertical one — no body-frame AoA/SSA rotation, so it reads the same
     // in a bank regardless of roll coupling. Diamond, open, to read as
     // distinct from the AoA/SSA-based FPM above.
-    let trackDiff = STATE.track - STATE.yaw;
+    let trackDiff = STATE.track - vehiclePose.pose.yaw;
     trackDiff = Math.atan2(Math.sin(trackDiff), Math.cos(trackDiff)); // wrap
     let gtmX = projectAngle(trackDiff);
     let gtmY = projectAngle(pitchShift - flightPitch);

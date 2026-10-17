@@ -81,6 +81,7 @@ import { initMAVLink, onMessage } from './mavlink/MAVLinkManager.js';
 import { setParameter, requestParameter, requestDataStream, setMessageInterval } from './mavlink/CommandSender.js';
 import { initTerrainFeeder } from './mavlink/TerrainFeeder.js';
 import { computeAeroAngles } from './mavlink/MAVLinkStateMapper.js';
+import { vehiclePose } from './core/PoseSmoother.js';
 
 // GCS imports
 import { initCommandBar, updateCommandBar } from './ui/CommandBarController.js';
@@ -199,67 +200,13 @@ const LOOK_YAW_MAX = 110 * Math.PI / 180;
 const LOOK_FULL_SWEEP_S = 0.3;  // time for a full 110° sweep; shorter moves scale down
 const LOOK_MIN_SWEEP_S = 0.12;
 
-// Smoothed attitude: time-based interpolation between MAVLink samples
-const smoothAtt = { roll: 0, pitch: 0, yaw: 0 };
-let ATT_SMOOTH = 0.15; // slider control: 0 = raw, higher = more smoothing
-
-// Previous and current attitude samples for interpolation
-const attPrev = { roll: 0, pitch: 0, yaw: 0, time: 0 };
-const attCurr = { roll: 0, pitch: 0, yaw: 0, time: 0 };
-let lastStateRoll = NaN, lastStatePitch = NaN, lastStateYaw = NaN;
-
-function lerpAngle(a, b, t) {
-    let diff = b - a;
-    if (diff > Math.PI) diff -= 2 * Math.PI;
-    if (diff < -Math.PI) diff += 2 * Math.PI;
-    return a + diff * t;
-}
-
-function updateSmoothedAttitude() {
-    const now = performance.now();
-
-    // Detect new attitude sample from MAVLink (STATE changed since last frame)
-    if (STATE.roll !== lastStateRoll || STATE.pitch !== lastStatePitch || STATE.yaw !== lastStateYaw) {
-        attPrev.roll = attCurr.roll;
-        attPrev.pitch = attCurr.pitch;
-        attPrev.yaw = attCurr.yaw;
-        attPrev.time = attCurr.time;
-
-        attCurr.roll = STATE.roll;
-        attCurr.pitch = STATE.pitch;
-        attCurr.yaw = STATE.yaw;
-        attCurr.time = now;
-
-        lastStateRoll = STATE.roll;
-        lastStatePitch = STATE.pitch;
-        lastStateYaw = STATE.yaw;
-    }
-
-    // Interpolate between previous and current sample
-    const dt = attCurr.time - attPrev.time;
-    if (dt > 0 && ATT_SMOOTH > 0) {
-        // How far we are from the current sample arrival, normalized to sample interval
-        const elapsed = now - attCurr.time;
-        // t = 0 at prev sample time, t = 1 at current sample time
-        // We extrapolate slightly beyond 1.0 to stay responsive
-        const t = Math.min((elapsed + dt) / dt, 1.5);
-        const tClamped = Math.max(0, Math.min(t, 1.0));
-
-        // Blend: at ATT_SMOOTH=0 use raw, at ATT_SMOOTH=0.5 fully interpolated
-        const blend = Math.min(ATT_SMOOTH * 2, 1.0);
-        const interpRoll = attPrev.roll + (attCurr.roll - attPrev.roll) * tClamped;
-        const interpPitch = attPrev.pitch + (attCurr.pitch - attPrev.pitch) * tClamped;
-        const interpYaw = lerpAngle(attPrev.yaw, attCurr.yaw, tClamped);
-
-        smoothAtt.roll = interpRoll * blend + STATE.roll * (1 - blend);
-        smoothAtt.pitch = interpPitch * blend + STATE.pitch * (1 - blend);
-        smoothAtt.yaw = lerpAngle(STATE.yaw, interpYaw, blend);
-    } else {
-        smoothAtt.roll = STATE.roll;
-        smoothAtt.pitch = STATE.pitch;
-        smoothAtt.yaw = STATE.yaw;
-    }
-}
+// Motion smoothing slider: 0 draws the telemetry as it arrives; above 0 the
+// drawn pose is carried between samples and blends each new one in over
+// ATT_SMOOTH × SMOOTH_TAU_PER_UNIT seconds (PoseSmoother.js)
+let ATT_SMOOTH = 0.15;
+const SMOOTH_TAU_PER_UNIT = 0.5;
+// Trajectory predictor input: STATE, drawn where the vehicle is drawn
+const predictorState = Object.create(STATE);
 
 function initVehicle() {
     const scene = getScene();
@@ -842,8 +789,10 @@ function update3DWorld() {
     if (relative) applyRelativeToState();
     updateSubSurface(relative);
 
-    const planePos = latLonToMeters(STATE.lat, STATE.lon);
-    let totalAlt = STATE.rawAlt + STATE.offsetAlt;
+    // Where the vehicle is drawn: STATE carried between telemetry samples
+    const pose = vehiclePose.update(STATE, Date.now(), ATT_SMOOTH * SMOOTH_TAU_PER_UNIT);
+    const planePos = latLonToMeters(pose.lat, pose.lon);
+    let totalAlt = pose.alt + STATE.offsetAlt;
 
     // Periodic terrain refresh: HGT files can be lazy-loaded or the worker can
     // be slow to answer. Re-calling updateTerrainChunks() keeps chunk creation
@@ -855,9 +804,6 @@ function update3DWorld() {
             updateTerrainChunks();
         }
     }
-
-    // Update smoothed attitude for jitter-free rendering
-    updateSmoothedAttitude();
 
     // Relative mode: the "ground" is the zero plane
     const terrHeight = relative ? 0 : getTerrainElevationCached(STATE.lat, STATE.lon);
@@ -887,9 +833,9 @@ function update3DWorld() {
     if (vehicle) {
         vehicle.position.set(planePos.x, Math.max(totalAlt, minY), planePos.z);
         vehicle.rotation.order = 'YXZ';
-        vehicle.rotation.x = smoothAtt.pitch;
-        vehicle.rotation.z = -smoothAtt.roll;
-        vehicle.rotation.y = -smoothAtt.yaw;
+        vehicle.rotation.x = pose.pitch;
+        vehicle.rotation.z = -pose.roll;
+        vehicle.rotation.y = -pose.yaw;
         vehicle.visible = (cameraMode === 'THIRD');
     }
 
@@ -928,9 +874,9 @@ function update3DWorld() {
         // First-person camera (existing behavior)
         camera.position.set(planePos.x, Math.max(totalAlt, minY), planePos.z);
         camera.rotation.order = 'YXZ';
-        camera.rotation.x = horizonLocked ? 0 : smoothAtt.pitch;
-        camera.rotation.z = -smoothAtt.roll;
-        camera.rotation.y = -smoothAtt.yaw;
+        camera.rotation.x = horizonLocked ? 0 : pose.pitch;
+        camera.rotation.z = -pose.roll;
+        camera.rotation.y = -pose.yaw;
 
         // Look-around offset, composed in the body frame so "up" is over the
         // canopy and "left" is over the wing whatever the bank angle.
@@ -950,7 +896,8 @@ function update3DWorld() {
         if (!update3DWorld._trajFc) update3DWorld._trajFc = 0;
         if (++update3DWorld._trajFc % 3 === 0) {
             const predTime = getPredictionTime(STATE.gs || 0);
-            const path = computePredictedPath(STATE, 40, predTime);
+            predictorState.lat = pose.lat; predictorState.lon = pose.lon; predictorState.rawAlt = pose.alt;
+            const path = computePredictedPath(predictorState, 40, predTime);
             updateCorridor(path);
         }
     }
@@ -1853,7 +1800,7 @@ function updateMapBrightnessVisibility() {
     row.style.display = (isSunlightEnabled() && window.satelliteEnabled !== false) ? 'none' : '';
 }
 
-// ============== ATTITUDE SMOOTHING SLIDER ==============
+// ============== MOTION SMOOTHING SLIDER ==============
 function setupAttSmoothSlider() {
     const slider = document.getElementById('att-smooth-slider');
     const display = document.getElementById('att-smooth-display');

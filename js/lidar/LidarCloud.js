@@ -1,5 +1,6 @@
 /** Livox controller: coordinate transforms and data updates, independent of Three resources. */
 import { STATE } from '../core/state.js';
+import { vehiclePose } from '../core/PoseSmoother.js';
 import { ORIGIN } from '../core/constants.js';
 import { latLonToMeters } from '../core/utils.js';
 import { PointCloudData, setYXZQuaternion } from '../render/PointCloudData.js';
@@ -50,9 +51,10 @@ export function getLidarPointCount() { return cloud?.total || 0; }
 export function updateLidarCloud() {
     if (!cloud?.visible) return;
     if (cloud.live.count > 0) {
-        const p = latLonToMeters(STATE.lat, STATE.lon), t = cloud.liveTransform;
-        t.position[0] = p.x; t.position[1] = Math.max(STATE.rawAlt + (STATE.offsetAlt || 0), 1); t.position[2] = p.z;
-        if (cloud.live.frame === 'body') setYXZQuaternion(t.quaternion, STATE.pitch, -STATE.yaw, -STATE.roll);
+        // The live scan rides on the vehicle as the 3D view draws it
+        const pose = vehiclePose.pose, p = latLonToMeters(pose.lat, pose.lon), t = cloud.liveTransform;
+        t.position[0] = p.x; t.position[1] = Math.max(pose.alt + (STATE.offsetAlt || 0), 1); t.position[2] = p.z;
+        if (cloud.live.frame === 'body') setYXZQuaternion(t.quaternion, pose.pitch, -pose.yaw, -pose.roll);
         else { t.quaternion[0] = t.quaternion[1] = t.quaternion[2] = 0; t.quaternion[3] = 1; }
     }
     if (cloud.origin) {
