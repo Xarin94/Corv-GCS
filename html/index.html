@@ -357,6 +357,19 @@
 
     </div><!-- end #hud-wrapper -->
 
+    <!-- EKF STATUS: a black bar down the left side with three charts of the
+         estimator's last 20 s; the flight view moves over to make room
+         (js/ui/EkfStatusPanel.js) -->
+    <div id="ekf-panel" style="display:none">
+        <div class="ekf-head">
+            <span class="ekf-title">EKF STATUS</span>
+            <span class="ekf-window">LAST 20 s</span>
+            <span id="ekf-source" class="ekf-source"></span>
+            <span id="ekf-flags" class="ekf-flags"></span>
+        </div>
+        <div id="ekf-cards" class="ekf-cards"></div>
+    </div>
+
 
 
 
@@ -3002,6 +3015,10 @@
                     <label class="gcs-checkbox">
                         <input type="checkbox" id="chk-rotor-load" checked onchange="toggleRotorLoad(this.checked)">
                         <span>SHOW ROTOR LOAD</span>
+                    </label>
+                    <label class="gcs-checkbox" title="Charts of the estimator's health over the last 20 s, in a bar down the left side of the flight view">
+                        <input type="checkbox" id="chk-ekf-status" onchange="toggleEkfStatus(this.checked)">
+                        <span>EKF STATUS</span>
                     </label>
                     <label class="gcs-checkbox" title="LTE cell rows in the position panel, on the cellular link">
                         <input type="checkbox" id="chk-lte-overlay" checked>

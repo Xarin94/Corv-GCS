@@ -20,6 +20,7 @@ goes through it element by element.
 | Centre | The HUD over the 3D view | [The HUD](#the-hud) |
 | Left and right of the HUD | Six data cells | [Data cells](#data-cells) |
 | Inboard of the left cells | Annunciators: red warnings, amber cautions | [Annunciators](#annunciators) |
+| Left edge, when on | EKF STATUS bar: three charts of the estimator's last 20 s | [EKF status](#ekf-status) |
 | Left, over the HUD | Autopilot messages | [Messages and banners](#messages-and-banners) |
 | Top centre | LIDAR and ROS strips, when those features are on | [Strips](#lidar-and-ros-strips) |
 | Bottom left | Mini-map | [Mini-map](#mini-map) |
@@ -239,6 +240,35 @@ explain each one.
 **Click a flag to silence it**: it stays hidden until the next connection. Silencing a warning also
 hides its milder caution; silencing a caution still lets the warning through if the condition gets
 worse. In the demo flight (no vehicle) a random flag lights now and then, to show where they appear.
+
+## EKF status
+
+**EKF STATUS** in the side panel's [GCS OPTIONS](side-panel.md#gcs-options) opens a black bar down
+the left side of the flight view; the 3D view, the HUD and the mini-map move right to make room. It
+holds three charts of the **last 20 s**, chosen for the estimator on board, and a header with the
+solutions the filter itself flags as good (✓, green) or bad (✕, red). Under each chart the legend
+gives the latest values; with the pointer on a chart, the values at that moment. The charts
+start empty on every new connection.
+
+**ArduPilot (EKF3).** While the bar is open the GCS asks for EKF_STATUS_REPORT, AHRS2 and
+GPS_RAW_INT at 5 Hz (2 Hz otherwise) and puts the default rates back when it closes.
+
+| Chart | What it shows | A sound estimate |
+|-------|---------------|------------------|
+| **EKF INNOVATIONS** | The test ratio of each measurement the EKF fuses — velocity, horizontal and vertical position, compass, airspeed (TAS, only with an airspeed sensor) — from EKF_STATUS_REPORT: how far the measurement lands from the prediction, scaled by its gate. Dashed lines at 0.5 and 0.8, the levels Mission Planner colours amber and red; at 1 the measurement is rejected. TERR is the terrain (rangefinder) ratio. | All lines under 0.5. A GPS glitch shows as POS H shooting up, with *GPS GLITCH* in the header. |
+| **GPS ACCURACY** | The receiver's own horizontal and vertical accuracy in metres (and speed accuracy in m/s, when it reports one), from GPS_RAW_INT. Receivers that report no accuracy: HDOP instead. Nothing is drawn without a fix. FIX, SATS and HDOP above. | Flat and small (RTK: centimetres). The receiver does not know about a glitch: compare with POS H above. |
+| **ATTITUDE EKF vs DCM** | Roll, pitch and yaw of the estimator flying the aircraft minus the backup one (AHRS2): the DCM while the EKF is active, the EKF after a fall back to DCM. VIBE (m/s² on x/y/z, amber over 30, red over 60) and CLIP (accelerometer clipping) above. | Within a degree or two. Several degrees in a sustained turn usually means the DCM is the one off; a step when the autopilot says *AHRS: DCM active*. |
+
+**CORV board (RBPF).** The particles carry the attitude, each with its own EKF for velocity and
+position, and one shared EKF holds the sensor biases. The charts come from the Navigation, Debug
+and Raw Sensor packets (BINARY_TELEMETRY.md); the header shows INIT, CONV, GPS, IMU1, IMU2, BARO,
+MAG, and ZUPT, GPS BYPASS, JAMMING, SPOOFING when they are set.
+
+| Chart | What it shows | A sound estimate |
+|-------|---------------|------------------|
+| **POSITION** | **GPS − PF**: the raw GPS fix against the filtered position at the same board time, horizontal metres. **PF SPREAD**: the spread of the particle cloud. **GPS H ACC**, **GPS V ACC**: the receiver's accuracy. | The residual inside the receiver accuracy and the spread. Without GPS the residual stops, the spread grows; when GPS returns the residual jumps and settles in a few seconds. |
+| **PARTICLE FILTER** | **ESS / N**: effective sample size over the number of particles, in %. **CONFIDENCE** of the solution, in %. The dashed line at 50 % is the default resampling threshold; the ticks along the bottom are resamples. N, ESS and resamples per second above. | ESS falling with each GPS update and jumping back at each resample; confidence steady near the top. |
+| **SHARED EKF tr(P)** | Trace of the shared EKF's covariance, on a logarithmic scale. GYRO BIAS (largest axis), MAG Q (magnetometer quality, amber under 0.5) and AIDING (GPS+MAG, GPS, MAG, DEAD RECKONING) above. | Flat after convergence; it grows while an aid is missing and comes back down after. |
 
 ## Messages and banners
 

@@ -749,3 +749,162 @@ body.minimap-swapped #scene-container:hover {
 .plane-marker-icon {
     transition: transform 0.1s linear;
 }
+
+/* ============== EKF STATUS (GCS OPTIONS → EKF STATUS) ============== */
+/* A black bar down the left side, full height behind the header; the flight
+   view (3D, HUD, tapes, mini-map) moves right by its width instead of being
+   covered. The three charts are stacked and share the height. */
+:root {
+    --ekf-bar-w: clamp(300px, 21vw, 440px);
+}
+
+body.mode-fullscreen.ekf-docked #hud-wrapper {
+    left: var(--ekf-bar-w);
+}
+
+#ekf-panel {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: var(--cmdbar-h);
+    width: var(--ekf-bar-w);
+    box-sizing: border-box;
+    padding: calc(var(--chrome-top) + 8px) 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: #05080c;
+    border-right: 1px solid var(--border-accent);
+    z-index: var(--z-overlay);
+    font-family: var(--font-ui);
+    color: #f0efec;
+    overflow: hidden;
+}
+
+.ekf-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+}
+
+.ekf-title {
+    font-size: var(--fs-sm);
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    color: var(--accent-cyan);
+}
+
+.ekf-source,
+.ekf-window {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: #c3c2b7;
+}
+
+.ekf-window { margin-left: auto; color: #898781; }
+.ekf-source { flex-basis: 100%; }
+
+.ekf-flags { display: flex; flex-wrap: wrap; gap: 4px; flex-basis: 100%; }
+
+.ekf-flag {
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    padding: 0 5px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #f0efec;
+}
+.ekf-flag.good     { border-color: rgba(12, 163, 12, 0.7); }
+.ekf-flag.good::first-letter { color: #0ca30c; }
+.ekf-flag.warning  { border-color: #fab219; color: #fab219; }
+.ekf-flag.critical { border-color: #d03b3b; color: #ff8a8a; background: rgba(208, 59, 59, 0.15); }
+.ekf-flag.info     { color: #c3c2b7; }
+
+.ekf-cards {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.ekf-card {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
+    padding: 5px 0 6px;
+}
+
+.ekf-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+}
+
+.ekf-card-title {
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: #f0efec;
+}
+
+.ekf-chips { display: flex; flex-wrap: wrap; gap: 2px 8px; margin-left: auto; }
+
+.ekf-chip {
+    font-size: var(--fs-xs);
+    letter-spacing: 0.06em;
+    color: #898781;
+    white-space: nowrap;
+}
+.ekf-chip b { font-family: var(--font-data); font-weight: 500; color: #f0efec; }
+.ekf-chip.warning, .ekf-chip.warning b { color: #fab219; }
+.ekf-chip.critical, .ekf-chip.critical b { color: #ff8a8a; }
+
+.ekf-card-unit {
+    font-size: clamp(9px, 0.6vw, 12px);
+    letter-spacing: 0.04em;
+    color: #898781;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* The canvas fills a box sized by the layout, never the other way round */
+.ekf-plot {
+    position: relative;
+    flex: 1 1 0;
+    min-height: 60px;
+}
+
+.ekf-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+}
+
+.ekf-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 12px;
+    min-height: 14px;
+}
+
+.ekf-leg {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: #c3c2b7;
+}
+.ekf-leg i { width: 10px; height: 2px; border-radius: 1px; display: inline-block; }
+.ekf-leg b { font-family: var(--font-data); font-weight: 500; color: #f0efec; min-width: 3.5em; }

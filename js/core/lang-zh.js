@@ -752,6 +752,8 @@ export const ZH = {
     'MUTE GCS OUTPUT': '静默地面站输出',
     'SHOW ADS-B TRAFFIC': '显示 ADS-B 交通',
     'SHOW ROTOR LOAD': '显示电机负载',
+    'EKF STATUS': 'EKF 状态',
+    'LAST 20 s': '最近 20 秒',
     'CLEAR TRAIL': '清除轨迹',
     'RTL OPTIONS': '返航选项',
     'RTL ALT (m)': '返航高度 (m)',

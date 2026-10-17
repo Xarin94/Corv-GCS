@@ -1169,6 +1169,9 @@ function getNextSequenceNumber() {
 // ── Debug log helpers ─────────────────────────────────────────────────────────
 
 let corvCrcErrors = 0;
+// Last time the filter health of a CORV Navigation packet went to the renderer
+let corvNavStatusSent = 0;
+const CORV_NAV_STATUS_MS = 40;   // 25 Hz at most: plenty for a 20 s chart
 
 // The port list is asked for often (UI refresh): logged when it changes
 let lastPortList = null;
@@ -1337,6 +1340,19 @@ function corvEmitNavigation(p) {
 
     // Status flags (offset 102-103)
     const flags = p.readUInt16LE(102);
+
+    // Filter health for the EKF STATUS panel: confidence, trace of the shared
+    // EKF covariance and the flags, with the solution and the board clock so
+    // the renderer can set the raw GPS fixes (Raw Sensor) against it
+    const now = Date.now();
+    if (now - corvNavStatusSent >= CORV_NAV_STATUS_MS && mainWindow && !mainWindow.isDestroyed()) {
+        corvNavStatusSent = now;
+        mainWindow.webContents.send('corv-nav-status', {
+            ts: p.readUInt32LE(0), lat, lon, alt: alt_m,
+            confidence: p.readFloatLE(88), covTrace: p.readFloatLE(92),
+            flags, fixType, numSat, hdop
+        });
+    }
 
     // Synthetic HEARTBEAT (0) — keep UI alive, armed based on INITIALIZED flag
     corvSendMsg(0, {
