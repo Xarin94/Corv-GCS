@@ -8,6 +8,7 @@ import { connectMAVLinkSerial, connectMAVLinkUDP, connectMAVLinkTCP, connectMAVL
 import { connectSerial } from '../serial/SerialHandler.js';
 import { requestAllDataStreams, requestHomePosition } from './CommandSender.js';
 import { onMessage } from './MAVLinkManager.js';
+import { awaitSceneOriginFix } from '../core/SceneOrigin.js';
 
 // Connection config
 let currentConnection = null;
@@ -36,6 +37,8 @@ async function connectLink(type, options) {
     if (STATE.connected) {
         await disconnect();
     }
+    // The new stream's first valid position becomes the 3D scene origin
+    awaitSceneOriginFix();
 
     switch (type) {
         case 'corv-binary':

@@ -58,6 +58,7 @@ import { LRUCache } from '../core/LRUCache.js';
 import { getTile as getCachedTile, putTile as putCachedTile } from '../maps/TileCache.js';
 import { renderWorld } from '../render/RenderState.js';
 import { TERRAIN_GRID } from '../render/TerrainData.js';
+import { onSceneOriginChange } from '../core/SceneOrigin.js';
 
 // ============== MEMORY TRACKING ==============
 let texturesCreated = 0;
@@ -2389,6 +2390,14 @@ function disposeChunk(key, mesh) {
     delete activeChunks[key];
     chunksDisposed++;
 }
+
+// The scene origin moved (core/SceneOrigin.js): every chunk sits in the old
+// world metres. They are dropped here and rebuilt around the aircraft by the
+// next updateTerrainChunks(); records put from now on use the new origin.
+onSceneOriginChange(origin => {
+    renderWorld.setOrigin(origin);
+    for (const key of Object.keys(activeChunks)) disposeChunk(key, activeChunks[key]);
+});
 
 /**
  * Push the sunlight switch to the terrain shader. The sun direction needs no

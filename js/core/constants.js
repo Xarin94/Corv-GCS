@@ -3,6 +3,9 @@
  * All global constants, settings, and initial values
  */
 
+// Origine della scena 3D (i metri di latLonToMeters): parte da qui, poi va
+// sulla prima posizione valida di ogni flusso dati aperto e sulla home del
+// veicolo quando arriva HOME_POSITION (core/SceneOrigin.js)
 export const ORIGIN = { lat: 47.2603, lon: 11.3439 };
 export const CAMERA_FOV = 60;
 // Raggio del terreno di default: SYS CONFIG → 3D TERRAIN RADIUS lo porta a 50 o

@@ -61,6 +61,7 @@ import { getCamera, getRenderer } from '../engine/Scene3D.js';
 import { STATE } from '../core/state.js';
 import { ORIGIN } from '../core/constants.js';
 import { latLonToMeters } from '../core/utils.js';
+import { onSceneOriginChange } from '../core/SceneOrigin.js';
 import { TILE, tileKey } from './SurfaceTiles.js';
 import { EMPTY, LEVELS, rasterize, roughness, triangulate, fillLevelsFor } from './SurfaceRaster.js';
 
@@ -203,6 +204,10 @@ const corner = new THREE.Vector3();
 const tileBox = new THREE.Box3();
 let root = null;
 const layers = {};
+
+// The scene origin moved (core/SceneOrigin.js): every block is placed again
+// on the next frame, as after an altitude offset change
+onSceneOriginChange(() => { for (const l of Object.values(layers)) l.offset = NaN; });
 
 // ============== A LAYER ==============
 class SurfaceLayer {

@@ -6,6 +6,7 @@
 import { STATE, pushGHistory, pushPoseHistory } from '../core/state.js';
 import { purgeStaleTraffic } from '../adsb/ADSBManager.js';
 import { relNavOnMessage, isRelativeMode } from '../core/RelativeNav.js';
+import { sceneOriginFix, sceneOriginHome } from '../core/SceneOrigin.js';
 
 let vibHistoryIdx = 0; // circular index for vibHistory
 
@@ -325,6 +326,7 @@ function mapGpsRawInt(data) {
         && data.lat !== 0 && data.lon !== 0) {
         STATE.lat = data.lat / 1e7;
         STATE.lon = data.lon / 1e7;
+        if (data.fixType >= 2) sceneOriginFix(STATE.lat, STATE.lon);
     }
     if (Number.isFinite(data.alt)) STATE.rawAlt = data.alt / 1000; // mm -> m AMSL
     // GPS_RAW_INT.vel is uint16 cm/s; 65535 = unknown
@@ -397,6 +399,7 @@ function mapGlobalPositionInt(data) {
         if (data.lat !== 0 && data.lon !== 0) {
             STATE.lat = data.lat / 1e7;
             STATE.lon = data.lon / 1e7;
+            sceneOriginFix(STATE.lat, STATE.lon);
         }
         // A sub reports its depth below the surface it started on (its origin
         // is at 0 m, see STATE.subSurfaceAlt), not a height above the sea
@@ -653,6 +656,8 @@ function mapHomePosition(data) {
     STATE.homeLat = lat;
     STATE.homeLon = lon;
     STATE.homeAlt = Number.isFinite(data.altitude) ? data.altitude / 1000 : null; // mm -> m
+    // The 3D scene counts its metres from home (requested again at arming)
+    sceneOriginHome(lat, lon);
 }
 
 function mapStatusText(data) {

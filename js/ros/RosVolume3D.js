@@ -24,6 +24,7 @@ import { OVERLAY_LAYER } from '../engine/Layers.js';
 import { STATE } from '../core/state.js';
 import { ORIGIN } from '../core/constants.js';
 import { latLonToMeters } from '../core/utils.js';
+import { onSceneOriginChange } from '../core/SceneOrigin.js';
 import { rosShared, rosView, ROS_RAMP_GLSL } from './RosMesh3D.js';
 
 const RANGE_MS = 250;
@@ -85,6 +86,9 @@ let lastRange = 0;
 let range = { near: 0, far: 20 };
 const chunks = new Map();          // key → { mesh, triangles, spread: { n, sum, sq } }
 let solidStyle = null;
+
+// The scene origin moved (core/SceneOrigin.js): the group is placed again on the next frame
+onSceneOriginChange(() => { builtOffset = null; });
 // The roughness (spread of the face normals) the colours are scaled to
 const spread = { uSpreadMean: { value: 0 }, uSpreadFull: { value: ROUGH_MIN_SPAN } };
 let bary = new Float32Array(0);

@@ -17,6 +17,7 @@
 
 import { ThickLine } from './ThickLine.js';
 import { latLonToMeters } from '../core/utils.js';
+import { onSceneOriginChange } from '../core/SceneOrigin.js';
 import { STATE } from '../core/state.js';
 import { vehiclePose } from '../core/PoseSmoother.js';
 import { isRelativeMode } from '../core/RelativeNav.js';
@@ -42,6 +43,9 @@ let builtAt = 0;
 let missingGround = false;
 const servingTop = { x: 0, y: 0, z: 0, valid: false };
 let servingRef = null;
+
+// Poles and the serving site are in world metres: rebuilt after a scene origin move
+onSceneOriginChange(() => { builtVersion = -1; servingRef = undefined; });
 
 /** @param {THREE.Scene} scene */
 export function initCell3D(scene) {

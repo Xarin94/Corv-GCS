@@ -3,10 +3,13 @@ import { STATE } from '../core/state.js';
 import { vehiclePose } from '../core/PoseSmoother.js';
 import { ORIGIN } from '../core/constants.js';
 import { latLonToMeters } from '../core/utils.js';
+import { onSceneOriginChange } from '../core/SceneOrigin.js';
 import { PointCloudData, setYXZQuaternion } from '../render/PointCloudData.js';
 import { renderWorld } from '../render/RenderState.js';
 
 let cloud = null, view = null;
+// The map points are placed from their own anchor: only its transform moves
+onSceneOriginChange(() => { if (cloud?.origin) setLidarOrigin(cloud.origin); });
 export function initLidarCloud(scene, renderer, backend) {
     if (!backend?.createPointCloudView) throw new Error('LiDAR requires a rendering backend');
     view?.dispose();

@@ -12,6 +12,7 @@
 
 import { STATE, resetReplayState } from '../core/state.js';
 import { latLonToMeters } from '../core/utils.js';
+import { setSceneOrigin, onSceneOriginChange } from '../core/SceneOrigin.js';
 import { setTrailPoints, resetTrail, setTrailFrozen } from '../engine/Scene3D.js';
 import { setMapTrail, unfreezeMapTrail } from '../maps/MapEngine.js';
 
@@ -31,6 +32,13 @@ let liveConnected = false;  // derived from mavlinkConnectionState events
 // global ORIGIN default) or to (0,0) before the first GPS message streams in.
 // Null when the log contains no usable coords — then Innsbruck is kept.
 let replayInitialPos = null;
+// The loaded log's GPS track while its trail is pre-drawn: redrawn in the new
+// world metres when the scene origin moves (the log's home far from its start)
+let replayTrack = null;
+
+onSceneOriginChange(() => {
+    if (replayTrack) setTrailPoints(trackToWorld(replayTrack));
+});
 
 function formatMs(ms) {
     if (!Number.isFinite(ms) || ms < 0) ms = 0;
@@ -132,16 +140,14 @@ function drawFullTrack(gpsTrack) {
         setTrailFrozen(false);
         unfreezeMapTrail();
         replayInitialPos = null;
+        replayTrack = null;
         return;
     }
-    // 3D: latLon → meters (x, z); altitude (m) → y, dropped a few cm so the
-    // trail passes under the camera viewpoint rather than through it.
-    const points3D = gpsTrack.map(p => {
-        const m = latLonToMeters(p.lat, p.lon);
-        return { x: m.x, y: (p.alt || 0) - TRAIL_VIEW_OFFSET_M, z: m.z };
-    });
-    setTrailPoints(points3D);
+    // A log is a data stream too: the scene starts at its first fix
+    setSceneOrigin(gpsTrack[0].lat, gpsTrack[0].lon);
+    setTrailPoints(trackToWorld(gpsTrack));
     setTrailFrozen(true);
+    replayTrack = gpsTrack;
 
     // 2D mini-map polyline
     setMapTrail(gpsTrack);
@@ -154,6 +160,17 @@ function drawFullTrack(gpsTrack) {
     replayInitialPos = { lat: gpsTrack[0].lat, lon: gpsTrack[0].lon };
     STATE.lat = replayInitialPos.lat;
     STATE.lon = replayInitialPos.lon;
+}
+
+/**
+ * 3D: latLon → meters (x, z); altitude (m) → y, dropped a few cm so the
+ * trail passes under the camera viewpoint rather than through it.
+ */
+function trackToWorld(gpsTrack) {
+    return gpsTrack.map(p => {
+        const m = latLonToMeters(p.lat, p.lon);
+        return { x: m.x, y: (p.alt || 0) - TRAIL_VIEW_OFFSET_M, z: m.z };
+    });
 }
 
 async function handlePlayPause() {
@@ -241,6 +258,7 @@ function onState(state) {
             resetTrail();
             unfreezeMapTrail();
             replayInitialPos = null;
+            replayTrack = null;
         }
     }
 }

@@ -17,6 +17,7 @@
 import { ThickLine } from './ThickLine.js';
 import { SymbolLayer, SHAPE, makeLabel, fitLabel, disposeLabel } from './SymbolLayer.js';
 import { latLonToMeters } from '../core/utils.js';
+import { onSceneOriginChange } from '../core/SceneOrigin.js';
 import { STATE } from '../core/state.js';
 
 const TRAIL_SECONDS = 180;       // history drawn behind each aircraft
@@ -37,6 +38,10 @@ let trackList = [];
 let lastTrailRefresh = 0;
 let viewportHeight = 0;
 let cameraRef = null;
+
+// Samples are in world metres: after a scene origin move the tracks start
+// again from the next reports
+onSceneOriginChange(() => updateTraffic3D([]));
 
 /**
  * @param {THREE.Scene} scene

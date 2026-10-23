@@ -16,6 +16,7 @@ import { lookAroundInput, canLookAround } from './input/LookAroundInput.js';
 import { initI18n, setLanguage } from './core/i18n.js';
 import { initDebugLog, noteFps } from './core/DebugLog.js';
 import { latLonToMeters, calculateDistance, lerpColor, getHeightColor } from './core/utils.js';
+import { onSceneOriginChange, awaitSceneOriginFix } from './core/SceneOrigin.js';
 import { fetchADSBData, downloadTrafficCSV, getNearestTraffic } from './adsb/ADSBManager.js';
 
 // Engine imports
@@ -958,6 +959,9 @@ async function reloadMapAndRunways() {
 }
 
 // ============== RUNWAY FETCHING ==============
+// Last runways drawn, redrawn after a scene origin move
+let lastRunwayElements = null;
+
 async function fetchRunwaysAuto() {
     if (getHGTFileCount() === 0) return;
     const query = `[out:json];way["aeroway"="runway"](around:25000,${STATE.lat},${STATE.lon});out geom;`;
@@ -965,6 +969,7 @@ async function fetchRunwaysAuto() {
         const res = await fetch("https://overpass-api.de/api/interpreter", { method: 'POST', body: query });
         const data = await res.json();
         if (data.elements) {
+            lastRunwayElements = data.elements;
             drawRunways(data.elements);
             document.getElementById('btn-scan').innerText = `${data.elements.length} RUNWAYS`;
         }
@@ -2074,18 +2079,29 @@ function init() {
     if (isRelativeMode()) applyRelativeFrame();
 
     // A vehicle connecting: the demo's trail (or the last vehicle's) is not
-    // its own, and a relative frame starts at its position
+    // its own, and a relative frame starts at its position. A link the main
+    // process opened again by itself takes a new scene origin fix too.
     window.addEventListener('mavlinkConnectionState', (e) => {
         if (e.detail?.state !== 'CONNECTED') return;
         resetTrail();
         resetMapTrail();
         resetRelNav();
+        awaitSceneOriginFix();
     });
 
     // Listen for mission updates and rebuild 3D trajectory + 2D mini-map overlay
     window.addEventListener('missionUpdated', () => {
         buildMissionTrajectory3D();
         updateMissionOverlay();
+    });
+
+    // The scene origin moved to the vehicle's home (core/SceneOrigin.js):
+    // route and runways are rebuilt in the new world metres, and the next
+    // frame asks for the terrain around the aircraft again
+    onSceneOriginChange(() => {
+        buildMissionTrajectory3D();
+        if (lastRunwayElements) drawRunways(lastRunwayElements);
+        STATE.lastUpdatePos = { x: 9999999, z: 9999999 };
     });
 
     // Forward STATUSTEXT messages to HUD

@@ -7,6 +7,7 @@
 import { CAMERA_FOV, VISIBILITY_RADIUS } from '../core/constants.js';
 import { STATE } from '../core/state.js';
 import { latLonToMeters } from '../core/utils.js';
+import { onSceneOriginChange } from '../core/SceneOrigin.js';
 import { setLodViewParams, setTerrainSchematicLight, updateTerrainInstances } from '../terrain/TerrainManager.js';
 import { ThickLine, flushThickLines } from './ThickLine.js';
 import { SymbolLayer, SHAPE, makeLabel, fitLabel, disposeLabel, setSymbolHalo, setLabelHalo } from './SymbolLayer.js';
@@ -744,6 +745,16 @@ let homeMarkerLastKey = null;
 
 // Target marker 3D
 let targetMarker3D = null;
+let targetMarkerLatLon = null;
+
+// The scene origin moved to the vehicle's home (core/SceneOrigin.js): the
+// trail and the markers were in the old world metres. A frozen trail is a log
+// replay's, which LogReplayController redraws itself.
+onSceneOriginChange(() => {
+    if (!trailFrozen) resetTrail();
+    homeMarkerLastKey = null;
+    if (targetMarkerLatLon) setTargetMarker3D(targetMarkerLatLon.lat, targetMarkerLatLon.lon);
+});
 
 /**
  * Update or remove the 3D home marker: a ring on the ground, a pole and the
@@ -838,6 +849,7 @@ export function setTargetMarker3D(lat, lon) {
     group.position.set(pos.x, 0, pos.z);
     scene.add(toOverlayLayer(group));
     targetMarker3D = group;
+    targetMarkerLatLon = { lat, lon };
 }
 
 /**
@@ -858,6 +870,7 @@ export function clearTargetMarker3D() {
     scene.remove(targetMarker3D);
     // geometry/materials are pooled — just remove from scene
     targetMarker3D = null;
+    targetMarkerLatLon = null;
 }
 
 /**

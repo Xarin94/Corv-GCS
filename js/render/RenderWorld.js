@@ -15,6 +15,11 @@ export class RenderWorld {
             sunlight: true, sunDirection: [0, 1, 0], schematicRadius: 30000,
             gridStrength: 0, gridCenter: { x: 0, y: 0 }, subWater: [0, 0, 0, 0] };
     }
+    /** The scene origin moved: terrain records put from now on are placed from it. */
+    setOrigin(origin) {
+        this.origin = { ...origin };
+        this.terrain.origin = { ...origin };
+    }
     getStats() {
         return { schemaVersion: this.schemaVersion, cameraRevision: this.camera.revision,
             terrain: this.terrain.getStats(), pointClouds: this.pointClouds.size };
