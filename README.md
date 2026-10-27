@@ -79,8 +79,9 @@ checks — GPS quality, compass and IMU health, vibration, EKF variance, radio s
 each shown with its own icon and the number behind it (satellites and HDOP under the GPS flag, RSSI
 under the link one).
 
-Tick **EKF STATUS** in the side panel and a black bar opens down the left side with the estimator's
-last 20 seconds in three charts, the view moving over to make room. For an ArduPilot: the EKF
+Click the **EKF STATUS** tab on the left edge (or tick EKF STATUS in the side panel) and a black bar
+slides out down the left side with the estimator's last 20 seconds in three charts, the view moving
+over to make room. For an ArduPilot: the EKF
 innovation ratios, the GPS accuracy and the EKF attitude against the backup DCM. For a CORV board:
 the raw GPS against the particle filter, the particle cloud's effective sample size and confidence,
 and the shared EKF's covariance. A GPS glitch, a dropout or a drifting estimate shows as it happens.

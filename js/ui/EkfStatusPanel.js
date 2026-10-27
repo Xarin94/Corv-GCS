@@ -3,7 +3,8 @@
  *
  * Three charts stacked in a black bar down the left side, the flight view
  * moved over to make room; the last 20 s, chosen for the estimator on board
- * (data in core/EkfMonitor.js):
+ * (data in core/EkfMonitor.js). The EKF STATUS tab on the left edge opens and
+ * closes it, as the GCS sidebar's on the right (and so does the checkbox):
  *
  *   ArduPilot EKF3  EKF INNOVATIONS  · GPS ACCURACY       · ATTITUDE EKF − DCM
  *   CORV RBPF       POSITION         · PARTICLE FILTER    · SHARED EKF tr(P)
@@ -107,7 +108,8 @@ const CHARTS = {
 
 const monitor = new EkfMonitor();
 let enabled = false;
-let panelEl = null, sourceEl = null, flagsEl = null, cardsEl = null;
+let panelEl = null, toggleEl = null, sourceEl = null, flagsEl = null, cardsEl = null;
+let onFlightTab = true;      // the bar and its tab belong to the flight view
 let cards = [];
 let shownSource;             // source the cards were built for
 let lastDraw = 0, lastText = 0, lastRates = 0;
@@ -413,7 +415,12 @@ function flagChips(source) {
 }
 
 function applyVisibility() {
-    if (panelEl) panelEl.style.display = enabled ? '' : 'none';
+    panelEl?.classList.toggle('collapsed', !enabled);
+    if (toggleEl) {
+        toggleEl.classList.toggle('collapsed', !enabled);
+        toggleEl.querySelector('.ekf-toggle-arrow').innerHTML = enabled ? '&#9664;' : '&#9654;';
+        toggleEl.title = enabled ? 'Close EKF STATUS' : 'Open EKF STATUS';
+    }
     const chk = document.getElementById('chk-ekf-status');
     if (chk) chk.checked = enabled;
     // The flight view gives the bar its width: 3D and HUD resize to what is left
@@ -428,6 +435,8 @@ function applyVisibility() {
 export function initEkfStatusPanel() {
     panelEl = document.getElementById('ekf-panel');
     if (!panelEl) return;
+    toggleEl = document.getElementById('ekf-toggle');
+    toggleEl?.addEventListener('click', () => setEkfStatusEnabled(!enabled));
     sourceEl = document.getElementById('ekf-source');
     flagsEl = document.getElementById('ekf-flags');
     cardsEl = document.getElementById('ekf-cards');
@@ -448,6 +457,11 @@ export function setEkfStatusEnabled(on) {
 export function updateEkfStatusPanel(visible) {
     const now = performance.now();
     manageRates(now);
+    if (panelEl && visible !== onFlightTab) {
+        onFlightTab = visible;
+        panelEl.style.display = visible ? '' : 'none';
+        if (toggleEl) toggleEl.style.display = visible ? '' : 'none';
+    }
     if (!enabled || !visible || !panelEl) return;
     const source = monitor.source(now);
     if (source !== shownSource && source) buildCards(source);

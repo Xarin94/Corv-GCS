@@ -358,9 +358,13 @@
     </div><!-- end #hud-wrapper -->
 
     <!-- EKF STATUS: a black bar down the left side with three charts of the
-         estimator's last 20 s; the flight view moves over to make room
-         (js/ui/EkfStatusPanel.js) -->
-    <div id="ekf-panel" style="display:none">
+         estimator's last 20 s; the flight view moves over to make room. The
+         tab on its edge opens and closes it (js/ui/EkfStatusPanel.js) -->
+    <button id="ekf-toggle" class="ekf-toggle collapsed" title="Open EKF STATUS">
+        <span class="ekf-toggle-label">EKF STATUS</span>
+        <span class="ekf-toggle-arrow">&#9654;</span>
+    </button>
+    <div id="ekf-panel" class="collapsed">
         <div class="ekf-head">
             <span class="ekf-title">EKF STATUS</span>
             <span class="ekf-window">LAST 20 s</span>

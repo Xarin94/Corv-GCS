@@ -7,6 +7,7 @@ import { STATE, pushGHistory, pushPoseHistory } from '../core/state.js';
 import { purgeStaleTraffic } from '../adsb/ADSBManager.js';
 import { relNavOnMessage, isRelativeMode } from '../core/RelativeNav.js';
 import { sceneOriginFix, sceneOriginHome } from '../core/SceneOrigin.js';
+import { rememberLastHome } from '../core/LastHome.js';
 
 let vibHistoryIdx = 0; // circular index for vibHistory
 
@@ -326,7 +327,7 @@ function mapGpsRawInt(data) {
         && data.lat !== 0 && data.lon !== 0) {
         STATE.lat = data.lat / 1e7;
         STATE.lon = data.lon / 1e7;
-        if (data.fixType >= 2) sceneOriginFix(STATE.lat, STATE.lon);
+        if (data.fixType >= 2) firstFix(STATE.lat, STATE.lon);
     }
     if (Number.isFinite(data.alt)) STATE.rawAlt = data.alt / 1000; // mm -> m AMSL
     // GPS_RAW_INT.vel is uint16 cm/s; 65535 = unknown
@@ -384,6 +385,12 @@ function mapAttitude(data) {
     computeAeroAngles();
 }
 
+// The first position of a link moves the 3D scene origin there, and for a
+// link that sends no HOME_POSITION it is where the vehicle is based
+function firstFix(lat, lon) {
+    if (sceneOriginFix(lat, lon) && STATE.homeLat === null && STATE.mode !== 'REPLAY') rememberLastHome(lat, lon);
+}
+
 function mapGlobalPositionInt(data) {
     // Malformed/empty payloads (the parse-error fallback sends {}) must not
     // mark the EKF source fresh nor write NaN into STATE.
@@ -399,7 +406,7 @@ function mapGlobalPositionInt(data) {
         if (data.lat !== 0 && data.lon !== 0) {
             STATE.lat = data.lat / 1e7;
             STATE.lon = data.lon / 1e7;
-            sceneOriginFix(STATE.lat, STATE.lon);
+            firstFix(STATE.lat, STATE.lon);
         }
         // A sub reports its depth below the surface it started on (its origin
         // is at 0 m, see STATE.subSurfaceAlt), not a height above the sea
@@ -658,6 +665,8 @@ function mapHomePosition(data) {
     STATE.homeAlt = Number.isFinite(data.altitude) ? data.altitude / 1000 : null; // mm -> m
     // The 3D scene counts its metres from home (requested again at arming)
     sceneOriginHome(lat, lon);
+    // The flight plan opens there next time, even with no vehicle on the link
+    if (STATE.mode !== 'REPLAY') rememberLastHome(lat, lon);
 }
 
 function mapStatusText(data) {

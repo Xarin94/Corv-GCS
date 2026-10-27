@@ -18,7 +18,10 @@
  *               route and the line of sight (RadioLinkView, behind LINK)
  */
 
-import { STATE } from '../core/state.js';
+import { STATE, isDemoMode } from '../core/state.js';
+import { ORIGIN } from '../core/constants.js';
+import { streamHasFix } from '../core/SceneOrigin.js';
+import { lastHome } from '../core/LastHome.js';
 import { uploadMission } from '../mavlink/CommandSender.js';
 import { isMSPLink } from '../mavlink/ConnectionManager.js';
 import { getTerrainElevationFromHGT, getTerrainElevationAsync, resetAutoDownloadFailures } from '../terrain/TerrainManager.js';
@@ -66,7 +69,8 @@ let vehicleMarker = null;
 let homeMarker = null;
 let operatorMarker = null;
 let hoverMarker = null;
-let centeredOnce = false;
+let centeredAt = null;            // { lat, lng, live } the empty plan was last centred on
+let compiledHomeKind = null;      // takeoffPoint().kind the plan was last compiled with
 
 // Radio link: the ground station, the analysis along the route and the coverage raster
 let linkView = null;
@@ -192,9 +196,11 @@ function initMap() {
     const container = document.getElementById('mission-map-full');
     if (!container || typeof L === 'undefined') return;
 
+    const start = viewTarget();
+    centeredAt = start;
     map = L.map(container, {
-        center: [STATE.lat || 46.0, STATE.lon || 11.0],
-        zoom: 13,
+        center: [start.lat, start.lng],
+        zoom: start.live || lastHome() ? 15 : 13,
         zoomControl: false,
         keyboard: false,
         doubleClickZoom: false,
@@ -262,7 +268,67 @@ function initMap() {
         if (!visible) return;
         updateVehicleMarker();
         updateHomeMarker();
+        centreOnVehicle();
     }, 500);
+}
+
+// Where the plan stands --------------------------------------------------------
+
+/**
+ * Where the vehicle is based: its home, else the vehicle on the link, else
+ * the last home a vehicle reported (core/LastHome.js). Null with no vehicle
+ * ever seen: the demo's position is no place to take off from.
+ * @returns {{lat, lng, kind: 'home'|'vehicle'|'last'}|null}
+ */
+function vehicleBase() {
+    if (STATE.homeLat !== null && STATE.homeLat !== undefined) return { lat: STATE.homeLat, lng: STATE.homeLon, kind: 'home' };
+    const v = vehiclePosition();
+    if (v) return { ...v, kind: 'vehicle' };
+    const last = lastHome();
+    return last ? { ...last, kind: 'last' } : null;
+}
+
+/** The vehicle on the link (or in the replayed log), not the demo's aircraft. */
+function vehiclePosition() {
+    if (isDemoMode() || !streamHasFix() || (!STATE.lat && !STATE.lon)) return null;
+    return { lat: STATE.lat, lng: STATE.lon };
+}
+
+/**
+ * The take-off point the plan is compiled with: the one placed by hand, else
+ * where the vehicle is based. A vehicle without a home is taken once, so a
+ * moving vehicle does not recompile the plan every tick, and arming (which
+ * clears the home until the new one arrives) keeps the old one.
+ * Null: the compiler takes off from the first segment.
+ */
+function takeoffPoint() {
+    const P = getRoute().params;
+    if (P.home) return { lat: P.home.lat, lng: P.home.lng, kind: 'custom' };
+    const base = vehicleBase();
+    if (base?.kind === 'vehicle' && compiled.home && (compiledHomeKind === 'vehicle' || compiledHomeKind === 'home')) {
+        return { lat: compiled.home.lat, lng: compiled.home.lng, kind: compiledHomeKind };
+    }
+    return base;
+}
+
+/** Where an empty plan is shown: the take-off point, else the demo's aircraft. */
+function viewTarget() {
+    const t = takeoffPoint();
+    if (t) return { lat: t.lat, lng: t.lng, live: t.kind === 'home' || t.kind === 'vehicle' };
+    return { lat: STATE.lat || ORIGIN.lat, lng: STATE.lon || ORIGIN.lon, live: false };
+}
+
+/**
+ * An empty plan goes where the vehicle is: when one shows up on the link, and
+ * again when its home is somewhere else (another vehicle, another field).
+ */
+function centreOnVehicle() {
+    if (!map || getRoute().segments.length || getRoute().params.home) return;
+    const t = viewTarget();
+    if (!t.live) return;
+    if (centeredAt?.live && haversine(centeredAt, t) < 1000) return;
+    map.setView([t.lat, t.lng], 15);
+    centeredAt = t;
 }
 
 function fitRoute() {
@@ -295,22 +361,14 @@ function updateVehicleMarker() {
         const inner = vehicleMarker.getElement()?.querySelector('div');
         if (inner) inner.style.transform = `rotate(${yawDeg}deg)`;
     }
-    if (!centeredOnce && !getRoute().segments.length && STATE.homeLat === null) {
-        map.setView([lat, lon], 15);
-        centeredOnce = true;
-    }
 }
 
 function updateHomeMarker() {
     if (!map) return;
-    const P = getRoute().params;
-    const custom = !!P.home;
-    // Same precedence as the compiler: explicit point, vehicle home, the point the plan was compiled with
-    const hasVehicleHome = STATE.homeLat !== null && STATE.homeLat !== undefined;
-    const src = custom ? P.home
-        : hasVehicleHome ? { lat: STATE.homeLat, lng: STATE.homeLon }
-        : compiled.home ? { lat: compiled.home.lat, lng: compiled.home.lng }
-        : (STATE.lat || STATE.lon) ? { lat: STATE.lat, lng: STATE.lon } : null;
+    // What the compiler takes off from; without one, the first segment it fell back to
+    const takeoff = takeoffPoint();
+    const custom = takeoff?.kind === 'custom';
+    const src = takeoff || (compiled.home ? { lat: compiled.home.lat, lng: compiled.home.lng } : null);
     if (!src) { if (homeMarker) { homeMarker.remove(); homeMarker = null; } return; }
     const { lat, lng } = src;
 
@@ -325,16 +383,13 @@ function updateHomeMarker() {
             scheduleCompile();
         });
         homeMarker.on('click', () => { selectSegment(null); openRouteSettings(); });
-        if (!centeredOnce && !custom) {
-            map.setView([lat, lng], 15);
-            centeredOnce = true;
-        }
     } else {
         homeMarker.setLatLng([lat, lng]);
         homeMarker.getElement()?.querySelector('.fp-home-icon')?.classList.toggle('is-custom', custom);
     }
-    // A real vehicle home arriving or moving is a source change for the compiler
-    if (!custom && hasVehicleHome && compiled.home && (Math.abs(compiled.home.lat - lat) > 1e-7 || Math.abs(compiled.home.lng - lng) > 1e-7)) {
+    // A vehicle home arriving or moving, a vehicle showing up: a source change for the compiler
+    if (takeoff && !custom && (takeoff.kind !== compiledHomeKind || !compiled.home
+        || Math.abs(compiled.home.lat - lat) > 1e-7 || Math.abs(compiled.home.lng - lng) > 1e-7)) {
         scheduleCompile();
     }
 }
@@ -533,22 +588,16 @@ async function runCompile() {
     await ensureRouteTerrain();
     if (token !== compileToken) return;
 
-    const P = getRoute().params;
-    // Take-off point: explicit, else the vehicle's home, else the vehicle position —
-    // taken once, so a moving vehicle without a home does not recompile the plan every tick
-    const home = P.home
-        || (STATE.homeLat !== null && STATE.homeLat !== undefined ? { lat: STATE.homeLat, lng: STATE.homeLon } : null)
-        || (compiled.home ? { lat: compiled.home.lat, lng: compiled.home.lng } : null)
-        || (STATE.lat || STATE.lon ? { lat: STATE.lat, lng: STATE.lon } : null);
-
+    const takeoff = takeoffPoint();
     compiled = compileRoute(getRoute(), {
         terrain: getTerrainElevationFromHGT,
-        home,
+        home: takeoff ? { lat: takeoff.lat, lng: takeoff.lng } : null,
         homeAlt: STATE.homeAlt || 0,
         vehicleType: STATE.vehicleType,
         platform: activePlatformId(),
         itemLimit: inavLimit,
     });
+    compiledHomeKind = takeoff?.kind ?? null;
 
     // Publish the calculated mission for the 3D scene, mini-map and library
     STATE.missionItems.length = 0;
@@ -578,8 +627,8 @@ async function ensureRouteTerrain() {
     };
     const P = getRoute().params;
     const pts = [];
-    if (P.home) pts.push(P.home);
-    else if (STATE.homeLat !== null && STATE.homeLat !== undefined) pts.push({ lat: STATE.homeLat, lng: STATE.homeLon });
+    const takeoff = takeoffPoint();
+    if (takeoff) pts.push(takeoff);
     for (const s of getRoute().segments) for (const p of s.points) pts.push(p);
     // The radio coverage raster reaches `coverageRange` around the operator in every direction
     const op = P.operator || (pts.length ? pts[0] : null);
@@ -644,8 +693,9 @@ function initRouteCard() {
     document.getElementById('fp-route-params-close')?.addEventListener('click', closeRouteSettings);
     document.getElementById('fp-chips')?.addEventListener('click', toggleRouteSettings);
     document.getElementById('fp-home-vehicle')?.addEventListener('click', () => {
-        if (!STATE.lat && !STATE.lon) { alert('No vehicle position available'); return; }
-        getRoute().params.home = { lat: STATE.lat, lng: STATE.lon };
+        const v = vehiclePosition();
+        if (!v) { alert('No vehicle position available'); return; }
+        getRoute().params.home = v;
         commitMission('Set take-off point');
         renderHomeDesc(); updateHomeMarker(); scheduleCompile();
     });
@@ -799,11 +849,13 @@ function platformIssues() {
 function renderHomeDesc() {
     const el = document.getElementById('fp-home-desc');
     if (!el) return;
-    const P = getRoute().params;
-    if (P.home) el.textContent = `${P.home.lat.toFixed(5)}, ${P.home.lng.toFixed(5)} (custom)`;
-    else if (STATE.homeLat !== null && STATE.homeLat !== undefined) el.textContent = `vehicle home ${STATE.homeLat.toFixed(5)}, ${STATE.homeLon.toFixed(5)}`;
-    else if (STATE.lat || STATE.lon) el.textContent = 'vehicle position (no home yet)';
-    else el.textContent = 'first segment (no vehicle)';
+    const t = takeoffPoint();
+    const at = t ? `${t.lat.toFixed(5)}, ${t.lng.toFixed(5)}` : '';
+    if (!t) el.textContent = 'first segment (no vehicle)';
+    else if (t.kind === 'custom') el.textContent = `${at} (custom)`;
+    else if (t.kind === 'home') el.textContent = `vehicle home ${at}`;
+    else if (t.kind === 'vehicle') el.textContent = 'vehicle position (no home yet)';
+    else el.textContent = `last vehicle home ${at} (no vehicle)`;
 }
 
 // Route settings popover ----------------------------------------------------------

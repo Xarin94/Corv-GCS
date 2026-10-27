@@ -750,10 +750,12 @@ body.minimap-swapped #scene-container:hover {
     transition: transform 0.1s linear;
 }
 
-/* ============== EKF STATUS (GCS OPTIONS → EKF STATUS) ============== */
+/* ============== EKF STATUS (tab on the left edge, GCS OPTIONS → EKF STATUS) ============== */
 /* A black bar down the left side, full height behind the header; the flight
    view (3D, HUD, tapes, mini-map) moves right by its width instead of being
-   covered. The three charts are stacked and share the height. */
+   covered. The three charts are stacked and share the height. Closed, it
+   slides out to the left and leaves its tab, as the GCS sidebar does on the
+   right. */
 :root {
     --ekf-bar-w: clamp(300px, 21vw, 440px);
 }
@@ -779,6 +781,56 @@ body.mode-fullscreen.ekf-docked #hud-wrapper {
     font-family: var(--font-ui);
     color: #f0efec;
     overflow: hidden;
+    transition: transform 0.3s ease;
+}
+
+#ekf-panel.collapsed {
+    transform: translateX(-100%);
+}
+
+.ekf-toggle {
+    position: fixed;
+    left: var(--ekf-bar-w);
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    padding: 10px 0 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-gcs-toggle);
+    border: 1px solid var(--border-accent);
+    border-left: none;
+    border-radius: 0 4px 4px 0;
+    color: var(--accent-cyan);
+    cursor: pointer;
+    z-index: var(--z-chrome-toggle);
+    font-family: var(--font-ui);
+    transition: left 0.3s ease, background 0.2s;
+}
+
+.ekf-toggle:hover {
+    background: var(--bg-gcs-toggle-hover);
+}
+
+.ekf-toggle.collapsed {
+    left: 0;
+}
+
+/* Read bottom to top, as a tab on a left edge */
+.ekf-toggle-label {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    white-space: nowrap;
+}
+
+.ekf-toggle-arrow {
+    font-size: 12px;
+    line-height: 1;
 }
 
 .ekf-head {

@@ -173,8 +173,15 @@ The gear icon on the route card (or a click on the chips):
 | **Store mission on the board** (INAV) | off | Also writes the mission to the board's storage so it survives a power cycle |
 
 **TAKE-OFF POINT** at the bottom: where the route starts. *vehicle home* by default (it follows the
-vehicle's home when connected); **VEHICLE** puts it at the vehicle's current position; **AUTO** goes
-back to following home; or drag the **H** marker on the map / right-click → *Take-off point here*.
+vehicle's home when connected; a vehicle that sends no home is taken where it was first seen);
+**VEHICLE** puts it at the vehicle's current position; **AUTO** goes back to following home; or drag
+the **H** marker on the map / right-click → *Take-off point here*. With no vehicle on the link the
+route takes off from the *last vehicle home*, the last one a vehicle reported (kept between
+sessions), and with none ever seen from its first segment.
+
+The page opens where the vehicle is: on its home, or where it is when it has none yet, else on the
+last vehicle home. While the route is empty the map moves to a vehicle that connects, and again when
+its home turns out to be somewhere else.
 
 ## Altitudes and terrain
 

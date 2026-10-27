@@ -20,7 +20,7 @@ goes through it element by element.
 | Centre | The HUD over the 3D view | [The HUD](#the-hud) |
 | Left and right of the HUD | Six data cells | [Data cells](#data-cells) |
 | Inboard of the left cells | Annunciators: red warnings, amber cautions | [Annunciators](#annunciators) |
-| Left edge, when on | EKF STATUS bar: three charts of the estimator's last 20 s | [EKF status](#ekf-status) |
+| Left edge | EKF STATUS tab; open, a bar with three charts of the estimator's last 20 s | [EKF status](#ekf-status) |
 | Left, over the HUD | Autopilot messages | [Messages and banners](#messages-and-banners) |
 | Top centre | LIDAR and ROS strips, when those features are on | [Strips](#lidar-and-ros-strips) |
 | Bottom left | Mini-map | [Mini-map](#mini-map) |
@@ -243,8 +243,10 @@ worse. In the demo flight (no vehicle) a random flag lights now and then, to sho
 
 ## EKF status
 
-**EKF STATUS** in the side panel's [GCS OPTIONS](side-panel.md#gcs-options) opens a black bar down
-the left side of the flight view; the 3D view, the HUD and the mini-map move right to make room. It
+The **EKF STATUS** tab on the left edge of the flight view (▶) slides a black bar out down the left
+side, as the side panel's tab does on the right; its ◀ closes it again. **EKF STATUS** in the side
+panel's [GCS OPTIONS](side-panel.md#gcs-options) does the same, and the bar is reopened at the next
+start if it was open. The 3D view, the HUD and the mini-map move right to make room. It
 holds three charts of the **last 20 s**, chosen for the estimator on board, and a header with the
 solutions the filter itself flags as good (✓, green) or bad (✕, red). Under each chart the legend
 gives the latest values; with the pointer on a chart, the values at that moment. The charts

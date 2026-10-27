@@ -53,11 +53,20 @@ export function awaitSceneOriginFix() {
     awaitingFix = true;
 }
 
-/** A valid position from the stream: the first one after it opened moves the origin there. */
+/**
+ * A valid position from the stream: the first one after it opened moves the origin there.
+ * @returns {boolean} true for that first position
+ */
 export function sceneOriginFix(lat, lon) {
-    if (!awaitingFix || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    if (!awaitingFix || !Number.isFinite(lat) || !Number.isFinite(lon)) return false;
     awaitingFix = false;
     setSceneOrigin(lat, lon);
+    return true;
+}
+
+/** False from a stream opening until its first valid position (or home): STATE.lat/lon are still the demo's. */
+export function streamHasFix() {
+    return !awaitingFix;
 }
 
 /** HOME_POSITION from the vehicle: the origin goes to that home. */
