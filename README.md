@@ -79,6 +79,13 @@ checks — GPS quality, compass and IMU health, vibration, EKF variance, radio s
 each shown with its own icon and the number behind it (satellites and HDOP under the GPS flag, RSSI
 under the link one).
 
+Tick **RESTRICTED ZONES** in the side panel and the UAS geographical zones within 50 km of the vehicle
+and the mission appear on the maps and on the 3D terrain — no-fly in red bands, ceilings coloured by
+the height allowed — from the FAA in the US and the national services in Germany, France, Spain and
+Switzerland, or from the ED-269 file a state publishes (Italy's from D-Flight). Above a zone's ceiling
+or the general limit (120 m in Europe, 400 ft in the US) a red flag lights beside the altitude and
+TERR ALT flashes; arming inside a zone raises an alarm banner of its own.
+
 Click the **EKF STATUS** tab on the left edge and a black bar
 slides out down the left side with the estimator's last 20 seconds in three charts, the view moving
 over to make room. For an ArduPilot: the EKF

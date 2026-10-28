@@ -316,6 +316,38 @@ button.ui-btn.recording {
     56%, 100% { opacity: 0.22; }
 }
 
+/* UAS GEO ZONE annunciators (GeoZonePanel.js): the same glyphs, inboard of
+   the altitude tape, hanging from its top. Absolute, so the grid of the UI
+   layer keeps its four columns; the zone name under the label may wrap. */
+.tape-col-right {
+    position: relative;
+}
+
+.zone-annun-col {
+    position: absolute;
+    top: 0;
+    right: calc(100% + var(--gutter));
+    width: var(--annun-w);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(4px, 0.9vh, 12px);
+    pointer-events: none;
+}
+
+.zone-annun-col .annun .annun-val {
+    max-width: calc(var(--annun-w) * 1.3);
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* TERR ALT over a height limit (a zone's ceiling, 120 m / 400 ft): the
+   figure flashes red at the warning rate */
+.data-cell .val.agl-limit {
+    color: #ff2a2a !important;
+    animation: annun-flash 0.7s steps(1, end) infinite;
+}
+
 /* DATA TAPES */
 .tape-col {
     display: flex;

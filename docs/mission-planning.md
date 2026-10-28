@@ -257,6 +257,11 @@ change just after the first waypoint, where it takes effect as the boat sets off
 | **LINK** | Radio coverage from the operator position ([radio link](radio-link.md)) |
 | **FIT** | Zoom the map to the whole route |
 
+With **RESTRICTED ZONES** on (side panel → GCS OPTIONS) the map also shows the UAS geographical zones
+within 50 km of the route: no-fly in red bands, conditions in violet bands, ceilings coloured by the
+height that may be flown, with a legend at the bottom left and each zone's name, limits and source
+under the mouse. See [restricted zones](flight-screen.md#restricted-zones).
+
 ## Elevation profile
 
 Along the bottom: the ground under the whole route (from the elevation model) and the height flown,

@@ -16,6 +16,7 @@
     "test:demux": "node scripts/test-link-demux.js",
     "test:pose": "node scripts/test-pose-smoother.js",
     "test:ekf": "node scripts/test-ekf-monitor.js",
+    "test:geozones": "node scripts/test-geozones.js",
     "measure:runtime": "node scripts/measure-runtime.js",
     "build": "electron-builder --win --linux",
     "build:win": "electron-builder --win",

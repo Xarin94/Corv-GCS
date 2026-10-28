@@ -17,6 +17,7 @@ RATES** and, indirectly, the flight stack's suggested link.
 | [NAVIGATION](#navigation) | absolute (GPS) or relative position |
 | [SYSTEM CONFIG](#system-config) | language, altitude offset, terrain folder, 3D model, light, smoothing, frame rate, satellite detail, satellite and terrain radius, DevTools, debug log |
 | [GCS OPTIONS](#gcs-options) | ADS-B traffic, ground clamp, battery voltage range |
+| [UAS GEO ZONES](#uas-geo-zones) | restricted zones: sources, imported ED-269 files |
 | [ROTOR LOAD](#rotor-load) | the motor output schematic |
 | [SIYI CAMERA STREAM](#siyi-camera-stream) | the FPV video address |
 | [OFFLINE DATA DOWNLOAD](#offline-data-download) | imagery and elevation for an area, ahead of time |
@@ -78,6 +79,22 @@ GPS — is in [navigation without GPS](3D-NAVIGATION.md#5-navigation-without-gps
 | **CELLS (AUTO)** | 3S | The cell count worked out from the maximum (4.2 V per cell): check it matches your pack. |
 
 Example for a 6S Li-ion pack: min 18.0 V (3.0 V per cell), max 25.2 V.
+
+## UAS GEO ZONES
+
+Where drones may not fly, or only up to a height: see [restricted zones](flight-screen.md#restricted-zones)
+for what is shown and the flags.
+
+| Field | |
+|-------|---|
+| **RESTRICTED ZONES** | On / off, the same switch as in the side panel. Off by default. |
+| **IN REACH** | How many zones are within 50 km of the vehicle and of the mission's points, and how many tiles are still being fetched. *No vehicle position and no mission* when there is nothing to look around. |
+| **SOURCES** | The online sources asked for the places in reach, with tiles ready / needed and the last error if one failed: FAA (US), DFS DIPUL (DE), IGN / DGAC (FR), ENAIRE (ES), FOCA / BAZL (CH). *None in reach* elsewhere: import the state's file. |
+| **IMPORTED FILES** | ED-269 / ED-318 files loaded, with their zone count; ✕ removes one. |
+| **IMPORT FILE…** | Load a state's UAS geographical zones file (ED-269 or ED-318 JSON). Italy: [D-Flight](https://www.d-flight.it), profile page → **Download UAS Zone Geo** (unzip it first). Kept until removed; import a new copy when the state updates it. |
+| **REFRESH** | Forget the downloaded zones and fetch them again now (they are fetched again by themselves every 6 hours). Imported files are kept. |
+
+The downloads are kept under `data/geozones` and work offline once fetched.
 
 ## ROTOR LOAD
 

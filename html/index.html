@@ -150,6 +150,12 @@
             <span id="mode-banner-text">STABILIZE</span>
         </div>
 
+        <!-- Armed inside a UAS geographical zone (js/ui/GeoZonePanel.js) -->
+        <div id="zone-arm-alert" class="zone-arm-alert hidden" title="Click to close">
+            <div class="zaa-title"></div>
+            <div class="zaa-detail"></div>
+        </div>
+
         <!-- ==================== UI LAYER ==================== -->
         <div id="ui-layer">
 
@@ -186,7 +192,10 @@
             <div></div>
 
             <!-- Right Data Tape - Altitude -->
-            <div class="tape-col">
+            <div class="tape-col tape-col-right">
+                <!-- UAS geographical zones: NO-FLY, MAX n m, ALT LIMIT, inboard of
+                     the altitude tape (js/ui/GeoZonePanel.js) -->
+                <div id="zone-annun" class="zone-annun-col"></div>
                 <div class="data-cell">
                     <div class="lbl">Altitude</div>
                     <div class="val" id="disp-alt">0</div>
@@ -347,6 +356,8 @@
             <symbol id="an-prox" viewBox="0 0 24 24"><circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none"/><path d="M6.5 14.5a7.5 7.5 0 0 1 11 0"/><path d="M3 10.5a12.5 12.5 0 0 1 18 0"/></symbol>
             <symbol id="an-link" viewBox="0 0 24 24"><path d="M4 20v-4M9 20v-8M14 20v-12M19 20V4"/><path d="M2 22L22 2"/></symbol>
             <symbol id="an-cal" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 3v4.5h-4.5"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></symbol>
+            <symbol id="an-zone" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/><path d="M12 3v3M12 18v3"/></symbol>
+            <symbol id="an-ceiling" viewBox="0 0 24 24"><path d="M3 4.5h18"/><path d="M3 4.5l3-2.5M9 4.5l3-2.5M15 4.5l3-2.5"/><path d="M12 21V9"/><path d="M7.5 13.5L12 9l4.5 4.5"/></symbol>
             <symbol id="an-prearm" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><path d="M12 15v2.5"/></symbol>
         </svg>
 
@@ -2577,6 +2588,34 @@
                 </div>
             </div>
             <div class="setup-panel">
+                <div class="panel-header">UAS GEO ZONES</div>
+                <div class="cfg-row">
+                    <label>RESTRICTED ZONES</label>
+                    <label style="display:flex;align-items:center;gap:6px;">
+                        <input type="checkbox" id="syscfg-geozones-enable" onchange="toggleGeoZones(this.checked)">
+                        <span>On the maps and the terrain, with height warnings</span>
+                    </label>
+                </div>
+                <div class="cfg-row">
+                    <label>IN REACH</label>
+                    <span class="cfg-val" id="gz-st-zones">--</span>
+                </div>
+                <div class="cfg-row">
+                    <label>SOURCES</label>
+                    <span class="cfg-val gz-list" id="gz-st-sources">--</span>
+                </div>
+                <div class="cfg-row">
+                    <label>IMPORTED FILES</label>
+                    <span class="cfg-val gz-list" id="gz-st-imports">none</span>
+                </div>
+                <div class="cfg-row">
+                    <label>ED-269 / ED-318</label>
+                    <button id="gz-import" class="file-upload-btn" type="button" title="Load the UAS geographical zones file published by a state, e.g. Italy's from D-Flight (profile page → Download UAS Zone Geo)">IMPORT FILE…</button>
+                    <button id="gz-refresh" class="file-upload-btn" type="button" title="Forget the downloaded zones and fetch them again (imported files are kept)">REFRESH</button>
+                </div>
+                <div class="cfg-note">Zones within 50 km of the connected vehicle and of the mission, only from the sources of the country in reach: FAA (US), DFS DIPUL (DE), IGN / DGAC (FR), ENAIRE (ES), FOCA / BAZL (CH); fetched again every 6 h. Italy and the other states: import the ED-269 file of the national portal. Advisory only: the state's official map is what applies.</div>
+            </div>
+            <div class="setup-panel">
                 <div class="panel-header">ROTOR LOAD</div>
                 <div class="cfg-row">
                     <label>SCHEMATIC</label>
@@ -3023,6 +3062,10 @@
                     <label class="gcs-checkbox" title="LTE cell rows in the position panel, on the cellular link">
                         <input type="checkbox" id="chk-lte-overlay" checked>
                         <span>LTE OVERLAY</span>
+                    </label>
+                    <label class="gcs-checkbox" title="UAS geographical zones within 50 km of the vehicle and the mission, on the maps and the 3D terrain, with height warnings (120 m in Europe, 400 ft in the US)">
+                        <input type="checkbox" id="chk-geozones" onchange="toggleGeoZones(this.checked)">
+                        <span>RESTRICTED ZONES</span>
                     </label>
                     <button class="gcs-btn" style="margin-top:6px;" onclick="clearTrail()">CLEAR TRAIL</button>
                 </div>

@@ -74,6 +74,8 @@ import { TlogLogger } from './logging/TlogLogger.js';
 import { initRotorLoadPanel, updateRotorLoadPanel, setRotorLoadConfig } from './ui/RotorLoadPanel.js';
 import { initAnnunciatorPanel, updateAnnunciatorPanel } from './ui/AnnunciatorPanel.js';
 import { initEkfStatusPanel, updateEkfStatusPanel } from './ui/EkfStatusPanel.js';
+import { initGeoZones, updateGeoZones, setGeoZonesEnabled } from './safety/GeoZones.js';
+import { initGeoZonePanel, updateGeoZonePanel } from './ui/GeoZonePanel.js';
 import { updateUI, toggleConfig, toggleTelemetry, updateOffset, updateAGLDisplay, setStatusMessage, updateFPSDisplay, initMoreMenu, initConfigAutoClose, initHudCells } from './ui/UIController.js';
 
 // Split view imports
@@ -1469,6 +1471,8 @@ function animate(frameTime) {
         updateCommandBar();
         updateGCSSidebar();
         updateAnnunciatorPanel();
+        updateGeoZones();
+        updateGeoZonePanel();
         setMissionActiveSeq(STATE.missionCurrentSeq);
         const tc = getTargetCoords();
         if (tc) {
@@ -2053,6 +2057,8 @@ function init() {
     initRotorLoadPanel();
     initEkfStatusPanel();
     initAnnunciatorPanel();
+    initGeoZones();
+    initGeoZonePanel();
     initTabs();
     console.log('[init] initTabs done');
     initOfflinePanel();
@@ -2339,6 +2345,11 @@ window.toggleADSB = (function(orig) {
 // the caption stayed on screen over the panels below.
 window.toggleRotorLoad = function(enabled) {
     setRotorLoadConfig({ enabled: !!enabled });
+};
+
+// UAS geographical zones on/off (GCS OPTIONS and SYS CONFIG → UAS GEO ZONES), remembered
+window.toggleGeoZones = function(enabled) {
+    setGeoZonesEnabled(enabled);
 };
 
 // Battery voltage-based percentage calculation

@@ -15,7 +15,7 @@ folds on a click on its title (▼), so you can keep open only what you use.
 | [VEHICLE](#vehicle) | what is connected |
 | [ACTIONS](#actions) | set home here, reboot the autopilot |
 | [MISSION](#mission) | mission progress |
-| [GCS OPTIONS](#gcs-options) | mute the GCS, ADS-B traffic, rotor load, clear the trail |
+| [GCS OPTIONS](#gcs-options) | mute the GCS, ADS-B traffic, rotor load, restricted zones, clear the trail |
 | [RTL OPTIONS](#rtl-options) | return-to-launch and Smart RTL parameters |
 | [TARGET](#target) | a reference point to fly to, with an arrow and a distance |
 | [MESSAGE LOG](#message-log) | every autopilot message of the session |
@@ -53,6 +53,7 @@ folds on a click on its title (▼), so you can keep open only what you use.
 | **SHOW ADS-B TRAFFIC** | on | Manned-aircraft traffic in the 3D view, on the mini-map and in the traffic table. The same switch as SYS CONFIG → GCS OPTIONS → ADS-B TRAFFIC. See [ADS-B traffic](flight-screen.md#ads-b-traffic). |
 | **SHOW ROTOR LOAD** | on | The rotor load schematic at the bottom right. The same switch as SYS CONFIG → ROTOR LOAD → SCHEMATIC. See [rotor load](sys-config.md#rotor-load). |
 | **LTE OVERLAY** | on | The LTE cell rows of the position panel, on the cellular link. The cell sites on the maps have their own switch in CELLULAR LINK. See [LTE cells](flight-screen.md#lte-cells). |
+| **RESTRICTED ZONES** | off | UAS geographical zones within 50 km of the vehicle and the mission on the mini-map, the FLIGHT PLAN map and the 3D terrain, with flags beside the altitude cells, TERR ALT flashing above a height limit (120 m in Europe, 400 ft in the US) and an alarm on arming inside a zone. The same switch as SYS CONFIG → UAS GEO ZONES. **Remembered between sessions.** See [restricted zones](flight-screen.md#restricted-zones). |
 | **CLEAR TRAIL** | | Erases the red trail of the path flown, in 3D and on the mini-map; it starts again from the current position. |
 
 ## RTL OPTIONS

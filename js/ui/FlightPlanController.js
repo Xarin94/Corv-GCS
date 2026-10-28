@@ -41,6 +41,7 @@ import { downloadMission, itemsToRoute } from '../mission/MissionTransfer.js';
 import { activePlatformId, getPlatform, usesMspMissions, unsupportedReason, segmentAllowed } from '../mission/Platforms.js';
 import { inavToItems } from '../mission/InavMission.js';
 import { uploadInavMission, downloadInavMission } from '../mission/InavTransfer.js';
+import { createGeoZoneLayer } from '../maps/GeoZoneLayer.js';
 
 // ── Module state ──────────────────────────────────────────────────────────────
 
@@ -232,6 +233,8 @@ function initMap() {
     map.createPane('fpHandles').style.zIndex = 650;
     map.createPane('fpLabels').style.zIndex = 640;
     linkView = createRadioLinkView(map);
+    // UAS geographical zones (GCS OPTIONS → RESTRICTED ZONES), with names on hover
+    createGeoZoneLayer(map, { interactive: true });
 
     // Debug hook for the devtools console (the module scope is not reachable otherwise)
     window.__flightPlan = { map, layers, route: getRoute, compiled: () => compiled };

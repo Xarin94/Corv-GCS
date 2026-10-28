@@ -1567,3 +1567,18 @@ body.has-tabs #ui-layer {
     align-items: center;
     justify-content: space-between;
 }
+
+/* SYS CONFIG → UAS GEO ZONES: one line per source / imported file */
+.setup-panel .cfg-val.gz-list { line-height: 1.5; text-align: right; }
+.setup-panel .gz-err { color: #ff6a5a; }
+.setup-panel .gz-remove {
+    background: none;
+    border: 1px solid var(--border-input);
+    color: var(--text-dim);
+    border-radius: 3px;
+    font-size: 10px;
+    line-height: 1;
+    padding: 2px 5px;
+    cursor: pointer;
+}
+.setup-panel .gz-remove:hover { color: #ff6a5a; border-color: #ff6a5a; }

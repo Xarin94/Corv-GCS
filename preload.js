@@ -188,6 +188,16 @@ contextBridge.exposeInMainWorld('lteKey', {
   forget: () => ipcRenderer.invoke('lte-key-forget')
 });
 
+// UAS geographical zones around the mission and the vehicle (geozones.js)
+contextBridge.exposeInMainWorld('geoZones', {
+  query: (q) => ipcRenderer.invoke('geozones-query', q),
+  status: () => ipcRenderer.invoke('geozones-status'),
+  clear: () => ipcRenderer.invoke('geozones-clear'),
+  importFile: () => ipcRenderer.invoke('geozones-import'),
+  removeImport: (name) => ipcRenderer.invoke('geozones-remove-import', name),
+  onChanged: (callback) => ipcRenderer.on('geozones-changed', () => callback())
+});
+
 // LTE cell sites around the vehicle: bundled, downloaded and looked-up cells (cell-db.js)
 contextBridge.exposeInMainWorld('cellDb', {
   query: (q) => ipcRenderer.invoke('celldb-query', q),

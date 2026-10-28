@@ -15,6 +15,7 @@ const { initMSPHandlers, cleanup: cleanupMSP } = require('./msp-manager');
 const { initLidarHandlers, cleanup: cleanupLidar, onMavlinkMessage: lidarOnMavlink } = require('./lidar-manager');
 const { initLteKeyHandlers } = require('./lte-link');
 const { initCellDbHandlers } = require('./cell-db');
+const { initGeoZonesHandlers } = require('./geozones');
 
 // Hide the application menu (will be set when app is ready)
 
@@ -277,6 +278,10 @@ function createWindow() {
   // LTE cell sites (OpenCelliD) for the cellular link map overlay; after the
   // mission store, whose data root holds the cache
   initCellDbHandlers(win);
+
+  // UAS geographical zones (FAA, national services, ED-269 imports); their
+  // tile cache is under the same data root
+  initGeoZonesHandlers(win);
 
   // MSP (INAV / Betaflight) telemetry adapter
   initMSPHandlers(win);

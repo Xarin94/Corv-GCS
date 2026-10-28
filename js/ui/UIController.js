@@ -10,6 +10,7 @@ import { isRelativeMode } from '../core/RelativeNav.js';
 import { cellIsLive, cellMapInfo, operatorShort, getCellMapSettings } from '../maps/CellTowerLayer.js';
 import { t } from '../core/i18n.js';
 import { frequencyText } from '../core/lte-bands.js';
+import { geoZoneStatus } from '../safety/GeoZones.js';
 
 // Cached DOM references for high-frequency updates (avoids ~29 queries/frame)
 let domCache = null;
@@ -215,6 +216,8 @@ export function updateUI() {
         const def = HUD_FIELD_DEFS[cfg.field];
         if (!def) continue;
         const mult = cfg.multiplier || 1;
+        // TERR ALT over a zone's ceiling or the general limit (120 m / 400 ft) flashes red
+        cell.val.classList.toggle('agl-limit', def.special === 'agl' && geoZoneStatus.overHeight);
 
         if (def.special === 'gload') {
             const rawG = HUD_FIELD_DEFS.gload.getter();

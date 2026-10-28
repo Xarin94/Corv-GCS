@@ -92,3 +92,56 @@
 .mode-banner.mode-assisted { color: #00d2ff; border-color: rgba(0, 210, 255, 0.4); }
 .mode-banner.mode-auto { color: #44ff44; border-color: rgba(68, 255, 68, 0.4); }
 .mode-banner.mode-emergency { color: #ff9900; border-color: rgba(255, 153, 0, 0.4); }
+
+/* Armed inside a UAS geographical zone (GeoZonePanel.js): under the mode
+   banner, red in a no-fly zone, amber with conditions or a ceiling; the
+   border flashes at the annunciators' rates until it closes (10 s, or a click) */
+@keyframes zone-arm-flash {
+    0%, 55%   { border-color: currentColor; }
+    56%, 100% { border-color: transparent; }
+}
+
+.zone-arm-alert {
+    position: absolute;
+    top: 140px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: var(--z-floating);
+    max-width: min(640px, 70vw);
+    background: var(--bg-overlay);
+    border: 2px solid currentColor;
+    border-radius: 4px;
+    padding: 8px 24px 9px;
+    font-family: var(--font-ui);
+    text-align: center;
+    pointer-events: auto;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+}
+
+.zone-arm-alert.hidden {
+    display: none;
+}
+
+.zone-arm-alert .zaa-title {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 3px;
+}
+
+.zone-arm-alert .zaa-detail {
+    margin-top: 3px;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    color: var(--hud-text);
+}
+
+.zone-arm-alert.zone-arm-warn {
+    color: #ff2a2a;
+    animation: zone-arm-flash 0.7s steps(1, end) infinite;
+}
+
+.zone-arm-alert.zone-arm-caut {
+    color: #ffb300;
+    animation: zone-arm-flash 1.2s steps(1, end) infinite;
+}

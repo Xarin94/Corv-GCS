@@ -4,6 +4,9 @@ import {
     initSatelliteDetail, disposeSatelliteDetail, updateSatelliteDetail, getSatelliteDetailStats,
     satelliteDetailUniforms, SATELLITE_DETAIL_GLSL
 } from '../../terrain/SatelliteDetail.js';
+import {
+    geoZoneTerrainUniforms, GEOZONE_TERRAIN_GLSL, updateGeoZoneTerrain, disposeGeoZoneTerrain
+} from '../../terrain/GeoZoneTerrain.js';
 
 export function createThreeTerrainRenderer({ three: THREE, scene, renderer, world, loadTileImage, onTextureDisposed = () => {} }) {
 const sceneRef = scene;
@@ -290,7 +293,8 @@ vec3 schematicTerrainColor() {
     // The MAP BRIGHTNESS slider (default 0.85) scales the whole drawing
     return col * (uBrightness / 0.85);
 }
-${SATELLITE_DETAIL_GLSL}`;
+${SATELLITE_DETAIL_GLSL}
+${GEOZONE_TERRAIN_GLSL}`;
 
 // After <color_fragment>: the chunk's satellite map (the height tint without
 // one), the full-resolution imagery around the aircraft over it, then the light
@@ -303,10 +307,12 @@ vec3 terrainBase = diffuseColor.rgb * vTerrainTint;
 diffuseColor.rgb = satelliteDetail(terrainBase, vTerrainXZ) * vTerrainLight;
 `;
 
-// Replaces <fog_fragment>: the schematic colour replaces the lit one, then the
-// (black) scene fog fades it with distance. The colour is computed before the
-// radius test so its fwidth() calls run on every fragment of the quad.
+// Replaces <fog_fragment>: the schematic colour replaces the lit one, the UAS
+// geographical zones (GeoZoneTerrain) go over either, then the (black) scene
+// fog fades it with distance. Both colours are computed before the radius
+// test so their fwidth() calls run on every fragment of the quad.
 const TERRAIN_FOG_FRAGMENT = `
+vec4 terrainZone = geoZoneTint(vTerrainXZ, vTerrainH);
 #ifndef USE_MAP
 if (uSchematic > 0.5) {
     gl_FragColor.rgb = schematicTerrainColor();
@@ -316,13 +322,14 @@ if (uSchematic > 0.5) {
     if (length(vTerrainXZ - uSchematicCenter) > uSchematicRadius) discard;
 }
 #endif
+gl_FragColor.rgb = mix(gl_FragColor.rgb, terrainZone.rgb, terrainZone.a);
 #include <fog_fragment>
 `;
 
 function applyTerrainShading(shader) {
     // Shading uniforms are shared by every chunk; the chunk uniforms belong to
     // this material (a chunk's own mesh, or an instanced batch's grid).
-    Object.assign(shader.uniforms, terrainShadingUniforms, satelliteDetailUniforms, this.userData.terrain);
+    Object.assign(shader.uniforms, terrainShadingUniforms, satelliteDetailUniforms, geoZoneTerrainUniforms, this.userData.terrain);
     shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\n' + TERRAIN_VERTEX_PARS)
         .replace('#include <beginnormal_vertex>', TERRAIN_BEGINNORMAL)
@@ -678,6 +685,8 @@ function updateTerrainInstances(cameraData, { camera, aircraft, pixelAngle, sate
         pixelAngle,
         enabled: chunksVisible && satelliteEnabled && terrainShadingUniforms.uSchematic.value < 0.5
     });
+    // UAS geographical zones around the aircraft
+    updateGeoZoneTerrain(aircraft.lat, aircraft.lon);
 }
 
 
@@ -766,6 +775,7 @@ function getStats() {
 function dispose() {
     renderer.domElement.removeEventListener('webglcontextrestored', restoreHeightStores);
     disposeSatelliteDetail();
+    disposeGeoZoneTerrain();
     for (const { handle } of [...chunkResources.values()]) removeChunk(handle);
     for (const batch of instanceBatches.values()) {
         batch.mesh.removeFromParent(); batch.mesh.geometry.dispose(); batch.mesh.material.dispose();

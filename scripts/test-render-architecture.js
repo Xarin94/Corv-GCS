@@ -10,7 +10,8 @@ const root = path.join(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'corv-architecture-'));
 fs.writeFileSync(path.join(tmp, 'package.json'), '{"type":"module"}');
 for (const relative of ['js/render', 'js/engine/three', 'js/engine/Layers.js', 'js/core/constants.js',
-    'js/core/utils.js', 'js/terrain/SatelliteDetail.js', 'vendor/three/three.core.js']) {
+    'js/core/utils.js', 'js/terrain/SatelliteDetail.js', 'js/terrain/GeoZoneTerrain.js', 'js/safety/GeoZoneStyle.js',
+    'vendor/three/three.core.js']) {
     fs.mkdirSync(path.dirname(path.join(tmp, relative)), { recursive: true });
     fs.cpSync(path.join(root, relative), path.join(tmp, relative), { recursive: true });
 }

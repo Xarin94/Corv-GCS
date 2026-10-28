@@ -1,7 +1,7 @@
 ---
 title: Flight screen
 nav_order: 3
-description: The FLIGHT DATA tab element by element — view buttons, HUD, data cells, annunciators, ADS-B traffic, target, command bar, mini-map, strips, FPV, logs and replay
+description: The FLIGHT DATA tab element by element — view buttons, HUD, data cells, annunciators, restricted zones, ADS-B traffic, target, command bar, mini-map, strips, FPV, logs and replay
 ---
 
 # Flight screen
@@ -20,6 +20,7 @@ goes through it element by element.
 | Centre | The HUD over the 3D view | [The HUD](#the-hud) |
 | Left and right of the HUD | Six data cells | [Data cells](#data-cells) |
 | Inboard of the left cells | Annunciators: red warnings, amber cautions | [Annunciators](#annunciators) |
+| Inboard of the right cells | Zone flags: NO-FLY, MAX n m, ALT LIMIT, when RESTRICTED ZONES is on | [Restricted zones](#restricted-zones) |
 | Left edge | EKF STATUS tab; open, a bar with three charts of the estimator's last 20 s | [EKF status](#ekf-status) |
 | Left, over the HUD | Autopilot messages | [Messages and banners](#messages-and-banners) |
 | Top centre | LIDAR and ROS strips, when those features are on | [Strips](#lidar-and-ros-strips) |
@@ -95,6 +96,9 @@ multiplier (e.g. ×3.6 to show m/s as km/h) and your own unit label. Set them in
 Altitude includes the **altitude offset** set in SYS CONFIG. For a sub the altitude is true MSL and
 TERR ALT shows minus the depth (see [subs and ROVs](3D-NAVIGATION.md#4-subs-and-rovs)).
 
+With [RESTRICTED ZONES](#restricted-zones) on, the **TERR ALT** figure flashes red while the vehicle
+is above a height limit: a zone's ceiling, or 120 m in Europe / 400 ft in the US.
+
 ## Satellite detail
 
 Around the aircraft the 3D view draws sharper imagery than on the rest of the terrain, up to the zoom
@@ -153,6 +157,8 @@ the relative navigation frame — see [3D view, water and ROVs](3D-NAVIGATION.md
 - **Target**: a red pole with a sphere and a ring, where you placed it from the
   [side panel](side-panel.md#target).
 - **ADS-B traffic**: see [below](#ads-b-traffic).
+- **Restricted zones**, painted on the ground when RESTRICTED ZONES is on: see
+  [below](#restricted-zones).
 - **LiDAR point cloud** and **ROS surface**, when enabled ([LiDAR](LIDAR.md), [ROS](ROS.md)).
 - Lines and symbols stay a readable size in pixels at any distance; where the terrain hides them
   they are drawn again, faint.
@@ -241,6 +247,69 @@ explain each one.
 hides its milder caution; silencing a caution still lets the warning through if the condition gets
 worse. In the demo flight (no vehicle) a random flag lights now and then, to show where they appear.
 
+## Restricted zones
+
+**RESTRICTED ZONES** in the side panel's [GCS OPTIONS](side-panel.md#gcs-options) (or
+[SYS CONFIG → UAS GEO ZONES](sys-config.md#uas-geo-zones)) shows the UAS geographical zones — where
+a drone may not fly, may fly only up to a height, or only under conditions — on the mini-map, on the
+[FLIGHT PLAN](mission-planning.md#map-layers) map and on the 3D terrain, and warns when the vehicle
+breaks one. Off by default; remembered between sessions.
+
+**Which zones.** Those within **50 km of the connected vehicle and of every point of the mission**:
+nothing is downloaded for the demo flight or for places you are not flying. Only the sources of the
+country in reach are asked (a flight in Italy never queries the FAA):
+
+| Where | Source | What |
+|-------|--------|------|
+| United States | [FAA](https://www.faa.gov/uas/commercial_operators/uas_facility_maps) (no account) | UAS Facility Maps (the height LAANC can authorise near airports, 0–400 ft), national security UAS flight restrictions (full and part time), prohibited areas, restricted areas, national defense airspace TFR areas |
+| Germany | [DFS DIPUL](https://maptool-dipul.dfs.de) | Airports, control zones, restricted areas, temporary restrictions, sensitive sites (military, prisons, power plants, substations, industry, police, authorities, embassies, hospitals), nature reserves and Natura 2000, outdoor pools. Not residential plots, roads, railways and waterways, where the rule is a lateral distance |
+| France | [IGN / DGAC](https://www.geoportail.gouv.fr/donnees/restrictions-uas-categorie-ouverte-et-aeromodelisme) | *Vol interdit* and *Hauteur maximale de vol de N m* |
+| Spain | [ENAIRE](https://drones.enaire.es) | Infrastructure, aeronautical and urban zones |
+| Switzerland | [FOCA / BAZL](https://map.geo.admin.ch/?layers=ch.bazl.einschraenkungen-drohnen) | The whole country, one file |
+| Italy, Austria, the other states | The national file, imported | **ED-269** or **ED-318** JSON, the EU format: SYS CONFIG → UAS GEO ZONES → **IMPORT FILE…**. Italy: log in to [D-Flight](https://www.d-flight.it), profile page → **Download UAS Zone Geo** |
+
+There is no EASA service for the whole of Europe: each state publishes its own zones
+([Regulation (EU) 2019/947](https://www.easa.europa.eu/en/domains/civil-drones/naa), article 15).
+What is downloaded is kept on disk and asked again every 6 hours while the GCS runs; offline, the last
+copy is used.
+
+**Colours**, the same on the maps and on the terrain:
+
+- **red with black bands** — no-fly, or authorisation required, from the ground up;
+- **violet with black bands** — conditions apply (a notification, part time, by NOTAM, a nature
+  reserve);
+- **a solid colour** — the zone starts above the ground: the height that may be flown, red-orange at
+  15 m, orange 30 m, amber 60 m, yellow 90 m, yellow-green 120 m. A floor given above sea level (a
+  German control zone at 1569 ft MSL) is measured from the ground under each point on the terrain,
+  from the ground at the zone's centre on the maps.
+
+On the FLIGHT PLAN map a zone shows its name, limits and source with the mouse over it, and a legend
+sits at the bottom left.
+
+**Flags**, beside the altitude cells, for a copter or a plane with a position. Height is the
+**TERR ALT** figure (above the terrain under the vehicle; above home when there is no terrain data):
+
+| Flag | |
+|------|---|
+| **NO-FLY** (red) | In the air inside a no-fly zone; its name underneath |
+| **MAX n m** (red) | Above the height a zone allows |
+| **MAX 120 m** / **MAX 400 ft** — ALT LIMIT (red) | Above the general limit, zone or not: 120 m above the ground in Europe ([open category](https://www.easa.europa.eu/en/domains/civil-drones/drones-regulatory-framework-background/open-category-civil-drones)), 400 ft in the US ([Part 107](https://www.faa.gov/uas/commercial_operators)) |
+| **ZONE** (amber) | Inside a zone where conditions apply |
+| **MAX n m** (amber) | Under a zone's ceiling: how high you may go here |
+
+Above a height limit the **TERR ALT** figure flashes red as well. Click a flag to silence it until the
+next connection.
+
+**Arming inside a zone** brings a second alarm: a banner under the mode banner for 10 s (a click
+closes it) and the same line in the HUD messages — red **ARMED IN A NO-FLY ZONE** with the zone's
+name, amber **ARMED IN A RESTRICTED ZONE** where conditions apply, amber **ARMED UNDER A n m
+CEILING** in a zone that allows less than the general limit. It is raised by the vehicle arming,
+whether from the GCS or from the radio, not by connecting to a vehicle that is already armed.
+
+The zones are advisory, as the authorities publish them (outlines simplified to about 3 m): the
+state's official map and the NOTAMs are what applies, and temporary restrictions published only by
+NOTAM (most US TFRs) are not included.
+
 ## EKF status
 
 The **EKF STATUS** tab on the left edge of the flight view (▶) slides a black bar out down the left
@@ -280,6 +349,9 @@ MAG, and ZUPT, GPS BYPASS, JAMMING, SPOOFING when they are set.
 - **Mode banner**: on every mode change the new mode flashes large in the middle of the screen for
   2.5 s, in the colour of its kind (yellow manual, cyan assisted, green automatic, orange return /
   land).
+- **Zone arming alarm**: with [RESTRICTED ZONES](#restricted-zones) on, arming inside a zone shows
+  ARMED IN A NO-FLY ZONE (red), ARMED IN A RESTRICTED ZONE or ARMED UNDER A n m CEILING (amber)
+  under the mode banner for 10 s.
 - **Command result toast**: every command the autopilot answers (`COMMAND_ACK`) shows briefly as
   `COMMAND: RESULT` — green ACCEPTED / IN_PROGRESS, red DENIED / FAILED / TEMPORARILY_REJECTED.
 
@@ -294,8 +366,8 @@ Two thin strips at the top centre, shown only while their feature is on:
 
 ## Mini-map
 
-Bottom left: the vehicle, its track, home, the mission, ADS-B traffic and the target on satellite
-imagery. It grows when the mouse is over it. **Click it** to swap it with the 3D view (the map
+Bottom left: the vehicle, its track, home, the mission, ADS-B traffic, the target and, when on, the
+[restricted zones](#restricted-zones) on satellite imagery. It grows when the mouse is over it. **Click it** to swap it with the 3D view (the map
 becomes the main view); **click the 3D view** (now small) to swap back. In the relative navigation
 mode the map is empty (no real position to show).
 

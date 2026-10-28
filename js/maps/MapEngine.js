@@ -7,6 +7,7 @@ import { STATE } from '../core/state.js';
 import { RAD } from '../core/constants.js';
 import { cachedTileLayer } from './CachedTileLayer.js';
 import { createCellTowerLayer, onCellMapSettings } from './CellTowerLayer.js';
+import { createGeoZoneLayer } from './GeoZoneLayer.js';
 
 let map = null;
 let marker = null;
@@ -85,6 +86,9 @@ export function initMap(containerId) {
 
     cellLayer = createCellTowerLayer(map);
     onCellMapSettings(() => cellLayer.refresh());
+
+    // UAS geographical zones (GCS OPTIONS → RESTRICTED ZONES)
+    createGeoZoneLayer(map);
 }
 
 /**
