@@ -26,7 +26,7 @@ goes through it element by element.
 | Bottom left | Mini-map | [Mini-map](#mini-map) |
 | Bottom right | Rotor load, position, ADS-B traffic table | [Bottom right](#bottom-right-rotor-load-position-traffic) |
 | Bottom | Command bar | [Command bar](#command-bar) |
-| Right edge | ◀ arrow: the side panel (vehicle, actions, RTL, target, messages, log replay) | [Side panel](side-panel.md) |
+| Right edge | GCS OPTIONS tab: the side panel (vehicle, actions, RTL, target, messages, log replay) | [Side panel](side-panel.md) |
 
 ## Window, header and tabs
 
@@ -244,9 +244,8 @@ worse. In the demo flight (no vehicle) a random flag lights now and then, to sho
 ## EKF status
 
 The **EKF STATUS** tab on the left edge of the flight view (▶) slides a black bar out down the left
-side, as the side panel's tab does on the right; its ◀ closes it again. **EKF STATUS** in the side
-panel's [GCS OPTIONS](side-panel.md#gcs-options) does the same, and the bar is reopened at the next
-start if it was open. The 3D view, the HUD and the mini-map move right to make room. It
+side, as the side panel's GCS OPTIONS tab does on the right; its ◀ closes it again. The bar is
+reopened at the next start if it was open. The 3D view, the HUD and the mini-map move right to make room. It
 holds three charts of the **last 20 s**, chosen for the estimator on board, and a header with the
 solutions the filter itself flags as good (✓, green) or bad (✕, red). Under each chart the legend
 gives the latest values; with the pointer on a chart, the values at that moment. The charts

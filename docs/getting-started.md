@@ -50,7 +50,7 @@ The tabs along the top:
 | **SETUP** | Connection, calibration, failsafes, tuning, parameters, simulator, LiDAR, ROS — see [Vehicle setup](setup.md) |
 | **SYS CONFIG** | Flight stack, navigation mode, language, 3D model, HUD fields, offline data, stream rates — see [GCS settings](sys-config.md) |
 
-On the flight screen, the **arrow on the right edge** opens the [side panel](side-panel.md): set
+On the flight screen, the **GCS OPTIONS** tab on the right edge opens the [side panel](side-panel.md): set
 home, reboot, mute the GCS, ADS-B traffic, RTL options, a target, the message log and log replay.
 The window has no frame: move the mouse to the top edge for the minimise / maximise / close buttons.
 

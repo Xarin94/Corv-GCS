@@ -32,14 +32,14 @@ export function initGCSSidebar() {
     // Start collapsed
     sidebarEl.classList.add('collapsed');
     toggleBtn.classList.add('collapsed');
-    toggleBtn.innerHTML = '&#9654;';
+    const arrowEl = toggleBtn.querySelector('.gcs-toggle-arrow');
 
-    // Toggle sidebar
+    // Toggle sidebar; the arrow points the way it will slide, as the EKF STATUS tab's
     toggleBtn.addEventListener('click', () => {
         isCollapsed = !isCollapsed;
         sidebarEl.classList.toggle('collapsed', isCollapsed);
         toggleBtn.classList.toggle('collapsed', isCollapsed);
-        toggleBtn.innerHTML = isCollapsed ? '&#9654;' : '&#9664;';
+        if (arrowEl) arrowEl.innerHTML = isCollapsed ? '&#9664;' : '&#9654;';
     });
 
     // Section collapse handlers

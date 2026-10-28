@@ -73,7 +73,7 @@ import { TlogLogger } from './logging/TlogLogger.js';
 // UI imports
 import { initRotorLoadPanel, updateRotorLoadPanel, setRotorLoadConfig } from './ui/RotorLoadPanel.js';
 import { initAnnunciatorPanel, updateAnnunciatorPanel } from './ui/AnnunciatorPanel.js';
-import { initEkfStatusPanel, updateEkfStatusPanel, setEkfStatusEnabled } from './ui/EkfStatusPanel.js';
+import { initEkfStatusPanel, updateEkfStatusPanel } from './ui/EkfStatusPanel.js';
 import { updateUI, toggleConfig, toggleTelemetry, updateOffset, updateAGLDisplay, setStatusMessage, updateFPSDisplay, initMoreMenu, initConfigAutoClose, initHudCells } from './ui/UIController.js';
 
 // Split view imports
@@ -2339,11 +2339,6 @@ window.toggleADSB = (function(orig) {
 // the caption stayed on screen over the panels below.
 window.toggleRotorLoad = function(enabled) {
     setRotorLoadConfig({ enabled: !!enabled });
-};
-
-// EKF STATUS charts on/off (GCS OPTIONS), remembered between sessions
-window.toggleEkfStatus = function(enabled) {
-    setEkfStatusEnabled(enabled);
 };
 
 // Battery voltage-based percentage calculation

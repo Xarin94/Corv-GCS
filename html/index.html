@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CORV GCS v1.8.6</title>
+    <title>CORV GCS v1.8.7</title>
 
     <!-- Critical inline styles to prevent flash of unstyled content -->
     <style>
@@ -3020,10 +3020,6 @@
                         <input type="checkbox" id="chk-rotor-load" checked onchange="toggleRotorLoad(this.checked)">
                         <span>SHOW ROTOR LOAD</span>
                     </label>
-                    <label class="gcs-checkbox" title="Charts of the estimator's health over the last 20 s, in a bar down the left side of the flight view">
-                        <input type="checkbox" id="chk-ekf-status" onchange="toggleEkfStatus(this.checked)">
-                        <span>EKF STATUS</span>
-                    </label>
                     <label class="gcs-checkbox" title="LTE cell rows in the position panel, on the cellular link">
                         <input type="checkbox" id="chk-lte-overlay" checked>
                         <span>LTE OVERLAY</span>
@@ -3121,7 +3117,10 @@
 
         </div>
     </div>
-    <button id="gcs-toggle-sidebar" class="gcs-toggle-btn" title="Toggle GCS Controls">&#9664;</button>
+    <button id="gcs-toggle-sidebar" class="gcs-toggle-btn collapsed" title="Toggle GCS Controls">
+        <span class="gcs-toggle-label">GCS OPTIONS</span>
+        <span class="gcs-toggle-arrow">&#9664;</span>
+    </button>
 
     <!-- ==================== LOG REPLAY TIMELINE (bottom-right overlay) ==================== -->
     <div id="log-replay-timeline" class="log-replay-timeline" style="display:none;">

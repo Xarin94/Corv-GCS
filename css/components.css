@@ -750,12 +750,12 @@ body.minimap-swapped #scene-container:hover {
     transition: transform 0.1s linear;
 }
 
-/* ============== EKF STATUS (tab on the left edge, GCS OPTIONS → EKF STATUS) ============== */
+/* ============== EKF STATUS (tab on the left edge) ============== */
 /* A black bar down the left side, full height behind the header; the flight
    view (3D, HUD, tapes, mini-map) moves right by its width instead of being
    covered. The three charts are stacked and share the height. Closed, it
-   slides out to the left and leaves its tab, as the GCS sidebar does on the
-   right. */
+   slides out to the left and leaves its tab, as the GCS sidebar leaves its
+   GCS OPTIONS tab on the right. */
 :root {
     --ekf-bar-w: clamp(300px, 21vw, 440px);
 }

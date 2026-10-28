@@ -25,7 +25,7 @@ Keys act on the page in view and never while you are typing in a field.
 | Click the mini-map | Swap it with the 3D view; click the 3D view to swap back |
 | Click an annunciator | Silence it until the next connection |
 | Top edge of the window | Show the minimise / maximise / close buttons; drag to move the window |
-| ▶ on the right edge | Open / close the [side panel](side-panel.md) |
+| GCS OPTIONS tab on the right edge | Open / close the [side panel](side-panel.md) |
 | **Enter** in the SPD field | Send the target speed |
 
 ## Mission planner (FLIGHT PLAN)

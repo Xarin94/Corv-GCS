@@ -26,14 +26,15 @@
     padding: 8px 0;
 }
 
-/* Toggle button */
+/* Toggle button: a "GCS OPTIONS" tab with the arrow, the mirror of the EKF
+   STATUS tab on the left edge */
 .gcs-toggle-btn {
     position: fixed;
     right: 240px;
     top: 50%;
     transform: translateY(-50%);
     width: 24px;
-    height: 48px;
+    padding: 10px 0 8px;
     background: var(--bg-gcs-toggle);
     border: 1px solid var(--border-accent);
     border-right: none;
@@ -41,10 +42,11 @@
     color: var(--accent-cyan);
     cursor: pointer;
     z-index: var(--z-chrome-toggle);
-    font-size: 12px;
+    font-family: var(--font-ui);
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
+    gap: 8px;
     transition: right 0.3s ease, background 0.2s;
 }
 
@@ -54,6 +56,20 @@
 
 .gcs-toggle-btn.collapsed {
     right: 0;
+}
+
+/* Read top to bottom, as a tab on a right edge */
+.gcs-toggle-label {
+    writing-mode: vertical-rl;
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    white-space: nowrap;
+}
+
+.gcs-toggle-arrow {
+    font-size: 12px;
+    line-height: 1;
 }
 
 /* Section structure */

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.8.6-blue" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.8.7-blue" alt="Version"/>
   <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"/>
   <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
   <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
@@ -79,7 +79,7 @@ checks — GPS quality, compass and IMU health, vibration, EKF variance, radio s
 each shown with its own icon and the number behind it (satellites and HDOP under the GPS flag, RSSI
 under the link one).
 
-Click the **EKF STATUS** tab on the left edge (or tick EKF STATUS in the side panel) and a black bar
+Click the **EKF STATUS** tab on the left edge and a black bar
 slides out down the left side with the estimator's last 20 seconds in three charts, the view moving
 over to make room. For an ArduPilot: the EKF
 innovation ratios, the GPS accuracy and the EKF attitude against the backup DCM. For a CORV board:
@@ -216,9 +216,9 @@ radio that is the difference between two packets and several minutes.
 ## Installation
 
 Installers are on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
-**Windows** `CORV GCS Setup 1.8.6.exe`, **macOS** `CORV GCS-1.8.6-arm64.dmg` (Apple silicon) and
-`CORV GCS-1.8.6-x64.dmg` (Intel), **Linux** `CORV GCS-1.8.6.AppImage` (portable) and
-`corv-gcs_1.8.6_amd64.deb` (Debian / Ubuntu).
+**Windows** `CORV GCS Setup 1.8.7.exe`, **macOS** `CORV GCS-1.8.7-arm64.dmg` (Apple silicon) and
+`CORV GCS-1.8.7-x64.dmg` (Intel), **Linux** `CORV GCS-1.8.7.AppImage` (portable) and
+`corv-gcs_1.8.7_amd64.deb` (Debian / Ubuntu).
 
 The macOS app is not signed with an Apple Developer ID: after copying it to Applications, run
 `xattr -dr com.apple.quarantine "/Applications/CORV GCS.app"` once, or macOS reports it as damaged.
