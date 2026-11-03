@@ -136,6 +136,11 @@ export const STATE = {
     windSpeed: 0,       // m/s horizontal
     windSpeedZ: 0,      // m/s vertical
     windDataTime: 0,    // ms timestamp of last msg 168 (0 = never)
+    // Apparent wind of a Rover wind vane (NAMED_VALUE_FLOAT AppWndDir /
+    // AppWndSpd, sent by ArduPilot next to WIND, which carries the true wind)
+    appWindDir: 0,      // deg from the bow, + = coming from starboard
+    appWindSpeed: 0,    // m/s
+    appWindTime: 0,     // ms timestamp of the last AppWndDir (0 = never)
 
     // RTK base station
     rtkBaseConnected: false,
@@ -341,6 +346,7 @@ export function resetReplayState() {
     STATE.navDataTime = 0;
     STATE.windDir = 0; STATE.windSpeed = 0; STATE.windSpeedZ = 0;
     STATE.windDataTime = 0;
+    STATE.appWindDir = 0; STATE.appWindSpeed = 0; STATE.appWindTime = 0;
 
     STATE.rtkIar = 0;
     STATE.rtkBaseline = 0;

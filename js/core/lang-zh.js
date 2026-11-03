@@ -47,6 +47,7 @@ export const ZH = {
     'DISARMED': '未解锁',
     'DEMO': '演示',
     'Rotor Load': '电机负载',
+    'Sail · Rudder': '帆 · 舵',
     'LATITUDE': '纬度',
     'LONGITUDE': '经度',
     'RADAR ALT': '雷达高度',
@@ -607,6 +608,7 @@ export const ZH = {
     'Show rotor load schematic': '显示电机负载示意图',
     'FRAME': '机架',
     'AUTO (from MAV_TYPE)': '自动 (根据 MAV_TYPE)',
+    'SAILBOAT (wing + rudder)': '帆船 (翼帆 + 舵)',
     'SINGLE ROTOR (plane / heli)': '单旋翼 (固定翼 / 直升机)',
     'TRICOPTER (3)': '三旋翼 (3)',
     'QUAD (4)': '四旋翼 (4)',
@@ -620,6 +622,9 @@ export const ZH = {
     'ORANGE ABOVE PWM': '橙色阈值 PWM',
     'RED ABOVE PWM': '红色阈值 PWM',
     'SINGLE ROTOR CHANNEL': '单旋翼通道',
+    'RUDDER MAX DEG': '最大舵角 (度)',
+    'A Rover with SAIL_ENABLE or a MastRotation output shows the wing and rudder dials instead: the angle commanded on each output and the apparent wind of the wind vane. The rudder angle at full steering is a property of the boat, not a parameter (AutoSail: 35).':
+        '启用 SAIL_ENABLE 或有 MastRotation 输出的 Rover 改为显示翼帆和舵的表盘: 各输出的指令角度和风向标测得的视风。满舵时的舵角是船的特性, 不是参数 (AutoSail: 35)。',
     'Below the green threshold the gauges read blue (motors stopped). Plane and helicopter show only the main rotor, on the channel above (ArduPlane throttle = 3, heli RSC = 8).':
         '低于绿色阈值时仪表显示蓝色 (电机停止)。固定翼和直升机仅显示主旋翼, 通道见上方 (ArduPlane 油门 = 3, 直升机 RSC = 8)。',
     'SIYI CAMERA STREAM': 'SIYI 相机视频流',

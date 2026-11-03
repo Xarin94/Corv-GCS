@@ -549,6 +549,11 @@ button.ui-btn.recording {
     pointer-events: none;
 }
 
+/* Sailboat: wing and rudder dials side by side, same height */
+#rotor-load-panel.sail {
+    width: clamp(200px, 17vw, 340px);
+}
+
 #rotor-load-canvas {
     flex: 1;
     min-height: 0;

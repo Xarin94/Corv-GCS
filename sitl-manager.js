@@ -29,6 +29,9 @@ const VEHICLE_MAP = {
     // Boat: ArduRover on SITL's motorboat (FRAME_CLASS 2), with wind and the
     // SIM_WAVE_* sea from default_params_boat.parm; same binary as the rover.
     boat:    { binary: 'ardurover',   model: 'motorboat' },
+    // Sailboat: ArduRover on SITL's sailboat with a servo-turned wing, a rudder
+    // and a wind vane, set up like the AutoSail drone (default_params_sailboat.parm).
+    sailboat: { binary: 'ardurover',  model: 'sailboat' },
     // ROV: ArduSub on the vectored BlueROV2 frame. Its simulator keeps the
     // water surface at 0 m MSL whatever the home altitude, so the launcher
     // starts it at 0 and lifts it onto the real lake with the GCS altitude
@@ -67,7 +70,7 @@ function getFirmwareUrl(vehicle, version) {
     if (!info) return null;
     const pathMap = {
         copter: 'Copter', copter12s: 'Copter', tri12s: 'Copter',
-        plane: 'Plane', rover: 'Rover', boat: 'Rover',
+        plane: 'Plane', rover: 'Rover', boat: 'Rover', sailboat: 'Rover',
         sub: 'Sub', subnogps: 'Sub', heli: 'Copter', quadplane: 'Plane'
     };
     const fwPath = pathMap[vehicle] || 'Copter';

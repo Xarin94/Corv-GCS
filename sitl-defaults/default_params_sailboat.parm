@@ -1,0 +1,98 @@
+# CORV GCS — sailboat SITL (ArduRover on the 'sailboat' model)
+# A wing-sail drone like AutoSail on Lake Garda: the mast turned by a servo
+# (MastRotation), the rudder on output 1, no motor, and a wind vane reading
+# the apparent wind in the afternoon "Ora" from the south. The flight screen
+# draws its SAIL · RUDDER dials from these outputs and from the vane.
+#
+# SITL's sailboat reads a directly actuated wing (SIM_SAIL_TYPE 1) on output 5,
+# ±90° for 1000..2000 µs: MastRotation goes there with SAIL_ANGLE_MAX 90, so
+# the hull feels the angle ArduPilot commands. AutoSail has it on output 4 with
+# SAIL_ANGLE_MAX 180, because its servo turns the wing all the way round.
+# The rudder: SITL's hull takes 1000..2000 µs as ±35° of rudder, so the full
+# range gives full steering = 35°, as on AutoSail (where 1403..1597 µs give
+# 35° on a servo scaled ±180°). AutoSail's narrow range here would leave the
+# hull 7° of rudder: too little to bear away once it stops head to wind.
+
+FRAME_CLASS     2
+
+# --- sail: wing on output 5, AutoSail's angle of attack and heel limit ---
+SAIL_ENABLE      1
+SAIL_ANGLE_MAX   90
+SAIL_ANGLE_IDEAL 11
+SAIL_HEEL_MAX    25
+SIM_SAIL_TYPE    1
+
+# --- outputs: rudder 1, no motor (no throttle on 3, no mainsail on 4) ---
+SERVO1_FUNCTION 26
+SERVO1_MIN      1000
+SERVO1_TRIM     1500
+SERVO1_MAX      2000
+SERVO3_FUNCTION 0
+SERVO4_FUNCTION 0
+SERVO5_FUNCTION 137
+SERVO5_MIN      1000
+SERVO5_TRIM     1500
+SERVO5_MAX      2000
+
+# --- wind vane: SITL's wind seen from the moving hull, and no anemometer, as
+# on AutoSail: ArduPilot then takes the true wind as apparent + heading.
+# Type 10, not 11: SITL's own sailboat never fills in the apparent wind that
+# type 11 reads (only external physics backends do), so 11 would read 0. ---
+WNDVN_TYPE       10
+WNDVN_SPEED_TYPE 0
+
+# --- telemetry on the first MAVLink port (TCP 5760, or UDP to 14550 with
+# --serial0 udpclient:127.0.0.1:14550): fast from boot, before and whatever a
+# GCS requests — position, attitude and HUD at 20 Hz, servo outputs (the
+# SAIL · RUDDER dials) and wind at 10 Hz. ArduPilot 4.7 names them MAV1_*,
+# earlier versions SR0_*; the set the binary does not know is skipped. ---
+MAV1_POSITION 20
+MAV1_EXTRA1   20
+MAV1_EXTRA2   20
+MAV1_RC_CHAN  10
+MAV1_EXTRA3   10
+MAV1_EXT_STAT 5
+SR0_POSITION  20
+SR0_EXTRA1    20
+SR0_EXTRA2    20
+SR0_RC_CHAN   10
+SR0_EXTRA3    10
+SR0_EXT_STAT  5
+
+# --- RC calibration ---
+RC1_MIN 1000
+RC1_MAX 2000
+RC1_TRIM 1500
+RC2_MIN 1000
+RC2_MAX 2000
+RC2_TRIM 1500
+RC3_MIN 1000
+RC3_MAX 2000
+RC3_TRIM 1500
+RC4_MIN 1000
+RC4_MAX 2000
+RC4_TRIM 1500
+
+# --- small INS offsets so the IMU counts as calibrated ---
+INS_ACCOFFS_X   0.001
+INS_ACCOFFS_Y   0.001
+INS_ACCOFFS_Z   0.001
+INS_ACCSCAL_X   1.001
+INS_ACCSCAL_Y   1.001
+INS_ACCSCAL_Z   1.001
+COMPASS_OFS_X   5
+COMPASS_OFS_Y   13
+COMPASS_OFS_Z   -18
+
+# --- the lake: the same southerly 5 m/s and chop as the survey boat. SITL
+# scales the wind with height by default, and the hull sits at 0 m: without
+# SIM_WIND_T 1 (no height limit) the sail would get no wind at all. ---
+SIM_WIND_SPD    5
+SIM_WIND_DIR    180
+SIM_WIND_T      1
+SIM_WIND_TURB   1
+SIM_WAVE_ENABLE 2
+SIM_WAVE_AMP    0.5
+SIM_WAVE_LENGTH 12
+SIM_WAVE_DIR    180
+SIM_WAVE_SPEED  4.3

@@ -9,9 +9,13 @@
  * The gauges copy the geometry of a Boeing/Airbus N1 indicator: a bare 270°
  * scale circle starting lower-left, a fixed tick at zero, a moving tick and
  * filled arc that follow the PWM, and the raw value as a digital readout.
+ *
+ * A sailboat (Rover with a rotating mast) gets two round dials instead: the
+ * wing and the rudder, with the commanded angle and the apparent wind.
  */
 
 import { STATE, isDemoMode } from '../core/state.js';
+import { requestParameter } from '../mavlink/CommandSender.js';
 
 // ── Configuration (SYS CONFIG > ROTOR LOAD, persisted) ──────────────────
 
@@ -24,8 +28,9 @@ const DEFAULT_CFG = {
     thGreen: 1100,    // above this → green (spinning)
     thOrange: 1500,   // above this → orange (high load)
     thRed: 1700,      // above this → red (max load)
-    frame: 'auto',    // 'auto' (from MAV_TYPE) or a rotor count as a string
-    singleChannel: 3  // output channel used for the single-rotor gauge (1-16)
+    frame: 'auto',    // 'auto' (from MAV_TYPE), 'sail', or a rotor count as a string
+    singleChannel: 3, // output channel used for the single-rotor gauge (1-16)
+    rudderMax: 35     // rudder angle at full steering: a property of the boat, not a parameter
 };
 
 let cfg = { ...DEFAULT_CFG };
@@ -54,6 +59,7 @@ function sanitizeConfig() {
     cfg.thOrange = Math.min(Math.max(num(cfg.thOrange, 1500), cfg.thGreen), cfg.pwmMax);
     cfg.thRed = Math.min(Math.max(num(cfg.thRed, 1700), cfg.thOrange), cfg.pwmMax);
     cfg.singleChannel = Math.min(Math.max(Math.round(num(cfg.singleChannel, 3)), 1), 16);
+    cfg.rudderMax = Math.min(Math.max(num(cfg.rudderMax, 35), 1), 180);
 }
 
 export function setRotorLoadConfig(patch) {
@@ -126,6 +132,119 @@ function isHiddenVehicle() {
     return cfg.frame === 'auto' && HIDDEN_MAV_TYPES.includes(STATE.vehicleType);
 }
 
+// ── Sailboat: wing and rudder ───────────────────────────────────────────
+//
+// A Rover with SAIL_ENABLE or a MastRotation output draws two dials in place
+// of the rotor gauges. ArduPilot spreads ±100 % of an angle output from
+// SERVOn_TRIM to SERVOn_MIN / _MAX, so the commanded angle follows from
+// SERVO_OUTPUT_RAW and those three parameters: times SAIL_ANGLE_MAX for the
+// mast, times rudderMax for the rudder (full steering). The measured position
+// of a DroneCAN servo (actuator.Status) never reaches MAVLink — ArduPilot only
+// logs it, in CSRV — so the dials show the commanded angle.
+
+const FUNC_MAST_ROTATION = 137;
+const FUNC_GROUND_STEERING = 26;
+const ROVER_MAV_TYPES = [10, 11];   // ground rover, surface boat
+
+function param(name) {
+    const p = STATE.parameters.get(name);
+    return p && Number.isFinite(p.value) ? p.value : null;
+}
+
+/** Wing and rudder outputs and the mast scale, or null for a vehicle with no sail. */
+function sailLayout() {
+    let sail = 0;
+    let rudder = 0;
+    for (let ch = 1; ch <= 16; ch++) {
+        const f = param(`SERVO${ch}_FUNCTION`);
+        if (f === FUNC_MAST_ROTATION && !sail) sail = ch;
+        if (f === FUNC_GROUND_STEERING && !rudder) rudder = ch;
+    }
+    if (cfg.frame !== 'sail' && !sail && !(param('SAIL_ENABLE') >= 1)) return null;
+    // Until the parameters arrive: ArduPilot's defaults, and AutoSail's mast on 4
+    return { sail: sail || 4, rudder: rudder || 1, sailMax: param('SAIL_ANGLE_MAX') ?? 90 };
+}
+
+/** The sail layout when the dials replace the rotor gauges, else null. */
+function sailMode() {
+    if (cfg.frame === 'sail') return sailLayout();
+    if (cfg.frame !== 'auto' || !ROVER_MAV_TYPES.includes(STATE.vehicleType)) return null;
+    return sailLayout();
+}
+
+// The parameters are read one by one when a Rover connects: a full download is
+// not needed and may never happen on a slow link. Each round asks for what is
+// still missing, a few rounds per connection at most.
+const PROBE_GAP_MS = 120;
+const PROBE_ROUND_MS = 4000;
+const PROBE_ROUNDS = 3;
+let probe = { hb: 0, sys: -1, queue: [], next: 0, rounds: 0 };
+
+function wantedParams() {
+    const names = ['SAIL_ENABLE', 'SAIL_ANGLE_MAX'];
+    for (let ch = 1; ch <= 16; ch++) names.push(`SERVO${ch}_FUNCTION`);
+    const lay = sailLayout();
+    if (lay) {
+        for (const ch of [lay.sail, lay.rudder]) {
+            names.push(`SERVO${ch}_MIN`, `SERVO${ch}_TRIM`, `SERVO${ch}_MAX`);
+        }
+    }
+    return names;
+}
+
+function probeSailParams(now) {
+    if (!STATE.connected || STATE.mode !== 'LIVE' || !ROVER_MAV_TYPES.includes(STATE.vehicleType)) return;
+    // A new link, or another vehicle on it, starts the rounds again
+    if (STATE.heartbeatCount < probe.hb || STATE.systemId !== probe.sys) {
+        probe = { hb: 0, sys: STATE.systemId, queue: [], next: 0, rounds: 0 };
+    }
+    probe.hb = STATE.heartbeatCount;
+    if (now < probe.next) return;
+    if (!probe.queue.length) {
+        if (probe.rounds >= PROBE_ROUNDS) return;
+        probe.queue = wantedParams().filter(n => param(n) === null);
+        if (!probe.queue.length) return;
+        probe.rounds++;
+    }
+    requestParameter(probe.queue.shift()).catch(() => {});
+    probe.next = now + (probe.queue.length ? PROBE_GAP_MS : PROBE_ROUND_MS);
+}
+
+const wrap180 = d => ((d + 180) % 360 + 360) % 360 - 180;
+
+/**
+ * Angle commanded on a 1-based output, or null with no SERVO_OUTPUT_RAW: the
+ * PWM as a fraction of the way from SERVOn_TRIM to _MAX (or _MIN), times the
+ * angle at full output. ArduPilot's defaults stand in until they are read.
+ */
+function commandedDeg(output, maxDeg) {
+    const pwm = STATE.servoOutputs[output - 1];
+    if (!Number.isFinite(pwm) || pwm <= 0) return null;
+    const lo = param(`SERVO${output}_MIN`) ?? 1100;
+    const trim = param(`SERVO${output}_TRIM`) ?? 1500;
+    const hi = param(`SERVO${output}_MAX`) ?? 1900;
+    if (pwm >= trim) return hi > trim ? clamp((pwm - trim) / (hi - trim), 0, 1) * maxDeg : 0;
+    return trim > lo ? -clamp((trim - pwm) / (trim - lo), 0, 1) * maxDeg : 0;
+}
+
+/** Full travel as [lo, hi] degrees, or null for a full turn (nothing to mark). */
+function travelDeg(maxDeg) {
+    return maxDeg >= 179.5 ? null : [-maxDeg, maxDeg];
+}
+
+/**
+ * Apparent wind from the bow (deg, + = from starboard), or null. AppWndDir is
+ * the vane's own reading. WIND alone carries the true wind; with no wind speed
+ * sensor ArduPilot makes it apparent + heading, so the heading comes off again.
+ */
+function apparentWindDeg(now) {
+    if (STATE.appWindTime && now - STATE.appWindTime < 3000) return wrap180(STATE.appWindDir);
+    if (STATE.windDataTime && now - STATE.windDataTime < 5000) {
+        return wrap180(STATE.windDir - STATE.yaw * 180 / Math.PI);
+    }
+    return null;
+}
+
 // ── PWM sourcing ────────────────────────────────────────────────────────
 
 /**
@@ -162,6 +281,10 @@ const COLOR_GREEN = '#44ff44';
 const COLOR_ORANGE = '#ffaa00';
 const COLOR_RED = '#ff3030';
 const COLOR_NODATA = '#55656f';
+const COLOR_SCALE = 'rgba(200, 220, 235, 0.3)';
+const COLOR_TICK = 'rgba(200, 220, 235, 0.7)';
+const COLOR_TEXT = 'rgba(200, 220, 235, 0.85)';
+const COLOR_TRAVEL = 'rgba(47, 159, 255, 0.6)';
 
 function zoneColor(pwm) {
     if (pwm == null) return COLOR_NODATA;
@@ -177,7 +300,9 @@ let canvas = null;
 let ctx = null;
 let panelEl = null;
 let wrapEl = null;     // caption + schematic, shown and hidden together
+let captionEl = null;
 let visible = null;    // last applied visibility (null: not applied yet)
+let sailShown = null;  // dials (true) or rotor gauges (false) on screen
 let dpr = 1;
 
 const GAUGE_START = Math.PI * 0.75;   // lower-left
@@ -261,7 +386,100 @@ function tick(cx, cy, angle, scaleR, r, len, color) {
     ctx.stroke();
 }
 
-function draw() {
+/**
+ * One round dial, seen from above with the bow up and angles clockwise, the
+ * same convention as the outputs and the wind vane: a scale ring with a tick
+ * every 30°, the full travel as a blue arc (none for a full turn), the
+ * commanded angle as a line through the pivot with a dot on its forward end
+ * (the wing's leading edge), and the apparent wind as an arrow from the rim.
+ */
+function drawDial(cx, cy, r, deg, travel, windDeg) {
+    const lw = Math.max(2, r * 0.07);
+    const pt = (d, rr) => {
+        const a = (d - 90) * Math.PI / 180;
+        return [cx + Math.cos(a) * rr, cy + Math.sin(a) * rr];
+    };
+    const line = (p1, p2, width, color) => {
+        ctx.beginPath();
+        ctx.lineWidth = width;
+        ctx.strokeStyle = color;
+        ctx.moveTo(p1[0], p1[1]);
+        ctx.lineTo(p2[0], p2[1]);
+        ctx.stroke();
+    };
+    const dot = (p, rr, color) => {
+        ctx.beginPath();
+        ctx.arc(p[0], p[1], rr, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+    };
+    ctx.lineCap = 'round';
+
+    ctx.beginPath();
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = COLOR_SCALE;
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    if (travel) {
+        ctx.beginPath();
+        ctx.lineWidth = lw;
+        ctx.strokeStyle = COLOR_TRAVEL;
+        ctx.arc(cx, cy, r, (travel[0] - 90) * Math.PI / 180, (travel[1] - 90) * Math.PI / 180);
+        ctx.stroke();
+    }
+    for (let d = 0; d < 360; d += 30) {
+        const major = d % 90 === 0;
+        line(pt(d, r * (major ? 0.74 : 0.86)), pt(d, r), major ? lw : lw * 0.6, COLOR_TICK);
+    }
+
+    if (windDeg !== null) {
+        // Arrow from where the wind comes, pointing at the pivot
+        const tip = pt(windDeg, r * 0.6);
+        line(pt(windDeg, r * 1.12), tip, lw, COLOR_ORANGE);
+        line(tip, pt(windDeg - 12, r * 0.78), lw, COLOR_ORANGE);
+        line(tip, pt(windDeg + 12, r * 0.78), lw, COLOR_ORANGE);
+    }
+
+    if (deg !== null) {
+        const front = pt(deg, r * 0.8);
+        line(pt(deg + 180, r * 0.5), front, lw * 1.3, COLOR_GREEN);
+        dot(front, lw * 1.2, COLOR_GREEN);
+    }
+    dot([cx, cy], lw * 0.8, deg === null ? COLOR_NODATA : COLOR_TEXT);
+    ctx.lineCap = 'butt';
+}
+
+const signedDeg = d => (d > 0.05 ? '+' : d < -0.05 ? '\u2212' : '') + Math.abs(d).toFixed(0) + '\u00b0';
+
+/** Wing (left) and rudder (right), each with its name and commanded angle underneath. */
+function drawSail(w, h, lay) {
+    const fs = clamp(Math.round(h * 0.11), 9, 18);
+    const textH = fs * 2.3;
+    const r = Math.max(8, Math.min(w / 4 - 6, (h - textH) / 2 - 6));
+    const cy = (h - textH) / 2;
+    const now = Date.now();
+    const dials = [
+        { cx: w * 0.25, name: 'SAIL', deg: commandedDeg(lay.sail, lay.sailMax),
+          travel: travelDeg(lay.sailMax), wind: apparentWindDeg(now) },
+        { cx: w * 0.75, name: 'RUDDER', deg: commandedDeg(lay.rudder, cfg.rudderMax),
+          travel: travelDeg(cfg.rudderMax), wind: null }
+    ];
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.font = `${fs}px 'Rajdhani', sans-serif`;
+    for (const d of dials) {
+        drawDial(d.cx, cy, r, d.deg, d.travel, d.wind);
+        const y = cy + r + fs * 1.15;
+        ctx.fillStyle = d.deg === null ? COLOR_NODATA : COLOR_TEXT;
+        ctx.fillText(`${d.name} ${d.deg === null ? '---' : signedDeg(d.deg)}`, d.cx, y);
+        if (d.wind !== null) {
+            ctx.fillStyle = COLOR_ORANGE;
+            ctx.fillText(`WIND ${signedDeg(d.wind)}`, d.cx, y + fs * 1.1);
+        }
+    }
+}
+
+function draw(lay) {
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -272,6 +490,11 @@ function draw() {
     ctx.shadowOffsetX = 1;
     ctx.shadowOffsetY = 1;
     ctx.shadowBlur = 2;
+
+    if (lay) {
+        drawSail(w, h, lay);
+        return;
+    }
 
     const cx = w / 2;
     const cy = h / 2;
@@ -306,9 +529,16 @@ function draw() {
 
 // ── Panel lifecycle ─────────────────────────────────────────────────────
 
-function applyVisibility() {
+function applyVisibility(lay = sailMode()) {
     if (!panelEl) return;
-    const show = cfg.enabled && !isHiddenVehicle();
+    const sail = !!lay;
+    if (sail !== sailShown) {
+        // The dials sit side by side: the panel widens and the caption says what they are
+        sailShown = sail;
+        panelEl.classList.toggle('sail', sail);
+        if (captionEl) captionEl.textContent = sail ? 'Sail \u00b7 Rudder' : 'Rotor Load';
+    }
+    const show = cfg.enabled && (sail || !isHiddenVehicle());
     if (show === visible) return;
     visible = show;
     // The caption goes with the schematic: hiding the canvas alone left
@@ -320,10 +550,14 @@ function applyVisibility() {
 /** Redraw the schematic — called from the render loop on the flight data tab. */
 export function updateRotorLoadPanel() {
     if (!ctx || !panelEl) return;
-    applyVisibility();
+    // A Rover is hidden until its parameters say it has a sail, so they are
+    // asked for before the visibility check
+    probeSailParams(Date.now());
+    const lay = sailMode();
+    applyVisibility(lay);
     if (!visible) return;
     if (!resizeCanvas()) return;
-    draw();
+    draw(lay);
 }
 
 // ── SYS CONFIG wiring ───────────────────────────────────────────────────
@@ -335,6 +569,7 @@ const CFG_INPUTS = [
     ['rotor-cfg-orange', 'thOrange', 'number'],
     ['rotor-cfg-red', 'thRed', 'number'],
     ['rotor-cfg-channel', 'singleChannel', 'number'],
+    ['rotor-cfg-ruddermax', 'rudderMax', 'number'],
     ['rotor-cfg-frame', 'frame', 'string'],
     ['rotor-cfg-enable', 'enabled', 'bool']
 ];
@@ -369,6 +604,7 @@ export function initRotorLoadPanel() {
     loadConfig();
     panelEl = document.getElementById('rotor-load-panel');
     wrapEl = panelEl ? panelEl.closest('.bottom-bar-rotor') : null;
+    captionEl = wrapEl ? wrapEl.querySelector('.panel-caption') : null;
     canvas = document.getElementById('rotor-load-canvas');
     ctx = canvas ? canvas.getContext('2d') : null;
     syncConfigInputs();

@@ -98,18 +98,20 @@ The downloads are kept under `data/geozones` and work offline once fetched.
 
 ## ROTOR LOAD
 
-The schematic at the bottom right of the flight screen, each motor coloured by its output.
+The schematic at the bottom right of the flight screen, each motor coloured by its output. On a
+sailboat, the wing and rudder dials (see [flight screen](flight-screen.md#bottom-right-rotor-load-position-traffic)).
 
 | Field | Default | |
 |-------|---------|---|
 | **SCHEMATIC** — *Show rotor load schematic* | on | The same switch as **SHOW ROTOR LOAD** in the side panel. |
-| **FRAME** | AUTO (from MAV_TYPE) | Or force: single rotor (plane / heli), tricopter, quad, hexa, octo, deca, dodeca. |
+| **FRAME** | AUTO (from MAV_TYPE) | Or force: sailboat (wing + rudder), single rotor (plane / heli), tricopter, quad, hexa, octo, deca, dodeca. AUTO picks the sailboat dials for a Rover with `SAIL_ENABLE` or a MastRotation output. |
 | **MOTORS OFF PWM (SCALE MIN)** | 1000 | The PWM at which the gauges read empty. |
 | **SCALE MAX PWM** | 2000 | The PWM at which they read full. |
 | **GREEN ABOVE PWM** | 1100 | Below it a motor reads **blue** (stopped). |
 | **ORANGE ABOVE PWM** | 1500 | |
 | **RED ABOVE PWM** | 1700 | A motor in the red for long is near its limit: no control margin left on that arm. |
 | **SINGLE ROTOR CHANNEL** | 3 | For a plane or helicopter, the output shown as the main rotor: ArduPlane throttle = 3, heli RSC = 8. |
+| **RUDDER MAX DEG** | 35 | Sailboat: the rudder angle at full steering (`SERVOn_MIN` / `_MAX` of the rudder output). A property of the boat, not an ArduPilot parameter (AutoSail: 35). |
 
 On a healthy multirotor in a hover all motors sit in the same colour; one constantly higher shows a
 centre of gravity off to that side, a weak motor or a twisted arm.

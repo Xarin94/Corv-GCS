@@ -168,7 +168,7 @@ Corv-GCS/
 │   │   ├── CommandBarController.js Bottom bar (ARM/mode/status)
 │   │   ├── GCSSidebarController.js Right sidebar (connections, SITL, RTK)
 │   │   ├── ParametersPageController.js Full parameter editor
-│   │   ├── RotorLoadPanel.js    ROTOR LOAD schematic
+│   │   ├── RotorLoadPanel.js    ROTOR LOAD schematic, sailboat dials
 │   │   ├── AnnunciatorPanel.js  Health annunciators (red warnings / amber cautions); a click silences one until the next connection
 │   │   ├── CalibrationController.js ACCELEROMETER / COMPASS / GYRO-BARO setup pages (Mission Planner procedures)
 │   │   ├── MagCal3D.js          3D magnetometer sphere for the compass calibration

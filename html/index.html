@@ -1590,6 +1590,7 @@
                             <option value="quadplane">QuadPlane</option>
                             <option value="rover">Rover</option>
                             <option value="boat">Boat (ArduRover, waves on Lake Garda)</option>
+                            <option value="sailboat">Sailboat (ArduRover, wing sail and wind vane)</option>
                             <option value="sub">ROV &middot; Sub (BlueROV2, vectored)</option>
                             <option value="subnogps">ROV &middot; no GPS (dead reckoning)</option>
                         </select>
@@ -2628,6 +2629,7 @@
                     <label>FRAME</label>
                     <select id="rotor-cfg-frame" class="cfg-select">
                         <option value="auto">AUTO (from MAV_TYPE)</option>
+                        <option value="sail">SAILBOAT (wing + rudder)</option>
                         <option value="1">SINGLE ROTOR (plane / heli)</option>
                         <option value="3">TRICOPTER (3)</option>
                         <option value="4">QUAD (4)</option>
@@ -2661,8 +2663,15 @@
                     <label>SINGLE ROTOR CHANNEL</label>
                     <input type="number" id="rotor-cfg-channel" class="failsafe-input" value="3" step="1" min="1" max="16">
                 </div>
+                <div class="cfg-row">
+                    <label>RUDDER MAX DEG</label>
+                    <input type="number" id="rotor-cfg-ruddermax" class="failsafe-input" value="35" step="1" min="1" max="180">
+                </div>
                 <div class="cfg-row" style="opacity:0.6;font-size:11px;line-height:1.4;">
                     <span>Below the green threshold the gauges read blue (motors stopped). Plane and helicopter show only the main rotor, on the channel above (ArduPlane throttle = 3, heli RSC = 8).</span>
+                </div>
+                <div class="cfg-row" style="opacity:0.6;font-size:11px;line-height:1.4;">
+                    <span>A Rover with SAIL_ENABLE or a MastRotation output shows the wing and rudder dials instead: the angle commanded on each output and the apparent wind of the wind vane. The rudder angle at full steering is a property of the boat, not a parameter (AutoSail: 35).</span>
                 </div>
             </div>
             <div class="setup-panel">

@@ -170,6 +170,7 @@ export function mapMessageToState(msgId, data) {
         case 241: mapVibration(data); break;
         case 242: mapHomePosition(data); break;
         case 246: mapAdsbVehicle(data); break;
+        case 251: mapNamedValueFloat(data); break;
         case 253: mapStatusText(data); break;
         case 441: mapGnssIntegrity(data); break;
     }
@@ -515,6 +516,19 @@ function mapWind(data) {
     if (Number.isFinite(data.speed)) STATE.windSpeed = data.speed;
     if (Number.isFinite(data.speedZ)) STATE.windSpeedZ = data.speedZ;
     STATE.windDataTime = Date.now();
+}
+
+// NAMED_VALUE_FLOAT (251). ArduPilot Rover reports its wind vane's apparent
+// wind this way (AP_WindVane::send_wind), right after the true wind in WIND.
+function mapNamedValueFloat(data) {
+    if (!Number.isFinite(data.value) || typeof data.name !== 'string') return;
+    const name = data.name.replace(/\0[\s\S]*$/, '').trim();
+    if (name === 'AppWndDir') {
+        STATE.appWindDir = data.value;
+        STATE.appWindTime = Date.now();
+    } else if (name === 'AppWndSpd') {
+        STATE.appWindSpeed = data.value;
+    }
 }
 
 function mapRcChannelsRaw(data) {

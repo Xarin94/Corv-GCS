@@ -43,6 +43,7 @@ terminal, then a reboot).
 | QuadPlane | ArduPlane VTOL |
 | Rover | ArduRover |
 | Boat (ArduRover, waves on Lake Garda) | ArduRover on the `motorboat` model |
+| Sailboat (ArduRover, wing sail and wind vane) | ArduRover on the `sailboat` model, set up like the AutoSail drone |
 | ROV · Sub (BlueROV2, vectored) | ArduSub, with GPS |
 | ROV · no GPS (dead reckoning) | ArduSub with no GPS at all |
 
@@ -57,6 +58,23 @@ the lake bed with a wreck, a car, a container, a light aircraft, a pipeline and 
 sonars (an imaging sonar, a sector-scanning sonar) are ray-cast from the boat's true pose: see
 [ROS](ROS.md#9-testing-without-a-vehicle). Parameters changed while the simulator runs (WP_SPEED,
 for one) are kept in its storage and are still there at the next launch.
+
+## The sailboat
+
+**Sailboat** launches ArduRover on SITL's sailboat (`default_params_sailboat.parm`) at the same spot
+of Lake Garda as the boat, with the same southerly 5 m/s and chop. It is set up like the AutoSail
+wing-sail drone: no motor, the rudder on output 1 (GroundSteering, ±35° at full steering), a wing turned by a
+servo (MastRotation) and a wind vane that reads the apparent wind with no anemometer
+(`WNDVN_TYPE 10`, `WNDVN_SPEED_TYPE 0`). The flight screen draws the
+[SAIL · RUDDER](flight-screen.md#bottom-right-rotor-load-position-traffic) dials from it: the angle
+commanded on each output and the apparent wind.
+
+SITL's hull reads the wing on output 5, ±90° for 1000–2000 µs (`SIM_SAIL_TYPE 1`), so MastRotation is
+on output 5 with `SAIL_ANGLE_MAX 90` — on AutoSail it is output 4 with `SAIL_ANGLE_MAX 180`. The hull
+takes the rudder's 1000–2000 µs as ±35°, the same full steering as AutoSail's 1403–1597 µs on its
+±180° servo; with AutoSail's narrow range the simulated hull would get only 7° of rudder and could not
+bear away once stopped head to wind. With no motor, the wing is the throttle stick (RC3) in MANUAL;
+AUTO and ACRO sail and tack by themselves.
 
 ## The ROV
 

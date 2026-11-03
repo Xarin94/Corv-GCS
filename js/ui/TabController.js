@@ -999,6 +999,7 @@ const ROV_SITL = new Set(['sub', 'subnogps']);
 const LAND_HOME = { lat: 47.2603, lon: 11.3439 };
 const ROV_HOME = { lat: 45.60319, lon: 10.67127 };   // centre of Lake Garda
 const BOAT_HOME = { lat: 45.4960, lon: 10.6490 };     // southern basin, corner of the survey scene (scripts/ros-sim-scenes.js)
+const BOAT_SITL = new Set(['boat', 'sailboat']);
 let rovSession = null;                                // what a ROV launch changed
 
 function sameHome(latEl, lonEl, home) {
@@ -1010,7 +1011,7 @@ function suggestSitlHome(vehicle) {
     const latEl = document.getElementById('sitl-home-lat');
     const lonEl = document.getElementById('sitl-home-lon');
     if (!latEl || !lonEl) return;
-    const to = ROV_SITL.has(vehicle) ? ROV_HOME : vehicle === 'boat' ? BOAT_HOME : LAND_HOME;
+    const to = ROV_SITL.has(vehicle) ? ROV_HOME : BOAT_SITL.has(vehicle) ? BOAT_HOME : LAND_HOME;
     if (latEl.value === '' || [LAND_HOME, ROV_HOME, BOAT_HOME].some(h => sameHome(latEl, lonEl, h))) {
         latEl.value = String(to.lat);
         lonEl.value = String(to.lon);
