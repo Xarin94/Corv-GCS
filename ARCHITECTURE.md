@@ -111,6 +111,7 @@ Corv-GCS/
 ├── lidar-worker.js             worker_threads host for lidar-core.js
 ├── lidar-core.js               Livox SDK2 UDP client, pose interpolation, georeferencing, voxel map, .ply
 ├── mission-store.js            Data root: missions/, logs/, lidar/, index.json
+├── dialog-dirs.js              Last folder of each open dialog (userData/dialog-dirs.json)
 ├── app-log.js                  Rolling debug log: last 5 min on disk (data/debug/), console + IPC hooks
 ├── mavlink-trace.js            MAVLink link events and 10 s link/vehicle snapshots for the debug log
 ├── package.json                Dependencies & build config

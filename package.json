@@ -97,11 +97,15 @@
   },
   "homepage": "https://github.com/Xarin94/Corv-GCS#readme",
   "devDependencies": {
-    "electron": "^39.2.7",
+    "electron": "^45.2.1",
     "electron-builder": "^26.8.1"
   },
   "dependencies": {
     "node-mavlink": "^2.3.0",
     "serialport": "^13.0.0"
+  },
+  "overrides": {
+    "mavlink-mappings": "1.0.22-20260311",
+    "xml2js": "^0.6.2"
   }
 }

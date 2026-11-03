@@ -434,17 +434,22 @@ function keyFile() {
     return path.join(app.getPath('userData'), 'lte-link-key.bin');
 }
 
+// Async safeStorage: the sync calls are deprecated in Electron 45 and gone in 46.
+// decryptStringAsync also reads key files written by the old encryptString
 function initLteKeyHandlers() {
-    ipcMain.handle('lte-key-available', () => safeStorage.isEncryptionAvailable());
-    ipcMain.handle('lte-key-save', (event, keyHex) => {
-        if (!safeStorage.isEncryptionAvailable()) return false;
-        fs.writeFileSync(keyFile(), safeStorage.encryptString(String(keyHex)), { mode: 0o600 });
+    ipcMain.handle('lte-key-available', () => safeStorage.isAsyncEncryptionAvailable());
+    ipcMain.handle('lte-key-save', async (event, keyHex) => {
+        if (!await safeStorage.isAsyncEncryptionAvailable()) return false;
+        fs.writeFileSync(keyFile(), await safeStorage.encryptStringAsync(String(keyHex)), { mode: 0o600 });
         return true;
     });
-    ipcMain.handle('lte-key-load', () => {
+    ipcMain.handle('lte-key-load', async () => {
         try {
-            if (!safeStorage.isEncryptionAvailable() || !fs.existsSync(keyFile())) return '';
-            return safeStorage.decryptString(fs.readFileSync(keyFile()));
+            if (!await safeStorage.isAsyncEncryptionAvailable() || !fs.existsSync(keyFile())) return '';
+            const { result, shouldReEncrypt } = await safeStorage.decryptStringAsync(fs.readFileSync(keyFile()));
+            // Rotated OS key: store it again under the current one
+            if (shouldReEncrypt) fs.writeFileSync(keyFile(), await safeStorage.encryptStringAsync(result), { mode: 0o600 });
+            return result;
         } catch (e) {
             return '';
         }

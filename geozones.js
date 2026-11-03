@@ -725,12 +725,15 @@ function initGeoZonesHandlers(win) {
     ipcMain.handle('geozones-clear', () => { store.clear(); return store.status(); });
     ipcMain.handle('geozones-remove-import', (event, name) => { store.removeImport(name); return store.status(); });
     ipcMain.handle('geozones-import', async () => {
+        const { lastDir, rememberDir } = require('./dialog-dirs');
         const r = await dialog.showOpenDialog(win, {
             title: 'Import UAS geographical zones (ED-269 / ED-318)',
+            defaultPath: lastDir('geozones-import'),
             filters: [{ name: 'ED-269 / ED-318 JSON', extensions: ['json', 'geojson'] }],
             properties: ['openFile'],
         });
         if (r.canceled || !r.filePaths.length) return null;
+        rememberDir('geozones-import', r.filePaths[0]);
         try {
             return { ...store.importFile(r.filePaths[0]), status: store.status() };
         } catch (e) {

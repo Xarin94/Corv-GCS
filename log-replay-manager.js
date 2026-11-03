@@ -494,8 +494,11 @@ function load(filePath) {
 
 function registerIpc() {
     ipcMain.handle('log-replay-open-dialog', async () => {
+        const { lastDir, rememberDir } = require('./dialog-dirs');
         const res = await dialog.showOpenDialog(mainWindow, {
             title: 'Open ArduPilot log',
+            // The GCS's own tlog folder until another folder has been used
+            defaultPath: lastDir('log-replay', require('./mission-store').getLogsDir()),
             properties: ['openFile'],
             filters: [
                 { name: 'ArduPilot logs', extensions: ['tlog', 'bin'] },
@@ -505,6 +508,7 @@ function registerIpc() {
         if (res.canceled || !res.filePaths || !res.filePaths.length) {
             return { canceled: true };
         }
+        rememberDir('log-replay', res.filePaths[0]);
         return { canceled: false, filePath: res.filePaths[0] };
     });
 

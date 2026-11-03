@@ -38,6 +38,14 @@ function ensureMAVLinkLoaded() {
             messageRegistry.set(Number(id), clazz);
         }
     }
+    // standard.xml sits between minimal and common: GLOBAL_POSITION_INT (33)
+    // and AUTOPILOT_VERSION (148) are defined there, not in common
+    const standard = mavlink.standard;
+    if (standard && standard.REGISTRY) {
+        for (const [id, clazz] of Object.entries(standard.REGISTRY)) {
+            messageRegistry.set(Number(id), clazz);
+        }
+    }
     if (common.REGISTRY) {
         for (const [id, clazz] of Object.entries(common.REGISTRY)) {
             messageRegistry.set(Number(id), clazz);
@@ -746,10 +754,13 @@ function resolveEnumValue(str) {
     if (_enumCache.has(str)) return _enumCache.get(str);
 
     // Search through all dialect enum objects
+    // First match wins: standard goes last so names it shares with a
+    // common/ardupilotmega enum keep resolving as before
     const dialects = [minimal, common];
     try {
-        const ardu = require('node-mavlink').ardupilotmega;
-        if (ardu) dialects.push(ardu);
+        const { ardupilotmega, standard } = require('node-mavlink');
+        if (ardupilotmega) dialects.push(ardupilotmega);
+        if (standard) dialects.push(standard);
     } catch (e) { /* ignore */ }
 
     for (const dialect of dialects) {

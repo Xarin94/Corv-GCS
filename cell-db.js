@@ -799,12 +799,15 @@ function initCellDbHandlers(win) {
     ipcMain.handle('celldb-download-ocid', async (event, mcc) => ({ ...(await db.downloadOpenCellid(mcc)), status: await db.status() }));
     ipcMain.handle('celldb-import', async () => {
         const { dialog } = require('electron');
+        const { lastDir, rememberDir } = require('./dialog-dirs');
         const r = await dialog.showOpenDialog(win, {
             title: 'Import LTE cells (OpenCelliD or MLS CSV)',
+            defaultPath: lastDir('celldb-import'),
             filters: [{ name: 'Cell CSV', extensions: ['csv', 'gz'] }],
             properties: ['openFile'],
         });
         if (r.canceled || !r.filePaths.length) return null;
+        rememberDir('celldb-import', r.filePaths[0]);
         return { ...(await db.importCsv(r.filePaths[0])), status: await db.status() };
     });
     ipcMain.handle('celldb-download-box', async (event, box) => {

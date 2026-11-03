@@ -95,7 +95,7 @@ const crypto = require('crypto');
 const { SCENES, castRay } = require('./ros-sim-scenes');
 
 const mavlink = require(path.join(__dirname, '..', 'node_modules', 'node-mavlink'));
-const { MavLinkPacketSplitter, MavLinkPacketParser, MavLinkProtocolV2, minimal, common, ardupilotmega } = mavlink;
+const { MavLinkPacketSplitter, MavLinkPacketParser, MavLinkProtocolV2, minimal, standard, common, ardupilotmega } = mavlink;
 
 // ============== ARGS ==============
 const argv = process.argv.slice(2);
@@ -313,7 +313,7 @@ let truthLatLonAt = 0, truthAltAt = 0;
 let anchor = null;           // { lat, lon, alt, mPerLat, mPerLon }
 
 const registry = new Map();
-for (const dialect of [minimal, common, ardupilotmega]) {
+for (const dialect of [minimal, standard, common, ardupilotmega]) {
     if (dialect && dialect.REGISTRY) for (const [id, clazz] of Object.entries(dialect.REGISTRY)) registry.set(Number(id), clazz);
 }
 const protocol = new MavLinkProtocolV2(254, 192);
