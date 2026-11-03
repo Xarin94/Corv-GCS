@@ -11,7 +11,8 @@
  * filled arc that follow the PWM, and the raw value as a digital readout.
  *
  * A sailboat (Rover with a rotating mast) gets two round dials instead: the
- * wing and the rudder, with the commanded angle and the apparent wind.
+ * wing and the rudder drawn as NACA foils at the commanded angle, and the
+ * apparent wind.
  */
 
 import { STATE, isDemoMode } from '../core/state.js';
@@ -227,9 +228,12 @@ function commandedDeg(output, maxDeg) {
     return trim > lo ? -clamp((trim - pwm) / (trim - lo), 0, 1) * maxDeg : 0;
 }
 
-/** Full travel as [lo, hi] degrees, or null for a full turn (nothing to mark). */
+/**
+ * Arc the trailing edge sweeps over the full travel, as [lo, hi] bearings
+ * around the stern, or null for a full turn (nothing to mark).
+ */
 function travelDeg(maxDeg) {
-    return maxDeg >= 179.5 ? null : [-maxDeg, maxDeg];
+    return maxDeg >= 179.5 ? null : [180 - maxDeg, 180 + maxDeg];
 }
 
 /**
@@ -285,6 +289,7 @@ const COLOR_SCALE = 'rgba(200, 220, 235, 0.3)';
 const COLOR_TICK = 'rgba(200, 220, 235, 0.7)';
 const COLOR_TEXT = 'rgba(200, 220, 235, 0.85)';
 const COLOR_TRAVEL = 'rgba(47, 159, 255, 0.6)';
+const COLOR_FOIL_FILL = 'rgba(68, 255, 68, 0.3)';
 
 function zoneColor(pwm) {
     if (pwm == null) return COLOR_NODATA;
@@ -386,14 +391,55 @@ function tick(cx, cy, angle, scaleR, r, len, color) {
     ctx.stroke();
 }
 
+// Wing and rudder drawn as a symmetric NACA 00xx section: thick enough that
+// the round leading edge and the sharp trailing edge read at dial size, and
+// short enough that the trailing edge stays inside the 90° ticks
+const FOIL_THICKNESS = 0.18;   // NACA 0018
+const FOIL_CHORD = 1.05;       // of the dial radius
+const FOIL_PIVOT = 0.3;        // mast / rudder stock, chord fraction from the leading edge
+const FOIL_STEPS = 24;
+
+/** Half thickness of a NACA 00xx section at x (0..1 of the chord), closed trailing edge. */
+function nacaHalfThickness(x, t) {
+    return 5 * t * (0.2969 * Math.sqrt(x) - 0.1260 * x - 0.3516 * x * x + 0.2843 * x ** 3 - 0.1036 * x ** 4);
+}
+
+/** The foil, leading edge towards bearing `le`, turning about (cx, cy). */
+function drawFoil(cx, cy, le, chord, lw) {
+    const a = (le - 90) * Math.PI / 180;
+    const ux = Math.cos(a), uy = Math.sin(a);   // along the chord, towards the leading edge
+    ctx.beginPath();
+    // Upper surface leading → trailing edge, lower surface back; cosine
+    // spacing puts the points where the nose curves
+    for (let i = 0; i <= 2 * FOIL_STEPS; i++) {
+        const k = i <= FOIL_STEPS ? i : 2 * FOIL_STEPS - i;
+        const side = i <= FOIL_STEPS ? 1 : -1;
+        const x = (1 - Math.cos(Math.PI * k / FOIL_STEPS)) / 2;
+        const s = (FOIL_PIVOT - x) * chord;
+        const h = side * nacaHalfThickness(x, FOIL_THICKNESS) * chord;
+        const px = cx + ux * s - uy * h, py = cy + uy * s + ux * h;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fillStyle = COLOR_FOIL_FILL;
+    ctx.fill();
+    ctx.lineWidth = lw;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = COLOR_GREEN;
+    ctx.stroke();
+    ctx.lineJoin = 'miter';
+}
+
 /**
  * One round dial, seen from above with the bow up and angles clockwise, the
  * same convention as the outputs and the wind vane: a scale ring with a tick
- * every 30°, the full travel as a blue arc (none for a full turn), the
- * commanded angle as a line through the pivot with a dot on its forward end
- * (the wing's leading edge), and the apparent wind as an arrow from the rim.
+ * every 30°, the arc the trailing edge sweeps over the full travel (none for
+ * a full turn), the foil turning about its stock, and the apparent wind as a
+ * red stroke in from the rim on the side it comes from.
+ * @param {number|null} le  bearing of the foil's leading edge, null with no output
  */
-function drawDial(cx, cy, r, deg, travel, windDeg) {
+function drawDial(cx, cy, r, le, travel, windDeg) {
     const lw = Math.max(2, r * 0.07);
     const pt = (d, rr) => {
         const a = (d - 90) * Math.PI / 180;
@@ -432,20 +478,10 @@ function drawDial(cx, cy, r, deg, travel, windDeg) {
         line(pt(d, r * (major ? 0.74 : 0.86)), pt(d, r), major ? lw : lw * 0.6, COLOR_TICK);
     }
 
-    if (windDeg !== null) {
-        // Arrow from where the wind comes, pointing at the pivot
-        const tip = pt(windDeg, r * 0.6);
-        line(pt(windDeg, r * 1.12), tip, lw, COLOR_ORANGE);
-        line(tip, pt(windDeg - 12, r * 0.78), lw, COLOR_ORANGE);
-        line(tip, pt(windDeg + 12, r * 0.78), lw, COLOR_ORANGE);
-    }
+    if (windDeg !== null) line(pt(windDeg, r * 1.12), pt(windDeg, r * 0.62), lw, COLOR_RED);
 
-    if (deg !== null) {
-        const front = pt(deg, r * 0.8);
-        line(pt(deg + 180, r * 0.5), front, lw * 1.3, COLOR_GREEN);
-        dot(front, lw * 1.2, COLOR_GREEN);
-    }
-    dot([cx, cy], lw * 0.8, deg === null ? COLOR_NODATA : COLOR_TEXT);
+    if (le !== null) drawFoil(cx, cy, le, r * FOIL_CHORD, Math.max(1.5, lw * 0.5));
+    dot([cx, cy], lw * 0.8, le === null ? COLOR_NODATA : COLOR_TEXT);
     ctx.lineCap = 'butt';
 }
 
@@ -458,22 +494,27 @@ function drawSail(w, h, lay) {
     const r = Math.max(8, Math.min(w / 4 - 6, (h - textH) / 2 - 6));
     const cy = (h - textH) / 2;
     const now = Date.now();
+    const sailDeg = commandedDeg(lay.sail, lay.sailMax);
+    const rudderDeg = commandedDeg(lay.rudder, cfg.rudderMax);
+    // The wing's angle is where its leading edge points (into the wind). Steering
+    // to starboard swings the rudder's trailing edge to starboard, so its
+    // leading edge goes the other way.
     const dials = [
-        { cx: w * 0.25, name: 'SAIL', deg: commandedDeg(lay.sail, lay.sailMax),
+        { cx: w * 0.25, name: 'SAIL', deg: sailDeg, le: sailDeg,
           travel: travelDeg(lay.sailMax), wind: apparentWindDeg(now) },
-        { cx: w * 0.75, name: 'RUDDER', deg: commandedDeg(lay.rudder, cfg.rudderMax),
+        { cx: w * 0.75, name: 'RUDDER', deg: rudderDeg, le: rudderDeg === null ? null : -rudderDeg,
           travel: travelDeg(cfg.rudderMax), wind: null }
     ];
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.font = `${fs}px 'Rajdhani', sans-serif`;
     for (const d of dials) {
-        drawDial(d.cx, cy, r, d.deg, d.travel, d.wind);
+        drawDial(d.cx, cy, r, d.le, d.travel, d.wind);
         const y = cy + r + fs * 1.15;
         ctx.fillStyle = d.deg === null ? COLOR_NODATA : COLOR_TEXT;
         ctx.fillText(`${d.name} ${d.deg === null ? '---' : signedDeg(d.deg)}`, d.cx, y);
         if (d.wind !== null) {
-            ctx.fillStyle = COLOR_ORANGE;
+            ctx.fillStyle = COLOR_RED;
             ctx.fillText(`WIND ${signedDeg(d.wind)}`, d.cx, y + fs * 1.1);
         }
     }
