@@ -13,6 +13,24 @@ import { awaitSceneOriginFix } from '../core/SceneOrigin.js';
 // Connection config
 let currentConnection = null;
 
+// Data streams are requested once the link has carried a heartbeat. On UDP the
+// GCS only learns where to reply from the first packet it receives: a request
+// sent before that goes to no one, and the vehicle stays at its default rates
+// (1 Hz on an ArduPilot SITL, which also sends its first packets only once a
+// second). A fixed one-second delay lost that race.
+const STREAM_REQUEST_TIMEOUT_MS = 15000;
+
+function requestStreamsWhenLinked() {
+    const since = Date.now();
+    const poll = setInterval(() => {
+        const linked = STATE.lastHeartbeatTime >= since;
+        if (!linked && Date.now() - since < STREAM_REQUEST_TIMEOUT_MS) return;
+        clearInterval(poll);
+        requestAllDataStreams().catch(() => {});
+        setTimeout(() => requestHomePosition().catch(() => {}), 2000);
+    }, 200);
+}
+
 /**
  * Connect using the specified connection type
  * @param {'corv-binary'|'mavlink-serial'|'mavlink-udp'} type
@@ -52,10 +70,7 @@ async function connectLink(type, options) {
                 options.baudRate || 57600
             );
             currentConnection = { type, ...options };
-            // Request data streams after connection
-            setTimeout(() => requestAllDataStreams(), 1000);
-            // Request home position after streams are established
-            setTimeout(() => requestHomePosition().catch(() => {}), 3000);
+            requestStreamsWhenLinked();
             break;
 
         case 'mavlink-udp':
@@ -64,8 +79,7 @@ async function connectLink(type, options) {
                 options.port || 14550
             );
             currentConnection = { type, ...options };
-            setTimeout(() => requestAllDataStreams(), 1000);
-            setTimeout(() => requestHomePosition().catch(() => {}), 3000);
+            requestStreamsWhenLinked();
             break;
 
         case 'mavlink-tcp':
@@ -74,16 +88,14 @@ async function connectLink(type, options) {
                 options.port || 5760
             );
             currentConnection = { type, ...options };
-            setTimeout(() => requestAllDataStreams(), 1000);
-            setTimeout(() => requestHomePosition().catch(() => {}), 3000);
+            requestStreamsWhenLinked();
             break;
 
         // Cellular module through the relay (SETUP → COMMS → CELLULAR LINK)
         case 'mavlink-lte':
             await connectMAVLinkLTE(options);
             currentConnection = { type, moduleId: options.moduleId, host: options.host };
-            setTimeout(() => requestAllDataStreams(), 1000);
-            setTimeout(() => requestHomePosition().catch(() => {}), 3000);
+            requestStreamsWhenLinked();
             break;
 
         // MSP is request/response: the main process polls the flight controller and
