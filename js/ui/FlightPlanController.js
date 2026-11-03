@@ -1320,6 +1320,13 @@ async function doDownload() {
     try {
         const items = await downloadMission((done, total) => { btn.textContent = `READING ${done}/${total}`; });
         const route = itemsToRoute(items, { fromVehicle: true, name: 'From vehicle' });
+        // ArduPilot always keeps its home at seq 0: with nothing after it there
+        // is no mission, and the route on screen is worth more than an empty one
+        if (!route.segments.length) {
+            btn.textContent = 'READ';
+            alert('The vehicle has no mission stored (only its home position).');
+            return;
+        }
         replaceRoute(route);
         detachCurrentMission();
         selectedId = null;

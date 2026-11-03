@@ -74,7 +74,7 @@ Ctrl+Shift+Z) redoes — also with the arrows at the top of the segments list.
 | **Chips** | A summary of the route settings — altitude mode and default height, speed, take-off height, end action, spline, camera, number of photos, radio link. Click them to open the route settings. |
 | **Issues** | Every warning (amber) and error (red), one line per problem: a leg through the ground, below the minimum clearance, above the maximum AGL, out of radio range, a feature the flight stack cannot fly, a link that speaks the wrong protocol. |
 | **UPLOAD** | Writes the calculated mission to the autopilot. |
-| **READ** | Reads the mission stored on the autopilot into the editor. |
+| **READ** | Reads the mission stored on the autopilot into the editor. A vehicle that holds only its home position has no mission: READ says so and leaves the route on screen. |
 | **SAVE** | Saves the route in the local library. |
 | **LIBRARY** | Opens the [mission library](#mission-library). |
 
