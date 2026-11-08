@@ -244,6 +244,8 @@ function initMAVLinkHandlers(win) {
             const port = new SerialPort({
                 path: portPath,
                 baudRate: baudRate || 57600,
+                // keep DTR low: on the esp32s31corv USB, closing with it high silences the port
+                hupcl: false,
                 autoOpen: false
             });
 
@@ -522,6 +524,8 @@ function initMAVLinkHandlers(win) {
             const port = new SerialPort({
                 path: portPath,
                 baudRate: baudRate || 460800,
+                // keep DTR low: on the esp32s31corv USB, closing with it high silences the port
+                hupcl: false,
                 autoOpen: false
             });
 
