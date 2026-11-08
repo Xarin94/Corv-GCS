@@ -1,5 +1,7 @@
 # IMU vibration spectrum over MAVLink
 
+A worked example of every step, with figures and a real packet, is in [FFT_SPECTRUM_PROTOCOL.pdf](FFT_SPECTRUM_PROTOCOL.pdf).
+
 How the Hybrid-PF firmware (ArduPilot `AP_HybridPF`, `HPF_FFT_ENABLE`) builds
 the IMU vibration spectrum and packs it into MAVLink, so that any ground
 station or tool can decode it, and any autopilot can produce a compatible
