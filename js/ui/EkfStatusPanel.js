@@ -9,6 +9,9 @@
  *   ArduPilot EKF3  EKF INNOVATIONS  · GPS ACCURACY       · ATTITUDE EKF − DCM
  *   CORV RBPF       POSITION         · PARTICLE FILTER    · SHARED EKF tr(P)
  *
+ * The FFT tab under this one opens the vibration spectra in the same place
+ * (ui/FftPanel.js): one bar at a time.
+ *
  * A sound estimate reads as: innovations under 0.5, the residual inside the
  * receiver's accuracy, the particle cloud no wider than the GPS error, ESS
  * recovering after each resample, the two attitude estimators within a degree
@@ -421,9 +424,11 @@ function applyVisibility() {
         toggleEl.querySelector('.ekf-toggle-arrow').innerHTML = enabled ? '&#9664;' : '&#9654;';
         toggleEl.title = enabled ? 'Close EKF STATUS' : 'Open EKF STATUS';
     }
-    // The flight view gives the bar its width: 3D and HUD resize to what is left
-    if (document.body.classList.contains('ekf-docked') !== enabled) {
-        document.body.classList.toggle('ekf-docked', enabled);
+    // The flight view gives the bar its width: 3D and HUD resize to what is
+    // left. The FFT bar takes the same place, so either one docks it
+    const docked = !!document.querySelector('#ekf-panel:not(.collapsed), #fft-panel:not(.collapsed)');
+    if (document.body.classList.contains('ekf-docked') !== docked) {
+        document.body.classList.toggle('ekf-docked', docked);
         requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
     }
 }
@@ -440,12 +445,15 @@ export function initEkfStatusPanel() {
     cardsEl = document.getElementById('ekf-cards');
     try { enabled = localStorage.getItem(ENABLED_KEY) === '1'; } catch (e) {}
     subscribe();
+    // one bar at a time on the left: another opening closes this one
+    window.addEventListener('leftbar-open', e => { if (e.detail !== 'ekf' && enabled) setEkfStatusEnabled(false); });
     buildCards(null);
     applyVisibility();
 }
 
 export function setEkfStatusEnabled(on) {
     enabled = !!on;
+    if (enabled) window.dispatchEvent(new CustomEvent('leftbar-open', { detail: 'ekf' }));
     try { localStorage.setItem(ENABLED_KEY, enabled ? '1' : '0'); } catch (e) {}
     applyVisibility();
     lastRates = 0;

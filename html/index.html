@@ -385,6 +385,35 @@
         <div id="ekf-cards" class="ekf-cards"></div>
     </div>
 
+    <!-- FFT: a second bar down the left side, the IMU vibration spectra of the
+         last 60 s. Its tab sits under the EKF STATUS one and the two bars take
+         turns (js/ui/FftPanel.js) -->
+    <button id="fft-toggle" class="ekf-toggle collapsed" title="Open FFT">
+        <span class="ekf-toggle-label">FFT</span>
+        <span class="ekf-toggle-arrow">&#9654;</span>
+    </button>
+    <div id="fft-panel" class="collapsed">
+        <div class="ekf-head">
+            <span class="ekf-title">VIBRATION FFT</span>
+            <span class="ekf-window">LAST 2 s</span>
+        </div>
+        <div id="fft-peaks" class="fft-peaks"></div>
+        <div class="fft-wf">
+            <div class="ekf-card-head">
+                <span class="ekf-card-title">WATERFALL · LAST 60 s</span>
+                <span class="spec-seg" id="fft-seg">
+                    <button data-wf-sensor="gyro">GYRO</button><button data-wf-sensor="accel">ACC</button>
+                </span>
+            </div>
+            <div class="ekf-card-unit" id="fft-unit"></div>
+            <div class="ekf-plot" id="fft-plot"></div>
+            <div class="ekf-legend">
+                <span class="spec-scale"><i></i><b id="fft-range">—</b></span>
+                <span class="spec-readout" id="fft-readout"></span>
+            </div>
+        </div>
+    </div>
+
 
 
 
@@ -3077,6 +3106,26 @@
                         <span>RESTRICTED ZONES</span>
                     </label>
                     <button class="gcs-btn" style="margin-top:6px;" onclick="clearTrail()">CLEAR TRAIL</button>
+                </div>
+            </div>
+
+            <!-- FFT LIVE Section: IMU vibration spectrum (js/ui/FftLivePanel.js) -->
+            <div class="gcs-sidebar-section" data-section="fftlive">
+                <div class="gcs-section-header" data-collapse="fftlive">
+                    <span>FFT LIVE</span>
+                    <span class="collapse-icon">&#9660;</span>
+                </div>
+                <div class="gcs-section-body">
+                    <div class="spec-seg">
+                        <button data-fft-sensor="gyro">GYRO</button><button data-fft-sensor="accel">ACC</button>
+                    </div>
+                    <div class="fft-live-plot"></div>
+                    <div class="fft-live-unit"></div>
+                    <div class="fft-live-legend">
+                        <span class="spec-leg"><i style="background:#3987e5"></i>NOW</span>
+                        <span class="spec-leg"><i style="background:#c98500"></i>PEAK 10 s</span>
+                    </div>
+                    <div class="fft-live-readout">—</div>
                 </div>
             </div>
 

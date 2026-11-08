@@ -801,7 +801,8 @@ body.mode-fullscreen.ekf-docked #hud-wrapper {
     left: var(--ekf-bar-w);
 }
 
-#ekf-panel {
+#ekf-panel,
+#fft-panel {
     position: absolute;
     left: 0;
     top: 0;
@@ -821,7 +822,8 @@ body.mode-fullscreen.ekf-docked #hud-wrapper {
     transition: transform 0.3s ease;
 }
 
-#ekf-panel.collapsed {
+#ekf-panel.collapsed,
+#fft-panel.collapsed {
     transform: translateX(-100%);
 }
 
@@ -997,3 +999,77 @@ body.mode-fullscreen.ekf-docked #hud-wrapper {
 }
 .ekf-leg i { width: 10px; height: 2px; border-radius: 1px; display: inline-block; }
 .ekf-leg b { font-family: var(--font-data); font-weight: 500; color: #f0efec; min-width: 3.5em; }
+
+/* FFT bar: the EKF STATUS bar's twin, with the IMU vibration spectra
+   (js/ui/FftPanel.js). The two tabs are stacked at mid height. */
+#ekf-toggle { transform: translateY(calc(-100% - 3px)); }
+#fft-toggle { transform: translateY(3px); }
+/* with either bar open both tabs ride on its edge, not over it */
+body.ekf-docked .ekf-toggle.collapsed { left: var(--ekf-bar-w); }
+
+.fft-peaks {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 10px;
+    padding: 6px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
+    align-items: baseline;
+}
+.fft-peak-lbl {
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: #c3c2b7;
+}
+.fft-peak-main { font-family: var(--font-data); font-size: var(--fs-sm); color: #f0efec; }
+.fft-peak-main b { font-weight: 600; color: #fab219; }
+.fft-peak-more { font-family: var(--font-data); font-size: var(--fs-xs); color: #c3c2b7; }
+.fft-peak-none { font-size: var(--fs-xs); color: #898781; letter-spacing: 0.06em; }
+
+.fft-wf {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid rgba(255, 255, 255, 0.10);
+    padding: 5px 0 6px;
+}
+.fft-wf .ekf-plot { min-height: 120px; }
+
+/* GYRO | ACC switch, shared by the waterfall and the FFT LIVE section */
+.spec-seg {
+    display: inline-flex;
+    margin-left: auto;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.spec-seg button {
+    background: none;
+    border: none;
+    color: #898781;
+    font-family: var(--font-ui);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 1px 8px;
+    cursor: pointer;
+}
+.spec-seg button + button { border-left: 1px solid rgba(255, 255, 255, 0.22); }
+.spec-seg button:hover { color: #f0efec; }
+.spec-seg button.active { background: rgba(57, 135, 229, 0.25); color: #f0efec; }
+
+.spec-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+}
+
+/* colour scale of the waterfall: the map, then its range in dB */
+.spec-scale { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: #c3c2b7; }
+.spec-scale i { width: 70px; height: 7px; border-radius: 1px; display: inline-block; }
+.spec-scale b, .spec-readout { font-family: var(--font-data); font-weight: 500; color: #f0efec; font-size: var(--fs-xs); }
+.spec-readout { margin-left: auto; }

@@ -1102,3 +1102,35 @@
     color: #000;
     font-weight: 700;
 }
+
+/* FFT LIVE section (js/ui/FftLivePanel.js) */
+.gcs-sidebar-section[data-section="fftlive"] .spec-seg { margin-left: 0; align-self: flex-start; }
+.fft-live-plot {
+    position: relative;
+    height: 170px;
+    background: #05080c;
+    border: 1px solid var(--border-subtle);
+    border-radius: 3px;
+}
+.fft-live-unit {
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+}
+.fft-live-legend { display: flex; gap: 12px; }
+.spec-leg {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: #c3c2b7;
+}
+.spec-leg i { width: 10px; height: 2px; border-radius: 1px; display: inline-block; }
+.fft-live-readout {
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--text-main);
+}

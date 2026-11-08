@@ -74,6 +74,8 @@ import { TlogLogger } from './logging/TlogLogger.js';
 import { initRotorLoadPanel, updateRotorLoadPanel, setRotorLoadConfig } from './ui/RotorLoadPanel.js';
 import { initAnnunciatorPanel, updateAnnunciatorPanel } from './ui/AnnunciatorPanel.js';
 import { initEkfStatusPanel, updateEkfStatusPanel } from './ui/EkfStatusPanel.js';
+import { initFftLivePanel, updateFftLivePanel } from './ui/FftLivePanel.js';
+import { initFftPanel, updateFftPanel } from './ui/FftPanel.js';
 import { initGeoZones, updateGeoZones, setGeoZonesEnabled } from './safety/GeoZones.js';
 import { initGeoZonePanel, updateGeoZonePanel } from './ui/GeoZonePanel.js';
 import { updateUI, toggleConfig, toggleTelemetry, updateOffset, updateAGLDisplay, setStatusMessage, updateFPSDisplay, initMoreMenu, initConfigAutoClose, initHudCells } from './ui/UIController.js';
@@ -1463,6 +1465,10 @@ function animate(frameTime) {
 
     // EKF STATUS charts: their own 20 Hz, whatever the 3D frame cap
     updateEkfStatusPanel(onFlightDataTab);
+    // FFT bar, the EKF STATUS bar's twin on the left
+    updateFftPanel(onFlightDataTab);
+    // FFT LIVE in the sidebar: draws only while its section is open
+    updateFftLivePanel();
 
     // Update GCS command bar, sidebar and target marker at 10 Hz — DOM writes
     // don't need to run at monitor refresh rate.
@@ -2056,6 +2062,8 @@ function init() {
     initHudCells();
     initRotorLoadPanel();
     initEkfStatusPanel();
+    initFftPanel();
+    initFftLivePanel();
     initAnnunciatorPanel();
     initGeoZones();
     initGeoZonePanel();
