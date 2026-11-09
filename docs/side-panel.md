@@ -109,6 +109,10 @@ Shown while no vehicle is connected.
    scrubber to jump anywhere, the total time, **×** to unload.
 4. **UNLOAD** (or ×) ends the replay.
 
+A `.bin` with IMU samples also feeds the [vibration spectra](flight-screen.md#vibration-fft): the
+GCS computes them from the log at the resolution set in
+[SYS CONFIG → FFT FROM LOGS](sys-config.md#fft-from-logs).
+
 Replay works in the relative navigation mode too: a ROV dive without GPS replays with its
 dead-reckoned position ([navigation without GPS](3D-NAVIGATION.md#5-navigation-without-gps)).
 ArduPilot's [logs](https://ardupilot.org/copter/docs/common-logs.html) page explains the two kinds of log.

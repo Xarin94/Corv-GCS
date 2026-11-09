@@ -1,7 +1,7 @@
 ---
 title: GCS settings (SYS CONFIG)
 nav_order: 10
-description: Every SYS CONFIG panel field by field — flight stack, navigation, language, terrain, 3D model, frame rate, satellite detail, satellite and terrain radius, debug log, ADS-B, ground clamp, battery, rotor load, camera stream, offline download, HUD fields, stream rates
+description: Every SYS CONFIG panel field by field — flight stack, navigation, language, terrain, 3D model, frame rate, satellite detail, satellite and terrain radius, debug log, ADS-B, ground clamp, battery, rotor load, FFT from logs, camera stream, offline download, HUD fields, stream rates
 ---
 
 # GCS settings (SYS CONFIG)
@@ -19,6 +19,7 @@ RATES** and, indirectly, the flight stack's suggested link.
 | [GCS OPTIONS](#gcs-options) | ADS-B traffic, ground clamp, battery voltage range |
 | [UAS GEO ZONES](#uas-geo-zones) | restricted zones: sources, imported ED-269 files |
 | [ROTOR LOAD](#rotor-load) | the motor output schematic |
+| [FFT FROM LOGS](#fft-from-logs) | resolution of the vibration spectra computed from a `.bin` log |
 | [SIYI CAMERA STREAM](#siyi-camera-stream) | the FPV video address |
 | [OFFLINE DATA DOWNLOAD](#offline-data-download) | imagery and elevation for an area, ahead of time |
 | [HUD DATA FIELDS](#hud-data-fields) | the six data cells beside the HUD |
@@ -115,6 +116,38 @@ sailboat, the wing and rudder dials (see [flight screen](flight-screen.md#bottom
 
 On a healthy multirotor in a hover all motors sit in the same colour; one constantly higher shows a
 centre of gravity off to that side, a weak motor or a twisted arm.
+
+## FFT FROM LOGS
+
+How finely the GCS computes the vibration spectra of the [FFT bar](flight-screen.md#vibration-fft)
+from the IMU samples of a DataFlash log (`.bin`) in
+[LOG REPLAY](side-panel.md#log-replay). The spectrum a connected vehicle sends (`HPF_FFT_ENABLE` = 1)
+is computed by the firmware and does not change: 256 points at 800 Hz, a bin every 3.125 Hz, four
+times a second. A change here recomputes the loaded log at once.
+
+| Field | Default | |
+|-------|---------|---|
+| **FFT SIZE** | 1024 points | 256 to 8192. The frequency step is the log's sample rate divided by this: a gyro logged at 2 kHz gives 1.95 Hz with 1024 points, 0.49 Hz with 4096. More points separate closer lines (two motors at nearly the same speed) but each spectrum covers more of the log (0.5 s and 2 s there), so a change of throttle smears. |
+| **AVERAGING** | none | 2, 4 or 8 windows, each overlapping the next by half, their spectra averaged (Welch). The noise floor gets steadier and weak lines come out of it; the stretch of log behind each spectrum grows: 2.5× the FFT for 4 windows. |
+| **TIME STEP** | 0.25 s | A new spectrum every step of log time: the columns of the waterfall. |
+| **LOG IN REPLAY** | | For the `.bin` loaded: the stream behind the gyro and the accelerometer spectra, the frequency step and the stretch of log per spectrum they get. **Left out, in fragments**: IMU samples the logger kept only in bursts, with holes between them (typically an 8 kHz gyro logged in full), that no FFT window fits in. |
+
+The log needs IMU samples (ArduPilot: [raw IMU logging](https://ardupilot.org/copter/docs/common-raw-imu-logging.html)
+and [IMU batch sampling](https://ardupilot.org/copter/docs/common-imu-batchsampling.html)). The GCS
+uses, best first:
+
+- **GYR / ACC**, every sample at the sensor rate (`LOG_BITMASK` bit IMU_RAW, or `INS_RAW_LOG_OPT` for
+  the gyros). With `INS_RAW_LOG_OPT` "pre and post filter" each gyro is there twice, the second copy
+  after the low-pass and notch filters: **IMUn · filtered**.
+- **Batch sampler** (`INS_LOG_BAT_MASK`): `INS_LOG_BAT_CNT` samples in a row (1024 by default), the
+  sensors in turn, so one spectrum every few seconds per sensor. An FFT never spans more than one
+  batch: with more points or averaging than fit, the GCS uses the most that do and says so.
+- **IMU** at the loop rate, filtered: the only choice on most logs, and enough for the slow end of
+  the spectrum (half the loop rate: 200 Hz for a copter at 400 Hz, 25 Hz at 50 Hz). Records the
+  logger dropped are filled in, as the firmware does for the live spectrum.
+
+The levels are those of the live spectrum (dB of (rad/s)²/Hz for the gyro and (m/s²)²/Hz for the
+accelerometer, three axes summed), so the same line reads the same live and from the log.
 
 ## SIYI CAMERA STREAM
 

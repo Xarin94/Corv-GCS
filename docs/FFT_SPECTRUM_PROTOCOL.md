@@ -161,6 +161,18 @@ cut-off, at the sensor noise. With the SCH16T-K10 (gyro 6 m°/s/√Hz, accel
 then falling above 68 Hz. A motor or propeller shows as a line at its rotation
 frequency and harmonics.
 
+## The same spectrum from a DataFlash log
+
+Corv GCS computes spectra with this definition (mean removed, Hann window,
+one-sided PSD `2 |X[k]|² / (fs · Σ w[n]²)`, three axes summed, dB) from the IMU
+samples of a `.bin` log in replay, so a line reads the same live and from the
+log. There N (256 – 8192), the time step and Welch averaging (K windows
+overlapping by half, PSDs averaged) are set in SYS CONFIG → FFT FROM LOGS, fs is
+the log's own rate, and bins 1 to N/2 − 1 are kept. GYR/ACC samples are taken
+as evenly spaced (their `SampleUS` come in bursts) and a window never spans a
+hole; IMU records at the loop rate are interpolated on an even grid like step 1
+above. Implementation: `log-spectrum.js`.
+
 ## Reference implementation
 
 - Sender: `libraries/AP_HybridPF/AP_HybridPF_Spectrum.{h,cpp}` in

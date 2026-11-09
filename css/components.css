@@ -1026,17 +1026,56 @@ body.ekf-docked .ekf-toggle.collapsed { left: var(--ekf-bar-w); }
 .fft-peak-more { font-family: var(--font-data); font-size: var(--fs-xs); color: #c3c2b7; }
 .fft-peak-none { font-size: var(--fs-xs); color: #898781; letter-spacing: 0.06em; }
 
+/* the newest spectrum, fixed height; the waterfall takes the rest */
+.fft-now,
 .fft-wf {
-    flex: 1 1 0;
-    min-height: 0;
     display: flex;
     flex-direction: column;
     border-top: 1px solid rgba(255, 255, 255, 0.10);
     padding: 5px 0 6px;
 }
+.fft-now { flex: 0 0 auto; }
+.fft-now .ekf-plot { flex: 0 0 auto; height: clamp(110px, 21vh, 190px); }
+.fft-wf { flex: 1 1 0; min-height: 0; }
 .fft-wf .ekf-plot { min-height: 120px; }
+.spec-leg {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-ui);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: #c3c2b7;
+}
+.spec-leg i { width: 10px; height: 2px; border-radius: 1px; display: inline-block; }
 
-/* GYRO | ACC switch, shared by the waterfall and the FFT LIVE section */
+/* where the spectrum comes from and its resolution; for a .bin in replay,
+   which IMU samples of the log it is computed from */
+.fft-src {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    margin: 2px 0 1px;
+}
+.fft-src-text {
+    font-family: var(--font-data);
+    font-size: var(--fs-xs);
+    color: #c3c2b7;
+}
+.fft-stream {
+    background: #0b1016;
+    color: #f0efec;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 3px;
+    font-family: var(--font-data);
+    font-size: var(--fs-xs);
+    padding: 0 4px;
+    max-width: 100%;
+}
+
+/* GYRO | ACC switch of the FFT bar */
 .spec-seg {
     display: inline-flex;
     margin-left: auto;

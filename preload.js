@@ -292,7 +292,11 @@ contextBridge.exposeInMainWorld('logReplay', {
   unload: () => ipcRenderer.invoke('log-replay-unload'),
   onTick: (cb) => ipcRenderer.on('log-replay-tick', (_e, d) => cb(d)),
   onState: (cb) => ipcRenderer.on('log-replay-state', (_e, d) => cb(d)),
-  onResetState: (cb) => ipcRenderer.on('log-replay-reset-state', (_e, d) => cb(d))
+  onResetState: (cb) => ipcRenderer.on('log-replay-reset-state', (_e, d) => cb(d)),
+  // Vibration spectra computed from the IMU samples of a .bin (log-spectrum.js)
+  setSpectrumConfig: (cfg) => ipcRenderer.invoke('log-spectrum-config', cfg),
+  selectSpectrumStream: (sensor, key) => ipcRenderer.invoke('log-spectrum-stream', sensor, key),
+  onSpectrum: (cb) => ipcRenderer.on('log-spectrum', (_e, d) => cb(d))
 });
 
 // Forward uncaught errors / unhandled promise rejections to the main process

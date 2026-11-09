@@ -1570,6 +1570,7 @@ body.has-tabs #ui-layer {
 
 /* SYS CONFIG → UAS GEO ZONES: one line per source / imported file */
 .setup-panel .cfg-val.gz-list { line-height: 1.5; text-align: right; }
+.setup-panel .cfg-val.logfft-status { font-size: 11px; }
 .setup-panel .gz-err { color: #ff6a5a; }
 .setup-panel .gz-remove {
     background: none;

@@ -17,9 +17,12 @@
  * velocity carry-over used by the AHR2-derived GLOBAL_POSITION_INT.
  * VER/PARM are not emitted either: they identify the vehicle, so the replayed
  * HEARTBEAT carries the MAV_TYPE the autopilot would have sent live.
+ * The IMU samples (GYR/ACC/IMU/ISBH/ISBD) are not emitted either: they go to
+ * log-spectrum.js, which computes the vibration spectra from them.
  */
 
 const fs = require('fs');
+const { ImuCollector } = require('./log-spectrum');
 
 const HEAD0 = 0xA3;
 const HEAD1 = 0x95;
@@ -193,6 +196,7 @@ function indexBinFile(filePath) {
     // Single-pass scan: FMT records always precede the messages they describe.
     // Unknown msgType => resync by scanning for next HEAD.
     const items = [];
+    const imu = new ImuCollector();
     const gpsTrackRaw = [];  // {lat, lon, alt} per AHR2 sample (full-flight trail)
     const gpiData = [];      // refs to GLOBAL_POSITION_INT data objects, paired 1:1 with gpsTrackRaw
     let minUs = null;
@@ -286,6 +290,12 @@ function indexBinFile(filePath) {
             } catch (e) {
                 // Corrupted FMT — skip silently
             }
+            offset += len;
+            continue;
+        }
+
+        if (ImuCollector.wants(entry.name)) {
+            imu.take(entry, buf, offset + 3);
             offset += len;
             continue;
         }
@@ -607,7 +617,9 @@ function indexBinFile(filePath) {
     index.sort((a, b) => a.tsMs - b.tsMs);
 
     const totalMs = index.length ? index[index.length - 1].tsMs : 0;
-    return { index, totalMs, totalMessages: index.length, gpsTrack, mavType };
+    // IMU samples on the replay's time base (ms from the first message)
+    const imuStreams = imu.finish(minUs, params);
+    return { index, totalMs, totalMessages: index.length, gpsTrack, mavType, imuStreams };
 }
 
 module.exports = { indexBinFile, smoothLatLonTrack };

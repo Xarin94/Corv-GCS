@@ -385,9 +385,10 @@
         <div id="ekf-cards" class="ekf-cards"></div>
     </div>
 
-    <!-- FFT: a second bar down the left side, the IMU vibration spectra of the
-         last 60 s. Its tab sits under the EKF STATUS one and the two bars take
-         turns (js/ui/FftPanel.js) -->
+    <!-- FFT: a second bar down the left side, the IMU vibration spectra: the
+         strongest lines, the newest spectrum with a 10 s peak hold, and the
+         last 60 s as a waterfall. Its tab sits under the EKF STATUS one and the
+         two bars take turns (js/ui/FftPanel.js) -->
     <button id="fft-toggle" class="ekf-toggle collapsed" title="Open FFT">
         <span class="ekf-toggle-label">FFT</span>
         <span class="ekf-toggle-arrow">&#9654;</span>
@@ -398,14 +399,30 @@
             <span class="ekf-window">LAST 2 s</span>
         </div>
         <div id="fft-peaks" class="fft-peaks"></div>
-        <div class="fft-wf">
+        <div class="fft-now">
             <div class="ekf-card-head">
-                <span class="ekf-card-title">WATERFALL · LAST 60 s</span>
+                <span class="ekf-card-title">SPECTRUM · NOW</span>
                 <span class="spec-seg" id="fft-seg">
                     <button data-wf-sensor="gyro">GYRO</button><button data-wf-sensor="accel">ACC</button>
                 </span>
             </div>
+            <div class="fft-src">
+                <span id="fft-src-text" class="fft-src-text"></span>
+                <select id="fft-stream" class="fft-stream" title="IMU samples of the log the spectrum is computed from" hidden></select>
+            </div>
             <div class="ekf-card-unit" id="fft-unit"></div>
+            <div class="ekf-plot" id="fft-now-plot"></div>
+            <div class="ekf-legend">
+                <span class="spec-leg"><i style="background:#3987e5"></i>NOW</span>
+                <span class="spec-leg"><i style="background:#c98500"></i>PEAK 10 s</span>
+                <span class="spec-readout" id="fft-now-readout"></span>
+            </div>
+        </div>
+        <div class="fft-wf">
+            <div class="ekf-card-head">
+                <span class="ekf-card-title">WATERFALL · LAST 60 s</span>
+            </div>
+            <div class="ekf-card-unit">frequency down, time to the right, colour = level</div>
             <div class="ekf-plot" id="fft-plot"></div>
             <div class="ekf-legend">
                 <span class="spec-scale"><i></i><b id="fft-range">—</b></span>
@@ -2704,6 +2721,43 @@
                 </div>
             </div>
             <div class="setup-panel">
+                <div class="panel-header">FFT FROM LOGS</div>
+                <div class="cfg-row">
+                    <label>FFT SIZE</label>
+                    <select id="logfft-n" class="cfg-select" title="Samples in each FFT. The frequency step is the log's sample rate divided by this: more points separate closer lines, but each spectrum covers a longer stretch of the log">
+                        <option value="256">256 POINTS</option>
+                        <option value="512">512 POINTS</option>
+                        <option value="1024">1024 POINTS (DEFAULT)</option>
+                        <option value="2048">2048 POINTS</option>
+                        <option value="4096">4096 POINTS</option>
+                        <option value="8192">8192 POINTS</option>
+                    </select>
+                </div>
+                <div class="cfg-row">
+                    <label>AVERAGING</label>
+                    <select id="logfft-avg" class="cfg-select" title="Welch averaging: the spectra of several windows, each overlapping the next by half, averaged into one. A steadier noise floor and clearer weak lines, from a longer stretch of the log">
+                        <option value="1">NONE (DEFAULT)</option>
+                        <option value="2">2 WINDOWS</option>
+                        <option value="4">4 WINDOWS</option>
+                        <option value="8">8 WINDOWS</option>
+                    </select>
+                </div>
+                <div class="cfg-row">
+                    <label>TIME STEP</label>
+                    <select id="logfft-step" class="cfg-select" title="A new spectrum for every step of log time: the columns of the waterfall">
+                        <option value="100">0.1 s</option>
+                        <option value="250">0.25 s (DEFAULT)</option>
+                        <option value="500">0.5 s</option>
+                        <option value="1000">1 s</option>
+                    </select>
+                </div>
+                <div class="cfg-row">
+                    <label>LOG IN REPLAY</label>
+                    <span class="cfg-val gz-list logfft-status" id="logfft-status">no .bin loaded</span>
+                </div>
+                <div class="cfg-note">For a DataFlash log (.bin) in LOG REPLAY the GCS computes the vibration spectra of the FFT bar from the IMU samples in the log: GYR / ACC at the sensor rate (LOG_BITMASK IMU_RAW, INS_RAW_LOG_OPT), the batch sampler (INS_LOG_BAT_MASK) or IMU at the loop rate, whichever is there; the FFT bar picks the stream. Frequency step = sample rate ÷ FFT size (a 2 kHz gyro: 1024 points → 1.95 Hz, 0.5 s of log). A batch is INS_LOG_BAT_CNT samples long, and the FFT never spans more. The spectrum the vehicle sends live (HPF_FFT_ENABLE = 1) is the firmware's and does not change: 256 points at 800 Hz, 3.125 Hz, every 0.25 s.</div>
+            </div>
+            <div class="setup-panel">
                 <div class="panel-header">SIYI CAMERA STREAM</div>
                 <div class="cfg-row">
                     <label>IP ADDRESS</label>
@@ -3106,26 +3160,6 @@
                         <span>RESTRICTED ZONES</span>
                     </label>
                     <button class="gcs-btn" style="margin-top:6px;" onclick="clearTrail()">CLEAR TRAIL</button>
-                </div>
-            </div>
-
-            <!-- FFT LIVE Section: IMU vibration spectrum (js/ui/FftLivePanel.js) -->
-            <div class="gcs-sidebar-section" data-section="fftlive">
-                <div class="gcs-section-header" data-collapse="fftlive">
-                    <span>FFT LIVE</span>
-                    <span class="collapse-icon">&#9660;</span>
-                </div>
-                <div class="gcs-section-body">
-                    <div class="spec-seg">
-                        <button data-fft-sensor="gyro">GYRO</button><button data-fft-sensor="accel">ACC</button>
-                    </div>
-                    <div class="fft-live-plot"></div>
-                    <div class="fft-live-unit"></div>
-                    <div class="fft-live-legend">
-                        <span class="spec-leg"><i style="background:#3987e5"></i>NOW</span>
-                        <span class="spec-leg"><i style="background:#c98500"></i>PEAK 10 s</span>
-                    </div>
-                    <div class="fft-live-readout">—</div>
                 </div>
             </div>
 

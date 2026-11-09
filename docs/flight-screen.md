@@ -22,6 +22,7 @@ goes through it element by element.
 | Inboard of the left cells | Annunciators: red warnings, amber cautions | [Annunciators](#annunciators) |
 | Inboard of the right cells | Zone flags: NO-FLY, MAX n m, ALT LIMIT, when RESTRICTED ZONES is on | [Restricted zones](#restricted-zones) |
 | Left edge | EKF STATUS tab; open, a bar with three charts of the estimator's last 20 s | [EKF status](#ekf-status) |
+| Left edge, under it | FFT tab; open, the IMU vibration spectrum now and over the last 60 s | [Vibration FFT](#vibration-fft) |
 | Left, over the HUD | Autopilot messages | [Messages and banners](#messages-and-banners) |
 | Top centre | LIDAR and ROS strips, when those features are on | [Strips](#lidar-and-ros-strips) |
 | Bottom left | Mini-map | [Mini-map](#mini-map) |
@@ -339,6 +340,35 @@ MAG, and ZUPT, GPS BYPASS, JAMMING, SPOOFING when they are set.
 | **POSITION** | **GPS − PF**: the raw GPS fix against the filtered position at the same board time, horizontal metres. **PF SPREAD**: the spread of the particle cloud. **GPS H ACC**, **GPS V ACC**: the receiver's accuracy. | The residual inside the receiver accuracy and the spread. Without GPS the residual stops, the spread grows; when GPS returns the residual jumps and settles in a few seconds. |
 | **PARTICLE FILTER** | **ESS / N**: effective sample size over the number of particles, in %. **CONFIDENCE** of the solution, in %. The dashed line at 50 % is the default resampling threshold; the ticks along the bottom are resamples. N, ESS and resamples per second above. | ESS falling with each GPS update and jumping back at each resample; confidence steady near the top. |
 | **SHARED EKF tr(P)** | Trace of the shared EKF's covariance, on a logarithmic scale. GYRO BIAS (largest axis), MAG Q (magnetometer quality, amber under 0.5) and AIDING (GPS+MAG, GPS, MAG, DEAD RECKONING) above. | Flat after convergence; it grows while an aid is missing and comes back down after. |
+
+## Vibration FFT
+
+The **FFT** tab, under EKF STATUS on the left edge, opens a bar in the same place: opening one
+closes the other. It shows the vibration spectrum of the IMU, the three axes summed; **GYRO** or
+**ACC** picks the gyros or the accelerometers for the chart and the waterfall.
+
+- **Top**: the strongest lines of the last 2 s for the gyro and the accelerometer: frequency, level,
+  and how far it stands over the local noise floor (the median of ±25 Hz around it, so the IMU
+  filter's roll-off is not taken for a line). Lines below 5 Hz are left out.
+- **SPECTRUM · NOW**: the newest spectrum, level in dB against frequency, with the highest level of
+  the last 10 s as a thin amber line (**PEAK 10 s**). Beside the legend the peak, or the level under
+  the pointer. The line over the chart says where the spectrum comes from and its resolution.
+- **WATERFALL · LAST 60 s**: frequency down the plot from 0 Hz, time to the right, colour = level on
+  a fixed −100 to 0 dB scale. With the pointer on it, the level at that frequency and time.
+
+**From the vehicle.** ArduPilot with the Hybrid-PF sends its spectrum with `HPF_FFT_ENABLE` = 1: 256
+points at 800 Hz, 3.125 to 362.5 Hz in steps of 3.125 Hz, four times a second (the messages are
+described in [FFT_SPECTRUM_PROTOCOL.md](FFT_SPECTRUM_PROTOCOL.md)). A `.tlog` replays the same.
+
+**From a `.bin` log.** In [LOG REPLAY](side-panel.md#log-replay) the GCS computes the spectra itself
+from the IMU samples in the log, with the FFT size, averaging and time step of
+[SYS CONFIG → FFT FROM LOGS](sys-config.md#fft-from-logs), up to half the log's sample rate. A menu
+over the chart picks the IMU and the stream (raw or filtered, batch, loop rate). The bar follows
+the replay cursor: it stops with ❚❚, and after a jump it shows the 60 s before the new point.
+Comparing a gyro's raw and filtered streams shows what the
+[notch filters](https://ardupilot.org/copter/docs/common-imu-notch-filtering.html) take out; the
+ArduPilot page on [measuring vibration](https://ardupilot.org/copter/docs/common-measuring-vibration.html)
+says what levels to worry about.
 
 ## Messages and banners
 

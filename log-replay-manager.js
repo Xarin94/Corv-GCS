@@ -26,6 +26,7 @@ const {
     setReplayActive
 } = require('./main-mavlink');
 const { indexBinFile, smoothLatLonTrack } = require('./log-replay-bin-parser');
+const { LogSpectrum } = require('./log-spectrum');
 
 const DEBUG = !!process.env.LOG_REPLAY_DEBUG;
 
@@ -54,6 +55,11 @@ let mainWindow = null;
 let replayParserFactory = null;
 
 let replay = null;  // active replay state (or null)
+
+// Vibration spectra computed from the IMU samples of a .bin (log-spectrum.js)
+const logSpectrum = new LogSpectrum((channel, payload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
+});
 
 function createEmptyReplay() {
     return {
@@ -381,6 +387,8 @@ function internalSeek(targetMs) {
 
     // Re-emit sticky messages so mode/home/battery are correct immediately
     replayStickyMessagesUpTo(replay.cursor);
+    // Spectra again from 60 s before the new cursor
+    if (replay.format === 'bin') logSpectrum.restart();
 
     if (DEBUG) console.log(`[replay] seek to ${targetMs}ms → cursor ${replay.cursor}`);
 
@@ -424,6 +432,7 @@ function unload() {
     if (!replay) return;
     internalPause();
     teardownTlogPipeline();
+    logSpectrum.unload();
     // Free the raw buffer reference
     replay.rawBuffer = null;
     replay.index = [];
@@ -479,6 +488,17 @@ function load(filePath) {
 
     sendState('LOADED');
     sendUiTick();
+
+    // A .bin with IMU samples: the GCS computes the spectra. A .tlog carries
+    // the vehicle's own (DEBUG_FLOAT_ARRAY), replayed like any message.
+    if (replay.format === 'bin') {
+        logSpectrum.load(parsed.imuStreams, currentLogMs);
+        const s = parsed.imuStreams || {};
+        const names = [...(s.gyro || []), ...(s.accel || [])].map(x => `${x.key} ${Math.round(x.fs)} Hz`);
+        console.log(`[replay] IMU samples for the spectrum: ${names.length ? names.join(', ') : 'none'}`);
+    } else {
+        logSpectrum.unload();
+    }
 
     return {
         success: true,
@@ -543,6 +563,14 @@ function registerIpc() {
 
     ipcMain.handle('log-replay-unload', async () => {
         unload();
+        return { success: true };
+    });
+
+    // SYS CONFIG → FFT FROM LOGS (also sent once at start-up)
+    ipcMain.handle('log-spectrum-config', async (_event, cfg) => logSpectrum.setConfig(cfg));
+    // FFT bar: which IMU stream of the log feeds the gyro or accel spectrum
+    ipcMain.handle('log-spectrum-stream', async (_event, sensor, key) => {
+        logSpectrum.selectStream(sensor, key);
         return { success: true };
     });
 }
