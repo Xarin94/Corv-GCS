@@ -174,6 +174,10 @@ contextBridge.exposeInMainWorld('mavlink', {
   sendCommand: (cmd) => ipcRenderer.invoke('mavlink-send-command', cmd),
   sendMessage: (msg) => ipcRenderer.invoke('mavlink-send-message', msg),
   setGcsMuted: (muted) => ipcRenderer.invoke('mavlink-set-gcs-muted', muted),
+  // Whole parameter list over MAVLink FTP (ArduPilot @PARAM/param.pck)
+  downloadParams: (opts) => ipcRenderer.invoke('mavlink-param-download', opts),
+  cancelFtp: () => ipcRenderer.invoke('mavlink-ftp-cancel'),
+  onFtpProgress: (callback) => ipcRenderer.on('mavlink-ftp-progress', (event, p) => callback(p)),
   onMessage: (callback) => ipcRenderer.on('mavlink-message', (event, msg) => callback(msg)),
   onConnectionState: (callback) => ipcRenderer.on('mavlink-connection-state', (event, state) => callback(state)),
   onLinkStats: (callback) => ipcRenderer.on('mavlink-link-stats', (event, stats) => callback(stats)),

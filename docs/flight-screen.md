@@ -36,7 +36,7 @@ goes through it element by element.
   minimise / maximise / close buttons slide in; the bar is also the drag handle to move the window.
 - **CORV SYSTEMS** (top left) opens the CORV Systems website in the browser.
 - **FPS** (top right of the header): frames per second the 3D view is drawing. 60 is the target (30
-  with *3D FRAME RATE: 30 FPS (ECO)* in [SYS CONFIG](sys-config.md#system-config)).
+  with *FRAME RATE: 30 FPS (ECO)* in [SYS CONFIG → 3D VIEW](sys-config.md#3d-view)).
 - **Tabs**: **FLIGHT DATA** (this page), **FLIGHT PLAN** ([mission planning](mission-planning.md)),
   **SETUP** ([vehicle setup](setup.md)), **SYS CONFIG** ([GCS settings](sys-config.md)). Leaving
   FLIGHT DATA does not stop anything: the link, logging, LiDAR and ROS keep running.
@@ -103,7 +103,7 @@ is above a height limit: a zone's ceiling, or 120 m in Europe / 400 ft in the US
 ## Satellite detail
 
 Around the aircraft the 3D view draws sharper imagery than on the rest of the terrain, up to the zoom
-chosen in **SYS CONFIG → SYSTEM CONFIG → 3D SATELLITE DETAIL**:
+chosen in **SYS CONFIG → 3D VIEW → SATELLITE DETAIL**:
 
 | Zoom | Ground pixel (mid latitudes) | |
 |------|------------------------------|---|
@@ -188,7 +188,7 @@ An aircraft not heard for 60 s disappears. Traffic is hidden in the relative nav
 positions would not be on a real map).
 
 **On / off**: **SHOW ADS-B TRAFFIC** in the [side panel](side-panel.md#gcs-options) and **ADS-B
-TRAFFIC** in [SYS CONFIG → GCS OPTIONS](sys-config.md#gcs-options) are the same switch (ticking one
+TRAFFIC** in [SYS CONFIG → AIRSPACE](sys-config.md#airspace) are the same switch (ticking one
 ticks the other), remembered between sessions. Off stops the OpenSky requests, clears the list and
 hides the table; the HUD confirms *ADS-B traffic enabled / disabled*.
 
@@ -460,7 +460,7 @@ Left to right:
 | **Heartbeat dot** | Green and pulsing while heartbeats arrive from the vehicle; red when none has arrived for a few seconds (or no link). |
 | **Link** | `DISCONNECTED`, or the link type and the data rate received (`SERIAL 4.2 kbps`, `UDP`, `TCP`, `LTE`). |
 | **Signal bars** | Five bars, green / orange / red: the radio RSSI (`RADIO_STATUS`, SiK-style radios) — the number beside them, and `R:` the remote end's RSSI — or, without a radio report, the link quality in %. On a cellular link the LTE signal in dBm. |
-| **Battery** | Voltage, a bar and the percentage — from the vehicle, or computed from the voltage range set in [SYS CONFIG → GCS OPTIONS](sys-config.md#gcs-options) when the vehicle reports none. |
+| **Battery** | Voltage, a bar and the percentage — from the vehicle, or computed from the voltage range set in [SYS CONFIG → BATTERY GAUGE](sys-config.md#battery-gauge) when the vehicle reports none. |
 | **GPS** | Fix type — colour: green RTK fixed, yellow RTK float, cyan 3D / DGPS, red below — satellites, HDOP. A fix older than 5 s shows as *No GPS*. |
 | **Timer** | Flight time: counts while armed (cyan), pauses when disarmed, adds up over the session. |
 | **Target** | Shown when a target is set: a red arrow pointing to it relative to the vehicle's heading, and the distance. See [side panel → TARGET](side-panel.md#target). |

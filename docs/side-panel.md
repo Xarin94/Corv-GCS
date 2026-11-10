@@ -50,7 +50,7 @@ folds on a click on its title (▼), so you can keep open only what you use.
 | Option | Default | |
 |--------|---------|---|
 | **MUTE GCS OUTPUT** | off | Stops **everything the GCS sends** to the vehicle: heartbeats, commands, mode changes, parameter writes, joystick RC override, RTK corrections, mission uploads. The GCS keeps receiving and displaying. For listening in on a vehicle flown by another ground station without interfering, or for replaying a link. The HUD says *GCS output MUTED — no messages will be sent*. **It is remembered between sessions**: if buttons seem to do nothing, check here first. Note that with the output muted the vehicle sees no GCS heartbeat, which can trigger its GCS failsafe if one is configured. |
-| **SHOW ADS-B TRAFFIC** | on | Manned-aircraft traffic in the 3D view, on the mini-map and in the traffic table. The same switch as SYS CONFIG → GCS OPTIONS → ADS-B TRAFFIC. See [ADS-B traffic](flight-screen.md#ads-b-traffic). |
+| **SHOW ADS-B TRAFFIC** | on | Manned-aircraft traffic in the 3D view, on the mini-map and in the traffic table. The same switch as SYS CONFIG → AIRSPACE → ADS-B TRAFFIC. See [ADS-B traffic](flight-screen.md#ads-b-traffic). |
 | **SHOW ROTOR LOAD** | on | The rotor load schematic at the bottom right. The same switch as SYS CONFIG → ROTOR LOAD → SCHEMATIC. See [rotor load](sys-config.md#rotor-load). |
 | **LTE OVERLAY** | on | The LTE cell rows of the position panel, on the cellular link. The cell sites on the maps have their own switch in CELLULAR LINK. See [LTE cells](flight-screen.md#lte-cells). |
 | **RESTRICTED ZONES** | off | UAS geographical zones within 50 km of the vehicle and the mission on the mini-map, the FLIGHT PLAN map and the 3D terrain, with flags beside the altitude cells, TERR ALT flashing above a height limit (120 m in Europe, 400 ft in the US) and an alarm on arming inside a zone. The same switch as SYS CONFIG → UAS GEO ZONES. **Remembered between sessions.** See [restricted zones](flight-screen.md#restricted-zones). |
@@ -95,7 +95,7 @@ Every text message the autopilot sent in the session (`STATUSTEXT`), oldest firs
 newest: errors prefixed `[ERR]`, warnings `[WRN]`. The same messages appear briefly over the HUD; here
 they stay, so a pre-arm failure or a calibration result can be read again. Select and copy the text
 to paste it elsewhere. The full log, including the GCS's own events, is also in the
-[debug log](sys-config.md#system-config).
+[debug log](sys-config.md#application).
 
 ## LOG REPLAY
 

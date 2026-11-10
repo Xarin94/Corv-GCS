@@ -540,6 +540,32 @@ export async function requestAllParameters() {
 }
 
 /**
+ * Whole parameter list over MAVLink FTP: ArduPilot's packed parameter file
+ * (@PARAM/param.pck), a few dozen 239-byte packets instead of one PARAM_VALUE
+ * per parameter. The main process runs the transfer (mavlink-ftp.js) and
+ * returns every parameter decoded. Rejects when the vehicle has no FTP
+ * (e.code 'NOREPLY'), refuses the file ('NAK') or the transfer stalls
+ * ('TIMEOUT'): the caller then falls back to requestAllParameters().
+ *
+ * @param {object} [opts]
+ * @param {number} [opts.timeoutMs] - silence before a request is repeated
+ * @returns {Promise<{params:Array<{name:string,value:number,type:number}>, total:number, bytes:number, ms:number}>}
+ */
+export async function downloadAllParametersFtp(opts = {}) {
+    if (!window.mavlink || !window.mavlink.downloadParams) throw new Error('FTP download not available');
+    return await window.mavlink.downloadParams({
+        targetSystem: STATE.systemId,
+        targetComponent: STATE.componentId,
+        ...opts
+    });
+}
+
+/** Progress of the FTP parameter download ({phase, bytes, count, total}). */
+export function onFtpProgress(cb) {
+    if (window.mavlink && window.mavlink.onFtpProgress) window.mavlink.onFtpProgress(cb);
+}
+
+/**
  * Request a single parameter by name (fire and forget)
  */
 export async function requestParameter(paramId) {

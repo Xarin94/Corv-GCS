@@ -1583,3 +1583,229 @@ body.has-tabs #ui-layer {
     cursor: pointer;
 }
 .setup-panel .gz-remove:hover { color: #ff6a5a; border-color: #ff6a5a; }
+
+/* ============= SYS CONFIG layout =============
+   Three fixed columns, one theme each, so the panels stack in a known order
+   and their edges line up (a wrapping flex row left ragged gaps as soon as
+   two panels differed in height). Inside a panel every row is the same grid:
+   label on the left, control on the right. Scoped to the tab so the SETUP
+   pages, which share .setup-panel, are untouched. */
+.syscfg-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 360px);
+    gap: 24px;
+    padding: 24px 24px 48px;
+    justify-content: center;
+    align-items: start;
+    width: 100%;
+    box-sizing: border-box;
+}
+@media (max-width: 1220px) {
+    .syscfg-grid { grid-template-columns: repeat(2, 360px); }
+}
+@media (max-width: 820px) {
+    .syscfg-grid { grid-template-columns: minmax(0, 360px); }
+}
+.syscfg-col {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-width: 0;
+}
+.syscfg-col-title {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 2.5px;
+    color: var(--text-dim);
+    padding: 0 2px;
+    margin-bottom: -8px;
+}
+
+#tab-sys-config .setup-panel {
+    width: auto;
+    box-sizing: border-box;
+    padding: 14px 16px 8px;
+}
+#tab-sys-config .setup-panel .panel-header {
+    margin-bottom: 12px;
+}
+
+/* A caption between groups of rows inside one panel */
+#tab-sys-config .cfg-sub {
+    font-family: var(--font-ui);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1.8px;
+    color: var(--text-dim);
+    opacity: 0.8;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 8px;
+    margin: 4px 0 8px;
+}
+
+/* The row grid */
+#tab-sys-config .cfg-row {
+    display: grid;
+    grid-template-columns: 132px minmax(0, 1fr);
+    column-gap: 10px;
+    align-items: center;
+    min-height: 26px;
+    margin: 0 0 8px;
+}
+#tab-sys-config .cfg-row.stack {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+}
+#tab-sys-config .cfg-row.full {
+    grid-template-columns: minmax(0, 1fr);
+}
+#tab-sys-config .cfg-row > label:first-child {
+    display: block;
+    margin: 0;
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    line-height: 1.25;
+    color: var(--text-dim);
+}
+
+/* Controls: everything starts on the same column edge */
+#tab-sys-config .cfg-row .cfg-select {
+    width: 100%;
+    padding: 4px 6px;
+    font-size: 11px;
+}
+#tab-sys-config .cfg-row .failsafe-input {
+    max-width: none;
+    width: 100%;
+    box-sizing: border-box;
+    height: 26px;
+    padding: 0 8px;
+    font-size: 11px;
+}
+#tab-sys-config .cfg-row input[type="number"].failsafe-input {
+    width: 96px;
+}
+#tab-sys-config .cfg-row .cfg-val {
+    font-size: 11px;
+    line-height: 1.4;
+    word-break: break-word;
+}
+#tab-sys-config .cfg-row .cfg-val-sm { font-size: 10px; color: var(--text-muted-bright); }
+#tab-sys-config .cfg-row .cfg-val.gz-list { text-align: left; }
+#tab-sys-config .cfg-row .cfg-val.logfft-status { font-size: 11px; }
+#tab-sys-config .cfg-ctl {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+#tab-sys-config .status-msg {
+    margin: 0;
+    text-align: left;
+    font-size: 10px;
+    line-height: 1.4;
+}
+
+/* Checkbox + short text, on the control side of the row */
+#tab-sys-config .cfg-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 26px;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    color: var(--text-main);
+    cursor: pointer;
+}
+#tab-sys-config .cfg-check input[type="checkbox"] {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: var(--accent-cyan);
+}
+#tab-sys-config .cfg-check span { line-height: 1.3; }
+#tab-sys-config .cfg-checks {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* Sliders: track and the live value side by side */
+#tab-sys-config .cfg-slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+#tab-sys-config .cfg-slider-wrap input[type="range"] {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    accent-color: var(--accent-cyan);
+}
+#tab-sys-config .cfg-slider-val {
+    flex: none;
+    min-width: 38px;
+    text-align: right;
+    font-family: var(--font-data);
+    font-size: 11px;
+    color: var(--text-main);
+}
+
+/* Two numbers on one row (lat N · S, lon W · E) */
+#tab-sys-config .cfg-pair {
+    display: grid;
+    grid-template-columns: 12px minmax(0, 1fr) 12px minmax(0, 1fr);
+    align-items: center;
+    column-gap: 6px;
+}
+#tab-sys-config .cfg-pair .failsafe-input,
+#tab-sys-config .cfg-pair input[type="number"].failsafe-input { width: 100%; }
+#tab-sys-config .cfg-pair-k {
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-align: center;
+}
+
+/* HUD cells: field, multiplier, unit on one line under the cell name */
+#tab-sys-config .hud-cell-ctl {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 52px 56px;
+    column-gap: 6px;
+    align-items: center;
+}
+#tab-sys-config .hud-cell-ctl .failsafe-input { width: 100%; text-align: center; padding: 0 4px; }
+
+/* Buttons: compact, one or two per row */
+#tab-sys-config .cfg-row .gcs-btn,
+#tab-sys-config .cfg-row .file-upload-btn {
+    width: 100%;
+    padding: 5px 8px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    border-radius: 3px;
+}
+#tab-sys-config .cfg-row .file-upload-btn { font-family: var(--font-ui); font-weight: 600; }
+#tab-sys-config .cfg-btns {
+    display: flex;
+    gap: 8px;
+    min-width: 0;
+}
+#tab-sys-config .cfg-btns .gcs-btn { flex: 1; min-width: 0; }
+#tab-sys-config .cfg-row.cfg-btns { display: flex; }
+
+/* Notes: full width, under the rows they explain (or at the top of a panel) */
+#tab-sys-config .cfg-note {
+    margin: 0 0 8px;
+    font-size: 10px;
+    line-height: 1.5;
+}
+#tab-sys-config .cfg-note:empty { display: none; }
+#tab-sys-config .cfg-note-top { margin-bottom: 10px; }
+#tab-sys-config .cfg-row progress { width: 100%; }

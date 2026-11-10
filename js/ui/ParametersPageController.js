@@ -8,7 +8,7 @@
  */
 
 import { STATE } from '../core/state.js';
-import { setParameter, fetchParameter } from '../mavlink/CommandSender.js';
+import { setParameter, fetchParameter, requestAllParameters, downloadAllParametersFtp, onFtpProgress } from '../mavlink/CommandSender.js';
 import { onMessage } from '../mavlink/MAVLinkManager.js';
 import { getVehicleTypeName } from '../mavlink/MAVLinkStateMapper.js';
 import {
@@ -279,6 +279,76 @@ export function refreshParametersPanel() {
  */
 export function beginFullRead() {
     fullReadActive = true;
+}
+
+/**
+ * Every parameter at once, as decoded from the FTP parameter file. Replaces
+ * what was loaded: the file is the vehicle's whole list.
+ */
+export function ingestParameterList(params, total) {
+    STATE.parameters.clear();
+    params.forEach((p, i) => {
+        STATE.parameters.set(p.name, { value: p.value, type: p.type, index: i });
+    });
+    learnNames(params.map(p => p.name));
+    STATE.parameterCount = total || params.length;
+    STATE.parametersReceived = STATE.parameters.size;
+    fullReadActive = false;
+    catalogNames = getCatalog(getVehicleTypeName(STATE.vehicleType), STATE.parameters);
+    if (catalogVisibleOnScreen()) renderCatalogList();
+    notifyParamsChanged();
+}
+
+// The FTP progress listener of the READ ALL in progress (one IPC subscription,
+// registered once, handed to whichever read is running).
+let ftpProgressListener = null;
+let ftpProgressBound = false;
+
+/**
+ * READ ALL: the whole list over MAVLink FTP when the vehicle has it (seconds),
+ * otherwise the PARAM_REQUEST_LIST stream (one PARAM_VALUE per parameter,
+ * minutes on a slow radio). The single PARAM_REQUEST_READs of the catalog are
+ * untouched either way.
+ *
+ * @param {object} [opts]
+ * @param {function} [opts.onProgress] - ({count, total, text}) while it runs
+ * @returns {Promise<{method:'ftp'|'stream', count?:number}>}
+ */
+export async function readAllParameters(opts = {}) {
+    const report = (p) => { if (typeof opts.onProgress === 'function') { try { opts.onProgress(p); } catch (e) { /* ignore */ } } };
+    const isMavlink = String(STATE.connectionType || '').startsWith('mavlink');
+    const canFtp = isMavlink && window.mavlink && typeof window.mavlink.downloadParams === 'function';
+
+    if (canFtp) {
+        if (!ftpProgressBound) {
+            ftpProgressBound = true;
+            onFtpProgress((p) => { if (ftpProgressListener) ftpProgressListener(p); });
+        }
+        report({ count: 0, total: 0, text: 'FTP · opening…' });
+        ftpProgressListener = (p) => {
+            if (p.phase !== 'transfer') return;
+            const kb = (p.bytes / 1024).toFixed(1);
+            report({ count: p.count, total: p.total, text: p.total ? `${p.count}/${p.total} · FTP ${kb} kB` : `FTP ${kb} kB` });
+        };
+        try {
+            const res = await downloadAllParametersFtp();
+            ingestParameterList(res.params, res.total);
+            report({ count: res.total, total: res.total, text: `${res.total}/${res.total} · FTP ${(res.ms / 1000).toFixed(1)} s` });
+            return { method: 'ftp', count: res.total };
+        } catch (e) {
+            // No FTP on this firmware, a refused file or a dead transfer: the
+            // old way still works everywhere.
+            console.warn(`[params] FTP download failed (${e.code || 'ERROR'}): ${e.message} — reading one by one`);
+            if (e.code === 'CANCELLED') throw e;
+            report({ count: 0, total: 0, text: 'no FTP · one by one…' });
+        } finally {
+            ftpProgressListener = null;
+        }
+    }
+
+    beginFullRead();
+    await requestAllParameters();
+    return { method: 'stream' };
 }
 
 export function isFullReadActive() {

@@ -63,7 +63,7 @@ installation (in the per-user data folder when the installation folder is read-o
 network you can:
 
 - put your own `.hgt` files in `topography/` inside the installation folder, or pick a folder in
-  **SYS CONFIG → SYSTEM CONFIG → TERRAIN (HGT FOLDER)** — from
+  **SYS CONFIG → 3D VIEW → TERRAIN (HGT FOLDER)** — from
   [OpenTopography](https://portal.opentopography.org/raster?opentopoID=OTSRTM.082015.4326.1) or
   [USGS EarthExplorer](https://earthexplorer.usgs.gov/);
 - download an area ahead of time in **SYS CONFIG → OFFLINE DATA DOWNLOAD**: a latitude/longitude

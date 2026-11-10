@@ -33,7 +33,7 @@ vehicle does with it.
 | [Radio link planning](radio-link.md) | Coverage over the terrain, Fresnel zone, the link profile along the route |
 | [3D view, water and ROVs](3D-NAVIGATION.md) | The mission in 3D, the low-altitude grid, lakes and seas, ROVs, navigation without GPS |
 | [Vehicle setup (SETUP)](setup.md) | Every SETUP page field by field: connection, cellular link, telemetry forwarding, RTK, calibrations, joystick, flight modes, failsafes, servos and relays, tuning, parameters, CORV setup |
-| [GCS settings (SYS CONFIG)](sys-config.md) | Every SYS CONFIG panel: flight stack, navigation, language, terrain, 3D model, frame rate, satellite detail, debug log, ADS-B, ground clamp, battery, rotor load, camera stream, offline download, HUD fields, stream rates |
+| [GCS settings (SYS CONFIG)](sys-config.md) | Every SYS CONFIG panel: flight stack, navigation, rotor load, stream rates, 3D view (model, terrain, frame rate, satellite detail), HUD fields, camera stream, airspace (ADS-B, geo zones), battery gauge, offline download, FFT from logs, language and debug log |
 | [Simulator](simulator.md) | ArduPilot SITL with one click, the survey boat and the ROV on Lake Garda, connecting to your own simulator |
 | [LiDAR point cloud](LIDAR.md) | Livox Mid-360 mapping: network, mounting, telemetry lag, saving `.ply` |
 | [ROS surface](ROS.md) | LiDAR, echo sounder and sonar from ROS (rosbridge): how to set it up step by step, every setting, the strip, troubleshooting, worked examples (aerial LiDAR, SLAM map, echo sounder, survey sonar, ROV in a cave) |
@@ -50,7 +50,7 @@ vehicle does with it.
 | know what a red or amber flag means | [Annunciators](flight-screen.md#annunciators) |
 | fly with no internet | [Offline data download](sys-config.md#offline-data-download) |
 | understand why a button does nothing | [MUTE GCS OUTPUT](side-panel.md#gcs-options) may be on; the flight buttons need a vehicle connected |
-| report a problem | [Debug log → SAVE COPY…](sys-config.md#system-config), and the issues page below |
+| report a problem | [Debug log → SAVE COPY…](sys-config.md#application), and the issues page below |
 
 ## Where the ArduPilot documentation fits
 

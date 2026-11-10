@@ -7,13 +7,13 @@
 import { STATE } from '../core/state.js';
 import { t } from '../core/i18n.js';
 import { connect, disconnect, getAvailablePorts } from '../mavlink/ConnectionManager.js';
-import { setParameter, requestAllParameters, requestParameter, requestDataStream, sendServoTest, sendRelayToggle } from '../mavlink/CommandSender.js';
+import { setParameter, requestParameter, requestDataStream, sendServoTest, sendRelayToggle } from '../mavlink/CommandSender.js';
 import { initCalibration } from './CalibrationController.js';
 import { onMessage } from '../mavlink/MAVLinkManager.js';
 import { getVehicleTypeName } from '../mavlink/MAVLinkStateMapper.js';
 import {
     formatParamValue, refreshParametersPanel, setParamsTableRenderer,
-    beginFullRead, isFullReadActive
+    isFullReadActive, readAllParameters
 } from './ParametersPageController.js';
 import { initJoystick } from '../joystick/JoystickUI.js';
 import { getTerrainElevationAsync, resetAutoDownloadFailures } from '../terrain/TerrainManager.js';
@@ -849,14 +849,29 @@ function initConfigTuningTab() {
     // is ours, so it redraws through this.
     setParamsTableRenderer(renderCfgParamsTable);
 
-    // Config params - READ ALL
+    // Config params - READ ALL: MAVLink FTP first, PARAM_REQUEST_LIST as the fallback
     const cfgReadBtn = document.getElementById('cfg-params-read');
     if (cfgReadBtn) {
         cfgReadBtn.addEventListener('click', async () => {
             const progressEl = document.getElementById('cfg-params-progress');
+            const fillEl = document.getElementById('cfg-params-fill');
+            const countEl = document.getElementById('cfg-params-count');
             if (progressEl) progressEl.style.display = 'flex';
-            beginFullRead();
-            await requestAllParameters();
+            if (fillEl) fillEl.style.width = '0%';
+            cfgReadBtn.disabled = true;
+            try {
+                const res = await readAllParameters({
+                    onProgress: (p) => {
+                        if (fillEl && p.total > 0) fillEl.style.width = Math.min(100, p.count / p.total * 100).toFixed(0) + '%';
+                        if (countEl && p.text) countEl.textContent = p.text;
+                    }
+                });
+                if (res.method === 'ftp') renderCfgParamsTable();
+            } catch (e) {
+                if (countEl) countEl.textContent = e.message;
+            } finally {
+                cfgReadBtn.disabled = false;
+            }
         });
     }
 

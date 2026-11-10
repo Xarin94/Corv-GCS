@@ -18,6 +18,7 @@ let MavLinkPacketSplitter, MavLinkPacketParser, MavLinkProtocolV2, send, minimal
 let createSplitter; // splitter that also knows our own messages (corv-mavlink.js)
 let corvMavlink = null;
 const { LinkDemux } = require('./link-demux');
+const { MavFtpClient, decodeParamPack } = require('./mavlink-ftp');
 let messageRegistry = null; // Maps msgId -> message class for deserialization
 
 function ensureMAVLinkLoaded() {
@@ -125,6 +126,15 @@ function stopLinkStats() {
 
 // MAVLink protocol instance for sending (initialized lazily)
 let protocol = null;
+
+// MAVLink FTP client (mavlink-ftp.js): one per process, fed by handlePacket()
+// with every FILE_TRANSFER_PROTOCOL received. Only used for the parameter file.
+const ftpClient = new MavFtpClient({
+    send: (payload, targetSystem, targetComponent) => sendMAVLinkMessage({
+        type: 'FILE_TRANSFER_PROTOCOL', targetSystem, targetComponent, payload: Array.from(payload)
+    }),
+    log: (line) => console.log(line)
+});
 
 // ── TLOG recording state ──────────────────────────────────────────────────────
 let tlogStream = null;
@@ -667,6 +677,84 @@ function initMAVLinkHandlers(win) {
         console.log('[mavlink] GCS output', gcsOutputMuted ? 'MUTED' : 'UNMUTED');
         return { muted: gcsOutputMuted };
     });
+
+    // Whole parameter list in one go: ArduPilot's packed parameter file over
+    // MAVLink FTP. Resolves with every parameter decoded; rejects (code
+    // NOREPLY / NAK / TIMEOUT / CANCELLED) when the vehicle has no FTP or the
+    // transfer dies, and the renderer then falls back to PARAM_REQUEST_LIST.
+    ipcMain.handle('mavlink-param-download', async (event, opts) => {
+        if (!activeConnection) throw new Error('Not connected');
+        const o = opts || {};
+        const t0 = Date.now();
+        const path = '@PARAM/param.pck';
+        let lastProgress = 0;
+        console.log(`[ftp] parameter download requested (sys ${o.targetSystem || 1})`);
+        const sendProgress = (p, final = false) => {
+            const now = Date.now();
+            if (!final && now - lastProgress < 150) return;
+            lastProgress = now;
+            if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('mavlink-ftp-progress', p);
+        };
+        let received = null;
+        try {
+            const buf = await ftpClient.readFile(path, {
+                targetSystem: o.targetSystem || 1,
+                targetComponent: o.targetComponent || 1,
+                timeoutMs: o.timeoutMs || 3000,
+                retries: o.retries ?? 4,
+                onProgress: (p) => {
+                    received = p;
+                    // Count the parameters decodable so far: the progress the operator sees
+                    const partial = decodeParamPack(ftpPartialBuffer(ftpClient));
+                    sendProgress({ phase: 'transfer', bytes: p.bytes, count: partial.count, total: partial.total });
+                }
+            });
+            const dec = decodeParamPack(buf);
+            if (!dec.ok || !dec.complete) {
+                const err = new Error(`parameter file not decodable: ${dec.error || `${dec.count}/${dec.total} entries`}`);
+                err.code = 'DECODE';
+                throw err;
+            }
+            const ms = Date.now() - t0;
+            sendProgress({ phase: 'done', bytes: buf.length, count: dec.count, total: dec.total, ms }, true);
+            console.log(`[ftp] parameters: ${dec.count} in ${buf.length} B, ${ms} ms`);
+            return { params: dec.params, total: dec.total, bytes: buf.length, ms };
+        } catch (e) {
+            console.warn(`[ftp] parameter download failed: ${e.message}${received ? ` (after ${received.bytes} B)` : ''}`);
+            sendProgress({ phase: 'failed', error: e.message, code: e.code || 'ERROR' }, true);
+            const err = new Error(e.message);
+            err.code = e.code || 'ERROR';
+            throw err;
+        }
+    });
+
+    ipcMain.handle('mavlink-ftp-cancel', async () => {
+        ftpClient.cancel('cancelled by the operator');
+        return { ok: true };
+    });
+
+    // Every FILE_TRANSFER_PROTOCOL received goes to the FTP client
+    registerDecodedMessageCallback((msgId, data) => {
+        if (msgId === 110 && data && data.payload) ftpClient.onPacket(data.payload);
+    });
+}
+
+/**
+ * The bytes of the transfer in progress, contiguous from the start, for the
+ * progress count (the decoder stops at the first byte missing).
+ */
+function ftpPartialBuffer(client) {
+    const t = client._active;
+    if (!t) return Buffer.alloc(0);
+    const parts = [];
+    let pos = 0;
+    for (;;) {
+        const c = t.chunks.get(pos);
+        if (!c) break;
+        parts.push(c);
+        pos += c.length;
+    }
+    return Buffer.concat(parts);
 }
 
 /**
@@ -856,6 +944,18 @@ async function sendMAVLinkMessage(msg) {
             mavMsg = new common.ParamRequestList();
             mavMsg.targetSystem = msg.targetSystem || 1;
             mavMsg.targetComponent = msg.targetComponent || 1;
+            break;
+        }
+        case 'FILE_TRANSFER_PROTOCOL': {
+            mavMsg = new common.FileTransferProtocol();
+            mavMsg.targetNetwork = 0;
+            mavMsg.targetSystem = msg.targetSystem || 1;
+            mavMsg.targetComponent = msg.targetComponent || 1;
+            // Always the full 251 bytes: the firmware reads fixed offsets in it
+            const payload = new Array(251).fill(0);
+            const src = msg.payload || [];
+            for (let i = 0; i < Math.min(251, src.length); i++) payload[i] = src[i] & 0xFF;
+            mavMsg.payload = payload;
             break;
         }
         case 'PARAM_REQUEST_READ': {
@@ -1077,6 +1177,7 @@ async function disconnectCurrent() {
     stopHeartbeat();
     stopLinkStats();
     if (!activeConnection) return;
+    ftpClient.cancel('link closed');
 
     try {
         if (activeConnection.type === 'serial') {

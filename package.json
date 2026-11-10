@@ -18,6 +18,7 @@
     "test:ekf": "node scripts/test-ekf-monitor.js",
     "test:geozones": "node scripts/test-geozones.js",
     "test:logspectrum": "node scripts/test-log-spectrum.js",
+    "test:ftp": "node scripts/test-mavlink-ftp.js",
     "measure:runtime": "node scripts/measure-runtime.js",
     "build": "electron-builder --win --linux",
     "build:win": "electron-builder --win",

@@ -296,7 +296,7 @@ long-range radio a full read is thousands of packets and several minutes.
 
 | Control | |
 |---------|---|
-| **READ ALL** | Loads the whole list (progress bar and count beside it). |
+| **READ ALL** | Loads the whole list. On ArduPilot it comes as one file over MAVLink FTP (`@PARAM/param.pck`, a few dozen packets, seconds even on a telemetry radio); the counter beside the bar says *FTP* and the time it took. A vehicle that does not answer FTP is read the old way, one PARAM_VALUE per parameter (*no FTP · one by one…*, minutes on a slow link). |
 | **WRITE CHANGED** | Sends every value you edited (an edited value gets an orange border) and reports how many were written. |
 | Filter box | Filters the loaded parameters by name. |
 | **SAVE .PARAM** | Saves the loaded list to a Mission Planner-compatible `.param` file (`NAME,VALUE` per line) — a backup before you change anything. |

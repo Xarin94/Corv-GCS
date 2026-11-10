@@ -20,7 +20,7 @@ const TOP_MSGS_EVERY = 3;              // snapshots between "top messages" lines
 // Sent at a rate where one line each would bury everything else: counted only.
 const TX_COUNT_ONLY = new Set(['RC_CHANNELS_OVERRIDE', 'TERRAIN_DATA', 'HEARTBEAT', 'SET_POSITION_TARGET_GLOBAL_INT']);
 // Sent in bursts (transfers): first line and then at most one per TX_BURST_MS.
-const TX_BURST = new Set(['MISSION_ITEM_INT', 'PARAM_REQUEST_READ', 'MISSION_REQUEST_INT']);
+const TX_BURST = new Set(['MISSION_ITEM_INT', 'PARAM_REQUEST_READ', 'MISSION_REQUEST_INT', 'FILE_TRANSFER_PROTOCOL']);
 const TX_BURST_MS = 2000;
 // Asked again and again (home polling, stream setup): one line per POLLED_LOG_MS
 const POLLED_CMDS = new Set([511, 512]);   // SET_MESSAGE_INTERVAL, REQUEST_MESSAGE

@@ -2459,467 +2459,529 @@
     </div>
 
     <!-- ==================== TAB CONTENT: SYS CONFIG ==================== -->
+    <!-- Three fixed columns, one theme each (vehicle & link · display · data &
+         tools), so the panels stack in a known order and their edges line up.
+         Rows are a grid: label on the left, control on the right (.cfg-row);
+         .stack puts the control under the label for wide selects, .full spans
+         the row (buttons, notes). See css/tabs.css "SYS CONFIG layout". -->
     <div id="tab-sys-config" class="tab-content">
-        <div class="tab-panel-center">
-            <div class="setup-panel">
-                <div class="panel-header">FLIGHT STACK</div>
-                <div class="cfg-row">
-                    <label>ENVIRONMENT</label>
-                    <select id="syscfg-platform" class="cfg-select" title="Which firmware this GCS is set up for: it suggests the link protocol and decides which mission features can be flown">
-                        <option value="ardupilot">ArduPilot &middot; Copter / Plane / Rover</option>
-                        <option value="inav">INAV &middot; waypoint missions over MSP</option>
-                        <option value="betaflight">Betaflight &middot; acro, no navigation</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
-                    <label>SUGGESTED LINK</label>
-                    <span class="cfg-val" id="syscfg-platform-link">--</span>
-                </div>
-                <div class="cfg-note" id="syscfg-platform-hint"></div>
-            </div>
-            <div class="setup-panel">
-                <div class="panel-header">NAVIGATION</div>
-                <div class="cfg-row">
-                    <label>POSITION</label>
-                    <select id="syscfg-nav-position" class="cfg-select" title="Relative: for a vehicle that has never had a GPS (a ROV, a flight with no GNSS). Position from the vehicle's local frame when it sends one, otherwise dead-reckoned here; no map or terrain, a plane at zero">
-                        <option value="absolute">GPS &middot; absolute, map and terrain</option>
-                        <option value="relative">Relative &middot; no GPS, plane at zero</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
-                    <label>VELOCITY SOURCE</label>
-                    <select id="syscfg-nav-vel" class="cfg-select" title="What the GCS dead-reckons on when the vehicle sends no local position of its own. Auto: a fixed wing's airspeed along the heading, else the EKF velocity, else ground speed along the heading">
-                        <option value="auto">Auto</option>
-                        <option value="air">Airspeed + heading</option>
-                        <option value="ground">Ground speed + heading</option>
-                        <option value="ekf">EKF velocity</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
-                    <label>WATER (DEPTH SENSOR)</label>
-                    <select id="syscfg-nav-water" class="cfg-select" title="Density used to turn a sub's pressure reading into depth in the relative mode">
-                        <option value="fresh">Fresh water</option>
-                        <option value="salt">Sea water</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
-                    <label>ESTIMATE</label>
-                    <span class="cfg-val" id="syscfg-nav-status">--</span>
-                    <button id="syscfg-nav-reset" class="file-upload-btn" type="button" title="Start the relative position and the dead-reckoned track again from zero">RESET</button>
-                </div>
-            </div>
-            <div class="setup-panel">
-                <div class="panel-header">SYSTEM CONFIG</div>
-                <div class="cfg-row">
-                    <label>LANGUAGE</label>
-                    <select id="lang-select" class="cfg-select" onchange="setLanguage(this.value)">
-                        <option value="en">English</option>
-                        <option value="zh">中文 (Chinese)</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
-                    <label>ALTITUDE OFFSET (M)</label>
-                    <input type="text" inputmode="numeric" id="inp-offset" value="0" onchange="updateOffset(this.value)">
-                </div>
-                <div class="cfg-row">
-                    <label>TERRAIN (HGT FOLDER)</label>
-                    <label for="hgt-input" class="file-upload-btn">SELECT HGT FOLDER</label>
-                    <input type="file" id="hgt-input" class="hidden-input" webkitdirectory directory multiple>
-                    <div id="status-msg" class="status-msg">NO DATA</div>
-                </div>
-                <div class="cfg-row">
-                    <label>3D MODEL</label>
-                    <select id="model-select" class="cfg-select">
-                        <option value="">Loading...</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
-                    <label>MODEL SCALE: <span id="scale-display">1.0</span></label>
-                    <input type="range" id="scale-slider" class="cfg-slider" min="0.1" max="5" value="1" step="0.1">
-                </div>
-                <div class="cfg-row">
-                    <label>TIME OF DAY (DEBUG): <span id="time-display">12:00</span></label>
-                    <input type="range" id="time-slider" class="cfg-slider" min="0" max="1440" value="720" step="1">
-                </div>
-                <div class="cfg-row" id="map-brightness-row" style="display:none;">
-                    <label>MAP BRIGHTNESS (STATIC): <span id="map-brightness-display">0.85</span></label>
-                    <input type="range" id="map-brightness-slider" class="cfg-slider" min="0.3" max="1.6" value="0.85" step="0.01">
-                </div>
-                <div class="cfg-row">
-                    <label>MOTION SMOOTHING: <span id="att-smooth-display">0.15</span></label>
-                    <input type="range" id="att-smooth-slider" class="cfg-slider" min="0" max="0.5" value="0.15" step="0.01">
-                </div>
-                <div class="cfg-row">
-                    <label>3D FRAME RATE</label>
-                    <select id="render-fps-select" class="cfg-select" title="30 FPS halves the rendering and compositing work — use it on battery">
-                        <option value="60">60 FPS</option>
-                        <option value="30">30 FPS (ECO)</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
-                    <label>3D RESOLUTION</label>
-                    <select id="render-quality-select" class="cfg-select" title="Reduce 3D rendering resolution to save GPU work. HUD and text keep their display resolution">
-                        <option value="native">NATIVE</option>
-                        <option value="balanced">BALANCED (DEFAULT)</option>
-                        <option value="eco">ECO</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
-                    <label>3D SATELLITE DETAIL (ZOOM)</label>
-                    <select id="sat-detail-select" class="cfg-select" title="Sharpest satellite imagery drawn around the aircraft in the 3D view (resolution at mid latitudes). Each step doubles the detail, and the tiles downloaded when flying low">
-                        <option value="16">16 · 1.6 m (OFF)</option>
-                        <option value="17">17 · 0.8 m</option>
-                        <option value="18">18 · 0.4 m (DEFAULT)</option>
-                        <option value="19">19 · 0.2 m</option>
-                        <option value="20">20 · 0.1 m (MAX)</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
-                    <label>3D SATELLITE RADIUS</label>
-                    <select id="satellite-radius-select" class="cfg-select" title="How far around the aircraft the 3D terrain gets satellite imagery; beyond it the terrain is coloured by height. A wider radius downloads more tiles and draws more">
-                        <option value="5000">5 KM</option>
-                        <option value="10000">10 KM (DEFAULT)</option>
-                        <option value="15000">15 KM</option>
-                        <option value="20000">20 KM</option>
-                        <option value="30000">30 KM</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
-                    <label>3D TERRAIN RADIUS</label>
-                    <select id="terrain-radius-select" class="cfg-select" title="How far around the aircraft the 3D terrain is built. The haze follows it: a farther edge, thinner haze. A wider radius loads more elevation data and draws more">
-                        <option value="35000">35 KM (DEFAULT)</option>
-                        <option value="50000">50 KM</option>
-                        <option value="70000">70 KM</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
-                    <label>DEVTOOLS</label>
-                    <button id="btn-devtools" class="file-upload-btn" type="button" onclick="openDevTools()">OPEN DEVTOOLS</button>
-                </div>
-                <div class="cfg-row">
-                    <label>DEBUG LOG (LAST 5 MIN)</label>
-                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                        <button id="btn-debuglog-save" class="file-upload-btn" type="button" onclick="saveDebugLog()" title="One file with the last 5 minutes of this session and of the previous one: send it to support">SAVE COPY…</button>
-                        <button id="btn-debuglog-reveal" class="file-upload-btn" type="button" onclick="revealDebugLog()" title="Show the debug log file, rewritten every few seconds">SHOW FILE</button>
+        <div class="syscfg-grid">
+
+            <!-- ───────────── COLUMN 1 · VEHICLE & LINK ───────────── -->
+            <div class="syscfg-col">
+                <div class="syscfg-col-title">VEHICLE &amp; LINK</div>
+
+                <div class="setup-panel">
+                    <div class="panel-header">FLIGHT STACK</div>
+                    <div class="cfg-row stack">
+                        <label>ENVIRONMENT</label>
+                        <select id="syscfg-platform" class="cfg-select" title="Which firmware this GCS is set up for: it suggests the link protocol and decides which mission features can be flown">
+                            <option value="ardupilot">ArduPilot &middot; Copter / Plane / Rover</option>
+                            <option value="inav">INAV &middot; waypoint missions over MSP</option>
+                            <option value="betaflight">Betaflight &middot; acro, no navigation</option>
+                        </select>
                     </div>
-                    <div id="debuglog-status" class="status-msg"></div>
+                    <div class="cfg-row">
+                        <label>SUGGESTED LINK</label>
+                        <span class="cfg-val" id="syscfg-platform-link">--</span>
+                    </div>
+                    <div class="cfg-note" id="syscfg-platform-hint"></div>
                 </div>
-            </div>
-            <div class="setup-panel">
-                <div class="panel-header">GCS OPTIONS</div>
-                <div class="cfg-row">
-                    <label>ADS-B TRAFFIC</label>
-                    <label style="display:flex;align-items:center;gap:6px;">
-                        <input type="checkbox" id="syscfg-adsb-enable" checked onchange="toggleADSB(this.checked)">
-                        <span>Show ADS-B traffic overlay</span>
-                    </label>
-                </div>
-                <div class="cfg-row">
-                    <label>GROUND CLAMP</label>
-                    <label style="display:flex;align-items:center;gap:6px;">
-                        <input type="checkbox" id="syscfg-ground-clamp-enable" checked onchange="toggleGroundClamp(this.checked)">
-                        <span>Clamp model to terrain surface</span>
-                    </label>
-                </div>
-                <div class="cfg-row">
-                    <label>BATTERY MIN VOLTAGE</label>
-                    <input type="number" id="syscfg-bat-vmin" class="failsafe-input" value="9.6" step="0.1" min="0" max="60" onchange="updateBatteryVoltageRange()">
-                </div>
-                <div class="cfg-row">
-                    <label>BATTERY MAX VOLTAGE</label>
-                    <input type="number" id="syscfg-bat-vmax" class="failsafe-input" value="12.6" step="0.1" min="0" max="60" onchange="updateBatteryVoltageRange()">
-                </div>
-                <div class="cfg-row">
-                    <label>CELLS (AUTO)</label>
-                    <span class="cfg-val" id="syscfg-bat-cells">3S</span>
-                </div>
-            </div>
-            <div class="setup-panel">
-                <div class="panel-header">UAS GEO ZONES</div>
-                <div class="cfg-row">
-                    <label>RESTRICTED ZONES</label>
-                    <label style="display:flex;align-items:center;gap:6px;">
-                        <input type="checkbox" id="syscfg-geozones-enable" onchange="toggleGeoZones(this.checked)">
-                        <span>On the maps and the terrain, with height warnings</span>
-                    </label>
-                </div>
-                <div class="cfg-row">
-                    <label>IN REACH</label>
-                    <span class="cfg-val" id="gz-st-zones">--</span>
-                </div>
-                <div class="cfg-row">
-                    <label>SOURCES</label>
-                    <span class="cfg-val gz-list" id="gz-st-sources">--</span>
-                </div>
-                <div class="cfg-row">
-                    <label>IMPORTED FILES</label>
-                    <span class="cfg-val gz-list" id="gz-st-imports">none</span>
-                </div>
-                <div class="cfg-row">
-                    <label>ED-269 / ED-318</label>
-                    <button id="gz-import" class="file-upload-btn" type="button" title="Load the UAS geographical zones file published by a state, e.g. Italy's from D-Flight (profile page → Download UAS Zone Geo)">IMPORT FILE…</button>
-                    <button id="gz-refresh" class="file-upload-btn" type="button" title="Forget the downloaded zones and fetch them again (imported files are kept)">REFRESH</button>
-                </div>
-                <div class="cfg-note">Zones within 50 km of the connected vehicle and of the mission, only from the sources of the country in reach: FAA (US), DFS DIPUL (DE), IGN / DGAC (FR), ENAIRE (ES), FOCA / BAZL (CH); fetched again every 6 h. Italy and the other states: import the ED-269 file of the national portal. Advisory only: the state's official map is what applies.</div>
-            </div>
-            <div class="setup-panel">
-                <div class="panel-header">ROTOR LOAD</div>
-                <div class="cfg-row">
-                    <label>SCHEMATIC</label>
-                    <label style="display:flex;align-items:center;gap:6px;">
-                        <input type="checkbox" id="rotor-cfg-enable" checked>
-                        <span>Show rotor load schematic</span>
-                    </label>
-                </div>
-                <div class="cfg-row">
-                    <label>FRAME</label>
-                    <select id="rotor-cfg-frame" class="cfg-select">
-                        <option value="auto">AUTO (from MAV_TYPE)</option>
-                        <option value="sail">SAILBOAT (wing + rudder)</option>
-                        <option value="1">SINGLE ROTOR (plane / heli)</option>
-                        <option value="3">TRICOPTER (3)</option>
-                        <option value="4">QUAD (4)</option>
-                        <option value="6">HEXA (6)</option>
-                        <option value="8">OCTO (8)</option>
-                        <option value="10">DECA (10)</option>
-                        <option value="12">DODECA (12)</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
-                    <label>MOTORS OFF PWM (SCALE MIN)</label>
-                    <input type="number" id="rotor-cfg-pwmmin" class="failsafe-input" value="1000" step="10" min="500" max="2500">
-                </div>
-                <div class="cfg-row">
-                    <label>SCALE MAX PWM</label>
-                    <input type="number" id="rotor-cfg-pwmmax" class="failsafe-input" value="2000" step="10" min="500" max="2500">
-                </div>
-                <div class="cfg-row">
-                    <label>GREEN ABOVE PWM</label>
-                    <input type="number" id="rotor-cfg-green" class="failsafe-input" value="1100" step="10" min="500" max="2500">
-                </div>
-                <div class="cfg-row">
-                    <label>ORANGE ABOVE PWM</label>
-                    <input type="number" id="rotor-cfg-orange" class="failsafe-input" value="1500" step="10" min="500" max="2500">
-                </div>
-                <div class="cfg-row">
-                    <label>RED ABOVE PWM</label>
-                    <input type="number" id="rotor-cfg-red" class="failsafe-input" value="1700" step="10" min="500" max="2500">
-                </div>
-                <div class="cfg-row">
-                    <label>SINGLE ROTOR CHANNEL</label>
-                    <input type="number" id="rotor-cfg-channel" class="failsafe-input" value="3" step="1" min="1" max="16">
-                </div>
-                <div class="cfg-row">
-                    <label>RUDDER MAX DEG</label>
-                    <input type="number" id="rotor-cfg-ruddermax" class="failsafe-input" value="35" step="1" min="1" max="180">
-                </div>
-                <div class="cfg-row" style="opacity:0.6;font-size:11px;line-height:1.4;">
-                    <span>Below the green threshold the gauges read blue (motors stopped). Plane and helicopter show only the main rotor, on the channel above (ArduPlane throttle = 3, heli RSC = 8).</span>
-                </div>
-                <div class="cfg-row" style="opacity:0.6;font-size:11px;line-height:1.4;">
-                    <span>A Rover with SAIL_ENABLE or a MastRotation output shows the wing and rudder dials instead: the angle commanded on each output and the apparent wind of the wind vane. The rudder angle at full steering is a property of the boat, not a parameter (AutoSail: 35).</span>
-                </div>
-            </div>
-            <div class="setup-panel">
-                <div class="panel-header">FFT FROM LOGS</div>
-                <div class="cfg-row">
-                    <label>FFT SIZE</label>
-                    <select id="logfft-n" class="cfg-select" title="Samples in each FFT. The frequency step is the log's sample rate divided by this: more points separate closer lines, but each spectrum covers a longer stretch of the log">
-                        <option value="256">256 POINTS</option>
-                        <option value="512">512 POINTS</option>
-                        <option value="1024">1024 POINTS (DEFAULT)</option>
-                        <option value="2048">2048 POINTS</option>
-                        <option value="4096">4096 POINTS</option>
-                        <option value="8192">8192 POINTS</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
-                    <label>AVERAGING</label>
-                    <select id="logfft-avg" class="cfg-select" title="Welch averaging: the spectra of several windows, each overlapping the next by half, averaged into one. A steadier noise floor and clearer weak lines, from a longer stretch of the log">
-                        <option value="1">NONE (DEFAULT)</option>
-                        <option value="2">2 WINDOWS</option>
-                        <option value="4">4 WINDOWS</option>
-                        <option value="8">8 WINDOWS</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
-                    <label>TIME STEP</label>
-                    <select id="logfft-step" class="cfg-select" title="A new spectrum for every step of log time: the columns of the waterfall">
-                        <option value="100">0.1 s</option>
-                        <option value="250">0.25 s (DEFAULT)</option>
-                        <option value="500">0.5 s</option>
-                        <option value="1000">1 s</option>
-                    </select>
-                </div>
-                <div class="cfg-row">
-                    <label>LOG IN REPLAY</label>
-                    <span class="cfg-val gz-list logfft-status" id="logfft-status">no .bin loaded</span>
-                </div>
-                <div class="cfg-note">For a DataFlash log (.bin) in LOG REPLAY the GCS computes the vibration spectra of the FFT bar from the IMU samples in the log: GYR / ACC at the sensor rate (LOG_BITMASK IMU_RAW, INS_RAW_LOG_OPT), the batch sampler (INS_LOG_BAT_MASK) or IMU at the loop rate, whichever is there; the FFT bar picks the stream. Frequency step = sample rate ÷ FFT size (a 2 kHz gyro: 1024 points → 1.95 Hz, 0.5 s of log). A batch is INS_LOG_BAT_CNT samples long, and the FFT never spans more. The spectrum the vehicle sends live (HPF_FFT_ENABLE = 1) is the firmware's and does not change: 256 points at 800 Hz, 3.125 Hz, every 0.25 s.</div>
-            </div>
-            <div class="setup-panel">
-                <div class="panel-header">SIYI CAMERA STREAM</div>
-                <div class="cfg-row">
-                    <label>IP ADDRESS</label>
-                    <input type="text" id="fpv-ip" value="192.168.144.25" class="failsafe-input" style="width:160px;" onchange="saveFPVSettings()">
-                </div>
-                <div class="cfg-row">
-                    <label>RTSP PORT</label>
-                    <input type="number" id="fpv-port" value="8554" class="failsafe-input" style="width:80px;" onchange="saveFPVSettings()">
-                </div>
-                <div class="cfg-row">
-                    <label>STREAM PATH</label>
-                    <input type="text" id="fpv-path" value="/main.264" class="failsafe-input" style="width:160px;" onchange="saveFPVSettings()">
-                </div>
-                <div class="cfg-row">
-                    <label>TARGET FPS</label>
-                    <input type="number" id="fpv-fps" value="30" min="1" max="60" class="failsafe-input" style="width:80px;" onchange="saveFPVSettings()">
-                </div>
-                <div class="cfg-row" style="opacity:0.6;font-size:11px;line-height:1.4;">
-                    <span>Network adapter: static IP in the 192.168.144.x subnet. ffmpeg must be in PATH.</span>
-                </div>
-            </div>
-            <div class="setup-panel">
-                <div class="panel-header">OFFLINE DATA DOWNLOAD</div>
-                <div class="cfg-row">
-                    <label>NORTH LAT</label>
-                    <input type="number" id="offline-lat-north" class="failsafe-input" value="47" step="1" min="-85" max="85">
-                </div>
-                <div class="cfg-row">
-                    <label>SOUTH LAT</label>
-                    <input type="number" id="offline-lat-south" class="failsafe-input" value="36" step="1" min="-85" max="85">
-                </div>
-                <div class="cfg-row">
-                    <label>WEST LON</label>
-                    <input type="number" id="offline-lon-west" class="failsafe-input" value="6" step="1" min="-180" max="180">
-                </div>
-                <div class="cfg-row">
-                    <label>EAST LON</label>
-                    <input type="number" id="offline-lon-east" class="failsafe-input" value="19" step="1" min="-180" max="180">
-                </div>
-                <div class="cfg-row">
-                    <label>SATELLITE ZOOM MAX</label>
-                    <input type="number" id="offline-sat-zoom" class="failsafe-input" value="16" step="1" min="1" max="19">
-                </div>
-                <div class="cfg-row">
-                    <label style="flex:1;">
-                        <input type="checkbox" id="offline-dl-satellite" checked> Satellite tiles
-                    </label>
-                    <label style="flex:1;">
-                        <input type="checkbox" id="offline-dl-srtm" checked> SRTM1 elevation
-                    </label>
-                </div>
-                <div class="cfg-row" id="offline-estimate-row">
-                    <span id="offline-dl-estimate" class="status-msg">--</span>
-                </div>
-                <div class="cfg-row">
-                    <button class="file-upload-btn" type="button" id="offline-dl-start">DOWNLOAD</button>
-                    <button class="file-upload-btn" type="button" id="offline-dl-cancel" style="display:none;">CANCEL</button>
-                </div>
-                <div class="cfg-row">
-                    <progress id="offline-dl-progress" value="0" max="100" style="width:100%;display:none;"></progress>
-                </div>
-                <div class="cfg-row">
-                    <span id="offline-dl-status" class="status-msg"></span>
-                </div>
-            </div>
-            <div class="setup-panel">
-                <div class="panel-header">HUD DATA FIELDS</div>
-                <div class="cfg-row">
-                    <label>LEFT 1</label>
-                    <select id="hud-cell-0-field" class="cfg-select" onchange="setHudCellField(0, this.value)"></select>
-                    <div class="cfg-row-inline">
-                        <input type="text" inputmode="numeric" id="hud-cell-0-mult" class="failsafe-input" placeholder="×1" onchange="setHudCellMultiplier(0, parseFloat(this.value)||1)">
-                        <input type="text" id="hud-cell-0-unit" class="failsafe-input" placeholder="auto" onchange="setHudCellUnitLabel(0, this.value)">
+
+                <div class="setup-panel">
+                    <div class="panel-header">NAVIGATION</div>
+                    <div class="cfg-row stack">
+                        <label>POSITION</label>
+                        <select id="syscfg-nav-position" class="cfg-select" title="Relative: for a vehicle that has never had a GPS (a ROV, a flight with no GNSS). Position from the vehicle's local frame when it sends one, otherwise dead-reckoned here; no map or terrain, a plane at zero">
+                            <option value="absolute">GPS &middot; absolute, map and terrain</option>
+                            <option value="relative">Relative &middot; no GPS, plane at zero</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>VELOCITY SOURCE</label>
+                        <select id="syscfg-nav-vel" class="cfg-select" title="What the GCS dead-reckons on when the vehicle sends no local position of its own. Auto: a fixed wing's airspeed along the heading, else the EKF velocity, else ground speed along the heading">
+                            <option value="auto">Auto</option>
+                            <option value="air">Airspeed + heading</option>
+                            <option value="ground">Ground speed + heading</option>
+                            <option value="ekf">EKF velocity</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>WATER (DEPTH SENSOR)</label>
+                        <select id="syscfg-nav-water" class="cfg-select" title="Density used to turn a sub's pressure reading into depth in the relative mode">
+                            <option value="fresh">Fresh water</option>
+                            <option value="salt">Sea water</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>ESTIMATE</label>
+                        <span class="cfg-val" id="syscfg-nav-status">--</span>
+                    </div>
+                    <div class="cfg-row">
+                        <label></label>
+                        <button id="syscfg-nav-reset" class="gcs-btn" type="button" title="Start the relative position and the dead-reckoned track again from zero">RESET ESTIMATE</button>
                     </div>
                 </div>
-                <div class="cfg-row">
-                    <label>LEFT 2</label>
-                    <select id="hud-cell-1-field" class="cfg-select" onchange="setHudCellField(1, this.value)"></select>
-                    <div class="cfg-row-inline">
-                        <input type="text" inputmode="numeric" id="hud-cell-1-mult" class="failsafe-input" placeholder="×1" onchange="setHudCellMultiplier(1, parseFloat(this.value)||1)">
-                        <input type="text" id="hud-cell-1-unit" class="failsafe-input" placeholder="auto" onchange="setHudCellUnitLabel(1, this.value)">
+
+                <div class="setup-panel">
+                    <div class="panel-header">ROTOR LOAD</div>
+                    <div class="cfg-row">
+                        <label>SCHEMATIC</label>
+                        <label class="cfg-check">
+                            <input type="checkbox" id="rotor-cfg-enable" checked>
+                            <span>Show rotor load schematic</span>
+                        </label>
                     </div>
-                </div>
-                <div class="cfg-row">
-                    <label>LEFT 3</label>
-                    <select id="hud-cell-2-field" class="cfg-select" onchange="setHudCellField(2, this.value)"></select>
-                    <div class="cfg-row-inline">
-                        <input type="text" inputmode="numeric" id="hud-cell-2-mult" class="failsafe-input" placeholder="×1" onchange="setHudCellMultiplier(2, parseFloat(this.value)||1)">
-                        <input type="text" id="hud-cell-2-unit" class="failsafe-input" placeholder="auto" onchange="setHudCellUnitLabel(2, this.value)">
+                    <div class="cfg-row">
+                        <label>FRAME</label>
+                        <select id="rotor-cfg-frame" class="cfg-select">
+                            <option value="auto">AUTO (from MAV_TYPE)</option>
+                            <option value="sail">SAILBOAT (wing + rudder)</option>
+                            <option value="1">SINGLE ROTOR (plane / heli)</option>
+                            <option value="3">TRICOPTER (3)</option>
+                            <option value="4">QUAD (4)</option>
+                            <option value="6">HEXA (6)</option>
+                            <option value="8">OCTO (8)</option>
+                            <option value="10">DECA (10)</option>
+                            <option value="12">DODECA (12)</option>
+                        </select>
                     </div>
-                </div>
-                <div class="cfg-row">
-                    <label>RIGHT 1</label>
-                    <select id="hud-cell-3-field" class="cfg-select" onchange="setHudCellField(3, this.value)"></select>
-                    <div class="cfg-row-inline">
-                        <input type="text" inputmode="numeric" id="hud-cell-3-mult" class="failsafe-input" placeholder="×1" onchange="setHudCellMultiplier(3, parseFloat(this.value)||1)">
-                        <input type="text" id="hud-cell-3-unit" class="failsafe-input" placeholder="auto" onchange="setHudCellUnitLabel(3, this.value)">
+                    <div class="cfg-sub">PWM SCALE</div>
+                    <div class="cfg-row">
+                        <label>MOTORS OFF (MIN)</label>
+                        <input type="number" id="rotor-cfg-pwmmin" class="failsafe-input" value="1000" step="10" min="500" max="2500">
                     </div>
-                </div>
-                <div class="cfg-row">
-                    <label>RIGHT 2</label>
-                    <select id="hud-cell-4-field" class="cfg-select" onchange="setHudCellField(4, this.value)"></select>
-                    <div class="cfg-row-inline">
-                        <input type="text" inputmode="numeric" id="hud-cell-4-mult" class="failsafe-input" placeholder="×1" onchange="setHudCellMultiplier(4, parseFloat(this.value)||1)">
-                        <input type="text" id="hud-cell-4-unit" class="failsafe-input" placeholder="auto" onchange="setHudCellUnitLabel(4, this.value)">
+                    <div class="cfg-row">
+                        <label>FULL (MAX)</label>
+                        <input type="number" id="rotor-cfg-pwmmax" class="failsafe-input" value="2000" step="10" min="500" max="2500">
                     </div>
-                </div>
-                <div class="cfg-row">
-                    <label>RIGHT 3</label>
-                    <select id="hud-cell-5-field" class="cfg-select" onchange="setHudCellField(5, this.value)"></select>
-                    <div class="cfg-row-inline">
-                        <input type="text" inputmode="numeric" id="hud-cell-5-mult" class="failsafe-input" placeholder="×1" onchange="setHudCellMultiplier(5, parseFloat(this.value)||1)">
-                        <input type="text" id="hud-cell-5-unit" class="failsafe-input" placeholder="auto" onchange="setHudCellUnitLabel(5, this.value)">
+                    <div class="cfg-row">
+                        <label>GREEN ABOVE</label>
+                        <input type="number" id="rotor-cfg-green" class="failsafe-input" value="1100" step="10" min="500" max="2500">
                     </div>
+                    <div class="cfg-row">
+                        <label>ORANGE ABOVE</label>
+                        <input type="number" id="rotor-cfg-orange" class="failsafe-input" value="1500" step="10" min="500" max="2500">
+                    </div>
+                    <div class="cfg-row">
+                        <label>RED ABOVE</label>
+                        <input type="number" id="rotor-cfg-red" class="failsafe-input" value="1700" step="10" min="500" max="2500">
+                    </div>
+                    <div class="cfg-sub">SINGLE ROTOR &amp; SAIL</div>
+                    <div class="cfg-row">
+                        <label>MAIN ROTOR CHANNEL</label>
+                        <input type="number" id="rotor-cfg-channel" class="failsafe-input" value="3" step="1" min="1" max="16">
+                    </div>
+                    <div class="cfg-row">
+                        <label>RUDDER MAX (DEG)</label>
+                        <input type="number" id="rotor-cfg-ruddermax" class="failsafe-input" value="35" step="1" min="1" max="180">
+                    </div>
+                    <div class="cfg-note">Below the green threshold the gauges read blue (motors stopped). Plane and helicopter show only the main rotor, on the channel above (ArduPlane throttle = 3, heli RSC = 8). A Rover with SAIL_ENABLE or a MastRotation output shows the wing and rudder dials instead; the rudder angle at full steering is a property of the boat, not a parameter (AutoSail: 35).</div>
                 </div>
-                <div class="cfg-row">
-                    <button class="file-upload-btn" type="button" onclick="resetHudCellConfig()">RESET DEFAULTS</button>
+
+                <div class="setup-panel">
+                    <div class="panel-header">MAVLINK STREAM RATES</div>
+                    <div class="cfg-note cfg-note-top">Messages per second the vehicle sends on this link (SR0_* parameters). Read them first; a write stores them on the vehicle.</div>
+                    <div class="cfg-row">
+                        <label>RAW SENSORS</label>
+                        <input type="number" id="sr-raw-sens" class="failsafe-input" min="0" max="50" step="1" value="2" data-param="SR0_RAW_SENS">
+                    </div>
+                    <div class="cfg-row">
+                        <label>EXT STATUS</label>
+                        <input type="number" id="sr-ext-stat" class="failsafe-input" min="0" max="50" step="1" value="2" data-param="SR0_EXT_STAT">
+                    </div>
+                    <div class="cfg-row">
+                        <label>RC CHANNELS</label>
+                        <input type="number" id="sr-rc-chan" class="failsafe-input" min="0" max="50" step="1" value="5" data-param="SR0_RC_CHAN">
+                    </div>
+                    <div class="cfg-row">
+                        <label>RAW CTRL</label>
+                        <input type="number" id="sr-raw-ctrl" class="failsafe-input" min="0" max="50" step="1" value="1" data-param="SR0_RAW_CTRL">
+                    </div>
+                    <div class="cfg-row">
+                        <label>POSITION</label>
+                        <input type="number" id="sr-position" class="failsafe-input" min="0" max="50" step="1" value="3" data-param="SR0_POSITION">
+                    </div>
+                    <div class="cfg-row">
+                        <label>EXTRA1 (ATTITUDE)</label>
+                        <input type="number" id="sr-extra1" class="failsafe-input" min="0" max="50" step="1" value="10" data-param="SR0_EXTRA1">
+                    </div>
+                    <div class="cfg-row">
+                        <label>EXTRA2 (VFR HUD)</label>
+                        <input type="number" id="sr-extra2" class="failsafe-input" min="0" max="50" step="1" value="10" data-param="SR0_EXTRA2">
+                    </div>
+                    <div class="cfg-row">
+                        <label>EXTRA3</label>
+                        <input type="number" id="sr-extra3" class="failsafe-input" min="0" max="50" step="1" value="1" data-param="SR0_EXTRA3">
+                    </div>
+                    <div class="cfg-row">
+                        <label>PARAMS</label>
+                        <input type="number" id="sr-params" class="failsafe-input" min="0" max="50" step="1" value="10" data-param="SR0_PARAMS">
+                    </div>
+                    <div class="cfg-row full cfg-btns">
+                        <button class="gcs-btn" id="sr-read">READ</button>
+                        <button class="gcs-btn" id="sr-write">WRITE</button>
+                    </div>
                 </div>
             </div>
-            <div class="setup-panel">
-                <div class="panel-header">MAVLINK STREAM RATES (Hz)</div>
-                <div class="cfg-row">
-                    <label>RAW SENSORS</label>
-                    <input type="number" id="sr-raw-sens" class="failsafe-input" min="0" max="50" step="1" value="2" data-param="SR0_RAW_SENS">
+
+            <!-- ───────────── COLUMN 2 · DISPLAY ───────────── -->
+            <div class="syscfg-col">
+                <div class="syscfg-col-title">DISPLAY</div>
+
+                <div class="setup-panel">
+                    <div class="panel-header">3D VIEW</div>
+                    <div class="cfg-sub">MODEL</div>
+                    <div class="cfg-row">
+                        <label>3D MODEL</label>
+                        <select id="model-select" class="cfg-select">
+                            <option value="">Loading...</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>MODEL SCALE</label>
+                        <div class="cfg-slider-wrap">
+                            <input type="range" id="scale-slider" class="cfg-slider" min="0.1" max="5" value="1" step="0.1">
+                            <span class="cfg-slider-val" id="scale-display">1.0</span>
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>GROUND CLAMP</label>
+                        <label class="cfg-check">
+                            <input type="checkbox" id="syscfg-ground-clamp-enable" checked onchange="toggleGroundClamp(this.checked)">
+                            <span>Keep the model on the terrain</span>
+                        </label>
+                    </div>
+                    <div class="cfg-row">
+                        <label>MOTION SMOOTHING</label>
+                        <div class="cfg-slider-wrap">
+                            <input type="range" id="att-smooth-slider" class="cfg-slider" min="0" max="0.5" value="0.15" step="0.01">
+                            <span class="cfg-slider-val" id="att-smooth-display">0.15</span>
+                        </div>
+                    </div>
+                    <div class="cfg-sub">TERRAIN &amp; LIGHT</div>
+                    <div class="cfg-row">
+                        <label>TERRAIN (HGT FOLDER)</label>
+                        <div class="cfg-ctl">
+                            <label for="hgt-input" class="file-upload-btn">SELECT HGT FOLDER</label>
+                            <input type="file" id="hgt-input" class="hidden-input" webkitdirectory directory multiple>
+                            <div id="status-msg" class="status-msg">NO DATA</div>
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>ALTITUDE OFFSET (M)</label>
+                        <input type="text" inputmode="numeric" id="inp-offset" class="failsafe-input" value="0" onchange="updateOffset(this.value)" title="Added to every vehicle altitude in the 3D view, to line it up with the terrain model. Not remembered">
+                    </div>
+                    <div class="cfg-row">
+                        <label>TIME OF DAY (DEBUG)</label>
+                        <div class="cfg-slider-wrap">
+                            <input type="range" id="time-slider" class="cfg-slider" min="0" max="1440" value="720" step="1">
+                            <span class="cfg-slider-val" id="time-display">12:00</span>
+                        </div>
+                    </div>
+                    <div class="cfg-row" id="map-brightness-row" style="display:none;">
+                        <label>MAP BRIGHTNESS</label>
+                        <div class="cfg-slider-wrap">
+                            <input type="range" id="map-brightness-slider" class="cfg-slider" min="0.3" max="1.6" value="0.85" step="0.01">
+                            <span class="cfg-slider-val" id="map-brightness-display">0.85</span>
+                        </div>
+                    </div>
+                    <div class="cfg-sub">QUALITY &amp; RANGE</div>
+                    <div class="cfg-row">
+                        <label>FRAME RATE</label>
+                        <select id="render-fps-select" class="cfg-select" title="30 FPS halves the rendering and compositing work — use it on battery">
+                            <option value="60">60 FPS</option>
+                            <option value="30">30 FPS (ECO)</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>RESOLUTION</label>
+                        <select id="render-quality-select" class="cfg-select" title="Reduce 3D rendering resolution to save GPU work. HUD and text keep their display resolution">
+                            <option value="native">NATIVE</option>
+                            <option value="balanced">BALANCED (DEFAULT)</option>
+                            <option value="eco">ECO</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>SATELLITE DETAIL</label>
+                        <select id="sat-detail-select" class="cfg-select" title="Sharpest satellite imagery drawn around the aircraft in the 3D view (resolution at mid latitudes). Each step doubles the detail, and the tiles downloaded when flying low">
+                            <option value="16">ZOOM 16 · 1.6 m (OFF)</option>
+                            <option value="17">ZOOM 17 · 0.8 m</option>
+                            <option value="18">ZOOM 18 · 0.4 m (DEFAULT)</option>
+                            <option value="19">ZOOM 19 · 0.2 m</option>
+                            <option value="20">ZOOM 20 · 0.1 m (MAX)</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>SATELLITE RADIUS</label>
+                        <select id="satellite-radius-select" class="cfg-select" title="How far around the aircraft the 3D terrain gets satellite imagery; beyond it the terrain is coloured by height. A wider radius downloads more tiles and draws more">
+                            <option value="5000">5 KM</option>
+                            <option value="10000">10 KM (DEFAULT)</option>
+                            <option value="15000">15 KM</option>
+                            <option value="20000">20 KM</option>
+                            <option value="30000">30 KM</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>TERRAIN RADIUS</label>
+                        <select id="terrain-radius-select" class="cfg-select" title="How far around the aircraft the 3D terrain is built. The haze follows it: a farther edge, thinner haze. A wider radius loads more elevation data and draws more">
+                            <option value="35000">35 KM (DEFAULT)</option>
+                            <option value="50000">50 KM</option>
+                            <option value="70000">70 KM</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="cfg-row">
-                    <label>EXT STATUS</label>
-                    <input type="number" id="sr-ext-stat" class="failsafe-input" min="0" max="50" step="1" value="2" data-param="SR0_EXT_STAT">
+
+                <div class="setup-panel">
+                    <div class="panel-header">HUD DATA FIELDS</div>
+                    <div class="cfg-note cfg-note-top">The six data cells beside the HUD. For each: the value shown, a multiplier and the unit label printed (blank = the value's own).</div>
+                    <div class="cfg-row stack hud-cell-row">
+                        <label>LEFT 1</label>
+                        <div class="hud-cell-ctl">
+                            <select id="hud-cell-0-field" class="cfg-select" onchange="setHudCellField(0, this.value)"></select>
+                            <input type="text" inputmode="numeric" id="hud-cell-0-mult" class="failsafe-input" placeholder="×1" title="Multiplier" onchange="setHudCellMultiplier(0, parseFloat(this.value)||1)">
+                            <input type="text" id="hud-cell-0-unit" class="failsafe-input" placeholder="unit" title="Unit label" onchange="setHudCellUnitLabel(0, this.value)">
+                        </div>
+                    </div>
+                    <div class="cfg-row stack hud-cell-row">
+                        <label>LEFT 2</label>
+                        <div class="hud-cell-ctl">
+                            <select id="hud-cell-1-field" class="cfg-select" onchange="setHudCellField(1, this.value)"></select>
+                            <input type="text" inputmode="numeric" id="hud-cell-1-mult" class="failsafe-input" placeholder="×1" title="Multiplier" onchange="setHudCellMultiplier(1, parseFloat(this.value)||1)">
+                            <input type="text" id="hud-cell-1-unit" class="failsafe-input" placeholder="unit" title="Unit label" onchange="setHudCellUnitLabel(1, this.value)">
+                        </div>
+                    </div>
+                    <div class="cfg-row stack hud-cell-row">
+                        <label>LEFT 3</label>
+                        <div class="hud-cell-ctl">
+                            <select id="hud-cell-2-field" class="cfg-select" onchange="setHudCellField(2, this.value)"></select>
+                            <input type="text" inputmode="numeric" id="hud-cell-2-mult" class="failsafe-input" placeholder="×1" title="Multiplier" onchange="setHudCellMultiplier(2, parseFloat(this.value)||1)">
+                            <input type="text" id="hud-cell-2-unit" class="failsafe-input" placeholder="unit" title="Unit label" onchange="setHudCellUnitLabel(2, this.value)">
+                        </div>
+                    </div>
+                    <div class="cfg-row stack hud-cell-row">
+                        <label>RIGHT 1</label>
+                        <div class="hud-cell-ctl">
+                            <select id="hud-cell-3-field" class="cfg-select" onchange="setHudCellField(3, this.value)"></select>
+                            <input type="text" inputmode="numeric" id="hud-cell-3-mult" class="failsafe-input" placeholder="×1" title="Multiplier" onchange="setHudCellMultiplier(3, parseFloat(this.value)||1)">
+                            <input type="text" id="hud-cell-3-unit" class="failsafe-input" placeholder="unit" title="Unit label" onchange="setHudCellUnitLabel(3, this.value)">
+                        </div>
+                    </div>
+                    <div class="cfg-row stack hud-cell-row">
+                        <label>RIGHT 2</label>
+                        <div class="hud-cell-ctl">
+                            <select id="hud-cell-4-field" class="cfg-select" onchange="setHudCellField(4, this.value)"></select>
+                            <input type="text" inputmode="numeric" id="hud-cell-4-mult" class="failsafe-input" placeholder="×1" title="Multiplier" onchange="setHudCellMultiplier(4, parseFloat(this.value)||1)">
+                            <input type="text" id="hud-cell-4-unit" class="failsafe-input" placeholder="unit" title="Unit label" onchange="setHudCellUnitLabel(4, this.value)">
+                        </div>
+                    </div>
+                    <div class="cfg-row stack hud-cell-row">
+                        <label>RIGHT 3</label>
+                        <div class="hud-cell-ctl">
+                            <select id="hud-cell-5-field" class="cfg-select" onchange="setHudCellField(5, this.value)"></select>
+                            <input type="text" inputmode="numeric" id="hud-cell-5-mult" class="failsafe-input" placeholder="×1" title="Multiplier" onchange="setHudCellMultiplier(5, parseFloat(this.value)||1)">
+                            <input type="text" id="hud-cell-5-unit" class="failsafe-input" placeholder="unit" title="Unit label" onchange="setHudCellUnitLabel(5, this.value)">
+                        </div>
+                    </div>
+                    <div class="cfg-row full">
+                        <button class="gcs-btn" type="button" onclick="resetHudCellConfig()">RESET DEFAULTS</button>
+                    </div>
                 </div>
-                <div class="cfg-row">
-                    <label>RC CHANNELS</label>
-                    <input type="number" id="sr-rc-chan" class="failsafe-input" min="0" max="50" step="1" value="5" data-param="SR0_RC_CHAN">
-                </div>
-                <div class="cfg-row">
-                    <label>RAW CTRL</label>
-                    <input type="number" id="sr-raw-ctrl" class="failsafe-input" min="0" max="50" step="1" value="1" data-param="SR0_RAW_CTRL">
-                </div>
-                <div class="cfg-row">
-                    <label>POSITION</label>
-                    <input type="number" id="sr-position" class="failsafe-input" min="0" max="50" step="1" value="3" data-param="SR0_POSITION">
-                </div>
-                <div class="cfg-row">
-                    <label>EXTRA1 (ATTITUDE)</label>
-                    <input type="number" id="sr-extra1" class="failsafe-input" min="0" max="50" step="1" value="10" data-param="SR0_EXTRA1">
-                </div>
-                <div class="cfg-row">
-                    <label>EXTRA2 (VFR HUD)</label>
-                    <input type="number" id="sr-extra2" class="failsafe-input" min="0" max="50" step="1" value="10" data-param="SR0_EXTRA2">
-                </div>
-                <div class="cfg-row">
-                    <label>EXTRA3</label>
-                    <input type="number" id="sr-extra3" class="failsafe-input" min="0" max="50" step="1" value="1" data-param="SR0_EXTRA3">
-                </div>
-                <div class="cfg-row">
-                    <label>PARAMS</label>
-                    <input type="number" id="sr-params" class="failsafe-input" min="0" max="50" step="1" value="10" data-param="SR0_PARAMS">
-                </div>
-                <div class="cfg-row">
-                    <button class="gcs-btn" id="sr-read">READ STREAM RATES</button>
-                    <button class="gcs-btn" id="sr-write">WRITE STREAM RATES</button>
+
+                <div class="setup-panel">
+                    <div class="panel-header">SIYI CAMERA STREAM</div>
+                    <div class="cfg-row">
+                        <label>IP ADDRESS</label>
+                        <input type="text" id="fpv-ip" value="192.168.144.25" class="failsafe-input" onchange="saveFPVSettings()">
+                    </div>
+                    <div class="cfg-row">
+                        <label>RTSP PORT</label>
+                        <input type="number" id="fpv-port" value="8554" class="failsafe-input" onchange="saveFPVSettings()">
+                    </div>
+                    <div class="cfg-row">
+                        <label>STREAM PATH</label>
+                        <input type="text" id="fpv-path" value="/main.264" class="failsafe-input" onchange="saveFPVSettings()">
+                    </div>
+                    <div class="cfg-row">
+                        <label>TARGET FPS</label>
+                        <input type="number" id="fpv-fps" value="30" min="1" max="60" class="failsafe-input" onchange="saveFPVSettings()">
+                    </div>
+                    <div class="cfg-note">Network adapter: static IP in the 192.168.144.x subnet. ffmpeg must be in PATH.</div>
                 </div>
             </div>
+
+            <!-- ───────────── COLUMN 3 · DATA & TOOLS ───────────── -->
+            <div class="syscfg-col">
+                <div class="syscfg-col-title">DATA &amp; TOOLS</div>
+
+                <div class="setup-panel">
+                    <div class="panel-header">AIRSPACE</div>
+                    <div class="cfg-row">
+                        <label>ADS-B TRAFFIC</label>
+                        <label class="cfg-check">
+                            <input type="checkbox" id="syscfg-adsb-enable" checked onchange="toggleADSB(this.checked)">
+                            <span>Show manned traffic</span>
+                        </label>
+                    </div>
+                    <div class="cfg-sub">UAS GEO ZONES</div>
+                    <div class="cfg-row">
+                        <label>RESTRICTED ZONES</label>
+                        <label class="cfg-check">
+                            <input type="checkbox" id="syscfg-geozones-enable" onchange="toggleGeoZones(this.checked)">
+                            <span>On the maps and the terrain, with height warnings</span>
+                        </label>
+                    </div>
+                    <div class="cfg-row">
+                        <label>IN REACH</label>
+                        <span class="cfg-val" id="gz-st-zones">--</span>
+                    </div>
+                    <div class="cfg-row">
+                        <label>SOURCES</label>
+                        <span class="cfg-val gz-list" id="gz-st-sources">--</span>
+                    </div>
+                    <div class="cfg-row">
+                        <label>IMPORTED FILES</label>
+                        <span class="cfg-val gz-list" id="gz-st-imports">none</span>
+                    </div>
+                    <div class="cfg-row">
+                        <label>ED-269 / ED-318</label>
+                        <div class="cfg-btns">
+                            <button id="gz-import" class="gcs-btn" type="button" title="Load the UAS geographical zones file published by a state, e.g. Italy's from D-Flight (profile page → Download UAS Zone Geo)">IMPORT FILE…</button>
+                            <button id="gz-refresh" class="gcs-btn" type="button" title="Forget the downloaded zones and fetch them again (imported files are kept)">REFRESH</button>
+                        </div>
+                    </div>
+                    <div class="cfg-note">Zones within 50 km of the connected vehicle and of the mission, only from the sources of the country in reach: FAA (US), DFS DIPUL (DE), IGN / DGAC (FR), ENAIRE (ES), FOCA / BAZL (CH); fetched again every 6 h. Italy and the other states: import the ED-269 file of the national portal. Advisory only: the state's official map is what applies.</div>
+                </div>
+
+                <div class="setup-panel">
+                    <div class="panel-header">BATTERY GAUGE</div>
+                    <div class="cfg-note cfg-note-top">For the percentage when the vehicle does not report one.</div>
+                    <div class="cfg-row">
+                        <label>MIN VOLTAGE (EMPTY)</label>
+                        <input type="number" id="syscfg-bat-vmin" class="failsafe-input" value="9.6" step="0.1" min="0" max="60" onchange="updateBatteryVoltageRange()">
+                    </div>
+                    <div class="cfg-row">
+                        <label>MAX VOLTAGE (FULL)</label>
+                        <input type="number" id="syscfg-bat-vmax" class="failsafe-input" value="12.6" step="0.1" min="0" max="60" onchange="updateBatteryVoltageRange()">
+                    </div>
+                    <div class="cfg-row">
+                        <label>CELLS (AUTO)</label>
+                        <span class="cfg-val" id="syscfg-bat-cells">3S</span>
+                    </div>
+                </div>
+
+                <div class="setup-panel">
+                    <div class="panel-header">OFFLINE DATA DOWNLOAD</div>
+                    <div class="cfg-note cfg-note-top">Satellite imagery and elevation for an area, fetched now for a flight without network.</div>
+                    <div class="cfg-row">
+                        <label>LATITUDE N · S</label>
+                        <div class="cfg-pair">
+                            <span class="cfg-pair-k">N</span>
+                            <input type="number" id="offline-lat-north" class="failsafe-input" value="47" step="1" min="-85" max="85">
+                            <span class="cfg-pair-k">S</span>
+                            <input type="number" id="offline-lat-south" class="failsafe-input" value="36" step="1" min="-85" max="85">
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>LONGITUDE W · E</label>
+                        <div class="cfg-pair">
+                            <span class="cfg-pair-k">W</span>
+                            <input type="number" id="offline-lon-west" class="failsafe-input" value="6" step="1" min="-180" max="180">
+                            <span class="cfg-pair-k">E</span>
+                            <input type="number" id="offline-lon-east" class="failsafe-input" value="19" step="1" min="-180" max="180">
+                        </div>
+                    </div>
+                    <div class="cfg-row">
+                        <label>SATELLITE ZOOM MAX</label>
+                        <input type="number" id="offline-sat-zoom" class="failsafe-input" value="16" step="1" min="1" max="19">
+                    </div>
+                    <div class="cfg-row">
+                        <label>CONTENT</label>
+                        <div class="cfg-checks">
+                            <label class="cfg-check"><input type="checkbox" id="offline-dl-satellite" checked> <span>Satellite tiles</span></label>
+                            <label class="cfg-check"><input type="checkbox" id="offline-dl-srtm" checked> <span>SRTM1 elevation</span></label>
+                        </div>
+                    </div>
+                    <div class="cfg-row stack">
+                        <label>ESTIMATE</label>
+                        <span id="offline-dl-estimate" class="cfg-val cfg-val-sm">--</span>
+                    </div>
+                    <div class="cfg-row full cfg-btns">
+                        <button class="gcs-btn" type="button" id="offline-dl-start">DOWNLOAD</button>
+                        <button class="gcs-btn" type="button" id="offline-dl-cancel" style="display:none;">CANCEL</button>
+                    </div>
+                    <div class="cfg-row full">
+                        <progress id="offline-dl-progress" value="0" max="100" style="width:100%;display:none;"></progress>
+                    </div>
+                    <div class="cfg-row full">
+                        <span id="offline-dl-status" class="status-msg"></span>
+                    </div>
+                </div>
+
+                <div class="setup-panel">
+                    <div class="panel-header">FFT FROM LOGS</div>
+                    <div class="cfg-row">
+                        <label>FFT SIZE</label>
+                        <select id="logfft-n" class="cfg-select" title="Samples in each FFT. The frequency step is the log's sample rate divided by this: more points separate closer lines, but each spectrum covers a longer stretch of the log">
+                            <option value="256">256 POINTS</option>
+                            <option value="512">512 POINTS</option>
+                            <option value="1024">1024 POINTS (DEFAULT)</option>
+                            <option value="2048">2048 POINTS</option>
+                            <option value="4096">4096 POINTS</option>
+                            <option value="8192">8192 POINTS</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>AVERAGING</label>
+                        <select id="logfft-avg" class="cfg-select" title="Welch averaging: the spectra of several windows, each overlapping the next by half, averaged into one. A steadier noise floor and clearer weak lines, from a longer stretch of the log">
+                            <option value="1">NONE (DEFAULT)</option>
+                            <option value="2">2 WINDOWS</option>
+                            <option value="4">4 WINDOWS</option>
+                            <option value="8">8 WINDOWS</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>TIME STEP</label>
+                        <select id="logfft-step" class="cfg-select" title="A new spectrum for every step of log time: the columns of the waterfall">
+                            <option value="100">0.1 s</option>
+                            <option value="250">0.25 s (DEFAULT)</option>
+                            <option value="500">0.5 s</option>
+                            <option value="1000">1 s</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>LOG IN REPLAY</label>
+                        <span class="cfg-val gz-list logfft-status" id="logfft-status">no .bin loaded</span>
+                    </div>
+                    <div class="cfg-note">For a DataFlash log (.bin) in LOG REPLAY the GCS computes the vibration spectra of the FFT bar from the IMU samples in the log: GYR / ACC at the sensor rate (LOG_BITMASK IMU_RAW, INS_RAW_LOG_OPT), the batch sampler (INS_LOG_BAT_MASK) or IMU at the loop rate, whichever is there; the FFT bar picks the stream. Frequency step = sample rate ÷ FFT size (a 2 kHz gyro: 1024 points → 1.95 Hz, 0.5 s of log). A batch is INS_LOG_BAT_CNT samples long, and the FFT never spans more. The spectrum the vehicle sends live (HPF_FFT_ENABLE = 1) is the firmware's and does not change: 256 points at 800 Hz, 3.125 Hz, every 0.25 s.</div>
+                </div>
+
+                <div class="setup-panel">
+                    <div class="panel-header">APPLICATION</div>
+                    <div class="cfg-row">
+                        <label>LANGUAGE</label>
+                        <select id="lang-select" class="cfg-select" onchange="setLanguage(this.value)">
+                            <option value="en">English</option>
+                            <option value="zh">中文 (Chinese)</option>
+                        </select>
+                    </div>
+                    <div class="cfg-row">
+                        <label>DEVTOOLS</label>
+                        <button id="btn-devtools" class="gcs-btn" type="button" onclick="openDevTools()">OPEN DEVTOOLS</button>
+                    </div>
+                    <div class="cfg-row">
+                        <label>DEBUG LOG (LAST 5 MIN)</label>
+                        <div class="cfg-ctl">
+                            <div class="cfg-btns">
+                                <button id="btn-debuglog-save" class="gcs-btn" type="button" onclick="saveDebugLog()" title="One file with the last 5 minutes of this session and of the previous one: send it to support">SAVE COPY…</button>
+                                <button id="btn-debuglog-reveal" class="gcs-btn" type="button" onclick="revealDebugLog()" title="Show the debug log file, rewritten every few seconds">SHOW FILE</button>
+                            </div>
+                            <div id="debuglog-status" class="status-msg"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
