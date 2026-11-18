@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=CORV GCS
+Comment=CORV SYSTEMS Ground Control Station
+Exec=corv-gcs
+Icon=corv-gcs
+Categories=Science;Engineering;
+Terminal=false
+StartupWMClass=corv-gcs

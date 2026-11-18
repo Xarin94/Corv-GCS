@@ -1,0 +1,158 @@
+# Build and test on the three systems at every push; on a v* tag the packages
+# of the three go to the GitHub release of the tag: Windows setup and portable
+# zip, Linux AppImage (built on the oldest Ubuntu LTS supported), macOS DMG
+# (universal, ad-hoc signed, not notarized). The tag is the version the
+# program reports and the update check compares (CORV_VERSION_LABEL).
+# (guide, "Build, pacchetti e CI").
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+# A newer push to the same branch or tag stops the run it supersedes
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  QT_VERSION: '6.12.0'
+  QT_MODULES: 'qtserialport qtshadertools qtwebsockets qtimageformats'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            preset: windows-release
+            qt_arch: win64_msvc2022_64
+          - os: macos-15
+            preset: macos-release
+            qt_arch: clang_64
+          - os: ubuntu-22.04
+            preset: linux-release
+            qt_arch: linux_gcc_64
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write   # the packages go to the GitHub release of a tag
+    steps:
+      - uses: actions/checkout@v4
+
+      # Qt 6.12 for Windows sits in a repository layout aqtinstall 3.3 does not
+      # know (one repository per toolchain): tools/ci/install-qt-windows.py
+      # installs it from Qt's Updates.xml, every archive checked against its .sha1
+      - name: Qt (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $prefix = (python tools/ci/install-qt-windows.py ${{ env.QT_VERSION }} ${{ matrix.qt_arch }} "${{ runner.temp }}/Qt" qtserialport qtshadertools qtwebsockets qtimageformats | Select-Object -Last 1)
+          "CMAKE_PREFIX_PATH=$prefix" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$prefix/bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Qt
+        if: runner.os != 'Windows'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: ${{ matrix.qt_arch }}
+          modules: ${{ env.QT_MODULES }}
+          cache: true
+
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0 squashfs-tools
+
+      - name: MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      # SDL3 for the joystick (zlib license): the official MSVC build, the one
+      # tools/package-windows.ps1 fetches; CMake and the package script read SDL3_DIR
+      - name: SDL3 (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $zip = Join-Path "${{ runner.temp }}" "sdl3.zip"
+          Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-devel-3.4.18-VC.zip" -OutFile $zip
+          Expand-Archive $zip -DestinationPath "${{ runner.temp }}/sdl3"
+          $dir = "${{ runner.temp }}/sdl3/SDL3-3.4.18"
+          "SDL3_DIR=$dir/cmake" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$dir/lib/x64" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Ninja and OpenSSL (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ninja openssl@3
+          echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }} "-DCORV_VERSION_LABEL=${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}"
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --preset ${{ matrix.preset }}
+
+      # NSIS installer (per user, choice of folder) and the same files as a portable zip:
+      # tools/package-windows.ps1 stages windeployqt's output, the VC++ runtime
+      # app-local and the runner's libcrypto; NSIS is preinstalled on the runner
+      - name: Package (Windows)
+        if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $env:QT_DIR = $env:CMAKE_PREFIX_PATH
+          ./tools/package-windows.ps1 -Preset ${{ matrix.preset }} -SkipBuild -NoDownload -Zip
+
+      # AppImage: tools/build-appimage.sh on the build above, behind the AppImage
+      # type-2 runtime
+      - name: Package (Linux)
+        if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/')
+        run: |
+          mkdir -p build/appimage-tools
+          curl -fsSL -o build/appimage-tools/runtime-x86_64 https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64
+          QT_DIR="$QT_ROOT_DIR" CORV_VERSION_LABEL="${GITHUB_REF_NAME#v}" tools/build-appimage.sh
+
+      # DMG: macdeployqt (Qt frameworks and QML modules into the bundle), an
+      # ad-hoc signature (arm64 runs nothing unsigned), the bundle as "CORV GCS"
+      # next to a link to Applications
+      - name: Package (macOS)
+        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/')
+        run: |
+          APP=build/macos-release/app/corv-gcs.app
+          macdeployqt "$APP" -qmldir=libs/ui/qml
+          rm -rf build/dmg && mkdir -p build/dmg dist
+          cp -R "$APP" "build/dmg/CORV GCS.app"
+          codesign --force --deep --sign - "build/dmg/CORV GCS.app"
+          ln -s /Applications build/dmg/Applications
+          hdiutil create -volname "CORV GCS" -srcfolder build/dmg -ov -format UDZO "dist/CORV-GCS-${GITHUB_REF_NAME#v}-macos-universal.dmg"
+
+      - name: Upload
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: corv-gcs-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.dmg
+          if-no-files-found: ignore
+
+      - name: Release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*-setup-x64.exe
+            dist/*.zip
+            dist/*.AppImage
+            dist/*.dmg
+          fail_on_unmatched_files: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

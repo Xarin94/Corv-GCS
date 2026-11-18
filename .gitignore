@@ -1,9 +1,5 @@
-﻿node_modules
-dist
+build/
 topo/
-topography/
-.env
-.claude/
-data/
-prototypes/**/.venv/
-prototypes/**/__pycache__/
+*.user
+dist/
+__pycache__/

@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<!--
+  CORV dialect: ArduPilot + development (GNSS_INTEGRITY) + our own messages.
+
+  CORV_CELL_INFO comes from an LTEtelem cellular module (sysid 51 / compid 68),
+  the same definition as LTEtelem tools/mavlink/corv.xml: 63 bytes, CRC_EXTRA 119.
+  Fields are listed in wire order (largest type first), so the generated layout
+  and CRC_EXTRA match the module's.
+-->
+<mavlink>
+  <include>ardupilotmega.xml</include>
+  <include>development.xml</include>
+  <dialect>0</dialect>
+  <messages>
+    <message id="52200" name="CORV_CELL_INFO">
+      <description>LTE cell the LTEtelem module is camped on, its strongest neighbours and the cell changes since boot.</description>
+      <field type="uint32_t" name="eci">E-UTRAN cell identity (eNB id * 256 + sector).</field>
+      <field type="uint32_t" name="tac">Tracking area code.</field>
+      <field type="uint32_t" name="earfcn">Serving cell EARFCN.</field>
+      <field type="uint32_t" name="handovers">Cell changes since boot.</field>
+      <field type="uint32_t[4]" name="nb_earfcn">Neighbour EARFCNs.</field>
+      <field type="uint16_t" name="mcc">Mobile country code.</field>
+      <field type="uint16_t" name="mnc">Mobile network code.</field>
+      <field type="uint16_t" name="pci">Physical cell id.</field>
+      <field type="int16_t" name="rsrp" units="dBm">RSRP, INT16_MAX = unknown.</field>
+      <field type="int16_t" name="rssi" units="dBm">RSSI, INT16_MAX = unknown.</field>
+      <field type="uint16_t[4]" name="nb_pci">Neighbour PCIs, UINT16_MAX = none.</field>
+      <field type="int16_t[4]" name="nb_rsrp" units="dBm">Neighbour RSRP.</field>
+      <field type="int8_t" name="rsrq" units="dB">RSRQ, INT8_MAX = unknown.</field>
+      <field type="int8_t" name="sinr" units="dB">SINR, INT8_MAX = unknown.</field>
+      <field type="uint8_t" name="band">LTE band.</field>
+      <field type="uint8_t" name="state">0 unknown, 1 search, 2 limited, 3 camped, 4 connected.</field>
+      <field type="uint8_t" name="n_neighbours">Neighbour cells seen.</field>
+    </message>
+  </messages>
+</mavlink>

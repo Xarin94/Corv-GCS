@@ -1,307 +1,149 @@
-<p align="center">
-  <img src="assets/logo.png" alt="CORV GCS Logo" width="200"/>
-</p>
+# CORV GCS 2.0 (Qt / C++)
 
-<h1 align="center">CORV GCS</h1>
+Native rewrite of the Electron CORV GCS (1.8.8), following the implementation
+guide "CORV GCS su Qt/C++: descrizione di implementazione" (a copy, with the
+implementation status per phase, is in [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)).
+Qt 6.12 LTS, LGPLv3 modules only, Apache-2.0.
 
-<p align="center">
-  <b>A 3D ground control station for ArduPilot drones</b><br>
-  Windows &amp; Linux · Electron + Three.js
-</p>
+## From CORV GCS 1.x
 
-<p align="center">
-  <img src="https://img.shields.io/badge/version-1.8.7-blue" alt="Version"/>
-  <img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License"/>
-  <img src="https://img.shields.io/badge/MAVLink-2.0-orange" alt="MAVLink"/>
-  <img src="https://img.shields.io/badge/MSP-v1%20%7C%20v2-orange" alt="MSP"/>
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey" alt="Platform"/>
-  <a href="https://xarin94.github.io/Corv-GCS/"><img src="https://img.shields.io/badge/wiki-user%20guide-2ea44f" alt="Wiki"/></a>
-</p>
+2.0 is a new program, not an update of the Electron version: a breaking change
+throughout. On Windows it installs as "CORV GCS 2", next to 1.x, with its own
+shortcuts and uninstaller. Missions, logs, terrain and LTE cells keep the 1.x
+formats (see Data below), but the settings start again (`settings.json`
+instead of the browser storage) and the map tiles are downloaded again. The Electron
+sources stay in the history of this repository (tag `v1.8.8`), and the 1.x
+releases remain available. From 2.0.1 on, the GCS checks these releases at
+start and installs a newer version in one click (SYS CONFIG → UPDATES).
 
-<h3 align="center">
-  📖 <a href="https://xarin94.github.io/Corv-GCS/">Wiki — the complete user guide</a>
-</h3>
+## Status
 
-<p align="center">
-  Every screen, button and setting explained, page by page:
-  <a href="https://xarin94.github.io/Corv-GCS/getting-started.html">Getting started</a> ·
-  <a href="https://xarin94.github.io/Corv-GCS/flight-screen.html">Flight screen</a> ·
-  <a href="https://xarin94.github.io/Corv-GCS/mission-planning.html">Mission planning</a> ·
-  <a href="https://xarin94.github.io/Corv-GCS/setup.html">Setup</a> ·
-  <a href="https://xarin94.github.io/Corv-GCS/ROS.html">ROS</a> ·
-  <a href="https://github.com/Xarin94/Corv-GCS/releases/latest"><b>Download</b></a>
-</p>
+| Phase | Content | State |
+| --- | --- | --- |
+| 1 Foundations | CMake, presets, frameless QML window, CI on three systems (Qt for Windows installed by `tools/ci/install-qt-windows.py`: aqtinstall 3.3 does not know the 6.12 repository layout), Linux AppImage (`tools/build-appimage.sh`), Windows NSIS installer (`tools/package-windows.ps1`: per user, choice of folder, VC++ runtime app-local, 35 MB with the bundled LTE cells and SDL3) and portable zip, macOS DMG (bundle, macdeployqt, universal, ad-hoc signed), all three built by CI and attached to the GitHub release of a `v*` tag (the tag is the version the program reports); update check at start against the public repository's releases, one-click install (Windows setup `/UPDATE`, AppImage replaced in place, DMG opened) | Done; signed / notarized packages not yet |
+| 2 Link and state | MAVLink (ardupilotmega + development + CORV_CELL_INFO), serial / UDP / TCP, CORV-2 binary, demux, tlog, trace, StateMapper, PoseSmoother, commands, connection manager, `corv-link-cli`; MAVLink FTP and @PARAM/param.pck (READ ALL in 0.08 s on SITL); cellular link to an LTEtelem module through the relay (TLS, CRV3 Ed25519 access, AES-256-GCM end to end, replay window, reconnection; OpenSSL libcrypto); RTK / GPS inject (NTRIP caster with sourcetable and GGA, serial base, GPS_RTCM_DATA); telemetry forward (MAVLink mirror over UDP client / server / serial with write access, LTM); MSP v1 / v2 over serial and TCP (INAV / Betaflight state, INAV mission read and write) | Done, tried on SITL and against independent fakes of caster, relay, module and an MSP board; MSP on a real board to try |
+| 3 Terrain 3D | HGT store with automatic SRTM1 download of the missing tiles (AWS, saved to `<data>/terrain`), 1/30 degree chunks, QRhi renderer with texture-array heights, screen-space LOD, schematic shader, fog, satellite imagery on the chunks (zoom bands by distance, BC1 texture arrays with mips; RGBA8 on the OpenGL backend, where BC1 arrays sample black on Mesa); overlays in screen-space thick lines with a ghost pass (trail, predicted trajectory corridor, home, mission route with symbols and loiter rings, ADS-B contacts, ownship ring); vehicle models (GLB of the vehicle type, model scale); first person with arrow-key look-around and horizon lock, third person orbit (drag, wheel); terrain clipping (off / vehicle / all); water surface grid and underwater specks; sun for the time and place; text labels (HOME, mission items, traffic) from a glyph atlas; SatelliteDetail (four clipmap textures of zoom 17-20 around the vehicle, SYS CONFIG → SATELLITE DETAIL); outlines of the schematic view (ridges and skyline found in the depth, three passes); UAS geozones painted on the terrain; LTE cell poles and the dashed link to the serving mast; debug server (`--debug-port`) | Image parity measurements; the vehicle model is not outlined (it was in Electron) |
+| 4 Flight screen | HUD as separate instruments (HUDRenderer.js port, GPU tint, repaint on a pixel of change: 0.1-0.3 ms mean, under 1.5 ms worst per frame), command bar, connection sidebar, telemetry cells, mini-map, annunciator column (warnings / cautions, STATUSTEXT holds, silence on click, demo sequencer), EKF STATUS bar (ArduPilot EKF3 charts, flags, 5 Hz rates while open), FFT bar (strongest lines, live spectrum with peak hold, 60 s waterfall, logarithmic frequency axis), ROTOR LOAD schematic (per-motor PWM gauges on the airframe layout, built from the SERVOn_FUNCTION assignments: MotorN on the ring, a quadplane's pusher or a twin's engines in the middle; SAIL · RUDDER dials for a sailboat; FLAPS indicator over it for flap / flaperon outputs, Airbus EIS style, −10° to +30°; servo parameters read only while it is enabled), mode change banner, ADS-B traffic table (OpenSky every 30 s and ADSB_VEHICLE), LTE cell rows of the position box (LTE OVERLAY) | A full SITL flight |
+| 5 Mission | RouteModel, RouteCompiler (INAV too), MissionTransfer, MissionStore v2, Platforms, RadioLink, FLIGHT PLAN page with undo/redo, layered map, profile with radio band, mission library, upload / read (MAVLink, and INAV over MSP); mission in 3D; UAS geozones (EU ED-269 / ED-318 files, FAA, DFS DIPUL, IGN, ENAIRE, BAZL) on the map with legend, tooltips and annunciators | Parity tests with missions saved by Electron, transfer on SITL |
+| 6 Setup | SETUP → CONNECTION, SETUP → PARAMETERS (name catalog with favourites, READ ALL over FTP with PARAM_REQUEST_LIST fallback, queued single reads, in-place edit and WRITE CHANGED, .param files; ArduPilot documentation of every parameter from apm.pdef.json bundled per firmware by `tools/gen-param-meta.py` and updatable from autotest.ardupilot.org: description, units, range, value lists as selects, bitmask editor), SETUP → LOG DOWNLOAD (DataFlash logs on the SD card over LOG_REQUEST_LIST / LOG_REQUEST_DATA with gap filling, download queue, erase, open in LOG REPLAY), SETUP → ACCELEROMETER / COMPASS / GYRO / BARO (six positions following ACCELCAL_VEHICLE_POS, level, simple accel, onboard mag cal with the 80-section 3D sphere, large-vehicle magcal, stored calibration and compass tables), SYS CONFIG (every section, Electron keys in `settings.json`); SETUP → CELLULAR LINK, TELEMETRY FORWARD, RTK / GPS INJECT, FLIGHT MODES (the vehicle's own mode table), FAILSAFE, PID TUNING (panels of the vehicle class), EXT TUNING, RADIO CAL, VIBRATIONS, SERVO / RELAY, CORV SETUP (SystemConfig v9 over 0x10 / 0x11), SIMULATION (SITL launcher, WSL on Windows) | Calibrations tried on SITL up to what a still vehicle allows (a compass run to SUCCESS needs the `calibration` SITL model); JOYSTICK / RC (SDL3: gamepads in the standard layout, other joysticks raw; 8 or more inputs to RC channels with deadzone and expo, RC_CHANNELS_OVERRIDE at 10 / 25 / 50 Hz with the ArduPilot parameters saved and restored, 500 ms failsafe, servo and look buttons) | LIDAR, ROS still to port; the joystick tried without a device only |
+| 7 Sensors and video | ADS-B: OpenSky polling, the traffic table, contacts on the mini-map and in 3D; LTE cell of the module on the flight screen and in CELLULAR LINK; LTE cell database (user CSV files, the cells of Italy, San Marino and Vatican City in `celldb/`, the 2024 OpenCelliD PMTiles copy read by blocks with HTTP ranges, online lookup on beaconDB / the OpenCelliD API) and the mast map: sites within 10 km and the serving one on the mini-map and in 3D, mast and distance in CELLULAR LINK and on the flight screen | FPV, LiDAR, ROS |
+| 8 Logs and services | Rolling debug log, offline SRTM and tile download, SQLite tile store, LOG REPLAY of .tlog (memory-mapped, offsets only) and .bin (DataFlash → real MAVLink frames) on its own thread with timeline, seek and sticky messages, vibration spectra from the log's IMU samples (GYR / ACC, batch sampler, IMU; Welch, SYS CONFIG → FFT FROM LOGS) | Done for now; SITL launcher in SETUP → SIMULATION |
+| 9 Release | | Not started |
 
----
+## Layout
 
-A ground control station is the software on the laptop that talks to the drone: it shows what the
-aircraft is doing, lets you plan a flight and sends it to the autopilot. CORV GCS does that for
-ArduPilot vehicles (Plane, Copter, Rover, Sub, Heli, VTOL) on a **real 3D model of the terrain**,
-built from the same elevation data used by mapping services, with satellite imagery on top.
-
-It also reads INAV / Betaflight controllers over **MSP** and the onboard CORV autopilot over its
-binary protocol; the interface is in **English and Simplified Chinese**.
-
-![Flight screen](docs/images/flight-hud.jpg)
-
----
-
-## Flight screen
-
-You see what the aircraft sees: the terrain ahead in 3D, with an aviation-style head-up display
-over it. Speed, altitude, heading, vertical speed and G-load are drawn the way an airliner's primary
-flight display draws them — the pitch ladder, the flight-path marker and the bank arc follow the
-same conventions as a Garmin or Boeing HUD, so the picture reads at a glance.
-
-Around the aircraft the satellite imagery is as sharp as on the 2D map, down to 10 cm per pixel
-(zoom 20; 40 cm by default, set in **SYS CONFIG → 3D SATELLITE DETAIL**), loaded as the aircraft
-flies: low over the ground you see the cars, the fences and the power lines you are flying over.
-Between telemetry samples (25 a second from ArduPilot, in bursts over a cellular link) the view
-carries the aircraft along on its velocity, acceleration and rotation rates, so low and fast the
-ground streams past at the full frame rate instead of in steps.
-
-Turn the satellite imagery off (**M**) and the terrain becomes a schematic chart, in the style of
-the mission simulations in *Top Gun: Maverick*: black sky, contour lines every 10 m with brighter
-ones every 50 m and amber ones every 250 m, and a white line along every ridge that hides the ground
-behind it and along the horizon, out to 30 km. The route with its numbered waypoints, home, the
-predicted path and the trail already flown are drawn over it in bold, at a size that stays readable
-from any distance — a survey as dashed passes in its own colour, a loiter circle as the ring it is
-with arrows for the direction of turn, a landing straight down, the return to launch dashed. Below
-200 m a faint grid of 25 m triangles on the ground around the aircraft shows how high it is. With
-the light theme the same chart is drawn as green relief under a pale blue sky, with the readouts and
-the HUD in dark blue.
-
-<p align="center"><img src="docs/images/annunciators.png" width="370" alt="Health annunciators"/></p>
-
-A column of **annunciators** beside the speed tape flags anything wrong with the vehicle: red
-warnings from the top, amber cautions from the bottom. They are the same conditions Mission Planner
-checks — GPS quality, compass and IMU health, vibration, EKF variance, radio signal, failsafes —
-each shown with its own icon and the number behind it (satellites and HDOP under the GPS flag, RSSI
-under the link one).
-
-Tick **RESTRICTED ZONES** in the side panel and the UAS geographical zones within 50 km of the vehicle
-and the mission appear on the maps and on the 3D terrain — no-fly in red bands, ceilings coloured by
-the height allowed — from the FAA in the US and the national services in Germany, France, Spain and
-Switzerland, or from the ED-269 file a state publishes (Italy's from D-Flight). Above a zone's ceiling
-or the general limit (120 m in Europe, 400 ft in the US) a red flag lights beside the altitude and
-TERR ALT flashes; arming inside a zone raises an alarm banner of its own.
-
-Click the **EKF STATUS** tab on the left edge and a black bar
-slides out down the left side with the estimator's last 20 seconds in three charts, the view moving
-over to make room. For an ArduPilot: the EKF
-innovation ratios, the GPS accuracy and the EKF attitude against the backup DCM. For a CORV board:
-the raw GPS against the particle filter, the particle cloud's effective sample size and confidence,
-and the shared EKF's covariance. A GPS glitch, a dropout or a drifting estimate shows as it happens.
-
-## Flight stack
-
-**SYS CONFIG → FLIGHT STACK** tells the GCS which firmware it is talking to: **ArduPilot**,
-**INAV** or **Betaflight**. That one choice pre-selects the right link on the connection page
-(MAVLink serial at 57600, MSP at 115200) and decides what the rest of the app offers.
-
-On INAV the mission is planned exactly the same way and uploaded over MSP as an INAV waypoint
-list — navigation and hold points, POI, heading, speed, landing and return to home, with the
-altitudes the terrain model worked out. What the INAV format has no room for is greyed out while
-you plan, with the reason on the control itself rather than an error at upload time: no loiter
-circles, no spline legs, no take-off waypoint, no camera, gimbal, servo or relay actions, and a
-budget of 60 waypoints — the board's own figure once it is connected. Betaflight has no
-navigation stack, so the Flight Plan page is greyed out entirely. On either of them the setup
-screens that only speak MAVLink — parameters, calibration, tuning, failsafe, RTK inject — are
-greyed out too, each one saying where that setting actually lives.
-
-## Mission planning
-
-You draw the mission as shapes, not as a list of commands: a waypoint, a circle to loiter in, a
-perimeter to fly around, an area to photograph, a corridor to follow, a point the camera should
-look at, a landing. The route between them is calculated for you a moment after every edit — for
-an area scan the parallel lanes come from the camera model, so a DJI Mavic 3 at 100 m gives 49 m
-between lanes, a photo every 26 m and 2.7 cm per pixel on the ground.
-
-![Mission planning](docs/images/mission-planning.jpg)
-
-<p align="center"><img src="docs/images/camera-footprint.png" width="300" alt="Camera footprint"/></p>
-
-Every planned photo is a red dot on the route; hover one and the rectangle it will cover on the
-ground appears. The **elevation profile** along the bottom shows the ground under the whole route
-and the height the aircraft will fly at: the autopilot flies straight from one waypoint to the
-next, so each leg is checked against the terrain and a leg that would clip a hill is listed on the
-route card ("Clearance under 20 m" on segment 6 in the picture) before you upload anything.
-
-## Radio link coverage
-
-A drone is only as far away as its radio can reach, and hills get in the way. Pick your radio from
-the list (RFD900x, SiK, Herelink, Microhard, Doodle Labs, ExpressLRS, Crossfire — or type the
-transmit power, antenna gains and sensitivity of your own), place the operator on the map and turn
-the **LINK** layer on: the map shows in light green where the link will be good, in orange where
-the terrain degrades it, in red where it will work but with too little margin, and nothing where
-it will not work at all.
-
-![Radio link](docs/images/radio-link.jpg)
-
-<p align="center"><img src="docs/images/link-profile.png" width="620" alt="Link profile"/></p>
-
-The check is the one an RF planner would do: a straight line of sight from the antenna to the
-aircraft, the **first Fresnel zone** around it (the radio needs that ellipse clear, not just the
-line), the loss when a ridge cuts into it, and the curvature of the Earth. The **LINK PROFILE** cut
-shows it for the point under the cursor or for the worst point of the route — in the picture a
-mountain between operator and aircraft costs 46.7 dB and the link is lost.
-
-## Flying the mission
-
-One button uploads the plan to the autopilot; **READ** brings back the mission stored on it. The
-command bar keeps the flight mode, battery, GPS quality and the waypoint being flown in view, with
-ARM, TAKEOFF, RTL, AUTO and LAND at hand — the picture is a simulated copter flying the plan above,
-on waypoint 4 of 54.
-
-![Flying the mission](docs/images/mission-auto.jpg)
-
-![Command bar](docs/images/command-bar.png)
-
-Every flight is recorded as a `.tlog` from the moment the link comes up, and both `.tlog` and
-ArduPilot `.bin` logs can be replayed on the same screen, with a timeline to scrub through.
-
-## LiDAR point cloud
-
-With a Livox Mid-360 laser scanner on the aircraft, a 3D map of the ground builds up live on the
-screen. The scanner sends its points over the network link and CORV GCS places each one on the map
-from the aircraft position and attitude in the telemetry — about 170,000 points in the picture, coloured
-by height; the map can be saved as a `.ply` file for other software.
-
-![LiDAR](docs/images/lidar.jpg)
-
-## Surfaces from ROS
-
-Any LiDAR, echo sounder or sonar running under ROS (1 or 2) reaches the GCS through rosbridge: the
-ground under an aircraft, the bed under a boat or a ROV, the walls of an underwater cave, drawn as a
-mesh of grey lines over a transparent body, averaged in 30 cm cells instead of millions of points,
-in absolute or relative navigation. A preview in the settings shows how the sensor is mounted and
-the zone it collects from. A mechanical sector-scanning sonar, one beam per ping, has each beam
-placed with the pose of its own time, and a survey boat can take its depths from the water surface
-rather than from a drifting barometric altitude. The wiki's [ROS page](https://xarin94.github.io/Corv-GCS/ROS.html) walks
-through it step by step: rosbridge on the companion computer, every setting, the on-screen strip,
-troubleshooting, and worked examples for an aerial LiDAR, a SLAM map, an echo sounder, a survey sonar,
-a ROV in a cave and a sector-scanning sonar on a boat — with a simulated survey of a Lake Garda bed
-strewn with a wreck, a car, a container and a light aircraft to try it on.
-
-## Under water, and without GPS
-
-Lakes and seas are found in the elevation data and drawn as a blue surface; a ROV is placed at its
-depth under the water it dives in, stays visible under the surface, and from under it the surface
-is a grid overhead with particles drifting past. With no GPS at all, **SYS CONFIG → NAVIGATION**
-switches to a relative frame over a plane at zero — the vehicle's own local position (a DVL, a
-USBL), or one dead-reckoned from its velocity when it has none.
-The simulator has a ROV on Lake Garda, with and without GPS. The picture is a real BlueROV2 dive
-replayed from its log.
-
-![ROV dive](docs/images/rov-real-log.jpg)
-
-All of it, with what ArduSub and ArduPlane actually send without GPS, is in
-[docs/3D-NAVIGATION.md](docs/3D-NAVIGATION.md).
-
-## Setup and parameters
-
-The vehicle connects over a USB telemetry radio, UDP or TCP, and a built-in **ArduPilot simulator**
-(SITL) starts with one click when you want to try things without an aircraft. The parameter editor
-reads a single parameter on request instead of the full list of a thousand — on a slow long-range
-radio that is the difference between two packets and several minutes.
-
-![Parameters](docs/images/parameters.jpg)
-
-## Also on board
-
-- **RTK GPS**: corrections from a base station or an NTRIP caster are forwarded to the drone, for centimetre-level positioning.
-- **FPV video**: an RTSP camera stream (SIYI HM30 and similar) shown over the 3D view.
-- **Sensor calibration**: the six-position accelerometer calibration, level, gyro and baro, and the onboard compass calibration with a 3D sphere of the magnetometer samples that turns green where the autopilot has coverage.
-- **Joystick**: fly with a gamepad through RC override, with per-axis calibration.
-- **Telemetry forwarding**: mirror the link over UDP or output MAVLink / LTM to an antenna tracker.
-- **Cellular link**: an LTEtelem module flies the link over the mobile network, end-to-end encrypted through a relay; the LTE cell it uses, the signal and the cell changes are in the position panel, and the serving mast with the cell sites around it is on the map and in 3D.
-- **ADS-B traffic**: nearby aircraft on the map, and in 3D as red circles with callsign and relative height, trailing the path they flew.
-- **Offline maps**: satellite tiles and elevation data cached on disk, so the app starts and works without a network.
-
----
-
-## Installation
-
-Installers are on the [Releases](https://github.com/Xarin94/Corv-GCS/releases) page:
-**Windows** `CORV GCS Setup 1.8.7.exe`, **macOS** `CORV GCS-1.8.7-arm64.dmg` (Apple silicon) and
-`CORV GCS-1.8.7-x64.dmg` (Intel), **Linux** `CORV GCS-1.8.7.AppImage` (portable) and
-`corv-gcs_1.8.7_amd64.deb` (Debian / Ubuntu).
-
-The macOS app is not signed with an Apple Developer ID: after copying it to Applications, run
-`xattr -dr com.apple.quarantine "/Applications/CORV GCS.app"` once, or macOS reports it as damaged.
-
-To run from source you need [Node.js](https://nodejs.org/) 18 or newer:
-
-```bash
-git clone https://github.com/Xarin94/Corv-GCS.git
-cd Corv-GCS
-npm install
-npx electron-rebuild     # native serial-port module for Electron
-npm start                # run
-npm run build            # installers for Windows + Linux → dist/
+```
+libs/core     geodesy, ring buffers, LRU, data root, settings, rolling debug log
+libs/link     transports, MAVLink parser, CORV-2, demux, tlog, trace, LinkManager (link thread)
+libs/vehicle  VehicleState, StateMapper, modes, SceneOrigin, RelativeNav, PoseSmoother,
+              VehicleHub (snapshots), CommandSender, ConnectionManager
+libs/input    gamepads and joysticks (SDL3, optional) and the RC mapping of the joystick
+libs/terrain  HGT tiles, chunk manager, tile store (SQLite), satellite chunk imagery, BC1
+libs/services log replay (.tlog / .bin index, replay engine on the log thread), spectra from logs,
+              geozones, LTE cell database (CellDb)
+libs/scene    renderer-neutral data (TerrainData, models, geozones, cell overlay)
+libs/gpu      QRhi renderer and the SceneItem (the only code that includes QRhi)
+libs/ui       QML module Corv.Ui: HUD instruments, view models, windows
+app/          main.cpp, TestDriver (test commands), DebugServer (--debug-port)
+shaders/      Vulkan-style GLSL, baked by qsb at build time
+tools/        corv-link-cli, MAVLink generator (corv.xml), build and package scripts, debug-client.py
+resources/    fonts, icons, vehicle models, SITL defaults, celldb/ (the bundled LTE cells)
+tests/        Qt Test ports of the scripts/test-*.js suites
 ```
 
-## Terrain data and local files
+## Build (Windows)
 
-The 3D terrain comes from SRTM `.hgt` elevation tiles (one file per 1° × 1° square, ~25 MB each at
-30 m resolution). The tiles under the vehicle are downloaded automatically when a network is
-available and kept in `data/terrain`; you can also put your own files in `topography/` inside the
-installation folder, from
-[OpenTopography](https://portal.opentopography.org/raster?opentopoID=OTSRTM.082015.4326.1) or
-[USGS EarthExplorer](https://earthexplorer.usgs.gov/), named like `N47E011.hgt`.
+Visual Studio 2022 Build Tools and Qt 6.12 for MSVC 2022 64-bit
+(default `%USERPROFILE%\Qt\6.12.0\msvc2022_64`, or set `QT_DIR`):
 
-Missions, flight logs and LiDAR maps are written to a `data/` folder next to the installation
-(`data/missions`, `data/logs`, `data/lidar`) — under `Program Files`, where that is not allowed,
-they go to the per-user data folder and the mission library shows the path in use. Custom aircraft
-models (`.glb` / `.gltf`) go in `models/`.
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\build.ps1 -Test
+build\windows-release\corv-gcs.exe --connect tcp:<host>:5760
+```
 
-## Debug log for support
+Executables land in `build\windows-release`; put Qt's `bin` on `PATH` to run
+them from there (packaging copies the libraries next to the executable).
+OpenSSL (libcrypto, for the cellular link) comes from `OPENSSL_DIR` or
+`build\tools\openssl-*`; without it the build has no LTE link. SDL3 (joystick
+input) comes from `SDL3_DIR` or `build\tools\sdl3\SDL3-*`; without it the build
+has no joystick. `tools\package-windows.ps1` fetches both when missing.
 
-The app keeps the **last 5 minutes** of what it did in `data/debug/corv-gcs-debug.log`,
-rewritten every 3 seconds and capped at 3 MB: connections and their failures, every command sent
-and its acknowledgement, STATUSTEXT, heartbeats lost and back, arming and mode changes, parameter
-and mission transfers, warnings shown on screen, button presses, a vehicle / link / frame-rate
-snapshot every 10 seconds, and crashes. At start-up the previous session's file becomes
-`corv-gcs-debug.prev.log`, so the minutes before a crash survive the restart.
+Installer: `powershell -ExecutionPolicy Bypass -File tools\package-windows.ps1 [-Zip]`
+builds, stages (windeployqt, VC++ runtime app-local, libcrypto, notices) and makes
+`dist\CORV-GCS-<version>-setup-x64.exe` with NSIS: per-user install in
+`%LOCALAPPDATA%\Programs\CORV GCS 2` (folder selectable), Start menu and desktop
+shortcuts, uninstaller that keeps the `data` folder. It sits next to, not over,
+CORV GCS 1.x. Missing NSIS / OpenSSL are fetched into `build\tools` (NSIS 3.11
+portable, OpenSSL 3.5 for MSVC) unless `-NoDownload`.
 
-When something goes wrong, open **SYS CONFIG → DEBUG LOG → SAVE COPY…**: it writes one file with
-this session and the previous one, to send to support. **SHOW FILE** opens the folder. The log holds
-no keys or passwords (cellular key, NTRIP credentials are masked).
+Link checks without the interface: `corv-link-cli serial COM5 57600`,
+`corv-link-cli corv COM7 460800`, `corv-link-cli lte HOST 5765 --module ID --key HEX [--cert SHA256]`
+print the vehicle state once a second and warn when bytes arrive but no MAVLink
+or CORV-2 frame checks out (wrong baud rate or protocol).
 
-## Connection guide
+Debug server: `--debug-port PORT` starts a JSON-RPC 2.0 server on 127.0.0.1 only
+(one request per line): `set` / `get` {object, property, value} on a view model or a
+named QML item, `call` {target: "Gcs.setMode", args: [...]} with the return value,
+`stats` (what the 3D views report), `screenshot` {file} (no file: base64 PNG) and
+`script` {line} for any of the commands below. `python tools/debug-client.py PORT METHOD [JSON]`
+sends one request.
 
-| Method | Protocol | Typical use | Default |
-|--------|----------|-------------|---------|
-| Serial | MAVLink 2 | USB telemetry radio (SiK, RFD900…) | 57600 baud |
-| UDP | MAVLink 2 | MAVProxy, MAVLink router | `127.0.0.1:14550` |
-| TCP | MAVLink 2 | SITL, also through WSL on Windows | `127.0.0.1:5760` |
-| Serial / TCP | MSP / MSP2 | INAV or Betaflight controller — telemetry, and waypoint missions on INAV | 115200 baud |
-| Serial | CORV binary | Onboard CORV autopilot over USB | 460800 baud |
+Test hooks: `--replay FILE` (a .tlog or .bin into LOG REPLAY), `--grab FILE --grab-after MS`,
+`--quit-after MS`, and `--grab-script FILE` with lines `MS tab N`, `MS grab FILE`, `MS key Left` / `MS keyup Left` (arrow keys),
+`MS emit toggleSatellite` (any header button signal), `MS call Params.readAll`
+(a view-model method of `Params`, `Plan`, `Gcs`, `Calibration`, `Ekf`, `Fft`, `Replay`, `Annunciators`, `Rtk`, `TelForward`, `Lte`, `SetupCfg`, `Sitl`, `GeoZones`, `Lidar` or `Ros`), `MS set setupPage current PARAMETERS` (a property of a
+named QML item or of a view model, e.g. `set flightView swapped true`, `set scene orbitPitch -0.7`), `MS size WxH`.
+Grabs a few tenths of a second apart keep the GUI thread busy and stop the 3D view from
+syncing while they last: grab seldom. Direct3D 11 renders no frames while the window is
+covered; visual checks on a covered window use `QSG_RHI_BACKEND=opengl`.
+`CORV_DEMO_ORIGIN=lat,lon` starts the demo flight somewhere else than Innsbruck (water, sea).
 
-## Documentation
+SRTM tiles: `topo/` next to the executable, `<data root>/terrain`, the
+project's `topo/` in development, or folders listed in `CORV_TOPO_DIRS`.
 
-The **[wiki](https://xarin94.github.io/Corv-GCS/)** covers every screen, button and setting, with
-the ArduPilot documentation page for each flight mode, mission command, failsafe and calibration:
-[getting started](https://xarin94.github.io/Corv-GCS/getting-started.html),
-[flight screen](https://xarin94.github.io/Corv-GCS/flight-screen.html),
-[side panel](https://xarin94.github.io/Corv-GCS/side-panel.html),
-[flight modes](https://xarin94.github.io/Corv-GCS/flight-modes.html),
-[mission planning](https://xarin94.github.io/Corv-GCS/mission-planning.html),
-[radio link](https://xarin94.github.io/Corv-GCS/radio-link.html),
-[3D view, water and ROVs](https://xarin94.github.io/Corv-GCS/3D-NAVIGATION.html),
-[vehicle setup](https://xarin94.github.io/Corv-GCS/setup.html),
-[GCS settings](https://xarin94.github.io/Corv-GCS/sys-config.html),
-[simulator](https://xarin94.github.io/Corv-GCS/simulator.html),
-[LiDAR](https://xarin94.github.io/Corv-GCS/LIDAR.html),
-[ROS surface](https://xarin94.github.io/Corv-GCS/ROS.html),
-[keyboard shortcuts](https://xarin94.github.io/Corv-GCS/shortcuts.html).
-Its source is the [docs/](docs/) folder.
+## Build (Linux)
 
-[ARCHITECTURE.md](ARCHITECTURE.md) describes every module and data flow; [docs/LIDAR.md](docs/LIDAR.md)
-covers the Livox setup; [docs/3D-NAVIGATION.md](docs/3D-NAVIGATION.md) the mission in 3D, the
-low-altitude grid, water, ROVs and navigation without GPS. Bug reports and feature requests are welcome in the
-[issues](https://github.com/Xarin94/Corv-GCS/issues).
+Qt 6.12 for GCC 64-bit with the CI modules, e.g. with aqtinstall:
+`aqt install-qt linux desktop 6.12.0 linux_gcc_64 -m qtserialport qtshadertools qtwebsockets qtimageformats -O ~/Qt`
+and `aqt install-tool linux desktop tools_ninja -O ~/Qt`. Qt's GuiPrivate needs the
+libxkbcommon headers (`libxkbcommon-dev`); without root they can be unpacked from
+the .deb and passed as `XKB_INCLUDE_DIR` / `XKB_LIBRARY`.
 
-## License
+```sh
+export PATH=~/Qt/Tools/Ninja:$PATH
+cmake --preset linux-release -DCMAKE_PREFIX_PATH=~/Qt/6.12.0/gcc_64
+cmake --build --preset linux-release
+QT_QPA_PLATFORM=offscreen ctest --preset linux-release
+LD_LIBRARY_PATH=~/Qt/6.12.0/gcc_64/lib build/linux-release/app/corv-gcs --connect tcp:127.0.0.1:5760
+```
 
-[Apache License 2.0](LICENSE)
+SITL on Linux listens on TCP 5760 directly (`arduplane --model plane -I0 ...`).
+
+AppImage: `RUNTIME=<AppImage type-2 runtime> tools/build-appimage.sh` builds
+`dist/CORV-GCS-<version>-x86_64.AppImage` from the local Qt (only the QML modules
+the interface imports, the executable stripped) and downloads nothing. The runtime
+comes from https://github.com/AppImage/type2-runtime/releases, or is cut out of any
+type-2 AppImage given as RUNTIME. It runs on systems with a glibc at least as new
+as the build machine's. Data go to `~/.config/CORV GCS/data`, shared with Electron.
+`CORV_VERSION_LABEL=2.0.0-alpha.8` stamps the version (and the file name); without
+it the build reports `2.0.0-dev` and is never offered an update.
+
+Updates: a few seconds after start (SYS CONFIG → UPDATES can switch it off) the
+GCS lists the releases of `CORV_UPDATE_REPO` (CMake, default `Xarin94/Corv-GCS`)
+on the GitHub API, anonymously, and offers the newest version above its own that
+has a package for the system: UPDATE at the top right, the notes, INSTALL. Only
+then is the package downloaded and checked against GitHub's SHA-256.
+`CORV_UPDATE_URL` points the check at another list (tests).
+
+## Data
+
+Same data root and formats as the Electron version (`data/` next to the
+executable when writable, else `%APPDATA%\CORV GCS\data`): missions, logs
+(`.tlog` with little-endian µs stamps), debug log, terrain. New: `settings.json`
+(was localStorage) and `tiles/` (was IndexedDB). The LTE cell database keeps the
+Electron layout in `celldb/` (blocks, leaves, sources, index, lookups), so both versions share it.
+
+## SITL from Windows
+
+SITL runs in WSL; connect to the WSL address (`wsl hostname -I`), not
+127.0.0.1: the localhost forwarding drops the connection and SITL exits.
