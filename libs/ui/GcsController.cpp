@@ -11,7 +11,6 @@
 #include "ui/RosController.h"
 #include "ui/SitlController.h"
 
-#include "core/DataRoot.h"
 #include "core/DebugLog.h"
 #include "core/Settings.h"
 #include "link/LinkManager.h"
@@ -42,6 +41,8 @@
 #include <QJsonObject>
 #include <QTime>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 GcsController *GcsController::s_instance = nullptr;
@@ -49,7 +50,16 @@ GcsController *GcsController::s_instance = nullptr;
 GcsController::GcsController(QObject *parent) : QObject(parent), m_bus(std::make_unique<MessageBus>())
 {
     s_instance = this;
-    m_linkThread.setObjectName(QStringLiteral("link"));
+    startLink();
+    createViewModels();
+    wireViewModels();
+    wireLink();
+}
+
+void GcsController::startLink()
+{
+    // The link manager and the vehicle model own the link thread
+    m_linkThread.setObjectName(u"link"_s);
     m_link = new LinkManager(m_bus.get());
     m_hub = new VehicleHub(m_link);
     m_link->moveToThread(&m_linkThread);
@@ -65,19 +75,22 @@ GcsController::GcsController(QObject *parent) : QObject(parent), m_bus(std::make
     SceneItem::setHub(m_hub);
     MapItem::setHub(m_hub);
     // CORV_DEMO_ORIGIN=lat,lon: the demo somewhere else than Innsbruck (tests: water, sea)
-    if (const QStringList o = qEnvironmentVariable("CORV_DEMO_ORIGIN").split(QLatin1Char(',')); o.size() == 2) {
+    if (const QStringList o = qEnvironmentVariable("CORV_DEMO_ORIGIN").split(','_L1); o.size() == 2) {
         const double lat = o[0].toDouble(), lon = o[1].toDouble();
         m_hub->mutate([lat, lon](VehicleState &s) { s.lat = lat; s.lon = lon; });
         m_hub->setSceneOrigin(lat, lon);
     }
     // GCS output muted as it was left (gcs-muted, as Electron kept it)
-    if (Settings::instance().value(QStringLiteral("gcs-muted")).toString() == QLatin1String("1")) m_link->setGcsMuted(true);
+    if (Settings::instance().value(u"gcs-muted"_s).toString() == "1"_L1) m_link->setGcsMuted(true);
     // No link: the demo racetrack around the scene origin, on the real terrain
     m_hub->startDemo([](double lat, double lon) { return HgtStore::instance().elevation(lat, lon); });
-
     // Battery range when the vehicle reports no percentage (SYS CONFIG; localStorage bat-vmin / bat-vmax)
-    m_hub->setBatteryRange(Settings::instance().value(QStringLiteral("bat-vmin"), 9.6).toDouble(),
-                           Settings::instance().value(QStringLiteral("bat-vmax"), 12.6).toDouble());
+    m_hub->setBatteryRange(Settings::instance().value(u"bat-vmin"_s, 9.6).toDouble(),
+                           Settings::instance().value(u"bat-vmax"_s, 12.6).toDouble());
+}
+
+void GcsController::createViewModels()
+{
     // The FLIGHT PLAN and SYS CONFIG pages (QML singletons Plan and SysConfig)
     m_sysConfig = new SysConfig(m_hub, m_cmd, this);
     m_plan = new PlanController(m_hub, m_cmd, this);
@@ -99,7 +112,6 @@ GcsController::GcsController(QObject *parent) : QObject(parent), m_bus(std::make
     m_annun = new AnnunciatorController(m_hub, this);
     // UAS geographical zones: maps, terrain, height warnings (QML singleton GeoZones)
     m_geo = new GeoZoneController(m_hub, m_plan, this);
-    connect(m_geo, &GeoZoneController::hudMessage, this, &GcsController::hudMessage);
     // SETUP → RTK / GPS INJECT: RTCM corrections to the vehicle (QML singleton Rtk)
     m_rtk = new RtkController(m_link, m_hub, this);
     // SETUP → TELEMETRY FORWARD: MAVLink mirror and LTM outputs (QML singleton TelForward)
@@ -110,24 +122,12 @@ GcsController::GcsController(QObject *parent) : QObject(parent), m_bus(std::make
     // SETUP → LIDAR: the Livox point cloud (QML singleton Lidar); SETUP → ROS: the
     // rosbridge surface (QML singleton Ros). Each client on a thread of its own
     m_lidar = new LidarController(m_bus.get(), m_hub, this);
-    connect(m_lidar, &LidarController::hudMessage, this, &GcsController::hudMessage);
     m_ros = new RosController(m_hub, m_bus.get(), m_plan, this);
-    connect(m_ros, &RosController::hudMessage, this, &GcsController::hudMessage);
     // ADS-B traffic from OpenSky while SHOW ADS-B TRAFFIC is on (on by default, adsb-enabled)
     m_adsb = new AdsbClient(m_hub, this);
     m_adsb->setEnabled(m_sysConfig->adsbEnabled());
-    connect(m_sysConfig, &SysConfig::adsbChanged, this, [this] {
-        const bool on = m_sysConfig->adsbEnabled();
-        if (on == m_adsb->enabled()) return;
-        m_adsb->setEnabled(on);
-        emit hudMessage(on ? QStringLiteral("ADS-B traffic enabled") : QStringLiteral("ADS-B traffic disabled"), QStringLiteral("info"));
-    });
-    // One bar at a time on the left: opening one closes the other (FFT wins at start, as in Electron)
-    if (m_ekf->enabled() && m_fft->enabled()) m_ekf->setEnabled(false);
-    connect(m_ekf, &EkfController::enabledChanged, this, [this] { if (m_ekf->enabled()) m_fft->setEnabled(false); });
-    connect(m_fft, &FftController::enabledChanged, this, [this] { if (m_fft->enabled()) m_ekf->setEnabled(false); });
     // LOG REPLAY: the engine on the log thread (QML singleton Replay)
-    m_logThread.setObjectName(QStringLiteral("log"));
+    m_logThread.setObjectName(u"log"_s);
     m_replayEngine = new LogReplay(m_link, m_hub);
     m_replayEngine->moveToThread(&m_logThread);
     connect(&m_logThread, &QThread::finished, m_replayEngine, &QObject::deleteLater);
@@ -135,13 +135,33 @@ GcsController::GcsController(QObject *parent) : QObject(parent), m_bus(std::make
     m_replay = new ReplayController(m_replayEngine, m_fft, this);
     // The update check at start and the one-click install (QML singleton Updates)
     m_updates = new UpdateController(m_hub, this);
-    connect(m_sysConfig, &SysConfig::jsonFieldChanged, this, [this](const QString &key) {
-        if (key == QLatin1String("log-fft-cfg")) m_replay->applyFftConfig();
-    });
+}
 
+void GcsController::wireViewModels()
+{
+    connect(m_geo, &GeoZoneController::hudMessage, this, &GcsController::hudMessage);
+    connect(m_lidar, &LidarController::hudMessage, this, &GcsController::hudMessage);
+    connect(m_ros, &RosController::hudMessage, this, &GcsController::hudMessage);
+    connect(m_sysConfig, &SysConfig::adsbChanged, this, [this] {
+        const bool on = m_sysConfig->adsbEnabled();
+        if (on == m_adsb->enabled()) return;
+        m_adsb->setEnabled(on);
+        emit hudMessage(on ? u"ADS-B traffic enabled"_s : u"ADS-B traffic disabled"_s, u"info"_s);
+    });
+    // One bar at a time on the left: opening one closes the other (FFT wins at start, as in Electron)
+    if (m_ekf->enabled() && m_fft->enabled()) m_ekf->setEnabled(false);
+    connect(m_ekf, &EkfController::enabledChanged, this, [this] { if (m_ekf->enabled()) m_fft->setEnabled(false); });
+    connect(m_fft, &FftController::enabledChanged, this, [this] { if (m_fft->enabled()) m_ekf->setEnabled(false); });
+    connect(m_sysConfig, &SysConfig::jsonFieldChanged, this, [this](const QString &key) {
+        if (key == "log-fft-cfg"_L1) m_replay->applyFftConfig();
+    });
+}
+
+void GcsController::wireLink()
+{
     connect(m_link, &LinkManager::connectionState, this, [this](const QString &st) {
         m_state = st;
-        if (st == QLatin1String("CONNECTED")) {
+        if (st == "CONNECTED"_L1) {
             m_error.clear();
             // A new link is a new vehicle: the charts and spectra start empty
             m_ekf->reset();
@@ -151,34 +171,30 @@ GcsController::GcsController(QObject *parent) : QObject(parent), m_bus(std::make
         emit connectionStateChanged();
     });
     connect(m_conn, &ConnectionManager::connectFailed, this, [this](const QString &, const QString &e) {
-        m_state = QStringLiteral("DISCONNECTED");
+        m_state = u"DISCONNECTED"_s;
         m_error = e;
         m_replay->setConnectionState(m_state);
         emit connectionStateChanged();
-        emit hudMessage(QStringLiteral("Connection failed: %1").arg(e), QStringLiteral("error"));
+        emit hudMessage(u"Connection failed: %1"_s.arg(e), u"error"_s);
     });
     // No bytes, or bytes that never make a frame: said on the HUD, not only in the log
-    connect(m_link, &LinkManager::linkWarning, this, [this](const QString &text) { emit hudMessage(text, QStringLiteral("warning")); });
-    connect(m_link, &LinkManager::tlogChanged, this, [this](const QString &p) {
-        m_tlog = p;
-        emit tlogPathChanged();
-    });
+    connect(m_link, &LinkManager::linkWarning, this, [this](const QString &text) { emit hudMessage(text, u"warning"_s); });
     connect(m_hub, &VehicleHub::commandAck, this, [this](int cmd, int result) {
         static const QHash<int, const char *> names = {{22, "TAKEOFF"}, {21, "LAND"}, {176, "SET_MODE"}, {400, "ARM/DISARM"},
                                                        {178, "CHANGE_SPEED"}, {179, "SET_HOME"}, {246, "REBOOT"}, {241, "CALIBRATION"},
                                                        {20, "RTL"}, {42424, "START_MAG_CAL"}, {42425, "ACCEPT_MAG_CAL"},
                                                        {42426, "CANCEL_MAG_CAL"}, {42429, "ACCELCAL_POSITION"}, {42006, "FIXED_MAG_CAL_YAW"}};
-        const QString n = names.contains(cmd) ? QString::fromLatin1(names.value(cmd)) : QStringLiteral("CMD_%1").arg(cmd);
-        emit hudMessage(QStringLiteral("%1: %2").arg(n, mav::resultName(uint8_t(result))), result == 0 ? QStringLiteral("info") : QStringLiteral("warning"));
+        const QString n = names.contains(cmd) ? QString::fromLatin1(names.value(cmd)) : u"CMD_%1"_s.arg(cmd);
+        emit hudMessage(u"%1: %2"_s.arg(n, mav::resultName(uint8_t(result))), result == 0 ? u"info"_s : u"warning"_s);
     });
     connect(m_hub, &VehicleHub::statusText, this, [this](int sev, const QString &t) {
-        emit hudMessage(t, sev <= 3 ? QStringLiteral("error") : sev <= 4 ? QStringLiteral("warning") : QStringLiteral("info"));
-        m_log << QTime::currentTime().toString(QStringLiteral("HH:mm:ss ")) + t;
+        emit hudMessage(t, sev <= 3 ? u"error"_s : sev <= 4 ? u"warning"_s : u"info"_s);
+        m_log << QTime::currentTime().toString(u"HH:mm:ss "_s) + t;
         while (m_log.size() > 200) m_log.removeFirst();
         emit messageLogChanged();
     });
     connect(m_hub, &VehicleHub::lastHomeChanged, this, [](double lat, double lon) {
-        Settings::instance().setJson(QStringLiteral("corv.lastHome"), QJsonObject{{QStringLiteral("lat"), lat}, {QStringLiteral("lng"), lon}});
+        Settings::instance().setJson(u"corv.lastHome"_s, QJsonObject{{u"lat"_s, lat}, {u"lng"_s, lon}});
     });
 }
 
@@ -193,14 +209,13 @@ GcsController::~GcsController()
 }
 
 QString GcsController::version() const { return QStringLiteral(CORV_VERSION); }
-QString GcsController::dataRoot() const { return DataRoot::root(); }
 bool GcsController::gcsMuted() const { return m_link->gcsMuted(); }
 
 void GcsController::setGcsMuted(bool m)
 {
     if (m == gcsMuted()) return;
     m_link->setGcsMuted(m);
-    Settings::instance().setValue(QStringLiteral("gcs-muted"), m ? QStringLiteral("1") : QStringLiteral("0"));
+    Settings::instance().setValue(u"gcs-muted"_s, m ? u"1"_s : u"0"_s);
     emit gcsMutedChanged();
 }
 
@@ -208,25 +223,25 @@ QVariantList GcsController::serialPorts() const
 {
     QVariantList out;
     for (const auto &p : SerialTransport::listPorts())
-        out << QVariantMap{{QStringLiteral("path"), p.path},
-                           {QStringLiteral("label"), p.friendlyName.isEmpty() ? p.path : QStringLiteral("%1  %2").arg(p.path, p.friendlyName)}};
+        out << QVariantMap{{u"path"_s, p.path},
+                           {u"label"_s, p.friendlyName.isEmpty() ? p.path : u"%1  %2"_s.arg(p.path, p.friendlyName)}};
     return out;
 }
 
 void GcsController::connectLink(const QString &type, const QString &address, int portOrBaud)
 {
-    m_state = QStringLiteral("CONNECTING");
+    m_state = u"CONNECTING"_s;
     m_error.clear();
     m_replay->setConnectionState(m_state);
     emit connectionStateChanged();
     QVariantMap o;
-    if (type == QLatin1String("TCP") || type == QLatin1String("UDP")) {
-        o[QStringLiteral("host")] = address;
-        o[QStringLiteral("port")] = portOrBaud;
-        m_conn->connectLink(type == QLatin1String("TCP") ? QLatin1String(LinkManager::kMavlinkTcp) : QLatin1String(LinkManager::kMavlinkUdp), o);
+    if (type == "TCP"_L1 || type == "UDP"_L1) {
+        o[u"host"_s] = address;
+        o[u"port"_s] = portOrBaud;
+        m_conn->connectLink(type == "TCP"_L1 ? QLatin1String(LinkManager::kMavlinkTcp) : QLatin1String(LinkManager::kMavlinkUdp), o);
     } else {
-        o[QStringLiteral("port")] = address;
-        o[QStringLiteral("baudRate")] = portOrBaud;
+        o[u"port"_s] = address;
+        o[u"baudRate"_s] = portOrBaud;
         m_conn->connectLink(QLatin1String(LinkManager::kMavlinkSerial), o);
     }
 }
@@ -235,27 +250,27 @@ void GcsController::disconnectLink() { m_conn->disconnectLink(); }
 
 void GcsController::connectType(const QString &type, const QString &address, int portOrBaud)
 {
-    if (type == QLatin1String("mavlink-tcp")) connectLink(QStringLiteral("TCP"), address, portOrBaud);
-    else if (type == QLatin1String("mavlink-udp")) connectLink(QStringLiteral("UDP"), address, portOrBaud);
-    else if (type == QLatin1String("mavlink-serial")) connectLink(QStringLiteral("SERIAL"), address, portOrBaud);
-    else if (type == QLatin1String("msp-serial") || type == QLatin1String("msp-tcp")) {
+    if (type == "mavlink-tcp"_L1) connectLink(u"TCP"_s, address, portOrBaud);
+    else if (type == "mavlink-udp"_L1) connectLink(u"UDP"_s, address, portOrBaud);
+    else if (type == "mavlink-serial"_L1) connectLink(u"SERIAL"_s, address, portOrBaud);
+    else if (type == "msp-serial"_L1 || type == "msp-tcp"_L1) {
         // MSP (INAV / Betaflight); the poll profile from SETUP -> CONNECTION (msp-profile: normal | slow)
-        m_state = QStringLiteral("CONNECTING");
+        m_state = u"CONNECTING"_s;
         m_error.clear();
         m_replay->setConnectionState(m_state);
         emit connectionStateChanged();
         QVariantMap o;
-        o[QStringLiteral("profile")] = Settings::instance().value(QStringLiteral("msp-profile"), QStringLiteral("normal")).toString();
-        if (type == QLatin1String("msp-tcp")) {
-            o[QStringLiteral("host")] = address;
-            o[QStringLiteral("port")] = portOrBaud;
+        o[u"profile"_s] = Settings::instance().value(u"msp-profile"_s, u"normal"_s).toString();
+        if (type == "msp-tcp"_L1) {
+            o[u"host"_s] = address;
+            o[u"port"_s] = portOrBaud;
         } else {
-            o[QStringLiteral("port")] = address;
-            o[QStringLiteral("baudRate")] = portOrBaud;
+            o[u"port"_s] = address;
+            o[u"baudRate"_s] = portOrBaud;
         }
         m_conn->connectLink(type, o);
     } else {
-        m_error = QStringLiteral("%1 is not ported yet (phase 6)").arg(type);
+        m_error = u"%1 is not ported yet (phase 6)"_s.arg(type);
         emit connectionStateChanged();
     }
 }
@@ -275,6 +290,5 @@ void GcsController::setMode(const QString &mode) { m_cmd->setFlightMode(mode); }
 void GcsController::takeoff(double altitude) { m_cmd->takeoff(altitude); }
 void GcsController::land() { m_cmd->land(); }
 void GcsController::returnToLaunch() { m_cmd->returnToLaunch(); }
-void GcsController::setGuidedTarget(double lat, double lon, double alt) { m_cmd->setGuidedTarget(lat, lon, alt); }
 
 } // namespace corv

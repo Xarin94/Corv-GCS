@@ -7,6 +7,8 @@
 #include <QStandardPaths>
 #include <QtGlobal>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -17,7 +19,7 @@ bool g_fallback = false;
 bool isWritable(const QString &dir)
 {
     if (!QDir().mkpath(dir)) return false;
-    QFile probe(dir + QStringLiteral("/.write-probe-%1").arg(QCoreApplication::applicationPid()));
+    QFile probe(dir + u"/.write-probe-%1"_s.arg(QCoreApplication::applicationPid()));
     if (!probe.open(QIODevice::WriteOnly)) return false;
     const bool ok = probe.write("ok", 2) == 2;
     probe.close();
@@ -37,13 +39,13 @@ QString DataRoot::electronUserDataDir()
     const QString app = QStringLiteral(CORV_APP_NAME);
 #if defined(Q_OS_WIN)
     const QString base = qEnvironmentVariable("APPDATA",
-        QDir::homePath() + QStringLiteral("/AppData/Roaming"));
+        QDir::homePath() + u"/AppData/Roaming"_s);
 #elif defined(Q_OS_MACOS)
-    const QString base = QDir::homePath() + QStringLiteral("/Library/Application Support");
+    const QString base = QDir::homePath() + u"/Library/Application Support"_s;
 #else
-    const QString base = qEnvironmentVariable("XDG_CONFIG_HOME", QDir::homePath() + QStringLiteral("/.config"));
+    const QString base = qEnvironmentVariable("XDG_CONFIG_HOME", QDir::homePath() + u"/.config"_s);
 #endif
-    return QDir::cleanPath(base + QLatin1Char('/') + app);
+    return QDir::cleanPath(base + '/'_L1 + app);
 }
 
 QString DataRoot::root()
@@ -59,11 +61,11 @@ QString DataRoot::root()
         return g_root;
     }
 
-    const QString candidate = QDir::cleanPath(installDir() + QStringLiteral("/data"));
+    const QString candidate = QDir::cleanPath(installDir() + u"/data"_s);
 #if defined(Q_OS_MACOS)
     // Inside an .app the folder next to the executable belongs to the signed
     // bundle, and an update replaces the bundle whole: the per-user folder
-    const bool bundled = installDir().contains(QLatin1String(".app/Contents/MacOS"));
+    const bool bundled = installDir().contains(".app/Contents/MacOS"_L1);
 #else
     const bool bundled = false;
 #endif
@@ -71,7 +73,7 @@ QString DataRoot::root()
         g_root = candidate;
         g_fallback = false;
     } else {
-        g_root = QDir::cleanPath(electronUserDataDir() + QStringLiteral("/data"));
+        g_root = QDir::cleanPath(electronUserDataDir() + u"/data"_s);
         g_fallback = true;
         QDir().mkpath(g_root);
     }
@@ -86,16 +88,9 @@ bool DataRoot::isFallback()
 
 QString DataRoot::dir(const QString &name)
 {
-    const QString d = root() + QLatin1Char('/') + name;
+    const QString d = root() + '/'_L1 + name;
     QDir().mkpath(d);
     return d;
-}
-
-void DataRoot::resetForTests()
-{
-    QMutexLocker lock(&g_lock);
-    g_root.clear();
-    g_fallback = false;
 }
 
 } // namespace corv

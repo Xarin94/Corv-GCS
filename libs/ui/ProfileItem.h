@@ -52,15 +52,23 @@ private:
     struct Sample { double dist; std::optional<double> elev; double route; bool vertical; };
     struct Layout {
         double w = 0, h = 0, padL = 52, padR = 16, padT = 34, padB = 24, insetW = 0;
-        double plotW = 0, plotH = 0, lo = 0, hi = 0, range = 1, total = 1;
+        double plotW = 0, plotH = 0, lo = 0, hi = 0, range = 1, total = 1, zoom = 1, scroll = 0;
         bool linkOn = false;
-        double X(double d, double zoom, double scroll) const { return padL + d / total * plotW * zoom - scroll; }
+        double X(double d) const { return padL + d / total * plotW * zoom - scroll; }
         double Y(double a) const { return padT + plotH - (a - lo) / range * plotH; }
+        bool inPlot(double x, double margin = 0) const { return x >= padL - margin && x <= padL + plotW + margin; }
+        double bandY() const { return padT - 11; }
     };
     bool layout(Layout &L) const;
     void rebuildSamples();
     void updateHover();
     void clampScroll(const Layout &L);
+    void drawGrid(QPainter *p, const Layout &L, double altStep, double distStep) const;
+    void drawLinkBand(QPainter *p, const Layout &L) const;
+    void drawTerrain(QPainter *p, const Layout &L) const;
+    void drawRoute(QPainter *p, const Layout &L, const QString &sel) const;
+    void drawPoints(QPainter *p, const Layout &L, const QString &sel) const;
+    void drawAxes(QPainter *p, const Layout &L, double altStep, double distStep) const;
     void drawInset(QPainter *p, const QRectF &rect, const mission::LinkEval *ev, const QString &title) const;
 
     PlanController *m_plan = nullptr;

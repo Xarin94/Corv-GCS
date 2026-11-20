@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -189,8 +191,8 @@ void SatelliteDetail::update(double lat, double lon, LatLon origin, const QVecto
     if (m_statsClock.isValid() && m_statsClock.elapsed() < 10000) return;
     QStringList parts;
     for (const LevelStats &st : stats())
-        if (st.active) parts << QStringLiteral("z%1 %2/%3/%4").arg(st.zoom).arg(st.ready).arg(st.loading).arg(st.missing);
-    const QString line = parts.join(QStringLiteral(", "));
+        if (st.active) parts << u"z%1 %2/%3/%4"_s.arg(st.zoom).arg(st.ready).arg(st.loading).arg(st.missing);
+    const QString line = parts.join(u", "_s);
     if (line != m_lastStats) {
         m_lastStats = line;
         m_statsClock.restart();

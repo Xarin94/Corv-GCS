@@ -17,19 +17,21 @@
 #include <QFileInfo>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 LogsController *LogsController::s_instance = nullptr;
 
 namespace {
-const QString kFolderKey = QStringLiteral("logs-download-folder");
+const QString kFolderKey = u"logs-download-folder"_s;
 
 QString durationText(double s)
 {
-    if (!std::isfinite(s) || s < 0) return QStringLiteral("--");
+    if (!std::isfinite(s) || s < 0) return u"--"_s;
     const int t = int(std::lround(s));
-    return t >= 3600 ? QStringLiteral("%1:%2:%3").arg(t / 3600).arg((t / 60) % 60, 2, 10, QLatin1Char('0')).arg(t % 60, 2, 10, QLatin1Char('0'))
-                     : QStringLiteral("%1:%2").arg(t / 60).arg(t % 60, 2, 10, QLatin1Char('0'));
+    return t >= 3600 ? u"%1:%2:%3"_s.arg(t / 3600).arg((t / 60) % 60, 2, 10, '0'_L1).arg(t % 60, 2, 10, '0'_L1)
+                     : u"%1:%2"_s.arg(t / 60).arg(t % 60, 2, 10, '0'_L1);
 }
 } // namespace
 
@@ -48,7 +50,7 @@ QVariant LogListModel::data(const QModelIndex &index, int role) const
     switch (role) {
     case IdRole: return r.id;
     case DateRole:
-        return r.timeUtc ? QDateTime::fromSecsSinceEpoch(r.timeUtc).toLocalTime().toString(QStringLiteral("yyyy-MM-dd  HH:mm:ss")) : QStringLiteral("no date");
+        return r.timeUtc ? QDateTime::fromSecsSinceEpoch(r.timeUtc).toLocalTime().toString(u"yyyy-MM-dd  HH:mm:ss"_s) : u"no date"_s;
     case SizeRole: return LogsController::sizeText(r.size);
     case BytesRole: return double(r.size);
     case SelectedRole: return r.selected;
@@ -98,17 +100,17 @@ LogsController::LogsController(LinkManager *link, MessageBus *bus, CommandSender
         });
     }
     connect(m_dl, &LogDownloader::entriesChanged, this, [this] {
-        if (m_dl->listing()) setStatus(QStringLiteral("Reading the list of logs… %1").arg(m_dl->entries().size()));
+        if (m_dl->listing()) setStatus(u"Reading the list of logs… %1"_s.arg(m_dl->entries().size()));
     });
     connect(m_dl, &LogDownloader::listFinished, this, [this](bool ok, const QString &error) {
         rebuildFromList();
         if (!ok && m_model.rows().isEmpty()) {
-            setStatus(QStringLiteral("No list: ") + error + (m_armed ? QStringLiteral(" — ArduPilot does not serve logs while armed") : QString()), true);
+            setStatus(u"No list: "_s + error + (m_armed ? u" — ArduPilot does not serve logs while armed"_s : QString()), true);
         } else if (!ok) {
-            setStatus(QStringLiteral("%1 logs listed (%2)").arg(m_model.rows().size()).arg(error), true);
+            setStatus(u"%1 logs listed (%2)"_s.arg(m_model.rows().size()).arg(error), true);
         } else {
-            setStatus(m_model.rows().isEmpty() ? QStringLiteral("No logs on the vehicle")
-                                               : QStringLiteral("%1 logs on the vehicle, %2").arg(m_model.rows().size()).arg(totalSize()));
+            setStatus(m_model.rows().isEmpty() ? u"No logs on the vehicle"_s
+                                               : u"%1 logs on the vehicle, %2"_s.arg(m_model.rows().size()).arg(totalSize()));
         }
     });
     connect(m_dl, &LogDownloader::progress, this, [this](int id, qint64 received, qint64 size, double rate) {
@@ -117,19 +119,19 @@ LogsController::LogsController(LinkManager *link, MessageBus *bus, CommandSender
         r->progress = size > 0 ? double(received) / double(size) : 1.0;
         m_currentBytes = received;
         const double left = rate > 0 ? double(size - received) / rate : -1;
-        r->detail = QStringLiteral("%1/s · %2 left").arg(sizeText(rate), durationText(left));
+        r->detail = u"%1/s · %2 left"_s.arg(sizeText(rate), durationText(left));
         m_model.touch(id);
-        const QString of = m_queueTotal > 1 ? QStringLiteral(" · %1 of %2").arg(m_queueDone + m_queueFailed + 1).arg(m_queueTotal) : QString();
-        setStatus(QStringLiteral("Log %1 · %2 / %3 · %4%5").arg(id).arg(sizeText(received), sizeText(size), r->detail, of));
+        const QString of = m_queueTotal > 1 ? u" · %1 of %2"_s.arg(m_queueDone + m_queueFailed + 1).arg(m_queueTotal) : QString();
+        setStatus(u"Log %1 · %2 / %3 · %4%5"_s.arg(id).arg(sizeText(received), sizeText(size), r->detail, of));
     });
     connect(m_dl, &LogDownloader::finished, this, [this](int id, bool ok, const QString &path, const QString &error) {
-        if (!ok && error == QLatin1String("cancelled")) {
+        if (!ok && error == "cancelled"_L1) {
             // cancel() puts the rows back
             m_currentBytes = 0;
             return;
         }
         if (LogListModel::Row *r = m_model.find(id)) {
-            r->state = ok ? QStringLiteral("saved") : QStringLiteral("failed");
+            r->state = ok ? u"saved"_s : u"failed"_s;
             r->path = path;
             r->progress = ok ? 1.0 : r->progress;
             r->detail = ok ? QFileInfo(path).fileName() : error;
@@ -155,7 +157,7 @@ LogsController::LogsController(LinkManager *link, MessageBus *bus, CommandSender
         }
     });
     m_linkPoll.start();
-    setStatus(QStringLiteral("Connect to a vehicle and press LIST LOGS"));
+    setStatus(u"Connect to a vehicle and press LIST LOGS"_s);
 }
 
 LogsController::~LogsController()
@@ -175,22 +177,22 @@ void LogsController::setStatus(const QString &text, bool error)
 
 QString LogsController::sizeText(double bytes)
 {
-    if (bytes >= 1024.0 * 1024 * 1024) return QStringLiteral("%1 GB").arg(bytes / (1024.0 * 1024 * 1024), 0, 'f', 2);
-    if (bytes >= 1024.0 * 1024) return QStringLiteral("%1 MB").arg(bytes / (1024.0 * 1024), 0, 'f', 1);
-    if (bytes >= 1024.0) return QStringLiteral("%1 KB").arg(bytes / 1024.0, 0, 'f', 0);
-    return QStringLiteral("%1 B").arg(qint64(bytes));
+    if (bytes >= 1024.0 * 1024 * 1024) return u"%1 GB"_s.arg(bytes / (1024.0 * 1024 * 1024), 0, 'f', 2);
+    if (bytes >= 1024.0 * 1024) return u"%1 MB"_s.arg(bytes / (1024.0 * 1024), 0, 'f', 1);
+    if (bytes >= 1024.0) return u"%1 KB"_s.arg(bytes / 1024.0, 0, 'f', 0);
+    return u"%1 B"_s.arg(qint64(bytes));
 }
 
 QString LogsController::fileName(int id, quint32 timeUtc, quint32 size)
 {
-    if (timeUtc == 0) return QStringLiteral("log%1 %2B.bin").arg(id).arg(size);
-    return QDateTime::fromSecsSinceEpoch(timeUtc).toLocalTime().toString(QStringLiteral("yyyy-MM-dd HH-mm-ss")) + QStringLiteral(" log%1.bin").arg(id);
+    if (timeUtc == 0) return u"log%1 %2B.bin"_s.arg(id).arg(size);
+    return QDateTime::fromSecsSinceEpoch(timeUtc).toLocalTime().toString(u"yyyy-MM-dd HH-mm-ss"_s) + u" log%1.bin"_s.arg(id);
 }
 
 QString LogsController::folder() const
 {
     const QString f = Settings::instance().value(kFolderKey).toString();
-    return f.isEmpty() ? DataRoot::logsDir() + QStringLiteral("/dataflash") : f;
+    return f.isEmpty() ? DataRoot::logsDir() + u"/dataflash"_s : f;
 }
 
 void LogsController::setFolder(const QUrl &url)
@@ -241,17 +243,17 @@ double LogsController::queueProgress() const
 void LogsController::refresh()
 {
     if (!m_linkReady) {
-        DialogHub::toast(QStringLiteral("Not connected"));
+        DialogHub::toast(u"Not connected"_s);
         return;
     }
     if (downloading()) {
-        DialogHub::toast(QStringLiteral("A download is in progress"));
+        DialogHub::toast(u"A download is in progress"_s);
         return;
     }
     m_dl->setTarget(m_cmd->targetSystem(), m_cmd->targetComponent());
     m_model.reset({});
     emit selectionChanged();
-    setStatus(QStringLiteral("Asking the vehicle for its logs…"));
+    setStatus(u"Asking the vehicle for its logs…"_s);
     m_dl->requestList();
 }
 
@@ -277,15 +279,15 @@ void LogsController::markSaved()
     // A file of the same name and size in the folder: that log is already here
     const QString dir = folder();
     for (auto &r : m_model.rows()) {
-        if (r.state == QLatin1String("downloading") || r.state == QLatin1String("queued")) continue;
-        const QString path = dir + QLatin1Char('/') + fileName(r.id, r.timeUtc, r.size);
+        if (r.state == "downloading"_L1 || r.state == "queued"_L1) continue;
+        const QString path = dir + '/'_L1 + fileName(r.id, r.timeUtc, r.size);
         const QFileInfo fi(path);
         if (fi.exists() && fi.size() == qint64(r.size)) {
-            r.state = QStringLiteral("saved");
+            r.state = u"saved"_s;
             r.path = path;
             r.progress = 1;
             r.detail = fi.fileName();
-        } else if (r.state == QLatin1String("saved")) {
+        } else if (r.state == "saved"_L1) {
             r.state.clear();
             r.path.clear();
             r.progress = 0;
@@ -323,7 +325,7 @@ void LogsController::download(int id)
 void LogsController::downloadSelected()
 {
     if (!m_linkReady) {
-        DialogHub::toast(QStringLiteral("Not connected"));
+        DialogHub::toast(u"Not connected"_s);
         return;
     }
     if (downloading()) return;
@@ -334,17 +336,17 @@ void LogsController::downloadSelected()
         if (!r.selected) continue;
         m_queue << r.id;
         m_queueBytes += r.size;
-        r.state = QStringLiteral("queued");
+        r.state = u"queued"_s;
         r.progress = 0;
         r.detail.clear();
     }
     m_model.touchAll();
     if (m_queue.isEmpty()) {
-        DialogHub::toast(QStringLiteral("Tick the logs to download first"));
+        DialogHub::toast(u"Tick the logs to download first"_s);
         return;
     }
     if (!QDir().mkpath(folder())) {
-        setStatus(QStringLiteral("Cannot create ") + folder(), true);
+        setStatus(u"Cannot create "_s + folder(), true);
         m_queue.clear();
         markSaved();
         return;
@@ -361,8 +363,8 @@ void LogsController::startNext()
         const int id = m_queue.takeFirst();
         LogListModel::Row *r = m_model.find(id);
         if (!r) continue;
-        const QString path = folder() + QLatin1Char('/') + fileName(r->id, r->timeUtc, r->size);
-        r->state = QStringLiteral("downloading");
+        const QString path = folder() + '/'_L1 + fileName(r->id, r->timeUtc, r->size);
+        r->state = u"downloading"_s;
         r->progress = 0;
         m_model.touch(id);
         QString err;
@@ -370,7 +372,7 @@ void LogsController::startNext()
             emit stateChanged();
             return;
         }
-        r->state = QStringLiteral("failed");
+        r->state = u"failed"_s;
         r->detail = err;
         m_model.touch(id);
         ++m_queueFailed;
@@ -378,10 +380,10 @@ void LogsController::startNext()
     // The queue is done: the vehicle may log again
     m_dl->sendRequestEnd();
     const QString where = QDir::toNativeSeparators(folder());
-    if (m_queueFailed == 0) setStatus(QStringLiteral("%1 logs downloaded to %2").arg(m_queueDone).arg(where));
-    else setStatus(QStringLiteral("%1 logs downloaded, %2 failed").arg(m_queueDone).arg(m_queueFailed), true);
-    DialogHub::toast(m_queueFailed == 0 ? QStringLiteral("%1 logs downloaded").arg(m_queueDone)
-                                        : QStringLiteral("%1 logs downloaded, %2 failed").arg(m_queueDone).arg(m_queueFailed));
+    if (m_queueFailed == 0) setStatus(u"%1 logs downloaded to %2"_s.arg(m_queueDone).arg(where));
+    else setStatus(u"%1 logs downloaded, %2 failed"_s.arg(m_queueDone).arg(m_queueFailed), true);
+    DialogHub::toast(m_queueFailed == 0 ? u"%1 logs downloaded"_s.arg(m_queueDone)
+                                        : u"%1 logs downloaded, %2 failed"_s.arg(m_queueDone).arg(m_queueFailed));
     m_queueTotal = 0;
     emit stateChanged();
 }
@@ -392,30 +394,30 @@ void LogsController::cancel()
     m_queueTotal = 0;
     m_dl->cancel();
     for (auto &r : m_model.rows())
-        if (r.state == QLatin1String("queued") || r.state == QLatin1String("downloading")) {
+        if (r.state == "queued"_L1 || r.state == "downloading"_L1) {
             r.state.clear();
             r.progress = 0;
             r.detail.clear();
         }
     markSaved();
-    setStatus(QStringLiteral("Cancelled"));
+    setStatus(u"Cancelled"_s);
 }
 
 void LogsController::eraseAll()
 {
     if (!m_linkReady) {
-        DialogHub::toast(QStringLiteral("Not connected"));
+        DialogHub::toast(u"Not connected"_s);
         return;
     }
     if (downloading()) return;
-    const QString what = m_model.rows().isEmpty() ? QStringLiteral("every log") : QStringLiteral("all %1 logs (%2)").arg(m_model.rows().size()).arg(totalSize());
-    DialogHub::confirm(QStringLiteral("Erase %1 from the vehicle's SD card? This cannot be undone.").arg(what), [this](bool ok) {
+    const QString what = m_model.rows().isEmpty() ? u"every log"_s : u"all %1 logs (%2)"_s.arg(m_model.rows().size()).arg(totalSize());
+    DialogHub::confirm(u"Erase %1 from the vehicle's SD card? This cannot be undone."_s.arg(what), [this](bool ok) {
         if (!ok) return;
         m_dl->setTarget(m_cmd->targetSystem(), m_cmd->targetComponent());
         m_dl->sendErase();
         m_model.reset({});
         emit selectionChanged();
-        setStatus(QStringLiteral("Erasing the logs…"));
+        setStatus(u"Erasing the logs…"_s);
         LOG_I("logs") << "LOG_ERASE sent";
         // The card takes a moment: list again
         QTimer::singleShot(2500, this, [this] { if (m_linkReady && !downloading()) refresh(); });
@@ -428,11 +430,11 @@ void LogsController::replay(int id)
     if (!r || r->path.isEmpty()) return;
     ReplayController *rc = ReplayController::s_instance;
     if (!rc || !rc->sectionVisible()) {
-        DialogHub::toast(QStringLiteral("Disconnect first: LOG REPLAY needs no live link"));
+        DialogHub::toast(u"Disconnect first: LOG REPLAY needs no live link"_s);
         return;
     }
     rc->openPath(r->path);
-    DialogHub::toast(QStringLiteral("%1 opened in LOG REPLAY (FLIGHT DATA)").arg(QFileInfo(r->path).fileName()));
+    DialogHub::toast(u"%1 opened in LOG REPLAY (FLIGHT DATA)"_s.arg(QFileInfo(r->path).fileName()));
 }
 
 } // namespace corv

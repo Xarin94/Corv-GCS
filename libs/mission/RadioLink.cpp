@@ -6,6 +6,8 @@
 #include <cmath>
 #include <limits>
 
+using namespace Qt::StringLiterals;
+
 namespace corv::mission {
 
 namespace {
@@ -15,9 +17,9 @@ constexpr double kNuClear = -0.78;                     // ITU-R P.526: J(ν) ≈
 
 double r(const QJsonObject &o, const char *k) { return num(o.value(QLatin1String(k))); }
 
-QString fmtDist(double m)
+QString fmtKm(double m)
 {
-    return m >= 1000 ? QStringLiteral("%1 km").arg(m / 1000, 0, 'f', 1) : QStringLiteral("%1 m").arg(std::lround(m));
+    return m >= 1000 ? u"%1 km"_s.arg(m / 1000, 0, 'f', 1) : u"%1 m"_s.arg(std::lround(m));
 }
 
 struct Edge { double nu; int j; };
@@ -51,11 +53,11 @@ Link classify(const QJsonObject &radio, double margin, double nu)
 const LinkStyle &linkStyle(Link c)
 {
     static const LinkStyle styles[5] = {
-        {QStringLiteral("no link"), QStringLiteral("NO LINK"), QColor(0x9a, 0xa4, 0xb0), QColor(0, 0, 0, 0)},
-        {QStringLiteral("below safety margin"), QStringLiteral("MARGINAL"), QColor(0xff, 0x3b, 0x3b), QColor(255, 60, 60, int(0.32 * 255))},
-        {QStringLiteral("degraded link"), QStringLiteral("DEGRADED"), QColor(0xff, 0xaa, 0x00), QColor(255, 170, 0, int(0.30 * 255))},
-        {QStringLiteral("good link"), QStringLiteral("GOOD"), QColor(0x60, 0xff, 0x80), QColor(96, 255, 128, int(0.26 * 255))},
-        {QStringLiteral("no terrain data"), QStringLiteral("UNKNOWN"), QColor(0x4a, 0x55, 0x60), QColor(0, 0, 0, 0)},
+        {u"no link"_s, u"NO LINK"_s, QColor(0x9a, 0xa4, 0xb0), QColor(0, 0, 0, 0)},
+        {u"below safety margin"_s, u"MARGINAL"_s, QColor(0xff, 0x3b, 0x3b), QColor(255, 60, 60, int(0.32 * 255))},
+        {u"degraded link"_s, u"DEGRADED"_s, QColor(0xff, 0xaa, 0x00), QColor(255, 170, 0, int(0.30 * 255))},
+        {u"good link"_s, u"GOOD"_s, QColor(0x60, 0xff, 0x80), QColor(96, 255, 128, int(0.26 * 255))},
+        {u"no terrain data"_s, u"UNKNOWN"_s, QColor(0x4a, 0x55, 0x60), QColor(0, 0, 0, 0)},
     };
     return styles[std::clamp(int(c), 0, 4)];
 }
@@ -193,11 +195,11 @@ std::optional<LinkAnalysis> analyzeRoute(const QJsonObject &radio, const GroundS
 QString summarizeLink(const LinkAnalysis &a)
 {
     QStringList parts;
-    if (a.lengths[int(Link::None)] > 0) parts << QStringLiteral("no link %1").arg(fmtDist(a.lengths[int(Link::None)]));
-    if (a.lengths[int(Link::Marginal)] > 0) parts << QStringLiteral("marginal %1").arg(fmtDist(a.lengths[int(Link::Marginal)]));
-    if (a.lengths[int(Link::Degraded)] > 0) parts << QStringLiteral("degraded %1").arg(fmtDist(a.lengths[int(Link::Degraded)]));
-    if (a.lengths[int(Link::Unknown)] > 0) parts << QStringLiteral("no terrain %1").arg(fmtDist(a.lengths[int(Link::Unknown)]));
-    return parts.isEmpty() ? QStringLiteral("good link along the whole route") : parts.join(QStringLiteral(" · "));
+    if (a.lengths[int(Link::None)] > 0) parts << u"no link %1"_s.arg(fmtKm(a.lengths[int(Link::None)]));
+    if (a.lengths[int(Link::Marginal)] > 0) parts << u"marginal %1"_s.arg(fmtKm(a.lengths[int(Link::Marginal)]));
+    if (a.lengths[int(Link::Degraded)] > 0) parts << u"degraded %1"_s.arg(fmtKm(a.lengths[int(Link::Degraded)]));
+    if (a.lengths[int(Link::Unknown)] > 0) parts << u"no terrain %1"_s.arg(fmtKm(a.lengths[int(Link::Unknown)]));
+    return parts.isEmpty() ? u"good link along the whole route"_s : parts.join(u" · "_s);
 }
 
 std::optional<Coverage> computeCoverage(const QJsonObject &radio, const GroundStation &gs, const std::function<double(double)> &altAt,

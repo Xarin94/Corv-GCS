@@ -109,6 +109,11 @@ private:
     const std::vector<Spec> &specs() const;
     Active activeLines(const Spec &s) const;
     QString seriesColor(const Spec &s, const Line &l, int i) const;
+    struct Plot;
+    Plot plotFor(const Spec &spec, const Active &a, double pw, double ph, double now) const;
+    void drawGrid(QPainter *p, const Spec &spec, const Plot &pl, double h) const;
+    void drawMarks(QPainter *p, const Spec &spec, const Plot &pl) const;
+    void drawSeries(QPainter *p, const Spec &spec, const Active &a, const Plot &pl, double padR) const;
     void tickDraw();
     void updateText(double now);
     void manageRates(double now);

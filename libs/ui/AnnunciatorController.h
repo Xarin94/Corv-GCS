@@ -51,7 +51,6 @@ public:
     QVariantList warnings() const { return m_warnings; }
     QVariantList cautions() const { return m_cautions; }
     /// The ids lit now, warnings then cautions (tests).
-    QStringList activeIds() const { return m_activeIds; }
 
     /// Click: off until the next connection.
     Q_INVOKABLE void silence(const QString &id);
@@ -78,7 +77,6 @@ private:
     QString m_demoId;
     std::int64_t m_demoUntil = 0, m_demoNextAt = 0;
     QVariantList m_warnings, m_cautions;
-    QStringList m_activeIds;
 };
 
 } // namespace corv

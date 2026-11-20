@@ -4,6 +4,8 @@
 #include <chrono>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 PointCloudData &PointCloudData::instance()
@@ -65,7 +67,7 @@ void PointCloudData::appendMapped(int epoch, const float *enu, const std::uint8_
 void PointCloudData::appendLive(const float *xyz, const std::uint8_t *intensity, int count, const QString &frame, double ttl)
 {
     if (!xyz) return;
-    if (!frame.isEmpty()) liveBody = frame == QLatin1String("body");
+    if (!frame.isEmpty()) liveBody = frame == "body"_L1;
     if (ttl > 0) liveTtl = ttl;
     const float now = float(nowSeconds());
     for (int k = 0; k < count; ++k) {

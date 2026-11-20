@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <vector>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 VehicleModel *VehicleModel::s_instance = nullptr;
@@ -81,7 +83,7 @@ QString VehicleModel::flightTime() const
 {
     qint64 ms = m_flightMs + (m_armedSince ? wallMs() - m_armedSince : 0);
     const qint64 s = ms / 1000;
-    return QStringLiteral("%1:%2:%3").arg(s / 3600, 2, 10, QLatin1Char('0')).arg((s / 60) % 60, 2, 10, QLatin1Char('0')).arg(s % 60, 2, 10, QLatin1Char('0'));
+    return u"%1:%2:%3"_s.arg(s / 3600, 2, 10, '0'_L1).arg((s / 60) % 60, 2, 10, '0'_L1).arg(s % 60, 2, 10, '0'_L1);
 }
 
 double VehicleModel::terrainAgl() const
@@ -104,9 +106,9 @@ QVariantList VehicleModel::nearestTraffic() const
     std::sort(list.begin(), list.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
     for (std::size_t i = 0; i < list.size() && i < 4; ++i) {
         const TrafficEntry &t = *list[i].second;
-        out.append(QVariantMap{{QStringLiteral("callsign"), t.callsign.isEmpty() ? t.icao24 : t.callsign},
-                               {QStringLiteral("alt"), QString::number(std::lround(t.alt))},
-                               {QStringLiteral("dist"), QString::number(list[i].first / 1000, 'f', 1)}});
+        out.append(QVariantMap{{u"callsign"_s, t.callsign.isEmpty() ? t.icao24 : t.callsign},
+                               {u"alt"_s, QString::number(std::lround(t.alt))},
+                               {u"dist"_s, QString::number(list[i].first / 1000, 'f', 1)}});
     }
     return out;
 }
@@ -114,10 +116,10 @@ QVariantList VehicleModel::nearestTraffic() const
 QString VehicleModel::autopilotName() const
 {
     switch (m_s->autopilotType) {
-    case MAV_AUTOPILOT_ARDUPILOTMEGA: return QStringLiteral("ArduPilot");
-    case MAV_AUTOPILOT_PX4: return QStringLiteral("PX4");
-    case MAV_AUTOPILOT_GENERIC: return QStringLiteral("Generic");
-    default: return QStringLiteral("Autopilot %1").arg(m_s->autopilotType);
+    case MAV_AUTOPILOT_ARDUPILOTMEGA: return u"ArduPilot"_s;
+    case MAV_AUTOPILOT_PX4: return u"PX4"_s;
+    case MAV_AUTOPILOT_GENERIC: return u"Generic"_s;
+    default: return u"Autopilot %1"_s.arg(m_s->autopilotType);
     }
 }
 

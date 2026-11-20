@@ -30,8 +30,6 @@ namespace corv::mav {
 constexpr uint8_t kGcsSystemId = 255;
 constexpr uint8_t kGcsComponentId = 190;
 
-/// CRC_EXTRA of a message id, -1 when the dialect does not know it.
-int crcExtra(uint32_t msgid);
 /// "ATTITUDE", or "MSG_123" for an unknown id.
 QString messageName(uint32_t msgid);
 /// "MAV_CMD_NAV_TAKEOFF(22)"-style name for the debug log.
@@ -45,9 +43,6 @@ QString resultName(uint8_t result);
 /// CRC bytes become payload (a FTP file name two bytes too long, a COMMAND_LONG
 /// confirmation that is not 0).
 bool finalizeForSend(mavlink_message_t &msg, uint8_t seq);
-
-/// CRC-16/MCRF4XX (X.25) as MAVLink uses it.
-uint16_t x25(const uint8_t *data, std::size_t len, uint16_t crc = 0xFFFF);
 
 /// A MAVLink string field (char[N], not always NUL-terminated).
 QString fieldString(const char *chars, int maxLen);

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv::joystick {
 
 namespace {
@@ -31,29 +33,29 @@ AxisConfig axisFromJson(const QJsonValue &v, int index)
     if (!v.isObject()) return defaultAxis(index);
     const QJsonObject o = v.toObject();
     AxisConfig a;
-    const QString type = o.value(QStringLiteral("sourceType")).toString();
-    a.source = type == QLatin1String("button") ? AxisConfig::Source::Button
-             : type == QLatin1String("none")   ? AxisConfig::Source::None
+    const QString type = o.value(u"sourceType"_s).toString();
+    a.source = type == "button"_L1 ? AxisConfig::Source::Button
+             : type == "none"_L1   ? AxisConfig::Source::None
                                                 : AxisConfig::Source::Axis;
-    a.sourceIndex = validIndex(o.value(QStringLiteral("sourceIndex"))) ? o.value(QStringLiteral("sourceIndex")).toInt() : index;
-    const QJsonValue ch = o.value(QStringLiteral("channel"));
+    a.sourceIndex = validIndex(o.value(u"sourceIndex"_s)) ? o.value(u"sourceIndex"_s).toInt() : index;
+    const QJsonValue ch = o.value(u"channel"_s);
     a.channel = ch.isDouble() && ch.toDouble() == std::floor(ch.toDouble()) && ch.toInt() >= 0 && ch.toInt() <= kChannels ? ch.toInt() : 0;
-    a.inverted = o.value(QStringLiteral("inverted")).toBool();
-    a.deadzone = clampOr(o.value(QStringLiteral("deadzone")), 0, 0.9, 0.05);
-    a.expo = clampOr(o.value(QStringLiteral("expo")), 0, 1, 0);
+    a.inverted = o.value(u"inverted"_s).toBool();
+    a.deadzone = clampOr(o.value(u"deadzone"_s), 0, 0.9, 0.05);
+    a.expo = clampOr(o.value(u"expo"_s), 0, 1, 0);
     return a;
 }
 
 QJsonObject toJson(const AxisConfig &a)
 {
-    return {{QStringLiteral("sourceType"), a.source == AxisConfig::Source::Button ? QStringLiteral("button")
-                                           : a.source == AxisConfig::Source::None ? QStringLiteral("none")
-                                                                                  : QStringLiteral("axis")},
-            {QStringLiteral("sourceIndex"), a.sourceIndex},
-            {QStringLiteral("channel"), a.channel},
-            {QStringLiteral("inverted"), a.inverted},
-            {QStringLiteral("deadzone"), a.deadzone},
-            {QStringLiteral("expo"), a.expo}};
+    return {{u"sourceType"_s, a.source == AxisConfig::Source::Button ? u"button"_s
+                                           : a.source == AxisConfig::Source::None ? u"none"_s
+                                                                                  : u"axis"_s},
+            {u"sourceIndex"_s, a.sourceIndex},
+            {u"channel"_s, a.channel},
+            {u"inverted"_s, a.inverted},
+            {u"deadzone"_s, a.deadzone},
+            {u"expo"_s, a.expo}};
 }
 
 ServoConfig servoFromJson(const QJsonValue &v, int index)
@@ -62,26 +64,26 @@ ServoConfig servoFromJson(const QJsonValue &v, int index)
     s.servo = 9 + index;
     if (!v.isObject()) return s;
     const QJsonObject o = v.toObject();
-    s.button = validIndex(o.value(QStringLiteral("button"))) ? o.value(QStringLiteral("button")).toInt() : -1;
-    const QJsonValue sv = o.value(QStringLiteral("servo"));
+    s.button = validIndex(o.value(u"button"_s)) ? o.value(u"button"_s).toInt() : -1;
+    const QJsonValue sv = o.value(u"servo"_s);
     if (sv.isDouble() && sv.toDouble() == std::floor(sv.toDouble()) && sv.toInt() >= 1 && sv.toInt() <= 16) s.servo = sv.toInt();
-    s.percent = clampOr(o.value(QStringLiteral("percent")), 0, 100, 100);
+    s.percent = clampOr(o.value(u"percent"_s), 0, 100, 100);
     return s;
 }
 
 QJsonObject toJson(const ServoConfig &s)
 {
-    return {{QStringLiteral("button"), s.button}, {QStringLiteral("servo"), s.servo}, {QStringLiteral("percent"), s.percent}};
+    return {{u"button"_s, s.button}, {u"servo"_s, s.servo}, {u"percent"_s, s.percent}};
 }
 
 QString sourceKey(const AxisConfig &a)
 {
     switch (a.source) {
-    case AxisConfig::Source::Axis: return QStringLiteral("axis:%1").arg(a.sourceIndex);
-    case AxisConfig::Source::Button: return QStringLiteral("button:%1").arg(a.sourceIndex);
+    case AxisConfig::Source::Axis: return u"axis:%1"_s.arg(a.sourceIndex);
+    case AxisConfig::Source::Button: return u"button:%1"_s.arg(a.sourceIndex);
     case AxisConfig::Source::None: break;
     }
-    return QStringLiteral("none:0");
+    return u"none:0"_s;
 }
 
 double applyDeadzone(double value, double deadzone)

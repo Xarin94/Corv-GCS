@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -46,6 +48,21 @@ void StateMapper::apply(const MavMessage &mm, VehicleState &s)
     case MAVLINK_MSG_ID_SCALED_IMU3: scaledImu(m, s, false, now); break;
     case MAVLINK_MSG_ID_ATTITUDE: attitude(mm, s, now); break;
     case MAVLINK_MSG_ID_GLOBAL_POSITION_INT: globalPositionInt(mm, s, now); break;
+    case MAVLINK_MSG_ID_VFR_HUD: vfrHud(m, s, now); break;
+    case MAVLINK_MSG_ID_CORV_CELL_INFO: cellInfo(m, s, now); break;
+    case MAVLINK_MSG_ID_HOME_POSITION: homePosition(m, s); break;
+    case MAVLINK_MSG_ID_ADSB_VEHICLE: adsbVehicle(m, s, now); break;
+    default:
+        guidance(m, s, now);
+        sensors(m, s, now);
+        reports(m, s, now);
+    }
+}
+
+/// Mission progress, navigation controller output, RC inputs and servo outputs.
+void StateMapper::guidance(const mavlink_message_t &m, VehicleState &s, std::int64_t now)
+{
+    switch (m.msgid) {
     case MAVLINK_MSG_ID_MISSION_CURRENT: {
         mavlink_mission_current_t c;
         mavlink_msg_mission_current_decode(&m, &c);
@@ -94,26 +111,14 @@ void StateMapper::apply(const MavMessage &mm, VehicleState &s)
         for (int i = 0; i < 16; ++i) s.servoOutputs[i] = v[i];
         break;
     }
-    case MAVLINK_MSG_ID_VFR_HUD: vfrHud(m, s, now); break;
-    case MAVLINK_MSG_ID_RADIO_STATUS: {
-        mavlink_radio_status_t r;
-        mavlink_msg_radio_status_decode(&m, &r);
-        // 0-254 are valid RSSI counts; 255 = invalid / unknown
-        s.rssi = r.rssi < 255 ? std::optional<int>(r.rssi) : std::nullopt;
-        s.remRssi = r.remrssi < 255 ? std::optional<int>(r.remrssi) : std::nullopt;
-        break;
+    default: break;
     }
-    case MAVLINK_MSG_ID_CORV_CELL_INFO: cellInfo(m, s, now); break;
-    case MAVLINK_MSG_ID_COMMAND_ACK: {
-        mavlink_command_ack_t a;
-        mavlink_msg_command_ack_decode(&m, &a);
-        s.lastAckCommand = a.command;
-        s.lastAckResult = a.result;
-        // No toast for the internal polling commands (REQUEST_MESSAGE, SET_MESSAGE_INTERVAL)
-        if (a.command != MAV_CMD_REQUEST_MESSAGE && a.command != MAV_CMD_SET_MESSAGE_INTERVAL && m_hooks.commandAck)
-            m_hooks.commandAck(a.command, a.result);
-        break;
-    }
+}
+
+/// RTK baseline, rangefinder, terrain, wind, EKF, vibration, GNSS integrity.
+void StateMapper::sensors(const mavlink_message_t &m, VehicleState &s, std::int64_t now)
+{
+    switch (m.msgid) {
     case MAVLINK_MSG_ID_GPS_RTK: {
         mavlink_gps_rtk_t r;
         mavlink_msg_gps_rtk_decode(&m, &r);
@@ -145,8 +150,6 @@ void StateMapper::apply(const MavMessage &mm, VehicleState &s)
         s.windDataTime = now;
         break;
     }
-    case MAVLINK_MSG_ID_MAG_CAL_PROGRESS: s.magCalTime = now; break;
-    case MAVLINK_MSG_ID_MAG_CAL_REPORT: s.magCalTime = 0; break;
     case MAVLINK_MSG_ID_EKF_STATUS_REPORT: {
         mavlink_ekf_status_report_t e;
         mavlink_msg_ekf_status_report_decode(&m, &e);
@@ -171,16 +174,40 @@ void StateMapper::apply(const MavMessage &mm, VehicleState &s)
         if (s.vibHistory.size() > kVibHistory) s.vibHistory.erase(s.vibHistory.begin());
         break;
     }
-    case MAVLINK_MSG_ID_HOME_POSITION: homePosition(m, s); break;
-    case MAVLINK_MSG_ID_ADSB_VEHICLE: adsbVehicle(m, s, now); break;
+    case MAVLINK_MSG_ID_GNSS_INTEGRITY: {
+        mavlink_gnss_integrity_t g;
+        mavlink_msg_gnss_integrity_decode(&m, &g);
+        s.gnssJamming = g.jamming_state;
+        s.gnssSpoofing = g.spoofing_state;
+        s.gnssIntegrityTime = now;
+        break;
+    }
+    default: break;
+    }
+}
+
+/// Command ACKs, named values, status texts, radio RSSI, compass calibration.
+void StateMapper::reports(const mavlink_message_t &m, VehicleState &s, std::int64_t now)
+{
+    switch (m.msgid) {
+    case MAVLINK_MSG_ID_COMMAND_ACK: {
+        mavlink_command_ack_t a;
+        mavlink_msg_command_ack_decode(&m, &a);
+        s.lastAckCommand = a.command;
+        s.lastAckResult = a.result;
+        // No toast for the internal polling commands (REQUEST_MESSAGE, SET_MESSAGE_INTERVAL)
+        if (a.command != MAV_CMD_REQUEST_MESSAGE && a.command != MAV_CMD_SET_MESSAGE_INTERVAL && m_hooks.commandAck)
+            m_hooks.commandAck(a.command, a.result);
+        break;
+    }
     case MAVLINK_MSG_ID_NAMED_VALUE_FLOAT: {
         mavlink_named_value_float_t n;
         mavlink_msg_named_value_float_decode(&m, &n);
         const QString name = mav::fieldString(n.name, 10).trimmed();
-        if (name == QLatin1String("AppWndDir")) {
+        if (name == "AppWndDir"_L1) {
             s.appWindDir = n.value;
             s.appWindTime = now;
-        } else if (name == QLatin1String("AppWndSpd")) {
+        } else if (name == "AppWndSpd"_L1) {
             s.appWindSpeed = n.value;
         }
         break;
@@ -194,14 +221,16 @@ void StateMapper::apply(const MavMessage &mm, VehicleState &s)
         if (m_hooks.statusText) m_hooks.statusText(t.severity, s.statusText);
         break;
     }
-    case MAVLINK_MSG_ID_GNSS_INTEGRITY: {
-        mavlink_gnss_integrity_t g;
-        mavlink_msg_gnss_integrity_decode(&m, &g);
-        s.gnssJamming = g.jamming_state;
-        s.gnssSpoofing = g.spoofing_state;
-        s.gnssIntegrityTime = now;
+    case MAVLINK_MSG_ID_RADIO_STATUS: {
+        mavlink_radio_status_t r;
+        mavlink_msg_radio_status_decode(&m, &r);
+        // 0-254 are valid RSSI counts; 255 = invalid / unknown
+        s.rssi = r.rssi < 255 ? std::optional<int>(r.rssi) : std::nullopt;
+        s.remRssi = r.remrssi < 255 ? std::optional<int>(r.remrssi) : std::nullopt;
         break;
     }
+    case MAVLINK_MSG_ID_MAG_CAL_PROGRESS: s.magCalTime = now; break;
+    case MAVLINK_MSG_ID_MAG_CAL_REPORT: s.magCalTime = 0; break;
     default: break;
     }
 }
@@ -248,7 +277,7 @@ void StateMapper::firstFix(VehicleState &s)
     if (m_origin.fix(s.lat, s.lon)) {
         s.sceneOrigin = m_origin.origin();
         s.sceneOriginEpoch = m_origin.epoch();
-        if (!s.homeLat && s.mode != QLatin1String("REPLAY") && m_hooks.rememberLastHome) m_hooks.rememberLastHome(s.lat, s.lon);
+        if (!s.homeLat && s.mode != "REPLAY"_L1 && m_hooks.rememberLastHome) m_hooks.rememberLastHome(s.lat, s.lon);
     }
 }
 
@@ -416,7 +445,7 @@ void StateMapper::homePosition(const mavlink_message_t &m, VehicleState &s)
     m_origin.home(lat, lon);
     s.sceneOrigin = m_origin.origin();
     s.sceneOriginEpoch = m_origin.epoch();
-    if (s.mode != QLatin1String("REPLAY") && m_hooks.rememberLastHome) m_hooks.rememberLastHome(lat, lon);
+    if (s.mode != "REPLAY"_L1 && m_hooks.rememberLastHome) m_hooks.rememberLastHome(lat, lon);
 }
 
 void StateMapper::adsbVehicle(const mavlink_message_t &m, VehicleState &s, std::int64_t now)
@@ -425,7 +454,7 @@ void StateMapper::adsbVehicle(const mavlink_message_t &m, VehicleState &s, std::
     mavlink_adsb_vehicle_t a;
     mavlink_msg_adsb_vehicle_decode(&m, &a);
     TrafficEntry e;
-    e.icao24 = QString::number(a.ICAO_address, 16).rightJustified(6, QLatin1Char('0'));
+    e.icao24 = QString::number(a.ICAO_address, 16).rightJustified(6, '0'_L1);
     e.callsign = mav::fieldString(a.callsign, 9).trimmed();
     e.lat = a.lat / 1e7;
     e.lon = a.lon / 1e7;
@@ -475,7 +504,7 @@ void StateMapper::cellInfo(const mavlink_message_t &m, VehicleState &s, std::int
     if (!n.sinr) n.sinrAvg = prev.valid ? prev.sinrAvg : std::nullopt;
     else n.sinrAvg = prev.valid && prev.sinrAvg ? *prev.sinrAvg * 0.7 + *n.sinr * 0.3 : double(*n.sinr);
     if (changed)
-        LOG_I("cell") << QStringLiteral("cell change: eNB %1/%2 PCI %3 -> eNB %4/%5 PCI %6")
+        LOG_I("cell") << u"cell change: eNB %1/%2 PCI %3 -> eNB %4/%5 PCI %6"_s
                              .arg(prev.enb).arg(prev.sector).arg(prev.pci).arg(n.enb).arg(n.sector).arg(n.pci);
     n.handovers = c.handovers;
     n.neighbours = c.n_neighbours;

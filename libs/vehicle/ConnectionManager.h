@@ -26,13 +26,9 @@ public:
     /// type: mavlink-serial (port, baudRate), mavlink-udp (host, port), mavlink-tcp (host, port), mavlink-lte (moduleId, keyHex, host, port, certSha256).
     Q_INVOKABLE void connectLink(const QString &type, const QVariantMap &options);
     Q_INVOKABLE void disconnectLink();
-    Q_INVOKABLE bool isHeartbeatAlive() const;
-    QString currentType() const { return m_type; }
 
 signals:
-    void vehicleConnected(const QString &type);
     void connectFailed(const QString &type, const QString &error);
-    void disconnected();
 
 private:
     void requestStreamsWhenLinked();

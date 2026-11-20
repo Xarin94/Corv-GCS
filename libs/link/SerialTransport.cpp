@@ -2,6 +2,8 @@
 
 #include <QSerialPortInfo>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 SerialTransport::SerialTransport(QString port, int baud, QString label, QObject *parent)
@@ -39,8 +41,8 @@ bool SerialTransport::open(QString *error)
     connect(m_port, &QSerialPort::readyRead, this, [this] { emit received(m_port->readAll()); });
     connect(m_port, &QSerialPort::errorOccurred, this, [this](QSerialPort::SerialPortError e) {
         if (e == QSerialPort::NoError || m_closing) return;
-        if (e == QSerialPort::ResourceError) emit closed(QStringLiteral("device unplugged"));
-        else if (e != QSerialPort::TimeoutError) emit closed(QStringLiteral("serial error: %1").arg(m_port->errorString()));
+        if (e == QSerialPort::ResourceError) emit closed(u"device unplugged"_s);
+        else if (e != QSerialPort::TimeoutError) emit closed(u"serial error: %1"_s.arg(m_port->errorString()));
     });
     return true;
 }
@@ -66,7 +68,7 @@ qint64 SerialTransport::write(const QByteArray &bytes)
 
 QString SerialTransport::describe() const
 {
-    return QStringLiteral("%1 serial %2 @ %3").arg(m_label == QLatin1String("MSP") ? QStringLiteral("MSP") : QStringLiteral("MAVLink"), m_name).arg(m_baud);
+    return u"%1 serial %2 @ %3"_s.arg(m_label == "MSP"_L1 ? u"MSP"_s : u"MAVLink"_s, m_name).arg(m_baud);
 }
 
 QList<SerialPortInfo> SerialTransport::listPorts()
@@ -77,8 +79,8 @@ QList<SerialPortInfo> SerialTransport::listPorts()
         i.path = p.portName();
         i.manufacturer = p.manufacturer();
         i.friendlyName = p.description();
-        i.vendorId = p.hasVendorIdentifier() ? QString::number(p.vendorIdentifier(), 16).rightJustified(4, QLatin1Char('0')) : QString();
-        i.productId = p.hasProductIdentifier() ? QString::number(p.productIdentifier(), 16).rightJustified(4, QLatin1Char('0')) : QString();
+        i.vendorId = p.hasVendorIdentifier() ? QString::number(p.vendorIdentifier(), 16).rightJustified(4, '0'_L1) : QString();
+        i.productId = p.hasProductIdentifier() ? QString::number(p.productIdentifier(), 16).rightJustified(4, '0'_L1) : QString();
         i.serialNumber = p.serialNumber();
         out << i;
     }

@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace servo {
@@ -25,7 +27,7 @@ ServoMap ServoMap::read(const Lookup &param)
     ServoMap m;
     m.m_fn.fill(-1);
     for (int ch = 1; ch <= servo::kOutputs; ++ch) {
-        const auto f = param(QStringLiteral("SERVO%1_FUNCTION").arg(ch));
+        const auto f = param(u"SERVO%1_FUNCTION"_s.arg(ch));
         if (!f) continue;
         const int fn = int(std::lround(*f));
         m.m_fn[std::size_t(ch - 1)] = fn;
@@ -38,7 +40,7 @@ ServoMap ServoMap::read(const Lookup &param)
 OutputScale ServoMap::scale(const Lookup &param, int output)
 {
     OutputScale s;
-    const auto get = [&](const char *what) { return param(QStringLiteral("SERVO%1_%2").arg(output).arg(QLatin1String(what))); };
+    const auto get = [&](const char *what) { return param(u"SERVO%1_%2"_s.arg(output).arg(QLatin1String(what))); };
     if (const auto v = get("MIN")) s.min = *v;
     if (const auto v = get("TRIM")) s.trim = *v;
     if (const auto v = get("MAX")) s.max = *v;
@@ -103,9 +105,9 @@ QStringList ServoMap::flapParams() const
     const Flaps f = flaps();
     const auto add = [&](int ch, bool trim) {
         if (!ch) return;
-        names << QStringLiteral("SERVO%1_MIN").arg(ch) << QStringLiteral("SERVO%1_MAX").arg(ch)
-              << QStringLiteral("SERVO%1_REVERSED").arg(ch);
-        if (trim) names << QStringLiteral("SERVO%1_TRIM").arg(ch);
+        names << u"SERVO%1_MIN"_s.arg(ch) << u"SERVO%1_MAX"_s.arg(ch)
+              << u"SERVO%1_REVERSED"_s.arg(ch);
+        if (trim) names << u"SERVO%1_TRIM"_s.arg(ch);
     };
     if (f.kind == Flaps::Range) add(f.output, false);
     if (f.kind == Flaps::Flaperons) {

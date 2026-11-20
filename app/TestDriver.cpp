@@ -33,6 +33,8 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -48,26 +50,26 @@ TestDriver::TestDriver(QQmlApplicationEngine &engine) : m_engine(engine) {}
 
 QObject *TestDriver::viewModel(const QString &name)
 {
-    if (name == QLatin1String("Params")) return ParamsController::s_instance;
-    if (name == QLatin1String("Logs")) return LogsController::s_instance;
-    if (name == QLatin1String("Plan")) return PlanController::s_instance;
-    if (name == QLatin1String("Gcs")) return GcsController::s_instance;
-    if (name == QLatin1String("Calibration")) return CalibrationController::s_instance;
-    if (name == QLatin1String("Ekf")) return EkfController::s_instance;
-    if (name == QLatin1String("Fft")) return FftController::s_instance;
-    if (name == QLatin1String("Replay")) return ReplayController::s_instance;
-    if (name == QLatin1String("Annunciators")) return AnnunciatorController::s_instance;
-    if (name == QLatin1String("Rtk")) return RtkController::s_instance;
-    if (name == QLatin1String("TelForward")) return TelForwardController::s_instance;
-    if (name == QLatin1String("Updates")) return UpdateController::s_instance;
-    if (name == QLatin1String("Lte")) return LteController::s_instance;
-    if (name == QLatin1String("SetupCfg")) return SetupController::s_instance;
-    if (name == QLatin1String("Sitl")) return SitlController::s_instance;
-    if (name == QLatin1String("GeoZones")) return GeoZoneController::s_instance;
-    if (name == QLatin1String("SysConfig")) return SysConfig::s_instance;
-    if (name == QLatin1String("Joystick")) return JoystickController::s_instance;
-    if (name == QLatin1String("Lidar")) return LidarController::s_instance;
-    if (name == QLatin1String("Ros")) return RosController::s_instance;
+    if (name == "Params"_L1) return ParamsController::s_instance;
+    if (name == "Logs"_L1) return LogsController::s_instance;
+    if (name == "Plan"_L1) return PlanController::s_instance;
+    if (name == "Gcs"_L1) return GcsController::s_instance;
+    if (name == "Calibration"_L1) return CalibrationController::s_instance;
+    if (name == "Ekf"_L1) return EkfController::s_instance;
+    if (name == "Fft"_L1) return FftController::s_instance;
+    if (name == "Replay"_L1) return ReplayController::s_instance;
+    if (name == "Annunciators"_L1) return AnnunciatorController::s_instance;
+    if (name == "Rtk"_L1) return RtkController::s_instance;
+    if (name == "TelForward"_L1) return TelForwardController::s_instance;
+    if (name == "Updates"_L1) return UpdateController::s_instance;
+    if (name == "Lte"_L1) return LteController::s_instance;
+    if (name == "SetupCfg"_L1) return SetupController::s_instance;
+    if (name == "Sitl"_L1) return SitlController::s_instance;
+    if (name == "GeoZones"_L1) return GeoZoneController::s_instance;
+    if (name == "SysConfig"_L1) return SysConfig::s_instance;
+    if (name == "Joystick"_L1) return JoystickController::s_instance;
+    if (name == "Lidar"_L1) return LidarController::s_instance;
+    if (name == "Ros"_L1) return RosController::s_instance;
     return nullptr;
 }
 
@@ -79,7 +81,7 @@ QQuickWindow *TestDriver::window() const
 QObject *TestDriver::header() const
 {
     QObject *root = m_engine.rootObjects().value(0);
-    return root ? root->findChild<QObject *>(QStringLiteral("header")) : nullptr;
+    return root ? root->findChild<QObject *>(u"header"_s) : nullptr;
 }
 
 QObject *TestDriver::object(const QString &name) const
@@ -91,10 +93,10 @@ QObject *TestDriver::object(const QString &name) const
 
 QJsonValue TestDriver::call(const QString &target, const QJsonValue &args, QString *error)
 {
-    const QString obj = target.section(QLatin1Char('.'), 0, 0), method = target.section(QLatin1Char('.'), 1);
+    const QString obj = target.section('.'_L1, 0, 0), method = target.section('.'_L1, 1);
     QObject *o = viewModel(obj);
     if (!o) {
-        if (error) *error = QStringLiteral("no view model ") + obj;
+        if (error) *error = u"no view model "_s + obj;
         return {};
     }
     // The arguments: none, one value, or the list
@@ -126,12 +128,12 @@ QJsonValue TestDriver::call(const QString &target, const QJsonValue &args, QStri
             ok = mm.invoke(o, Qt::DirectConnection, g[0], g[1], g[2], g[3], g[4], g[5]);
         }
         if (!ok) {
-            if (error) *error = QStringLiteral("call failed: ") + target;
+            if (error) *error = u"call failed: "_s + target;
             return {};
         }
         return ret.isValid() ? QJsonValue::fromVariant(ret) : QJsonValue();
     }
-    if (error) *error = QStringLiteral("no method %1 taking %2 argument(s)").arg(target).arg(list.size());
+    if (error) *error = u"no method %1 taking %2 argument(s)"_s.arg(target).arg(list.size());
     return {};
 }
 
@@ -144,10 +146,10 @@ QJsonValue TestDriver::stats() const
         for (QQuickItem *it : root->findChildren<QQuickItem *>()) {
             if (qstrcmp(it->metaObject()->className(), "corv::SceneItem") != 0) continue;
             QJsonObject v;
-            v.insert(QStringLiteral("objectName"), it->objectName());
-            v.insert(QStringLiteral("visible"), it->isVisible());
-            v.insert(QStringLiteral("width"), it->width());
-            v.insert(QStringLiteral("height"), it->height());
+            v.insert(u"objectName"_s, it->objectName());
+            v.insert(u"visible"_s, it->isVisible());
+            v.insert(u"width"_s, it->width());
+            v.insert(u"height"_s, it->height());
             for (const char *p : {"graphicsApi", "fps", "chunks", "visibleChunks", "drawCalls", "satelliteImages", "satelliteMB", "agl",
                                   "schematic", "thirdPerson", "trajectory", "orbitDistance", "orbitPitch"})
                 v.insert(QString::fromLatin1(p), QJsonValue::fromVariant(it->property(p)));
@@ -155,11 +157,11 @@ QJsonValue TestDriver::stats() const
         }
     }
     QJsonObject out;
-    out.insert(QStringLiteral("views"), views);
+    out.insert(u"views"_s, views);
     if (QQuickWindow *w = window()) {
-        out.insert(QStringLiteral("window"), QJsonObject{{QStringLiteral("width"), w->width()}, {QStringLiteral("height"), w->height()},
-                                                         {QStringLiteral("dpr"), w->effectiveDevicePixelRatio()},
-                                                         {QStringLiteral("exposed"), w->isExposed()}});
+        out.insert(u"window"_s, QJsonObject{{u"width"_s, w->width()}, {u"height"_s, w->height()},
+                                                         {u"dpr"_s, w->effectiveDevicePixelRatio()},
+                                                         {u"exposed"_s, w->isExposed()}});
     }
     return out;
 }
@@ -172,46 +174,46 @@ QJsonValue TestDriver::run(const QString &cmd, const QString &arg, QString *erro
         if (error) *error = e;
         return QJsonValue();
     };
-    if (cmd == QLatin1String("tab")) {
-        if (!hdr) return fail(QStringLiteral("no header"));
+    if (cmd == "tab"_L1) {
+        if (!hdr) return fail(u"no header"_s);
         hdr->setProperty("currentTab", arg.toInt());
         return {};
     }
-    if (cmd == QLatin1String("grab")) {
-        if (!win) return fail(QStringLiteral("no window"));
+    if (cmd == "grab"_L1) {
+        if (!win) return fail(u"no window"_s);
         const bool ok = win->grabWindow().save(arg);
         LOG_I("app") << "grab" << arg << ok;
-        return ok ? QJsonValue(arg) : fail(QStringLiteral("cannot save ") + arg);
+        return ok ? QJsonValue(arg) : fail(u"cannot save "_s + arg);
     }
-    if (cmd == QLatin1String("select")) {
-        if (!PlanController::s_instance) return fail(QStringLiteral("no plan"));
-        const QJsonArray segs = PlanController::s_instance->route().value(QStringLiteral("segments")).toArray();
+    if (cmd == "select"_L1) {
+        if (!PlanController::s_instance) return fail(u"no plan"_s);
+        const QJsonArray segs = PlanController::s_instance->route().value(u"segments"_s).toArray();
         const int i = arg.toInt();
-        PlanController::s_instance->selectSegment(i >= 0 && i < segs.size() ? segs[i].toObject().value(QStringLiteral("id")).toString() : QString());
+        PlanController::s_instance->selectSegment(i >= 0 && i < segs.size() ? segs[i].toObject().value(u"id"_s).toString() : QString());
         return {};
     }
-    if (cmd == QLatin1String("popover")) {
-        if (!PlanController::s_instance) return fail(QStringLiteral("no plan"));
-        emit PlanController::s_instance->openPopover(arg == QLatin1String("none") ? QString() : arg);
+    if (cmd == "popover"_L1) {
+        if (!PlanController::s_instance) return fail(u"no plan"_s);
+        emit PlanController::s_instance->openPopover(arg == "none"_L1 ? QString() : arg);
         return {};
     }
-    if (cmd == QLatin1String("library")) {
-        if (!PlanController::s_instance) return fail(QStringLiteral("no plan"));
-        if (arg == QLatin1String("open")) PlanController::s_instance->openLibrary();
+    if (cmd == "library"_L1) {
+        if (!PlanController::s_instance) return fail(u"no plan"_s);
+        if (arg == "open"_L1) PlanController::s_instance->openLibrary();
         else emit PlanController::s_instance->libraryOpenChanged(false);
         return {};
     }
-    if (cmd == QLatin1String("emit")) {
+    if (cmd == "emit"_L1) {
         // A view button of the header bar: toggleSatellite, toggleTheme, toggleHorizonLock...
-        if (!hdr || !QMetaObject::invokeMethod(hdr, arg.toLatin1().constData())) return fail(QStringLiteral("no signal ") + arg);
+        if (!hdr || !QMetaObject::invokeMethod(hdr, arg.toLatin1().constData())) return fail(u"no signal "_s + arg);
         return {};
     }
-    if (cmd == QLatin1String("call")) {
+    if (cmd == "call"_L1) {
         // "call Params.readAll", "call Gcs.setMode FBWA", "call Rtk.ntripConnect {...}",
         // "call SetupCfg.readParams [["FLTMODE1"],"FLIGHT MODES"]"
-        const QString target = arg.section(QLatin1Char(' '), 0, 0), param = arg.section(QLatin1Char(' '), 1);
+        const QString target = arg.section(' '_L1, 0, 0), param = arg.section(' '_L1, 1);
         QJsonValue args;
-        if (param.startsWith(QLatin1Char('{')) || param.startsWith(QLatin1Char('['))) {
+        if (param.startsWith('{'_L1) || param.startsWith('['_L1)) {
             const QJsonDocument json = QJsonDocument::fromJson(param.toUtf8());
             args = json.isArray() ? QJsonValue(json.array()) : QJsonValue(QJsonArray{json.object()});
         } else if (!param.isEmpty()) {
@@ -219,34 +221,34 @@ QJsonValue TestDriver::run(const QString &cmd, const QString &arg, QString *erro
         }
         QString e;
         const QJsonValue r = call(target, args, &e);
-        LOG_I("app") << "call" << arg << (e.isEmpty() ? QString() : QStringLiteral("(%1)").arg(e));
+        LOG_I("app") << "call" << arg << (e.isEmpty() ? QString() : u"(%1)"_s.arg(e));
         if (!e.isEmpty()) return fail(e);
         return r;
     }
-    if (cmd == QLatin1String("set") || cmd == QLatin1String("get")) {
+    if (cmd == "set"_L1 || cmd == "get"_L1) {
         // A property of a view model or a named QML item: "set setupPage current PARAMETERS"
-        const QStringList a = arg.split(QLatin1Char(' '));
+        const QStringList a = arg.split(' '_L1);
         QObject *o = a.size() >= 2 ? object(a[0]) : nullptr;
-        if (!o) return fail(QStringLiteral("no such object ") + a.value(0));
-        if (cmd == QLatin1String("get")) return QJsonValue::fromVariant(o->property(a[1].toLatin1().constData()));
-        if (a.size() < 3) return fail(QStringLiteral("set needs a value"));
-        o->setProperty(a[1].toLatin1().constData(), a.mid(2).join(QLatin1Char(' ')));
+        if (!o) return fail(u"no such object "_s + a.value(0));
+        if (cmd == "get"_L1) return QJsonValue::fromVariant(o->property(a[1].toLatin1().constData()));
+        if (a.size() < 3) return fail(u"set needs a value"_s);
+        o->setProperty(a[1].toLatin1().constData(), a.mid(2).join(' '_L1));
         LOG_I("app") << "set" << arg;
         return {};
     }
-    if (cmd == QLatin1String("key") || cmd == QLatin1String("keyup")) {
+    if (cmd == "key"_L1 || cmd == "keyup"_L1) {
         // An arrow held or released: "key Left", "keyup Left"
-        if (!win) return fail(QStringLiteral("no window"));
-        static const QHash<QString, int> keys = {{QStringLiteral("Up"), Qt::Key_Up}, {QStringLiteral("Down"), Qt::Key_Down},
-                                                 {QStringLiteral("Left"), Qt::Key_Left}, {QStringLiteral("Right"), Qt::Key_Right}};
-        QKeyEvent ev(cmd == QLatin1String("key") ? QEvent::KeyPress : QEvent::KeyRelease, keys.value(arg, Qt::Key_unknown), Qt::NoModifier);
+        if (!win) return fail(u"no window"_s);
+        static const QHash<QString, int> keys = {{u"Up"_s, Qt::Key_Up}, {u"Down"_s, Qt::Key_Down},
+                                                 {u"Left"_s, Qt::Key_Left}, {u"Right"_s, Qt::Key_Right}};
+        QKeyEvent ev(cmd == "key"_L1 ? QEvent::KeyPress : QEvent::KeyRelease, keys.value(arg, Qt::Key_unknown), Qt::NoModifier);
         QCoreApplication::sendEvent(win, &ev);
         return {};
     }
-    if (cmd == QLatin1String("click")) {
+    if (cmd == "click"_L1) {
         // A left click at window coordinates: "click 120 340" (opens a select, presses a button)
-        const QStringList xy = arg.split(QLatin1Char(' '), Qt::SkipEmptyParts);
-        if (!win || xy.size() != 2) return fail(QStringLiteral("click X Y"));
+        const QStringList xy = arg.split(' '_L1, Qt::SkipEmptyParts);
+        if (!win || xy.size() != 2) return fail(u"click X Y"_s);
         const QPointF pos(xy[0].toDouble(), xy[1].toDouble());
         const QPointF global = win->mapToGlobal(pos);
         QMouseEvent press(QEvent::MouseButtonPress, pos, global, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
@@ -255,69 +257,69 @@ QJsonValue TestDriver::run(const QString &cmd, const QString &arg, QString *erro
         QCoreApplication::sendEvent(win, &release);
         return {};
     }
-    if (cmd == QLatin1String("size")) {
-        const QStringList wh = arg.split(QLatin1Char('x'));
-        if (!win || wh.size() != 2) return fail(QStringLiteral("size WxH"));
+    if (cmd == "size"_L1) {
+        const QStringList wh = arg.split('x'_L1);
+        if (!win || wh.size() != 2) return fail(u"size WxH"_s);
         win->resize(wh[0].toInt(), wh[1].toInt());
         return {};
     }
-    if (cmd == QLatin1String("stats")) return stats();
-    return fail(QStringLiteral("unknown command ") + cmd);
+    if (cmd == "stats"_L1) return stats();
+    return fail(u"unknown command "_s + cmd);
 }
 
 QJsonValue TestDriver::runJson(const QString &method, const QJsonValue &params, QString *error)
 {
     const QJsonObject p = params.toObject();
-    if (method == QLatin1String("set")) {
+    if (method == "set"_L1) {
         // {object, property, value}: the value keeps its JSON type
-        QObject *o = object(p.value(QStringLiteral("object")).toString());
+        QObject *o = object(p.value(u"object"_s).toString());
         if (!o) {
-            *error = QStringLiteral("no such object");
+            *error = u"no such object"_s;
             return {};
         }
-        const QByteArray prop = p.value(QStringLiteral("property")).toString().toLatin1();
-        if (!o->setProperty(prop.constData(), toVariant(p.value(QStringLiteral("value"))))) {
-            *error = QStringLiteral("property not set: ") + QString::fromLatin1(prop);
+        const QByteArray prop = p.value(u"property"_s).toString().toLatin1();
+        if (!o->setProperty(prop.constData(), toVariant(p.value(u"value"_s)))) {
+            *error = u"property not set: "_s + QString::fromLatin1(prop);
             return {};
         }
         return QJsonValue::fromVariant(o->property(prop.constData()));
     }
-    if (method == QLatin1String("get")) {
-        QObject *o = object(p.value(QStringLiteral("object")).toString());
+    if (method == "get"_L1) {
+        QObject *o = object(p.value(u"object"_s).toString());
         if (!o) {
-            *error = QStringLiteral("no such object");
+            *error = u"no such object"_s;
             return {};
         }
-        return QJsonValue::fromVariant(o->property(p.value(QStringLiteral("property")).toString().toLatin1().constData()));
+        return QJsonValue::fromVariant(o->property(p.value(u"property"_s).toString().toLatin1().constData()));
     }
-    if (method == QLatin1String("call")) return call(p.value(QStringLiteral("target")).toString(), p.value(QStringLiteral("args")), error);
-    if (method == QLatin1String("stats")) return stats();
-    if (method == QLatin1String("screenshot")) {
+    if (method == "call"_L1) return call(p.value(u"target"_s).toString(), p.value(u"args"_s), error);
+    if (method == "stats"_L1) return stats();
+    if (method == "screenshot"_L1) {
         QQuickWindow *win = window();
         if (!win) {
-            *error = QStringLiteral("no window");
+            *error = u"no window"_s;
             return {};
         }
         const QImage img = win->grabWindow();
-        const QString file = p.value(QStringLiteral("file")).toString();
+        const QString file = p.value(u"file"_s).toString();
         if (!file.isEmpty()) {
-            if (!img.save(file)) *error = QStringLiteral("cannot save ") + file;
-            return QJsonObject{{QStringLiteral("file"), file}, {QStringLiteral("width"), img.width()}, {QStringLiteral("height"), img.height()}};
+            if (!img.save(file)) *error = u"cannot save "_s + file;
+            return QJsonObject{{u"file"_s, file}, {u"width"_s, img.width()}, {u"height"_s, img.height()}};
         }
         // No file: the PNG itself, base64
         QByteArray png;
         QBuffer buf(&png);
         buf.open(QIODevice::WriteOnly);
         img.save(&buf, "PNG");
-        return QJsonObject{{QStringLiteral("png"), QString::fromLatin1(png.toBase64())}, {QStringLiteral("width"), img.width()},
-                           {QStringLiteral("height"), img.height()}};
+        return QJsonObject{{u"png"_s, QString::fromLatin1(png.toBase64())}, {u"width"_s, img.width()},
+                           {u"height"_s, img.height()}};
     }
-    if (method == QLatin1String("script")) {
+    if (method == "script"_L1) {
         // Any --grab-script line: {"line": "tab 1"}
-        const QString line = p.value(QStringLiteral("line")).toString().trimmed();
-        return run(line.section(QLatin1Char(' '), 0, 0), line.section(QLatin1Char(' '), 1), error);
+        const QString line = p.value(u"line"_s).toString().trimmed();
+        return run(line.section(' '_L1, 0, 0), line.section(' '_L1, 1), error);
     }
-    *error = QStringLiteral("unknown method ") + method;
+    *error = u"unknown method "_s + method;
     return {};
 }
 

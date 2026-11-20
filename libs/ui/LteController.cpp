@@ -28,15 +28,17 @@
 #include <dpapi.h>
 #elif defined(Q_OS_LINUX)
 #include <dlfcn.h>
+
+using namespace Qt::StringLiterals;
 #endif
 
 namespace corv {
 
 namespace {
 
-const QString kConfigKey = QStringLiteral("lte-link-config");
-const QString kCellMapKey = QStringLiteral("lte-cell-map");
-const QString kDefaultRelayHost = QStringLiteral("94.177.202.247");   // CORV relay
+const QString kConfigKey = u"lte-link-config"_s;
+const QString kCellMapKey = u"lte-cell-map"_s;
+const QString kDefaultRelayHost = u"94.177.202.247"_s;   // CORV relay
 constexpr std::int64_t kCellStaleMs = 10000;   // no CORV_CELL_INFO for this long: overlay off
 constexpr std::int64_t kStaleLinkMs = 5000;    // no CORV_CELL_INFO for this long: link poor
 constexpr double kRadiusKm = 100;              // sites fetched around the vehicle
@@ -65,12 +67,12 @@ const Country *country(const QString &name)
 // Where a cell position comes from (CellRecord::src)
 QString sourceName(const QString &src)
 {
-    static const QHash<QString, QString> names{{QStringLiteral("ocid"), QStringLiteral("OpenCelliD")},
-                                              {QStringLiteral("ocid-2024"), QStringLiteral("OpenCelliD 2024")},
-                                              {QStringLiteral("mls"), QStringLiteral("Mozilla MLS 2024")},
-                                              {QStringLiteral("beacondb"), QStringLiteral("beaconDB (online)")},
-                                              {QStringLiteral("ocid-api"), QStringLiteral("OpenCelliD API (online)")},
-                                              {QStringLiteral("bundle"), QStringLiteral("built-in")}};
+    static const QHash<QString, QString> names{{u"ocid"_s, u"OpenCelliD"_s},
+                                              {u"ocid-2024"_s, u"OpenCelliD 2024"_s},
+                                              {u"mls"_s, u"Mozilla MLS 2024"_s},
+                                              {u"beacondb"_s, u"beaconDB (online)"_s},
+                                              {u"ocid-api"_s, u"OpenCelliD API (online)"_s},
+                                              {u"bundle"_s, u"built-in"_s}};
     return names.value(src, src);
 }
 
@@ -88,9 +90,9 @@ QJsonObject loadJson(const QString &key)
 
 QString formatBytes(qint64 n)
 {
-    if (n >= 1000000) return QString::number(n / 1e6, 'f', 1) + QStringLiteral(" MB");
-    if (n >= 1000) return QString::number(n / 1e3, 'f', 1) + QStringLiteral(" kB");
-    return QString::number(n) + QStringLiteral(" B");
+    if (n >= 1000000) return QString::number(n / 1e6, 'f', 1) + u" MB"_s;
+    if (n >= 1000) return QString::number(n / 1e3, 'f', 1) + u" kB"_s;
+    return QString::number(n) + u" B"_s;
 }
 
 // ── OS keychain for REMEMBER KEY (Electron safeStorage) ─────────────────────
@@ -99,7 +101,7 @@ namespace keychain {
 
 #if defined(Q_OS_WIN)
 
-QString file() { return QDir(DataRoot::root()).filePath(QStringLiteral("lte-link-key-qt.bin")); }
+QString file() { return QDir(DataRoot::root()).filePath(u"lte-link-key-qt.bin"_s); }
 bool available() { return true; }
 bool save(const QString &key)
 {
@@ -210,16 +212,16 @@ void forget() {}
 
 const QHash<int, QString> &operators222()
 {
-    static const QHash<int, QString> o{{1, QStringLiteral("TIM")}, {10, QStringLiteral("Vodafone")}, {50, QStringLiteral("Iliad")},
-                                       {88, QStringLiteral("WindTre")}, {99, QStringLiteral("WindTre (3)")}, {43, QStringLiteral("TIM")},
-                                       {48, QStringLiteral("TIM")}};
+    static const QHash<int, QString> o{{1, u"TIM"_s}, {10, u"Vodafone"_s}, {50, u"Iliad"_s},
+                                       {88, u"WindTre"_s}, {99, u"WindTre (3)"_s}, {43, u"TIM"_s},
+                                       {48, u"TIM"_s}};
     return o;
 }
 
 QString v(const std::optional<int> &x, const QString &unit = QString())
 {
-    if (!x) return QStringLiteral("-");
-    return unit.isEmpty() ? QString::number(*x) : QStringLiteral("%1 %2").arg(*x).arg(unit);
+    if (!x) return u"-"_s;
+    return unit.isEmpty() ? QString::number(*x) : u"%1 %2"_s.arg(*x).arg(unit);
 }
 
 } // namespace
@@ -230,19 +232,19 @@ LteController::LteController(LinkManager *link, ConnectionManager *conn, Command
     : QObject(parent), m_link(link), m_conn(conn), m_cmd(cmd), m_hub(hub)
 {
     s_instance = this;
-    m_status = QVariantMap{{QStringLiteral("state"), QStringLiteral("Not connected")}};
+    m_status = QVariantMap{{u"state"_s, u"Not connected"_s}};
     connect(m_link, &LinkManager::lteStatus, this, &LteController::onLteStatus, Qt::QueuedConnection);
     connect(m_conn, &ConnectionManager::connectFailed, this, [this](const QString &type, const QString &error) {
         if (type != QLatin1String(LinkManager::kMavlinkLte)) return;
         m_connecting = false;
-        m_status[QStringLiteral("state")] = QStringLiteral("ERROR");
-        m_status[QStringLiteral("stateColor")] = QStringLiteral("#e44");
-        m_status[QStringLiteral("error")] = error;
+        m_status[u"state"_s] = u"ERROR"_s;
+        m_status[u"stateColor"_s] = u"#e44"_s;
+        m_status[u"error"_s] = error;
         emit statusChanged();
-        DialogHub::toast(QStringLiteral("Cellular link failed: ") + error);
+        DialogHub::toast(u"Cellular link failed: "_s + error);
     });
     connect(m_link, &LinkManager::connectionState, this, [this](const QString &state) {
-        if (state == QLatin1String("DISCONNECTED") && m_online) {
+        if (state == "DISCONNECTED"_L1 && m_online) {
             m_online = false;
             emit statusChanged();
         }
@@ -257,10 +259,10 @@ LteController::LteController(LinkManager *link, ConnectionManager *conn, Command
     });
     m_rowsTimer.start();
     // The cell database: <data root>/celldb, and the cells shipped next to the executable
-    m_db = std::make_unique<CellDb>(DataRoot::celldbDir(), DataRoot::installDir() + QStringLiteral("/celldb"));
-    m_dbView = QVariantMap{{QStringLiteral("status"), QStringLiteral("--")}};
+    m_db = std::make_unique<CellDb>(DataRoot::celldbDir(), DataRoot::installDir() + u"/celldb"_s);
+    m_dbView = QVariantMap{{u"status"_s, u"--"_s}};
     // The remembered key, read off the GUI thread (the keychain may be slow)
-    if (keychain() && saved().value(QStringLiteral("rememberKey")).toBool()) {
+    if (keychain() && saved().value(u"rememberKey"_s).toBool()) {
         auto *w = new QFutureWatcher<QString>(this);
         connect(w, &QFutureWatcher<QString>::finished, this, [this, w] {
             m_savedKey = w->result();
@@ -279,9 +281,9 @@ bool LteController::available() const { return lte::available(); }
 QVariantMap LteController::saved() const
 {
     QVariantMap m = loadJson(kConfigKey).toVariantMap();
-    if (m.value(QStringLiteral("host")).toString().isEmpty()) m[QStringLiteral("host")] = kDefaultRelayHost;
-    if (m.value(QStringLiteral("port")).toInt() <= 0) m[QStringLiteral("port")] = 5765;
-    if (!keychain()) m[QStringLiteral("rememberKey")] = false;
+    if (m.value(u"host"_s).toString().isEmpty()) m[u"host"_s] = kDefaultRelayHost;
+    if (m.value(u"port"_s).toInt() <= 0) m[u"port"_s] = 5765;
+    if (!keychain()) m[u"rememberKey"_s] = false;
     return m;
 }
 
@@ -293,26 +295,26 @@ void LteController::saveConfig(const QVariantMap &cfg)
 
 void LteController::connectModule(const QVariantMap &f)
 {
-    const QString moduleId = f.value(QStringLiteral("moduleId")).toString().trimmed();
-    QString keyHex = f.value(QStringLiteral("keyHex")).toString();
-    keyHex.remove(QRegularExpression(QStringLiteral("[\\s:]")));
-    const QString host = f.value(QStringLiteral("host")).toString().trimmed();
-    const int port = f.value(QStringLiteral("port")).toInt() > 0 ? f.value(QStringLiteral("port")).toInt() : 5765;
-    const QString cert = f.value(QStringLiteral("certSha256")).toString().trimmed();
-    const bool remember = f.value(QStringLiteral("rememberKey")).toBool() && keychain();
+    const QString moduleId = f.value(u"moduleId"_s).toString().trimmed();
+    QString keyHex = f.value(u"keyHex"_s).toString();
+    keyHex.remove(QRegularExpression(u"[\\s:]"_s));
+    const QString host = f.value(u"host"_s).toString().trimmed();
+    const int port = f.value(u"port"_s).toInt() > 0 ? f.value(u"port"_s).toInt() : 5765;
+    const QString cert = f.value(u"certSha256"_s).toString().trimmed();
+    const bool remember = f.value(u"rememberKey"_s).toBool() && keychain();
 
     QString problem;
-    if (moduleId.isEmpty() || moduleId.contains(QRegularExpression(QStringLiteral("\\s")))) problem = QStringLiteral("Enter the module ID");
-    else if (!QRegularExpression(QStringLiteral("^[0-9a-fA-F]{64}$")).match(keyHex).hasMatch())
-        problem = QStringLiteral("The AES-256 key must be 64 hexadecimal characters");
-    else if (host.isEmpty()) problem = QStringLiteral("Enter the relay host (RELAY panel)");
+    if (moduleId.isEmpty() || moduleId.contains(QRegularExpression(u"\\s"_s))) problem = u"Enter the module ID"_s;
+    else if (!QRegularExpression(u"^[0-9a-fA-F]{64}$"_s).match(keyHex).hasMatch())
+        problem = u"The AES-256 key must be 64 hexadecimal characters"_s;
+    else if (host.isEmpty()) problem = u"Enter the relay host (RELAY panel)"_s;
     if (!problem.isEmpty()) {
         DialogHub::toast(problem);
         return;
     }
     m_lastModuleSession.clear();   // a new link: its first session is not a restart
-    saveConfig(QVariantMap{{QStringLiteral("moduleId"), moduleId}, {QStringLiteral("host"), host}, {QStringLiteral("port"), port},
-                           {QStringLiteral("certSha256"), cert}, {QStringLiteral("rememberKey"), remember}});
+    saveConfig(QVariantMap{{u"moduleId"_s, moduleId}, {u"host"_s, host}, {u"port"_s, port},
+                           {u"certSha256"_s, cert}, {u"rememberKey"_s, remember}});
     if (keychain()) {
         (void)QtConcurrent::run([remember, keyHex] {
             if (remember) keychain::save(keyHex);
@@ -321,12 +323,12 @@ void LteController::connectModule(const QVariantMap &f)
         m_savedKey = remember ? keyHex : QString();
     }
     m_connecting = true;
-    m_status[QStringLiteral("state")] = QStringLiteral("Connecting to relay…");
-    m_status[QStringLiteral("stateColor")] = QString();
+    m_status[u"state"_s] = u"Connecting to relay…"_s;
+    m_status[u"stateColor"_s] = QString();
     emit statusChanged();
     m_conn->connectLink(QLatin1String(LinkManager::kMavlinkLte),
-                        QVariantMap{{QStringLiteral("moduleId"), moduleId}, {QStringLiteral("keyHex"), keyHex}, {QStringLiteral("host"), host},
-                                    {QStringLiteral("port"), port}, {QStringLiteral("certSha256"), cert}});
+                        QVariantMap{{u"moduleId"_s, moduleId}, {u"keyHex"_s, keyHex}, {u"host"_s, host},
+                                    {u"port"_s, port}, {u"certSha256"_s, cert}});
 }
 
 void LteController::disconnectModule()
@@ -337,11 +339,11 @@ void LteController::disconnectModule()
 QString LteController::pinCertificate()
 {
     if (m_lastFingerprint.isEmpty()) {
-        DialogHub::toast(QStringLiteral("Connect once to read the relay certificate, then pin it."));
+        DialogHub::toast(u"Connect once to read the relay certificate, then pin it."_s);
         return {};
     }
     QVariantMap cfg = loadJson(kConfigKey).toVariantMap();
-    cfg[QStringLiteral("certSha256")] = m_lastFingerprint;
+    cfg[u"certSha256"_s] = m_lastFingerprint;
     saveConfig(cfg);
     return m_lastFingerprint;
 }
@@ -349,59 +351,59 @@ QString LteController::pinCertificate()
 void LteController::onLteStatus(const QVariantMap &st)
 {
     static const QHash<QString, QString> labels{
-        {QStringLiteral("idle"), QStringLiteral("Not connected")},       {QStringLiteral("connecting"), QStringLiteral("Connecting to relay…")},
-        {QStringLiteral("handshake"), QStringLiteral("Authenticating…")}, {QStringLiteral("online"), QStringLiteral("ONLINE")},
-        {QStringLiteral("reconnecting"), QStringLiteral("Link lost — reconnecting…")}, {QStringLiteral("error"), QStringLiteral("ERROR")},
-        {QStringLiteral("stopped"), QStringLiteral("Not connected")}};
-    const QString state = st.value(QStringLiteral("state")).toString();
-    const bool online = state == QLatin1String("online");
-    if (online || state == QLatin1String("error") || state == QLatin1String("stopped")) m_connecting = false;
+        {u"idle"_s, u"Not connected"_s},       {u"connecting"_s, u"Connecting to relay…"_s},
+        {u"handshake"_s, u"Authenticating…"_s}, {u"online"_s, u"ONLINE"_s},
+        {u"reconnecting"_s, u"Link lost — reconnecting…"_s}, {u"error"_s, u"ERROR"_s},
+        {u"stopped"_s, u"Not connected"_s}};
+    const QString state = st.value(u"state"_s).toString();
+    const bool online = state == "online"_L1;
+    if (online || state == "error"_L1 || state == "stopped"_L1) m_connecting = false;
     m_online = online;
-    const QString moduleId = st.value(QStringLiteral("moduleId")).toString();
-    const qint64 recordsIn = st.value(QStringLiteral("recordsIn")).toLongLong();
-    const QVariant age = st.value(QStringLiteral("lastRxAge"));
+    const QString moduleId = st.value(u"moduleId"_s).toString();
+    const qint64 recordsIn = st.value(u"recordsIn"_s).toLongLong();
+    const QVariant age = st.value(u"lastRxAge"_s);
     const bool receiving = online && recordsIn > 0 && age.isValid() && !age.isNull() && age.toLongLong() < 3000;
     QVariantMap s;
-    s[QStringLiteral("state")] = labels.value(state, state);
-    s[QStringLiteral("stateColor")] = online ? QStringLiteral("#33cc33")
-                                    : (state == QLatin1String("error") || state == QLatin1String("reconnecting")) ? QStringLiteral("#e44") : QString();
-    s[QStringLiteral("air")] = !online ? QStringLiteral("--")
-                             : receiving ? moduleId + QStringLiteral(" — receiving")
-                             : st.value(QStringLiteral("airOnline")).toBool()
-                                 ? moduleId + QStringLiteral(" — online, waiting for data")
-                                 : QStringLiteral("%1 — offline on the relay (key fingerprint %2: same as e2e_key_fp on the module?)")
-                                       .arg(moduleId, st.value(QStringLiteral("keyFingerprint")).toString());
-    const QString session = st.value(QStringLiteral("vehicleSession")).toString();
-    s[QStringLiteral("session")] = session.isEmpty() ? QStringLiteral("--") : session;
+    s[u"state"_s] = labels.value(state, state);
+    s[u"stateColor"_s] = online ? u"#33cc33"_s
+                                    : (state == "error"_L1 || state == "reconnecting"_L1) ? u"#e44"_s : QString();
+    s[u"air"_s] = !online ? u"--"_s
+                             : receiving ? moduleId + u" — receiving"_s
+                             : st.value(u"airOnline"_s).toBool()
+                                 ? moduleId + u" — online, waiting for data"_s
+                                 : u"%1 — offline on the relay (key fingerprint %2: same as e2e_key_fp on the module?)"_s
+                                       .arg(moduleId, st.value(u"keyFingerprint"_s).toString());
+    const QString session = st.value(u"vehicleSession"_s).toString();
+    s[u"session"_s] = session.isEmpty() ? u"--"_s : session;
     // A new module session means the module restarted, usually with the flight
     // controller: the autopilot is back on its default stream rates, ask again
     if (!session.isEmpty() && session != m_lastModuleSession) {
         if (!m_lastModuleSession.isEmpty()) QTimer::singleShot(1000, this, [this] { m_cmd->requestAllDataStreams(); });
         m_lastModuleSession = session;
     }
-    const QVariantMap tls = st.value(QStringLiteral("tls")).toMap();
+    const QVariantMap tls = st.value(u"tls"_s).toMap();
     if (!tls.isEmpty()) {
-        m_lastFingerprint = tls.value(QStringLiteral("fingerprint")).toString();
-        s[QStringLiteral("tls")] = QStringLiteral("%1 %2 — %3")
-                                       .arg(tls.value(QStringLiteral("version")).toString(), tls.value(QStringLiteral("cipher")).toString(),
-                                            tls.value(QStringLiteral("verified")).toBool() ? QStringLiteral("certificate pinned")
-                                                                                          : QStringLiteral("certificate NOT verified"));
+        m_lastFingerprint = tls.value(u"fingerprint"_s).toString();
+        s[u"tls"_s] = u"%1 %2 — %3"_s
+                                       .arg(tls.value(u"version"_s).toString(), tls.value(u"cipher"_s).toString(),
+                                            tls.value(u"verified"_s).toBool() ? u"certificate pinned"_s
+                                                                                          : u"certificate NOT verified"_s);
     } else {
-        s[QStringLiteral("tls")] = m_status.value(QStringLiteral("tls"), QStringLiteral("--"));
+        s[u"tls"_s] = m_status.value(u"tls"_s, u"--"_s);
     }
-    s[QStringLiteral("records")] = QStringLiteral("%1 / %2").arg(recordsIn).arg(st.value(QStringLiteral("recordsOut")).toLongLong());
-    s[QStringLiteral("rejected")] = QStringLiteral("%1 not authentic, %2 replayed, %3 unsent (no module session yet)")
-                                        .arg(st.value(QStringLiteral("authFail")).toLongLong())
-                                        .arg(st.value(QStringLiteral("replay")).toLongLong())
-                                        .arg(st.value(QStringLiteral("droppedNoSession")).toLongLong());
-    s[QStringLiteral("traffic")] = QStringLiteral("↓ %1  ↑ %2")
-                                       .arg(formatBytes(st.value(QStringLiteral("bytesRx")).toLongLong()),
-                                            formatBytes(st.value(QStringLiteral("bytesTx")).toLongLong()));
-    s[QStringLiteral("age")] = age.isValid() && !age.isNull() ? QStringLiteral("%1 s ago").arg(age.toLongLong() / 1000.0, 0, 'f', 1)
-                                                              : QStringLiteral("--");
-    s[QStringLiteral("reconnects")] = QString::number(st.value(QStringLiteral("reconnects")).toLongLong());
-    const QString err = st.value(QStringLiteral("lastError")).toString();
-    s[QStringLiteral("error")] = err.isEmpty() ? QStringLiteral("--") : err;
+    s[u"records"_s] = u"%1 / %2"_s.arg(recordsIn).arg(st.value(u"recordsOut"_s).toLongLong());
+    s[u"rejected"_s] = u"%1 not authentic, %2 replayed, %3 unsent (no module session yet)"_s
+                                        .arg(st.value(u"authFail"_s).toLongLong())
+                                        .arg(st.value(u"replay"_s).toLongLong())
+                                        .arg(st.value(u"droppedNoSession"_s).toLongLong());
+    s[u"traffic"_s] = u"↓ %1  ↑ %2"_s
+                                       .arg(formatBytes(st.value(u"bytesRx"_s).toLongLong()),
+                                            formatBytes(st.value(u"bytesTx"_s).toLongLong()));
+    s[u"age"_s] = age.isValid() && !age.isNull() ? u"%1 s ago"_s.arg(age.toLongLong() / 1000.0, 0, 'f', 1)
+                                                              : u"--"_s;
+    s[u"reconnects"_s] = QString::number(st.value(u"reconnects"_s).toLongLong());
+    const QString err = st.value(u"lastError"_s).toString();
+    s[u"error"_s] = err.isEmpty() ? u"--"_s : err;
     m_status = s;
     emit statusChanged();
 }
@@ -436,28 +438,28 @@ QString LteController::frequencyText(unsigned earfcn, int band, const QString &f
     if (earfcn || band == 1)
         for (const B &b : bands)
             if (earfcn >= b.offs && earfcn <= b.max)
-                return QString::number(std::round((b.low + 0.1 * (earfcn - b.offs)) * 10) / 10, 'f', 1) + QStringLiteral(" MHz");
-    return band ? QStringLiteral("B%1").arg(band) : fallback;
+                return QString::number(std::round((b.low + 0.1 * (earfcn - b.offs)) * 10) / 10, 'f', 1) + u" MHz"_s;
+    return band ? u"B%1"_s.arg(band) : fallback;
 }
 
 QString LteController::operatorName(int mcc, int mnc)
 {
-    const QString plmn = QStringLiteral("%1-%2").arg(mcc).arg(mnc, 2, 10, QLatin1Char('0'));
-    return mcc == 222 && operators222().contains(mnc) ? QStringLiteral("%1 (%2)").arg(operators222().value(mnc), plmn) : plmn;
+    const QString plmn = u"%1-%2"_s.arg(mcc).arg(mnc, 2, 10, '0'_L1);
+    return mcc == 222 && operators222().contains(mnc) ? u"%1 (%2)"_s.arg(operators222().value(mnc), plmn) : plmn;
 }
 
 QString LteController::operatorShort(int mcc, int mnc)
 {
     if (mcc == 222 && operators222().contains(mnc)) return operators222().value(mnc);
-    return QStringLiteral("%1-%2").arg(mcc).arg(mnc, 2, 10, QLatin1Char('0'));
+    return u"%1-%2"_s.arg(mcc).arg(mnc, 2, 10, '0'_L1);
 }
 
 QVariantMap LteController::cellMap() const
 {
     const QJsonObject o = loadJson(kCellMapKey);
-    return QVariantMap{{QStringLiteral("show"), o.value(QStringLiteral("show")).toBool(true)},
-                       {QStringLiteral("allOperators"), o.value(QStringLiteral("allOperators")).toBool(false)},
-                       {QStringLiteral("table"), o.value(QStringLiteral("table")).toBool(true)}};
+    return QVariantMap{{u"show"_s, o.value(u"show"_s).toBool(true)},
+                       {u"allOperators"_s, o.value(u"allOperators"_s).toBool(false)},
+                       {u"table"_s, o.value(u"table"_s).toBool(true)}};
 }
 
 void LteController::setCellMap(const QString &name, bool on)
@@ -515,7 +517,7 @@ void LteController::updateCellMap()
     const auto s = m_hub->snapshot();
     const CellInfo &c = s->cell;
     const qint64 now = wallMs();
-    const bool live = c.valid && now - c.receivedAt < kCellStaleMs && cellMap().value(QStringLiteral("show")).toBool() && !s->relativeMode;
+    const bool live = c.valid && now - c.receivedAt < kCellStaleMs && cellMap().value(u"show"_s).toBool() && !s->relativeMode;
     if (!live) {
         hideOverlay();
         return;
@@ -524,8 +526,8 @@ void LteController::updateCellMap()
     m_shown = true;
     const bool valid = s->lat != 0 || s->lon != 0;
     const LatLon vehicle{s->lat, s->lon};
-    const bool all = cellMap().value(QStringLiteral("allOperators")).toBool();
-    const QString key = QStringLiteral("%1-%2-%3").arg(c.mcc).arg(c.mnc).arg(all);
+    const bool all = cellMap().value(u"allOperators"_s).toBool();
+    const QString key = u"%1-%2-%3"_s.arg(c.mcc).arg(c.mnc).arg(all);
     if (valid && c.mcc && !m_querying && now >= m_queryRetryAt &&
         (key != m_queryKey || !m_queryCentre || kmBetween(*m_queryCentre, vehicle.lat, vehicle.lon) > kRequeryKm))
         queryCells(vehicle);
@@ -550,10 +552,10 @@ void LteController::queryCells(const LatLon &centre)
 {
     const auto s = m_hub->snapshot();
     const CellInfo &c = s->cell;
-    const bool all = cellMap().value(QStringLiteral("allOperators")).toBool();
+    const bool all = cellMap().value(u"allOperators"_s).toBool();
     m_querying = true;
     m_queryCentre = centre;
-    m_queryKey = QStringLiteral("%1-%2-%3").arg(c.mcc).arg(c.mnc).arg(all);
+    m_queryKey = u"%1-%2-%3"_s.arg(c.mcc).arg(c.mnc).arg(all);
     CellDb::Query q;
     q.lat = centre.lat;
     q.lon = centre.lon;
@@ -667,44 +669,44 @@ QStringList LteController::countries() const
 void LteController::renderDbStatus(const QVariantMap &st)
 {
     QVariantMap v = m_dbView;
-    const QVariantMap b = st.value(QStringLiteral("bundle")).toMap();
+    const QVariantMap b = st.value(u"bundle"_s).toMap();
     if (!b.isEmpty()) {
         QStringList mcc, srcs;
-        for (const QVariant &m : b.value(QStringLiteral("mcc")).toList()) mcc << m.toString();
-        for (const QVariant &x : b.value(QStringLiteral("sources")).toList()) {
+        for (const QVariant &m : b.value(u"mcc"_s).toList()) mcc << m.toString();
+        for (const QVariant &x : b.value(u"sources"_s).toList()) {
             const QVariantMap sm = x.toMap();
-            srcs << QStringLiteral("%1 %2").arg(sourceName(sm.value(QStringLiteral("src")).toString()), sm.value(QStringLiteral("date")).toString());
+            srcs << u"%1 %2"_s.arg(sourceName(sm.value(u"src"_s).toString()), sm.value(u"date"_s).toString());
         }
-        v[QStringLiteral("bundle")] = QStringLiteral("%1 LTE cells (MCC %2): %3")
-                                          .arg(QLocale().toString(b.value(QStringLiteral("cells")).toLongLong()), mcc.join(QStringLiteral(", ")),
-                                               srcs.join(QStringLiteral(", ")));
+        v[u"bundle"_s] = u"%1 LTE cells (MCC %2): %3"_s
+                                          .arg(QLocale().toString(b.value(u"cells"_s).toLongLong()), mcc.join(u", "_s),
+                                               srcs.join(u", "_s));
     } else {
-        v[QStringLiteral("bundle")] = QStringLiteral("none");
+        v[u"bundle"_s] = u"none"_s;
     }
     QStringList files;
-    for (const QVariant &x : st.value(QStringLiteral("files")).toList()) {
+    for (const QVariant &x : st.value(u"files"_s).toList()) {
         const QVariantMap f = x.toMap();
-        const QString newest = f.value(QStringLiteral("newest")).toString();
-        files << QStringLiteral("%1: %2 cells%3")
-                     .arg(f.value(QStringLiteral("name")).toString(), QLocale().toString(f.value(QStringLiteral("cells")).toLongLong()),
-                          newest.isEmpty() ? QString() : QStringLiteral(" (to %1)").arg(newest));
+        const QString newest = f.value(u"newest"_s).toString();
+        files << u"%1: %2 cells%3"_s
+                     .arg(f.value(u"name"_s).toString(), QLocale().toString(f.value(u"cells"_s).toLongLong()),
+                          newest.isEmpty() ? QString() : u" (to %1)"_s.arg(newest));
     }
-    v[QStringLiteral("files")] = files.isEmpty() ? QStringLiteral("none") : files.join(QStringLiteral(", "));
-    const int blocks = st.value(QStringLiteral("blocks")).toInt();
-    const QString date = st.value(QStringLiteral("date")).toString();
-    v[QStringLiteral("status")] = blocks ? QStringLiteral("%1 LTE cells in %2 areas, %3%4")
-                                               .arg(QLocale().toString(st.value(QStringLiteral("cells")).toLongLong()))
+    v[u"files"_s] = files.isEmpty() ? u"none"_s : files.join(u", "_s);
+    const int blocks = st.value(u"blocks"_s).toInt();
+    const QString date = st.value(u"date"_s).toString();
+    v[u"status"_s] = blocks ? u"%1 LTE cells in %2 areas, %3%4"_s
+                                               .arg(QLocale().toString(st.value(u"cells"_s).toLongLong()))
                                                .arg(blocks)
-                                               .arg(formatBytes(st.value(QStringLiteral("bytes")).toLongLong()),
-                                                    date.isEmpty() ? QString() : QStringLiteral(", data of %1").arg(date))
-                                         : QStringLiteral("none");
-    const QVariantMap lk = st.value(QStringLiteral("lookups")).toMap();
-    v[QStringLiteral("lookups")] =
-        QStringLiteral("%1 found, %2 not found").arg(lk.value(QStringLiteral("found")).toInt()).arg(lk.value(QStringLiteral("missed")).toInt());
-    const QVariantMap set = st.value(QStringLiteral("settings")).toMap();
-    v[QStringLiteral("online")] = set.value(QStringLiteral("online"), true).toBool();
-    v[QStringLiteral("hasToken")] = set.value(QStringLiteral("hasToken")).toBool();
-    v[QStringLiteral("busy")] = m_dbBusy;
+                                               .arg(formatBytes(st.value(u"bytes"_s).toLongLong()),
+                                                    date.isEmpty() ? QString() : u", data of %1"_s.arg(date))
+                                         : u"none"_s;
+    const QVariantMap lk = st.value(u"lookups"_s).toMap();
+    v[u"lookups"_s] =
+        u"%1 found, %2 not found"_s.arg(lk.value(u"found"_s).toInt()).arg(lk.value(u"missed"_s).toInt());
+    const QVariantMap set = st.value(u"settings"_s).toMap();
+    v[u"online"_s] = set.value(u"online"_s, true).toBool();
+    v[u"hasToken"_s] = set.value(u"hasToken"_s).toBool();
+    v[u"busy"_s] = m_dbBusy;
     m_dbView = v;
     emit dbChanged();
 }
@@ -732,12 +734,12 @@ void LteController::dbDownloadOpenCellid(const QString &name)
     const Country *c = country(name);
     if (!c || m_dbBusy) return;
     m_dbBusy = true;
-    m_dbView[QStringLiteral("busy")] = true;
-    m_dbView[QStringLiteral("files")] = QStringLiteral("downloading the OpenCelliD file of MCC %1...").arg(c->mcc);
+    m_dbView[u"busy"_s] = true;
+    m_dbView[u"files"_s] = u"downloading the OpenCelliD file of MCC %1..."_s.arg(c->mcc);
     emit dbChanged();
     m_db->downloadOpenCellid(c->mcc, [this](const QString &error, int cells) {
         m_dbBusy = false;
-        if (!error.isEmpty()) DialogHub::toast(QStringLiteral("OpenCelliD download failed: ") + error);
+        if (!error.isEmpty()) DialogHub::toast(u"OpenCelliD download failed: "_s + error);
         else LOG_I("celldb") << "OpenCelliD file:" << cells << "LTE cells";
         m_queryKey.clear();   // the map queries again
         dbRefresh();
@@ -749,21 +751,21 @@ void LteController::dbDownloadCopy(const QString &name)
     const Country *c = country(name);
     if (!c || m_dbBusy) return;
     m_dbBusy = true;
-    m_dbView[QStringLiteral("busy")] = true;
+    m_dbView[u"busy"_s] = true;
     emit dbChanged();
     m_db->downloadBox(
         c->box[0], c->box[1], c->box[2], c->box[3],
         [this](int done, int total, int cells, int failed) {
-            m_dbView[QStringLiteral("status")] = QStringLiteral("downloading: area %1 of %2, %3 cells%4")
+            m_dbView[u"status"_s] = u"downloading: area %1 of %2, %3 cells%4"_s
                                                      .arg(done)
                                                      .arg(total)
                                                      .arg(QLocale().toString(cells))
-                                                     .arg(failed ? QStringLiteral(", %1 failed").arg(failed) : QString());
+                                                     .arg(failed ? u", %1 failed"_s.arg(failed) : QString());
             emit dbChanged();
         },
         [this](int blocks, int, int failed) {
             m_dbBusy = false;
-            if (failed) DialogHub::toast(QStringLiteral("%1 of %2 areas could not be downloaded: try again later.").arg(failed).arg(blocks));
+            if (failed) DialogHub::toast(u"%1 of %2 areas could not be downloaded: try again later."_s.arg(failed).arg(blocks));
             m_queryKey.clear();
             dbRefresh();
         });
@@ -774,11 +776,11 @@ void LteController::dbImport(const QUrl &file)
     const QString path = file.isLocalFile() ? file.toLocalFile() : file.toString();
     if (path.isEmpty() || m_dbBusy) return;
     m_dbBusy = true;
-    m_dbView[QStringLiteral("busy")] = true;
+    m_dbView[u"busy"_s] = true;
     emit dbChanged();
     m_db->importCsv(path, [this](const QString &error, int cells) {
         m_dbBusy = false;
-        if (!error.isEmpty()) DialogHub::toast(QStringLiteral("Import failed: ") + error);
+        if (!error.isEmpty()) DialogHub::toast(u"Import failed: "_s + error);
         else LOG_I("celldb") << "imported:" << cells << "LTE cells";
         m_queryKey.clear();
         dbRefresh();
@@ -787,7 +789,7 @@ void LteController::dbImport(const QUrl &file)
 
 void LteController::dbClear()
 {
-    DialogHub::confirm(QStringLiteral("Delete the downloaded, imported and looked-up cells? The built-in ones stay."), [this](bool ok) {
+    DialogHub::confirm(u"Delete the downloaded, imported and looked-up cells? The built-in ones stay."_s, [this](bool ok) {
         if (!ok) return;
         m_db->clear([this] {
             m_queryKey.clear();
@@ -805,10 +807,10 @@ void LteController::renderCell()
     const bool live = c.valid && wallMs() - c.receivedAt < kCellStaleMs;
     QVariantMap m;
     if (!live) {
-        for (const char *k : {"serving", "signal", "neighbours", "changes", "mast"}) m[QLatin1String(k)] = QStringLiteral("--");
-        if (c.valid) m[QStringLiteral("serving")] = QStringLiteral("no CORV_CELL_INFO for 10 s");
+        for (const char *k : {"serving", "signal", "neighbours", "changes", "mast"}) m[QLatin1String(k)] = u"--"_s;
+        if (c.valid) m[u"serving"_s] = u"no CORV_CELL_INFO for 10 s"_s;
     } else {
-        m[QStringLiteral("serving")] = c.eci ? QStringLiteral("%1 eNB %2 sector %3 (ECI %4), TAC %5, PCI %6, EARFCN %7 (band %8, %9 downlink), %10")
+        m[u"serving"_s] = c.eci ? u"%1 eNB %2 sector %3 (ECI %4), TAC %5, PCI %6, EARFCN %7 (band %8, %9 downlink), %10"_s
                                                    .arg(operatorName(c.mcc, c.mnc))
                                                    .arg(c.enb)
                                                    .arg(c.sector)
@@ -817,42 +819,42 @@ void LteController::renderCell()
                                                    .arg(c.pci)
                                                    .arg(c.earfcn)
                                                    .arg(c.band)
-                                                   .arg(frequencyText(c.earfcn, c.band, QStringLiteral("?")), c.state)
-                                             : QStringLiteral("no cell (%1)").arg(c.state);
-        m[QStringLiteral("signal")] = QStringLiteral("RSRP %1, RSRQ %2, SINR %3, RSSI %4")
-                                          .arg(v(c.rsrp, QStringLiteral("dBm")), v(c.rsrq, QStringLiteral("dB")), v(c.sinr, QStringLiteral("dB")),
-                                               v(c.rssi, QStringLiteral("dBm")));
+                                                   .arg(frequencyText(c.earfcn, c.band, u"?"_s), c.state)
+                                             : u"no cell (%1)"_s.arg(c.state);
+        m[u"signal"_s] = u"RSRP %1, RSRQ %2, SINR %3, RSSI %4"_s
+                                          .arg(v(c.rsrp, u"dBm"_s), v(c.rsrq, u"dB"_s), v(c.sinr, u"dB"_s),
+                                               v(c.rssi, u"dBm"_s));
         if (c.neighbours) {
             QStringList nb;
             for (const CellNeighbour &n : c.nb)
-                nb << QStringLiteral("PCI %1%2 %3").arg(n.pci).arg(n.earfcn != c.earfcn ? QStringLiteral("/%1").arg(n.earfcn) : QString(),
-                                                                   v(n.rsrp, QStringLiteral("dBm")));
-            m[QStringLiteral("neighbours")] = QStringLiteral("%1: %2").arg(c.neighbours).arg(nb.join(QStringLiteral(", ")));
+                nb << u"PCI %1%2 %3"_s.arg(n.pci).arg(n.earfcn != c.earfcn ? u"/%1"_s.arg(n.earfcn) : QString(),
+                                                                   v(n.rsrp, u"dBm"_s));
+            m[u"neighbours"_s] = u"%1: %2"_s.arg(c.neighbours).arg(nb.join(u", "_s));
         } else {
-            m[QStringLiteral("neighbours")] = QStringLiteral("0");
+            m[u"neighbours"_s] = u"0"_s;
         }
-        m[QStringLiteral("changes")] = QString::number(c.handovers) +
-                                       (c.changedAt ? QStringLiteral(", last %1 s ago").arg(std::llround((wallMs() - c.changedAt) / 1000.0)) : QString());
-        QString mast = cellMap().value(QStringLiteral("show")).toBool() ? QStringLiteral("looking for the site...")
-                                                                         : QStringLiteral("shown with SHOW CELL SITES ON THE MAP");
+        m[u"changes"_s] = QString::number(c.handovers) +
+                                       (c.changedAt ? u", last %1 s ago"_s.arg(std::llround((wallMs() - c.changedAt) / 1000.0)) : QString());
+        QString mast = cellMap().value(u"show"_s).toBool() ? u"looking for the site..."_s
+                                                                         : u"shown with SHOW CELL SITES ON THE MAP"_s;
         if (!m_queryError.isEmpty()) {
-            mast = QStringLiteral("database: ") + m_queryError;
+            mast = u"database: "_s + m_queryError;
         } else if (m_serving >= 0) {
             const CellSite &site = m_sites[std::size_t(m_serving)];
             QStringList srcs;
             for (const CellRecord &x : site.cells)
                 if (!srcs.contains(sourceName(x.src))) srcs << sourceName(x.src);
-            mast = QStringLiteral("%1, %2 (estimate from %3 cell%4 of the eNB, %5)")
+            mast = u"%1, %2 (estimate from %3 cell%4 of the eNB, %5)"_s
                        .arg(QString::number(site.lat, 'f', 5), QString::number(site.lon, 'f', 5))
                        .arg(site.cells.size())
-                       .arg(site.cells.size() > 1 ? QStringLiteral("s") : QString(), srcs.join(QStringLiteral(", ")));
-            if (site.mnc != c.mnc) mast += QStringLiteral("; shared cell, listed under ") + operatorName(site.mcc, site.mnc);
+                       .arg(site.cells.size() > 1 ? u"s"_s : QString(), srcs.join(u", "_s));
+            if (site.mnc != c.mnc) mast += u"; shared cell, listed under "_s + operatorName(site.mcc, site.mnc);
         } else if (m_lookingUp) {
-            mast = QStringLiteral("not in the database: looking it up online");
+            mast = u"not in the database: looking it up online"_s;
         } else if (!m_querying && m_queryCentre && c.eci) {
-            mast = QStringLiteral("not in the database nor online (site never measured, or newer than the data)");
+            mast = u"not in the database nor online (site never measured, or newer than the data)"_s;
         }
-        m[QStringLiteral("mast")] = mast;
+        m[u"mast"_s] = mast;
     }
     if (m == m_cell) return;
     m_cell = m;
@@ -867,21 +869,21 @@ void LteController::updateCellRows()
     const CellInfo &c = s->cell;
     const qint64 now = wallMs();
     const bool live = s->connectionType == QLatin1String(LinkManager::kMavlinkLte) && c.valid && now - c.receivedAt < kCellStaleMs &&
-                      cellMap().value(QStringLiteral("table")).toBool();
-    QVariantMap r{{QStringLiteral("live"), live}};
+                      cellMap().value(u"table"_s).toBool();
+    QVariantMap r{{u"live"_s, live}};
     if (live) {
-        r[QStringLiteral("changed")] = c.changedAt && now - c.changedAt < 5000;
-        r[QStringLiteral("cell")] = c.eci ? QStringLiteral("%1 %2/%3").arg(operatorShort(c.mcc, c.mnc)).arg(c.enb).arg(c.sector)
-                                          : QStringLiteral("NO CELL (%1)").arg(c.state);
-        r[QStringLiteral("band")] = c.eci ? QStringLiteral("%1 · %2").arg(frequencyText(c.earfcn, c.band, QStringLiteral("-"))).arg(c.pci)
-                                          : QStringLiteral("---");
-        r[QStringLiteral("rssi")] = v(c.rssi);
-        r[QStringLiteral("sig")] = QStringLiteral("%1 · %2").arg(v(c.rsrp), v(c.sinr));
-        r[QStringLiteral("nb")] = QString::number(c.neighbours);
-        r[QStringLiteral("ho")] = QString::number(c.handovers);
+        r[u"changed"_s] = c.changedAt && now - c.changedAt < 5000;
+        r[u"cell"_s] = c.eci ? u"%1 %2/%3"_s.arg(operatorShort(c.mcc, c.mnc)).arg(c.enb).arg(c.sector)
+                                          : u"NO CELL (%1)"_s.arg(c.state);
+        r[u"band"_s] = c.eci ? u"%1 · %2"_s.arg(frequencyText(c.earfcn, c.band, u"-"_s)).arg(c.pci)
+                                          : u"---"_s;
+        r[u"rssi"_s] = v(c.rssi);
+        r[u"sig"_s] = u"%1 · %2"_s.arg(v(c.rsrp), v(c.sinr));
+        r[u"nb"_s] = QString::number(c.neighbours);
+        r[u"ho"_s] = QString::number(c.handovers);
         const bool notInDb = c.eci && m_serving < 0 && !m_querying && !m_lookingUp && m_queryCentre;
-        r[QStringLiteral("dist")] = m_servingKm ? QString::number(*m_servingKm, 'f', 1) : notInDb ? QStringLiteral("NOT IN DB") : QStringLiteral("---");
-        r[QStringLiteral("distUnit")] = m_servingKm ? QStringLiteral("km") : QString();
+        r[u"dist"_s] = m_servingKm ? QString::number(*m_servingKm, 'f', 1) : notInDb ? u"NOT IN DB"_s : u"---"_s;
+        r[u"distUnit"_s] = m_servingKm ? u"km"_s : QString();
     }
     if (r == m_cellRows) return;
     m_cellRows = r;

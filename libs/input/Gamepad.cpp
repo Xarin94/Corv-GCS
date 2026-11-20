@@ -6,6 +6,8 @@
 
 #ifdef CORV_HAVE_SDL3
 #include <SDL3/SDL.h>
+
+using namespace Qt::StringLiterals;
 #endif
 
 namespace corv {
@@ -78,7 +80,7 @@ std::vector<Gamepad::Device> Gamepad::devices()
                 SDL_CloseJoystick(j);
             }
         }
-        if (d.name.isEmpty()) d.name = QStringLiteral("Joystick %1").arg(d.id);
+        if (d.name.isEmpty()) d.name = u"Joystick %1"_s.arg(d.id);
         out.push_back(d);
     }
     SDL_free(ids);

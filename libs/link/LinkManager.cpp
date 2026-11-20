@@ -11,6 +11,8 @@
 
 #include <QThread>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 LinkManager::LinkManager(MessageBus *bus, QObject *parent) : QObject(parent), m_bus(bus)
@@ -20,7 +22,7 @@ LinkManager::LinkManager(MessageBus *bus, QObject *parent) : QObject(parent), m_
 
 LinkManager::~LinkManager()
 {
-    closeTransport(QStringLiteral("shutdown"), false);
+    closeTransport(u"shutdown"_s, false);
     m_tlog.stop();
 }
 
@@ -36,15 +38,15 @@ QString LinkManager::connectionType() const { return m_typeCopy; }
 void LinkManager::connectSerial(const QString &port, int baud)
 {
     post([=, this] {
-        LOG_I("mavlink") << QStringLiteral("connect serial %1 @ %2 requested").arg(port).arg(baud ? baud : 57600);
-        openTransport(new SerialTransport(port, baud ? baud : 57600, QStringLiteral("SERIAL")), QLatin1String(kMavlinkSerial));
+        LOG_I("mavlink") << u"connect serial %1 @ %2 requested"_s.arg(port).arg(baud ? baud : 57600);
+        openTransport(new SerialTransport(port, baud ? baud : 57600, u"SERIAL"_s), QLatin1String(kMavlinkSerial));
     });
 }
 
 void LinkManager::connectUdp(const QString &host, int port)
 {
     post([=, this] {
-        LOG_I("mavlink") << QStringLiteral("connect UDP %1:%2 requested").arg(host).arg(port);
+        LOG_I("mavlink") << u"connect UDP %1:%2 requested"_s.arg(host).arg(port);
         openTransport(new UdpTransport(host, quint16(port ? port : 14550)), QLatin1String(kMavlinkUdp));
     });
 }
@@ -52,7 +54,7 @@ void LinkManager::connectUdp(const QString &host, int port)
 void LinkManager::connectTcp(const QString &host, int port)
 {
     post([=, this] {
-        LOG_I("mavlink") << QStringLiteral("connect TCP %1:%2 requested").arg(host).arg(port);
+        LOG_I("mavlink") << u"connect TCP %1:%2 requested"_s.arg(host).arg(port);
         openTransport(new TcpTransport(host, quint16(port ? port : 5760)), QLatin1String(kMavlinkTcp));
     });
 }
@@ -60,16 +62,16 @@ void LinkManager::connectTcp(const QString &host, int port)
 void LinkManager::connectMspSerial(const QString &port, int baud, const QString &profile)
 {
     post([=, this] {
-        LOG_I("msp") << QStringLiteral("connect serial %1 @ %2 (%3) requested").arg(port).arg(baud ? baud : 115200).arg(profile);
+        LOG_I("msp") << u"connect serial %1 @ %2 (%3) requested"_s.arg(port).arg(baud ? baud : 115200).arg(profile);
         m_mspProfile = profile;
-        openTransport(new SerialTransport(port, baud ? baud : 115200, QStringLiteral("MSP")), QLatin1String(kMspSerial));
+        openTransport(new SerialTransport(port, baud ? baud : 115200, u"MSP"_s), QLatin1String(kMspSerial));
     });
 }
 
 void LinkManager::connectMspTcp(const QString &host, int port, const QString &profile)
 {
     post([=, this] {
-        LOG_I("msp") << QStringLiteral("connect TCP %1:%2 (%3) requested").arg(host).arg(port ? port : 5760).arg(profile);
+        LOG_I("msp") << u"connect TCP %1:%2 (%3) requested"_s.arg(host).arg(port ? port : 5760).arg(profile);
         m_mspProfile = profile;
         openTransport(new TcpTransport(host, quint16(port ? port : 5760)), QLatin1String(kMspTcp));
     });
@@ -79,7 +81,7 @@ void LinkManager::mspMissionUpload(const QList<MspWaypoint> &wps, bool save)
 {
     post([this, wps, save] {
         if (!m_msp) {
-            emit mspMissionDone(QStringLiteral("upload"), false, QStringLiteral("MSP link not connected"), {});
+            emit mspMissionDone(u"upload"_s, false, u"MSP link not connected"_s, {});
             return;
         }
         m_msp->missionUpload(wps, save);
@@ -90,7 +92,7 @@ void LinkManager::mspMissionDownload()
 {
     post([this] {
         if (!m_msp) {
-            emit mspMissionDone(QStringLiteral("download"), false, QStringLiteral("MSP link not connected"), {});
+            emit mspMissionDone(u"download"_s, false, u"MSP link not connected"_s, {});
             return;
         }
         m_msp->missionDownload();
@@ -101,7 +103,7 @@ void LinkManager::disconnectLink()
 {
     post([this] {
         LOG_I("mavlink") << "disconnect requested";
-        closeTransport(QStringLiteral("disconnect"), true);
+        closeTransport(u"disconnect"_s, true);
     });
 }
 
@@ -109,15 +111,15 @@ void LinkManager::connectLte(const QVariantMap &o)
 {
     post([=, this] {
         // Module id and relay only, never the key
-        LOG_I("mavlink") << QStringLiteral("connect LTE module %1 via %2:%3 requested")
-                                .arg(o.value(QStringLiteral("moduleId")).toString(), o.value(QStringLiteral("host")).toString())
-                                .arg(o.value(QStringLiteral("port")).toInt());
+        LOG_I("mavlink") << u"connect LTE module %1 via %2:%3 requested"_s
+                                .arg(o.value(u"moduleId"_s).toString(), o.value(u"host"_s).toString())
+                                .arg(o.value(u"port"_s).toInt());
         LteTransport::Options opt;
-        opt.moduleId = o.value(QStringLiteral("moduleId")).toString();
-        opt.keyHex = o.value(QStringLiteral("keyHex")).toString();
-        opt.host = o.value(QStringLiteral("host")).toString();
-        opt.port = o.value(QStringLiteral("port")).toInt();
-        opt.certSha256 = o.value(QStringLiteral("certSha256")).toString();
+        opt.moduleId = o.value(u"moduleId"_s).toString();
+        opt.keyHex = o.value(u"keyHex"_s).toString();
+        opt.host = o.value(u"host"_s).toString();
+        opt.port = o.value(u"port"_s).toInt();
+        opt.certSha256 = o.value(u"certSha256"_s).toString();
         auto *t = new LteTransport(opt);
         connect(t, &LteTransport::status, this, &LinkManager::lteStatus);
         // The flight controller's MAVLink and the module's own share the stream
@@ -127,7 +129,7 @@ void LinkManager::connectLte(const QVariantMap &o)
 
 void LinkManager::openTransport(Transport *t, const QString &type)
 {
-    closeTransport(QStringLiteral("new connection"), true);
+    closeTransport(u"new connection"_s, true);
     t->setParent(this);
     QString error;
     if (!t->open(&error)) {
@@ -150,7 +152,7 @@ void LinkManager::openTransport(Transport *t, const QString &type)
         m.arrivalMs = wallMs();
         deliver(m);
     });
-    const bool msp = type.startsWith(QLatin1String("msp"));
+    const bool msp = type.startsWith("msp"_L1);
     if (msp) {
         // MSP: polled request / reply, decoded into synthetic MAVLink (msp-manager.js)
         m_msp = std::make_unique<MspSession>(
@@ -182,7 +184,7 @@ void LinkManager::openTransport(Transport *t, const QString &type)
     }
     m_stats->start();
     m_trace.onConnect(t->describe());
-    setConnectionState(QStringLiteral("CONNECTED"));
+    setConnectionState(u"CONNECTED"_s);
     emit connected(type);
 
     if (!msp) {
@@ -213,21 +215,17 @@ void LinkManager::closeTransport(const QString &why, bool notify)
     m_type.clear();
     m_typeCopy.clear();
     m_trace.onDisconnect(why);
-    if (notify) setConnectionState(QStringLiteral("DISCONNECTED"));
+    if (notify) setConnectionState(u"DISCONNECTED"_s);
 }
 
 void LinkManager::setConnectionState(const QString &state)
 {
     // Auto-start / stop of the tlog recording on connection changes
-    if (state == QLatin1String("CONNECTED") && !m_tlog.isOpen() && !m_replay && !m_type.startsWith(QLatin1String("msp"))) {
-        if (!m_tlog.start(DataRoot::logsDir()).isEmpty()) {
-            m_tlogAuto = true;
-            emit tlogChanged(m_tlog.path());
-        }
-    } else if (state == QLatin1String("DISCONNECTED") && m_tlogAuto) {
+    if (state == "CONNECTED"_L1 && !m_tlog.isOpen() && !m_replay && !m_type.startsWith("msp"_L1)) {
+        if (!m_tlog.start(DataRoot::logsDir()).isEmpty()) m_tlogAuto = true;
+    } else if (state == "DISCONNECTED"_L1 && m_tlogAuto) {
         m_tlog.stop();
         m_tlogAuto = false;
-        emit tlogChanged(QString());
     }
     LOG_I("mavlink") << "connection state ->" << state;
     emit connectionState(state);
@@ -261,15 +259,15 @@ void LinkManager::send(const mavlink_message_t &msg)
 void LinkManager::sendNow(mavlink_message_t msg)
 {
     if (m_muted) {
-        const int skipped = DebugLog::throttle(QStringLiteral("tx-muted"), 10000);
+        const int skipped = DebugLog::throttle(u"tx-muted"_s, 10000);
         if (skipped >= 0)
             LOG_W("mavlink") << "GCS output muted:" << mav::messageName(msg.msgid) << "not sent"
-                             << (skipped ? QStringLiteral("(+%1 more)").arg(skipped) : QString());
+                             << (skipped ? u"(+%1 more)"_s.arg(skipped) : QString());
         return;
     }
-    if (!m_transport || m_type.startsWith(QLatin1String("msp"))) return;
+    if (!m_transport || m_type.startsWith("msp"_L1)) return;
     if (!m_transport->canSend()) {
-        const int skipped = DebugLog::throttle(QStringLiteral("udp-no-remote"), 10000);
+        const int skipped = DebugLog::throttle(u"udp-no-remote"_s, 10000);
         if (skipped >= 0)
             LOG_W("mavlink") << "no remote endpoint yet for UDP (nothing received):" << mav::messageName(msg.msgid) << "not sent";
         return;
@@ -326,12 +324,12 @@ void LinkManager::diagnose()
     if (now - m_connectedAt >= 5000) {
         if (m_bytesRx == 0 && !m_warnedNoData) {
             m_warnedNoData = true;
-            const QString text = QStringLiteral("No data from %1 in 5 s: check port, cable and that the vehicle is on").arg(what);
+            const QString text = u"No data from %1 in 5 s: check port, cable and that the vehicle is on"_s.arg(what);
             LOG_W("link") << text;
             emit linkWarning(text);
         } else if (m_bytesRx > 0 && mavOk == 0 && m_decodedPackets == 0 && !m_warnedNoFrames) {
             m_warnedNoFrames = true;
-            const QString text = QStringLiteral("%1: %2 bytes but no valid MAVLink frame (wrong baud rate or protocol?)")
+            const QString text = u"%1: %2 bytes but no valid MAVLink frame (wrong baud rate or protocol?)"_s
                                      .arg(what).arg(m_bytesRx);
             LOG_W("link") << text;
             emit linkWarning(text);
@@ -339,16 +337,16 @@ void LinkManager::diagnose()
     }
     if (now - m_lastDiag >= 10000) {
         m_lastDiag = now;
-        LOG_I("link") << QStringLiteral("rx %1 bytes: MAVLink %2 ok / %3 bad CRC%4")
+        LOG_I("link") << u"rx %1 bytes: MAVLink %2 ok / %3 bad CRC%4"_s
                              .arg(m_bytesRx).arg(mavOk).arg(mavBad)
-                             .arg(m_msp ? QStringLiteral(", MSP %1 decoded").arg(m_decodedPackets) : QString());
+                             .arg(m_msp ? u", MSP %1 decoded"_s.arg(m_decodedPackets) : QString());
     }
 }
 
 void LinkManager::setGcsMuted(bool muted)
 {
     m_muted = muted;
-    DebugLog::setHeader(QStringLiteral("GCS output"), muted ? QStringLiteral("MUTED (nothing is sent to the vehicle)") : QString());
+    DebugLog::setHeader(u"GCS output"_s, muted ? u"MUTED (nothing is sent to the vehicle)"_s : QString());
     LOG_I("mavlink") << "GCS output" << (muted ? "MUTED" : "UNMUTED");
 }
 

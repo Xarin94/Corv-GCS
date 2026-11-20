@@ -5,28 +5,30 @@
 #include <QSysInfo>
 #include <algorithm>
 
+using namespace Qt::StringLiterals;
+
 namespace corv::update {
 
 QString Version::toString() const
 {
-    QString s = QStringLiteral("%1.%2.%3").arg(major).arg(minor).arg(patch);
-    if (!pre.isEmpty()) s += QLatin1Char('-') + pre.join(QLatin1Char('.'));
+    QString s = u"%1.%2.%3"_s.arg(major).arg(minor).arg(patch);
+    if (!pre.isEmpty()) s += '-'_L1 + pre.join('.'_L1);
     return s;
 }
 
 std::optional<Version> parseVersion(QString text)
 {
     text = text.trimmed();
-    if (text.startsWith(QLatin1Char('v')) || text.startsWith(QLatin1Char('V'))) text.remove(0, 1);
-    text = text.section(QLatin1Char('+'), 0, 0);
-    static const QRegularExpression re(QStringLiteral("^(\\d+)\\.(\\d+)(?:\\.(\\d+))?(?:-([0-9A-Za-z.-]+))?$"));
+    if (text.startsWith('v'_L1) || text.startsWith('V'_L1)) text.remove(0, 1);
+    text = text.section('+'_L1, 0, 0);
+    static const QRegularExpression re(u"^(\\d+)\\.(\\d+)(?:\\.(\\d+))?(?:-([0-9A-Za-z.-]+))?$"_s);
     const auto m = re.match(text);
     if (!m.hasMatch()) return std::nullopt;
     Version v;
     v.major = m.captured(1).toInt();
     v.minor = m.captured(2).toInt();
     v.patch = m.captured(3).isEmpty() ? 0 : m.captured(3).toInt();
-    if (!m.captured(4).isEmpty()) v.pre = m.captured(4).split(QLatin1Char('.'), Qt::SkipEmptyParts);
+    if (!m.captured(4).isEmpty()) v.pre = m.captured(4).split('.'_L1, Qt::SkipEmptyParts);
     return v;
 }
 
@@ -67,16 +69,16 @@ Platform currentPlatform()
 QString currentArch()
 {
     const QString a = QSysInfo::currentCpuArchitecture();
-    return a == QLatin1String("arm64") || a == QLatin1String("aarch64") ? QStringLiteral("arm64") : QStringLiteral("x86_64");
+    return a == "arm64"_L1 || a == "aarch64"_L1 ? u"arm64"_s : u"x86_64"_s;
 }
 
 std::optional<Asset> packageFor(const Release &r, Platform p, const QString &arch)
 {
     // Processor names as they appear in file names
-    const QStringList mine = arch == QLatin1String("arm64") ? QStringList{QStringLiteral("arm64"), QStringLiteral("aarch64")}
-                                                            : QStringList{QStringLiteral("x86_64"), QStringLiteral("x64"), QStringLiteral("amd64")};
-    const QStringList other = arch == QLatin1String("arm64") ? QStringList{QStringLiteral("x86_64"), QStringLiteral("x64"), QStringLiteral("amd64")}
-                                                             : QStringList{QStringLiteral("arm64"), QStringLiteral("aarch64")};
+    const QStringList mine = arch == "arm64"_L1 ? QStringList{u"arm64"_s, u"aarch64"_s}
+                                                            : QStringList{u"x86_64"_s, u"x64"_s, u"amd64"_s};
+    const QStringList other = arch == "arm64"_L1 ? QStringList{u"x86_64"_s, u"x64"_s, u"amd64"_s}
+                                                             : QStringList{u"arm64"_s, u"aarch64"_s};
     const auto has = [](const QString &name, const QStringList &tokens) {
         for (const QString &t : tokens)
             if (name.contains(t, Qt::CaseInsensitive)) return true;
@@ -87,13 +89,13 @@ std::optional<Asset> packageFor(const Release &r, Platform p, const QString &arc
     for (const Asset &a : r.assets) {
         bool kind = false;
         switch (p) {
-        case Platform::Windows: kind = ends(a.name, ".exe") && a.name.contains(QLatin1String("setup"), Qt::CaseInsensitive); break;
+        case Platform::Windows: kind = ends(a.name, ".exe") && a.name.contains("setup"_L1, Qt::CaseInsensitive); break;
         case Platform::MacOS: kind = ends(a.name, ".dmg"); break;
         case Platform::Linux: kind = ends(a.name, ".AppImage"); break;
         }
         if (!kind || has(a.name, other)) continue;
         // One built for this processor (or universal) first, else one with no processor in its name
-        if (has(a.name, mine) || a.name.contains(QLatin1String("universal"), Qt::CaseInsensitive)) return a;
+        if (has(a.name, mine) || a.name.contains("universal"_L1, Qt::CaseInsensitive)) return a;
         if (!generic) generic = a;
     }
     return generic;
@@ -105,26 +107,26 @@ std::optional<Release> newest(const QJsonArray &releases, const Version &current
     std::optional<Release> best;
     for (const QJsonValue &v : releases) {
         const QJsonObject o = v.toObject();
-        if (o.value(QLatin1String("draft")).toBool()) continue;
-        const bool pre = o.value(QLatin1String("prerelease")).toBool();
-        const auto ver = parseVersion(o.value(QLatin1String("tag_name")).toString());
+        if (o.value("draft"_L1).toBool()) continue;
+        const bool pre = o.value("prerelease"_L1).toBool();
+        const auto ver = parseVersion(o.value("tag_name"_L1).toString());
         if (!ver || (pre && !includePre) || (ver->isPrerelease() && !includePre)) continue;
         if (compare(*ver, current) <= 0 || (best && compare(*ver, best->version) <= 0)) continue;
         Release r;
-        r.tag = o.value(QLatin1String("tag_name")).toString();
-        r.name = o.value(QLatin1String("name")).toString();
-        r.notes = o.value(QLatin1String("body")).toString();
-        r.page = o.value(QLatin1String("html_url")).toString();
+        r.tag = o.value("tag_name"_L1).toString();
+        r.name = o.value("name"_L1).toString();
+        r.notes = o.value("body"_L1).toString();
+        r.page = o.value("html_url"_L1).toString();
         r.version = *ver;
         r.prerelease = pre;
-        for (const QJsonValue &av : o.value(QLatin1String("assets")).toArray()) {
+        for (const QJsonValue &av : o.value("assets"_L1).toArray()) {
             const QJsonObject a = av.toObject();
             Asset as;
-            as.name = a.value(QLatin1String("name")).toString();
-            as.url = a.value(QLatin1String("browser_download_url")).toString();
-            as.size = qint64(a.value(QLatin1String("size")).toDouble());
-            const QString digest = a.value(QLatin1String("digest")).toString();
-            if (digest.startsWith(QLatin1String("sha256:"))) as.sha256 = digest.mid(7).toLower();
+            as.name = a.value("name"_L1).toString();
+            as.url = a.value("browser_download_url"_L1).toString();
+            as.size = qint64(a.value("size"_L1).toDouble());
+            const QString digest = a.value("digest"_L1).toString();
+            if (digest.startsWith("sha256:"_L1)) as.sha256 = digest.mid(7).toLower();
             r.assets << as;
         }
         if (!packageFor(r, p, arch)) continue;

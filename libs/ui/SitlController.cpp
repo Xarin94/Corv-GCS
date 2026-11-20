@@ -15,6 +15,8 @@
 #include <QTimer>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -45,14 +47,14 @@ const Vehicle *find(const QString &key)
 
 QString firmwareDir(const QString &vehicle)
 {
-    if (vehicle == QLatin1String("plane") || vehicle == QLatin1String("quadplane")) return QStringLiteral("Plane");
-    if (vehicle == QLatin1String("rover") || vehicle == QLatin1String("boat") || vehicle == QLatin1String("sailboat")) return QStringLiteral("Rover");
-    if (vehicle == QLatin1String("sub") || vehicle == QLatin1String("subnogps")) return QStringLiteral("Sub");
-    return QStringLiteral("Copter");
+    if (vehicle == "plane"_L1 || vehicle == "quadplane"_L1) return u"Plane"_s;
+    if (vehicle == "rover"_L1 || vehicle == "boat"_L1 || vehicle == "sailboat"_L1) return u"Rover"_s;
+    if (vehicle == "sub"_L1 || vehicle == "subnogps"_L1) return u"Sub"_s;
+    return u"Copter"_s;
 }
 
-bool isRov(const QString &v) { return v == QLatin1String("sub") || v == QLatin1String("subnogps"); }
-bool isBoat(const QString &v) { return v == QLatin1String("boat") || v == QLatin1String("sailboat"); }
+bool isRov(const QString &v) { return v == "sub"_L1 || v == "subnogps"_L1; }
+bool isBoat(const QString &v) { return v == "boat"_L1 || v == "sailboat"_L1; }
 
 constexpr double kLandLat = 47.2603, kLandLon = 11.3439;
 constexpr double kRovLat = 45.60319, kRovLon = 10.67127;    // centre of Lake Garda
@@ -61,10 +63,10 @@ constexpr double kBoatLat = 45.4960, kBoatLon = 10.6490;    // southern basin
 #ifdef Q_OS_WIN
 QString wslPath(QString p)
 {
-    p.replace(QLatin1Char('\\'), QLatin1Char('/'));
-    static const QRegularExpression drive(QStringLiteral("^([A-Za-z]):"));
+    p.replace('\\'_L1, '/'_L1);
+    static const QRegularExpression drive(u"^([A-Za-z]):"_s);
     const auto m = drive.match(p);
-    if (m.hasMatch()) p = QStringLiteral("/mnt/") + m.captured(1).toLower() + p.mid(2);
+    if (m.hasMatch()) p = u"/mnt/"_s + m.captured(1).toLower() + p.mid(2);
     return p;
 }
 #endif
@@ -90,7 +92,7 @@ QVariantList SitlController::vehicles() const
 {
     QVariantList out;
     for (const Vehicle &v : kVehicles)
-        out << QVariantMap{{QStringLiteral("value"), QString::fromLatin1(v.key)}, {QStringLiteral("label"), QString::fromUtf8(v.label)}};
+        out << QVariantMap{{u"value"_s, QString::fromLatin1(v.key)}, {u"label"_s, QString::fromUtf8(v.label)}};
     return out;
 }
 
@@ -101,8 +103,8 @@ QVariantMap SitlController::suggestHome(const QString &vehicle, double lat, doub
     if (isRov(vehicle)) tl = kRovLat, to = kRovLon;
     else if (isBoat(vehicle)) tl = kBoatLat, to = kBoatLon;
     if (std::isnan(lat) || same(kLandLat, kLandLon) || same(kRovLat, kRovLon) || same(kBoatLat, kBoatLon))
-        return QVariantMap{{QStringLiteral("lat"), tl}, {QStringLiteral("lon"), to}};
-    return QVariantMap{{QStringLiteral("lat"), lat}, {QStringLiteral("lon"), lon}};
+        return QVariantMap{{u"lat"_s, tl}, {u"lon"_s, to}};
+    return QVariantMap{{u"lat"_s, lat}, {u"lon"_s, lon}};
 }
 
 void SitlController::setStatus(const QString &text)
@@ -111,13 +113,13 @@ void SitlController::setStatus(const QString &text)
     emit statusChanged();
 }
 
-QString SitlController::sitlDir() const { return DataRoot::dir(QStringLiteral("sitl")); }
+QString SitlController::sitlDir() const { return DataRoot::dir(u"sitl"_s); }
 
 QString SitlController::binaryPath(const QString &vehicle, const QString &version) const
 {
     const Vehicle *v = find(vehicle);
     // Always the Linux binary, also on Windows (run through WSL)
-    return v ? QDir(sitlDir()).filePath(QStringLiteral("%1_%2").arg(QLatin1String(v->binary), version)) : QString();
+    return v ? QDir(sitlDir()).filePath(u"%1_%2"_s.arg(QLatin1String(v->binary), version)) : QString();
 }
 
 /// A binary too old for the vehicle's model counts as missing: ArduPlane reads
@@ -126,7 +128,7 @@ bool SitlController::binaryUsable(const QString &vehicle, const QString &version
 {
     QFile f(binaryPath(vehicle, version));
     if (!f.exists()) return false;
-    if (vehicle != QLatin1String("plane")) return true;
+    if (vehicle != "plane"_L1) return true;
     if (!f.open(QIODevice::ReadOnly)) return false;
     return f.readAll().contains("Loaded plane aero coefficients");
 }
@@ -135,7 +137,7 @@ bool SitlController::binaryUsable(const QString &vehicle, const QString &version
 /// when they differ (hand edits survive until the app ships an update).
 void SitlController::syncAssets() const
 {
-    QDir src(QStringLiteral(":/sitl-defaults"));
+    QDir src(u":/sitl-defaults"_s);
     for (const QString &name : src.entryList(QDir::Files)) {
         QFile in(src.filePath(name));
         if (!in.open(QIODevice::ReadOnly)) continue;
@@ -157,14 +159,14 @@ void SitlController::download(const QString &vehicle, const QString &version)
     startDownload(vehicle, version, [this](bool ok, const QString &error) {
         m_busy = false;
         if (!ok) {
-            m_downloadText = QStringLiteral("DOWNLOAD");
-            setStatus(QStringLiteral("Download failed: ") + error);
+            m_downloadText = u"DOWNLOAD"_s;
+            setStatus(u"Download failed: "_s + error);
             return;
         }
-        m_downloadText = QStringLiteral("DOWNLOADED");
+        m_downloadText = u"DOWNLOADED"_s;
         emit statusChanged();
         QTimer::singleShot(2000, this, [this] {
-            m_downloadText = QStringLiteral("DOWNLOAD");
+            m_downloadText = u"DOWNLOAD"_s;
             emit statusChanged();
         });
     });
@@ -173,32 +175,32 @@ void SitlController::download(const QString &vehicle, const QString &version)
 void SitlController::startDownload(const QString &vehicle, const QString &version, std::function<void(bool, const QString &)> done)
 {
     const Vehicle *v = find(vehicle);
-    if (!v) return done(false, QStringLiteral("Unknown vehicle: ") + vehicle);
-    const QUrl url(QStringLiteral("https://firmware.ardupilot.org/%1/%2/SITL_x86_64_linux_gnu/%3").arg(firmwareDir(vehicle), version, QLatin1String(v->binary)));
+    if (!v) return done(false, u"Unknown vehicle: "_s + vehicle);
+    const QUrl url(u"https://firmware.ardupilot.org/%1/%2/SITL_x86_64_linux_gnu/%3"_s.arg(firmwareDir(vehicle), version, QLatin1String(v->binary)));
     LOG_I("sitl") << "downloading" << vehicle << version << "from" << url.toString();
-    m_downloadText = QStringLiteral("DOWNLOADING...");
-    setStatus(QStringLiteral("Downloading %1 %2...").arg(vehicle, version));
+    m_downloadText = u"DOWNLOADING..."_s;
+    setStatus(u"Downloading %1 %2..."_s.arg(vehicle, version));
     if (!m_net) m_net = new QNetworkAccessManager(this);
     QNetworkRequest req(url);
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     m_reply = m_net->get(req);
     const QString dest = binaryPath(vehicle, version);
     connect(m_reply, &QNetworkReply::downloadProgress, this, [this](qint64 got, qint64 total) {
-        if (total > 0) setStatus(QStringLiteral("Downloading... %1%").arg(std::lround(100.0 * got / total)));
+        if (total > 0) setStatus(u"Downloading... %1%"_s.arg(std::lround(100.0 * got / total)));
     });
     QNetworkReply *reply = m_reply;
     connect(reply, &QNetworkReply::finished, this, [this, reply, dest, vehicle, version, done] {
         reply->deleteLater();
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (reply->error() != QNetworkReply::NoError || status != 200)
-            return done(false, status ? QStringLiteral("HTTP %1").arg(status) : reply->errorString());
+            return done(false, status ? u"HTTP %1"_s.arg(status) : reply->errorString());
         QFile f(dest);
         if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return done(false, f.errorString());
         f.write(reply->readAll());
         f.close();
         f.setPermissions(f.permissions() | QFileDevice::ExeOwner | QFileDevice::ExeGroup | QFileDevice::ExeOther);
         LOG_I("sitl") << "downloaded to" << dest;
-        setStatus(QStringLiteral("%1 %2 ready").arg(vehicle, version));
+        setStatus(u"%1 %2 ready"_s.arg(vehicle, version));
         done(true, QString());
     });
 }
@@ -212,7 +214,7 @@ void SitlController::launch(const QString &vehicle, const QString &version, doub
     const std::optional<double> terrain = HgtStore::instance().elevation(homeLat, homeLon);
     const bool rov = isRov(vehicle);
     const double homeAlt = !rov && terrain && *terrain > 0 ? *terrain : 0;
-    LOG_I("sitl") << "home" << homeLat << homeLon << "terrain" << (terrain ? QString::number(*terrain) : QStringLiteral("none")) << "homeAlt" << homeAlt;
+    LOG_I("sitl") << "home" << homeLat << homeLon << "terrain" << (terrain ? QString::number(*terrain) : u"none"_s) << "homeAlt" << homeAlt;
     if (rov) beginRovSession(vehicle);
     else endRovSession();
     m_busy = true;
@@ -221,18 +223,18 @@ void SitlController::launch(const QString &vehicle, const QString &version, doub
         start(vehicle, version, homeLat, homeLon, homeAlt, speedup);
         return;
     }
-    setStatus(QStringLiteral("Binary not found, downloading..."));
+    setStatus(u"Binary not found, downloading..."_s);
     startDownload(vehicle, version, [=, this](bool ok, const QString &error) {
-        m_downloadText = QStringLiteral("DOWNLOAD");
+        m_downloadText = u"DOWNLOAD"_s;
         if (!ok) {
             m_busy = false;
             endRovSession();
-            setStatus(QStringLiteral("Launch failed: ") + error);
+            setStatus(u"Launch failed: "_s + error);
             return;
         }
         if (!binaryUsable(vehicle, version)) {
             m_busy = false;
-            setStatus(QStringLiteral("Launch failed: this %1 SITL build is too old for the %2 model — download it again.").arg(version, vehicle));
+            setStatus(u"Launch failed: this %1 SITL build is too old for the %2 model — download it again."_s.arg(version, vehicle));
             return;
         }
         start(vehicle, version, homeLat, homeLon, homeAlt, speedup);
@@ -244,12 +246,12 @@ void SitlController::start(const QString &vehicle, const QString &version, doubl
     killSitl();
     syncAssets();
     const Vehicle *v = find(vehicle);
-    QStringList args{QStringLiteral("--model"), QLatin1String(v->model),
-                     QStringLiteral("--home"), QStringLiteral("%1,%2,%3,0").arg(homeLat, 0, 'g', 10).arg(homeLon, 0, 'g', 10).arg(homeAlt, 0, 'g', 8),
-                     QStringLiteral("--speedup"), QString::number(std::max(1, speedup)), QStringLiteral("-I0")};
+    QStringList args{u"--model"_s, QLatin1String(v->model),
+                     u"--home"_s, u"%1,%2,%3,0"_s.arg(homeLat, 0, 'g', 10).arg(homeLon, 0, 'g', 10).arg(homeAlt, 0, 'g', 8),
+                     u"--speedup"_s, QString::number(std::max(1, speedup)), u"-I0"_s};
     // Default parameters by bare file name: SITL resolves them from its cwd
-    const QString defaults = QStringLiteral("default_params_%1.parm").arg(vehicle);
-    if (QFile::exists(QDir(sitlDir()).filePath(defaults))) args << QStringLiteral("--defaults") << defaults;
+    const QString defaults = u"default_params_%1.parm"_s.arg(vehicle);
+    if (QFile::exists(QDir(sitlDir()).filePath(defaults))) args << u"--defaults"_s << defaults;
 
     auto *p = new QProcess(this);
     m_proc = p;
@@ -264,40 +266,40 @@ void SitlController::start(const QString &vehicle, const QString &version, doubl
     });
     connect(p, &QProcess::finished, this, [this, p](int code, QProcess::ExitStatus) {
         LOG_I("sitl") << "process exited: code" << code;
-        if (m_proc == p) setStatus(QStringLiteral("SITL stopped (code %1)").arg(code));
+        if (m_proc == p) setStatus(u"SITL stopped (code %1)"_s.arg(code));
         p->deleteLater();
     });
 #ifdef Q_OS_WIN
     // The Linux binary inside WSL, copied to a native WSL dir (SITL writes its
     // eeprom and logs in its cwd); --wipe clears a corrupted eeprom
-    const QString runDir = QStringLiteral("/tmp/sitl_run");
-    args << QStringLiteral("--wipe");
-    const QString script = QStringList{QStringLiteral("mkdir -p %1").arg(runDir),
-                                       QStringLiteral("cp \"%1\" %2/sitl_bin").arg(wslPath(binaryPath(vehicle, version)), runDir),
-                                       QStringLiteral("(cp \"%1\"/*.parm \"%1\"/*.json %2/ 2>/dev/null || true)").arg(wslPath(sitlDir()), runDir),
-                                       QStringLiteral("chmod +x %1/sitl_bin").arg(runDir), QStringLiteral("cd %1").arg(runDir),
-                                       QStringLiteral("./sitl_bin %1 2>&1").arg(args.join(QLatin1Char(' ')))}
-                               .join(QStringLiteral(" && "));
-    LOG_I("sitl") << "launching via WSL:" << args.join(QLatin1Char(' '));
-    p->start(QStringLiteral("wsl"), {QStringLiteral("bash"), QStringLiteral("-c"), script});
+    const QString runDir = u"/tmp/sitl_run"_s;
+    args << u"--wipe"_s;
+    const QString script = QStringList{u"mkdir -p %1"_s.arg(runDir),
+                                       u"cp \"%1\" %2/sitl_bin"_s.arg(wslPath(binaryPath(vehicle, version)), runDir),
+                                       u"(cp \"%1\"/*.parm \"%1\"/*.json %2/ 2>/dev/null || true)"_s.arg(wslPath(sitlDir()), runDir),
+                                       u"chmod +x %1/sitl_bin"_s.arg(runDir), u"cd %1"_s.arg(runDir),
+                                       u"./sitl_bin %1 2>&1"_s.arg(args.join(' '_L1))}
+                               .join(u" && "_s);
+    LOG_I("sitl") << "launching via WSL:" << args.join(' '_L1);
+    p->start(u"wsl"_s, {u"bash"_s, u"-c"_s, script});
 #else
     p->setWorkingDirectory(sitlDir());
-    LOG_I("sitl") << "launching:" << binaryPath(vehicle, version) << args.join(QLatin1Char(' '));
+    LOG_I("sitl") << "launching:" << binaryPath(vehicle, version) << args.join(' '_L1);
     p->start(binaryPath(vehicle, version), args);
 #endif
-    setStatus(QStringLiteral("Starting %1 SITL...").arg(vehicle));
+    setStatus(u"Starting %1 SITL..."_s.arg(vehicle));
     // SITL needs time to bind its TCP listeners; then connect to serial0 (5760)
     QTimer::singleShot(5000, this, [this, p, vehicle] {
         m_busy = false;
         if (m_proc != p || p->state() == QProcess::NotRunning) {
             endRovSession();
-            setStatus(QStringLiteral("Launch failed: SITL process failed to start"));
+            setStatus(u"Launch failed: SITL process failed to start"_s);
             return;
         }
-        setStatus(QStringLiteral("%1 SITL running").arg(vehicle));
+        setStatus(u"%1 SITL running"_s.arg(vehicle));
         QTimer::singleShot(1000, this, [this, vehicle] {
-            m_conn->connectLink(QLatin1String(LinkManager::kMavlinkTcp), {{QStringLiteral("host"), QStringLiteral("127.0.0.1")}, {QStringLiteral("port"), 5760}});
-            setStatus(QStringLiteral("%1 SITL running — connected (mavlink-tcp)").arg(vehicle));
+            m_conn->connectLink(QLatin1String(LinkManager::kMavlinkTcp), {{u"host"_s, u"127.0.0.1"_s}, {u"port"_s, 5760}});
+            setStatus(u"%1 SITL running — connected (mavlink-tcp)"_s.arg(vehicle));
         });
     });
 }
@@ -313,8 +315,8 @@ void SitlController::killSitl()
     }
 #ifdef Q_OS_WIN
     // Lingering SITL processes inside WSL
-    QProcess::execute(QStringLiteral("wsl"), {QStringLiteral("bash"), QStringLiteral("-c"),
-                                              QStringLiteral("pkill -9 -f sitl_bin 2>/dev/null; pkill -9 -f arducopter 2>/dev/null")});
+    QProcess::execute(u"wsl"_s, {u"bash"_s, u"-c"_s,
+                                              u"pkill -9 -f sitl_bin 2>/dev/null; pkill -9 -f arducopter 2>/dev/null"_s});
 #endif
 }
 
@@ -323,24 +325,24 @@ void SitlController::stop()
     m_conn->disconnectLink();
     killSitl();
     endRovSession();
-    setStatus(QStringLiteral("SITL stopped"));
+    setStatus(u"SITL stopped"_s);
 }
 
 void SitlController::connectUdp(const QString &host, int port)
 {
-    m_conn->connectLink(QLatin1String(LinkManager::kMavlinkUdp), {{QStringLiteral("host"), host.isEmpty() ? QStringLiteral("127.0.0.1") : host},
-                                                                   {QStringLiteral("port"), port > 0 ? port : 14550}});
-    setStatus(QStringLiteral("Connected to SITL"));
+    m_conn->connectLink(QLatin1String(LinkManager::kMavlinkUdp), {{u"host"_s, host.isEmpty() ? u"127.0.0.1"_s : host},
+                                                                   {u"port"_s, port > 0 ? port : 14550}});
+    setStatus(u"Connected to SITL"_s);
 }
 
 /// Before a ROV launch: relative navigation for the one without a GPS.
 void SitlController::beginRovSession(const QString &vehicle)
 {
     endRovSession();
-    if (vehicle != QLatin1String("subnogps") || !m_sys) return;
+    if (vehicle != "subnogps"_L1 || !m_sys) return;
     m_rovSession = true;
     m_rovSavedNav = m_sys->navPosition();
-    m_sys->setNavPosition(QStringLiteral("relative"));
+    m_sys->setNavPosition(u"relative"_s);
 }
 
 void SitlController::endRovSession()

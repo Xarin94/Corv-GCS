@@ -17,6 +17,8 @@
 #include <cmath>
 #include <cstring>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -37,7 +39,7 @@ constexpr qint64 kMsgDurationMs = 5000;
 QFont hudFont(double px)
 {
     QFont f;
-    f.setFamilies({QStringLiteral("Arial")});
+    f.setFamilies({u"Arial"_s});
     f.setPixelSize(std::max(1, int(std::lround(px))));
     f.setBold(true);
     return f;
@@ -116,8 +118,8 @@ class HudTintShader : public QSGMaterialShader
 public:
     HudTintShader()
     {
-        setShaderFileName(VertexStage, QStringLiteral(":/hudshaders/hudtint.vert.qsb"));
-        setShaderFileName(FragmentStage, QStringLiteral(":/hudshaders/hudtint.frag.qsb"));
+        setShaderFileName(VertexStage, u":/hudshaders/hudtint.vert.qsb"_s);
+        setShaderFileName(FragmentStage, u":/hudshaders/hudtint.frag.qsb"_s);
     }
     bool updateUniformData(RenderState &state, QSGMaterial *newMat, QSGMaterial *oldMat) override
     {
@@ -279,7 +281,7 @@ void HudLadder::draw(QPainter *p)
             p->drawPath(path);
         }
         p->setFont(hudFont(16));
-        const double textW = QFontMetricsF(p->font()).horizontalAdvance(QStringLiteral("-90"));
+        const double textW = QFontMetricsF(p->font()).horizontalAdvance(u"-90"_s);
         for (int deg = -90; deg <= 90; deg += 10) {
             if (deg == 0) continue;
             const double y = -(deg * m_pxPerDeg), length = 200, space = 80, q = 12;
@@ -456,7 +458,7 @@ struct HeadingBox {
 HeadingBox headingBox()
 {
     const double fontSize = 20, textSide = 5, textTop = 4;
-    const double textWidth = QFontMetricsF(hudFont(fontSize)).horizontalAdvance(QStringLiteral("360"));
+    const double textWidth = QFontMetricsF(hudFont(fontSize)).horizontalAdvance(u"360"_s);
     const double length = textSide * 2 + textWidth;
     return {textWidth, length, textTop * 1.5 + fontSize + length / 4};
 }
@@ -523,9 +525,9 @@ void HudHeadingStrip::sync(const HudFrame &f)
 
 void HudHeadingStrip::draw(QPainter *p)
 {
-    static const QHash<int, QString> card = {{0, QStringLiteral("N")}, {45, QStringLiteral("NE")}, {90, QStringLiteral("E")},
-                                            {135, QStringLiteral("SE")}, {180, QStringLiteral("S")}, {225, QStringLiteral("SW")},
-                                            {270, QStringLiteral("W")}, {315, QStringLiteral("NW")}};
+    static const QHash<int, QString> card = {{0, u"N"_s}, {45, u"NE"_s}, {90, u"E"_s},
+                                            {135, u"SE"_s}, {180, u"S"_s}, {225, u"SW"_s},
+                                            {270, u"W"_s}, {315, u"NW"_s}};
     withShadow(p, [&](const QColor &c, double lw) {
         p->setFont(hudFont(kScaleFont));
         p->setPen(c);
@@ -634,19 +636,19 @@ void HudVario::draw(QPainter *p)
         p->drawPath(path);
         p->setFont(hudFont(12));
         p->setPen(c);
-        textAt(p, -14, varioY(5, H), QStringLiteral("5"), Qt::AlignRight, Qt::AlignVCenter);
-        textAt(p, -14, varioY(-5, H), QStringLiteral("5"), Qt::AlignRight, Qt::AlignVCenter);
+        textAt(p, -14, varioY(5, H), u"5"_s, Qt::AlignRight, Qt::AlignVCenter);
+        textAt(p, -14, varioY(-5, H), u"5"_s, Qt::AlignRight, Qt::AlignVCenter);
         fillPolygon(p, c, {{0, vy}, {9, vy - 5}, {9, vy + 5}});
         p->setPen(c);
         p->setFont(hudFont(14));
         textAt(p, 13, vy, QString::number(value, 'f', 1), Qt::AlignLeft, Qt::AlignVCenter);
         p->setFont(hudFont(10));
         if (!top.isEmpty()) textAt(p, 0, -H - 6, top, Qt::AlignHCenter, Qt::AlignBottom);
-        if (unit) textAt(p, 0, H + 6, QStringLiteral("M/S"), Qt::AlignHCenter, Qt::AlignTop);
+        if (unit) textAt(p, 0, H + 6, u"M/S"_s, Qt::AlignHCenter, Qt::AlignTop);
         p->restore();
     };
     withShadow(p, [&](const QColor &c, double lw) {
-        tape(c, lw, 40, m_vs, m_vsY, QStringLiteral("VS"), true);
+        tape(c, lw, 40, m_vs, m_vsY, u"VS"_s, true);
     });
 }
 
@@ -657,18 +659,18 @@ void HudFma::sync(const HudFrame &f)
     const VehicleState &s = *f.s;
     setTint(f.color);
     const double cx = std::round(f.W / 2), windX = std::max(20.0, cx - 290);
-    m_mode = s.flightMode.isEmpty() ? QStringLiteral("---") : s.flightMode;
+    m_mode = s.flightMode.isEmpty() ? u"---"_s : s.flightMode;
     m_wp.clear();
     if (f.navFresh && s.wpDist > 0) {
         const double xtk = s.xtrackError;
-        m_wp = QStringLiteral("WP %1m   XTK %2%3m").arg(std::lround(s.wpDist)).arg(xtk >= 0 ? QStringLiteral("+") : QString()).arg(xtk, 0, 'f', 0);
+        m_wp = u"WP %1m   XTK %2%3m"_s.arg(std::lround(s.wpDist)).arg(xtk >= 0 ? u"+"_s : QString()).arg(xtk, 0, 'f', 0);
     }
     const qint64 now = wallMs();
     m_wind = s.windDataTime && now - s.windDataTime <= 5000 && std::isfinite(s.windSpeed) && s.windSpeed >= 0.5;
     if (m_wind) {
         // windDir is where the wind comes from; the arrow points where it goes
         m_windRot = std::fmod(std::round(s.windDir + 180 - f.pose.yaw * kRad), 360.0);
-        m_windText = QStringLiteral("%1 M/S").arg(s.windSpeed, 0, 'f', 1);
+        m_windText = u"%1 M/S"_s.arg(s.windSpeed, 0, 'f', 1);
     }
     const double x0 = std::min(windX - 24, cx - 240);
     resizeTo(cx + 240 - x0, 60);
@@ -750,8 +752,8 @@ void HudMessages::draw(QPainter *p)
     double y = height() - 4;
     for (auto it = m_msgs.rbegin(); it != m_msgs.rend(); ++it) {
         const double a = it->alpha;
-        QColor col = it->level == QLatin1String("error") ? QColor(255, 60, 60)
-                     : it->level == QLatin1String("warning") ? QColor(255, 200, 50) : QColor(200, 255, 200);
+        QColor col = it->level == "error"_L1 ? QColor(255, 60, 60)
+                     : it->level == "warning"_L1 ? QColor(255, 200, 50) : QColor(200, 255, 200);
         col.setAlphaF(a);
         p->fillRect(QRectF(12 - 4, y - fs - 2, fm.horizontalAdvance(it->text) + 8, fs + 4), QColor(0, 0, 0, int(102 * a)));
         p->setPen(col);

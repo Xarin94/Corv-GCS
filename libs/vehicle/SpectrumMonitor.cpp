@@ -4,21 +4,24 @@
 #include <cmath>
 #include <limits>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
 constexpr double kPeakHoldMs = 10000;
 constexpr double kStaleMs = 2000;
 constexpr double kMinLineHz = 5;   // lines are looked for above this (and above the first bins)
+} // namespace
 
-QString fmtDf(double v) { return (v >= 10 ? QString::number(v, 'f', 1) : v >= 1 ? QString::number(v, 'f', 2) : QString::number(v, 'f', 3)) + QStringLiteral(" Hz"); }
+QString fmtDf(double v) { return (v >= 10 ? QString::number(v, 'f', 1) : v >= 1 ? QString::number(v, 'f', 2) : QString::number(v, 'f', 3)) + u" Hz"_s; }
+
 QString fmtDur(double ms)
 {
-    return ms >= 10000 ? QString::number(ms / 1000, 'f', 0) + QStringLiteral(" s")
-         : ms >= 1000 ? QString::number(ms / 1000, 'f', 1) + QStringLiteral(" s")
-                      : QString::number(std::lround(ms)) + QStringLiteral(" ms");
+    return ms >= 10000 ? QString::number(ms / 1000, 'f', 0) + u" s"_s
+         : ms >= 1000 ? QString::number(ms / 1000, 'f', 1) + u" s"_s
+                      : QString::number(std::lround(ms)) + u" ms"_s;
 }
-} // namespace
 
 int SpectrumGrid::firstLineBin() const
 {
@@ -149,7 +152,7 @@ void SpectrumMonitor::ingest(const QString &name, int arrayId, std::uint64_t tim
     if (m_log) return;   // a .bin's spectra come from its samples
     const int sensor = arrayId >> 1;
     if (sensor < 0 || sensor > 1) return;
-    static const QString names[2] = {QStringLiteral("FFT_GYRO"), QStringLiteral("FFT_ACC")};
+    static const QString names[2] = {u"FFT_GYRO"_s, u"FFT_ACC"_s};
     if (name.trimmed() != names[sensor] || len < kFftPartBins) return;
     m_sensors[std::size_t(sensor)].add(timeUsec, arrayId & 1, data, now);
 }
@@ -226,18 +229,18 @@ SpectrumMonitor::Source SpectrumMonitor::source(int sensor) const
     if (m_log) {
         const auto &l = m_log->sensors[std::size_t(sensor)];
         if (l.stream.isEmpty())
-            return {QStringLiteral("log"), QStringLiteral("LOG · NO IMU SAMPLES"), QStringLiteral("no IMU samples in the log"), {}, {}};
-        const QString avg = l.avg > 1 ? QStringLiteral(" × %1 avg").arg(l.avg) : QString();
-        const QString lim = l.limited ? QStringLiteral(" (cut to the %1-sample runs)").arg(l.longest) : QString();
-        return {QStringLiteral("log"),
-                QStringLiteral("LOG · %1 pt%2 · %3 · %4 window%5").arg(l.N).arg(avg, fmtDf(l.df), fmtDur(l.windowMs), lim),
-                QStringLiteral("%1 of samples needed for a spectrum").arg(fmtDur(l.windowMs)), l.streams, l.stream};
+            return {u"log"_s, u"LOG · NO IMU SAMPLES"_s, u"no IMU samples in the log"_s, {}, {}};
+        const QString avg = l.avg > 1 ? u" × %1 avg"_s.arg(l.avg) : QString();
+        const QString lim = l.limited ? u" (cut to the %1-sample runs)"_s.arg(l.longest) : QString();
+        return {u"log"_s,
+                u"LOG · %1 pt%2 · %3 · %4 window%5"_s.arg(l.N).arg(avg, fmtDf(l.df), fmtDur(l.windowMs), lim),
+                u"%1 of samples needed for a spectrum"_s.arg(fmtDur(l.windowMs)), l.streams, l.stream};
     }
     if (m_replay)
-        return {QStringLiteral("tlog"), QStringLiteral("LOG · VEHICLE SPECTRUM · %1 pt at %2 Hz · %3").arg(kFftN).arg(kFftRateHz).arg(fmtDf(kFftDf)),
-                QStringLiteral("no FFT_GYRO / FFT_ACC in this log"), {}, {}};
-    return {QStringLiteral("vehicle"), QStringLiteral("VEHICLE · %1 pt at %2 Hz · %3").arg(kFftN).arg(kFftRateHz).arg(fmtDf(kFftDf)),
-            QStringLiteral("HPF_FFT_ENABLE = 1 on the vehicle"), {}, {}};
+        return {u"tlog"_s, u"LOG · VEHICLE SPECTRUM · %1 pt at %2 Hz · %3"_s.arg(kFftN).arg(kFftRateHz).arg(fmtDf(kFftDf)),
+                u"no FFT_GYRO / FFT_ACC in this log"_s, {}, {}};
+    return {u"vehicle"_s, u"VEHICLE · %1 pt at %2 Hz · %3"_s.arg(kFftN).arg(kFftRateHz).arg(fmtDf(kFftDf)),
+            u"HPF_FFT_ENABLE = 1 on the vehicle"_s, {}, {}};
 }
 
 } // namespace corv

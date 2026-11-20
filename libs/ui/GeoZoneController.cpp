@@ -16,6 +16,8 @@
 #include <QJsonArray>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 GeoZoneController *GeoZoneController::s_instance = nullptr;
@@ -42,27 +44,26 @@ QString alertTitle(const geozone::Alert &a)
     QStringList lines;
     if (a.zone) {
         lines << a.zone->name;
-        if (a.id == QLatin1String("noFly")) lines << QStringLiteral("No-fly or authorisation required from the surface");
-        else if (a.id == QLatin1String("cond")) lines << QStringLiteral("Conditions apply in this zone");
-        else lines << QStringLiteral("Height that may be flown here: %1 m above the ground").arg(qRound(a.metres));
-        lines << QStringLiteral("Source: ") + geozone::sourceName(a.zone->src);
-        if (!a.zone->info.isEmpty()) lines << (a.zone->info.size() > 200 ? a.zone->info.left(199) + QStringLiteral("…") : a.zone->info);
+        if (a.id == "noFly"_L1) lines << u"No-fly or authorisation required from the surface"_s;
+        else if (a.id == "cond"_L1) lines << u"Conditions apply in this zone"_s;
+        else lines << u"Height that may be flown here: %1 m above the ground"_s.arg(qRound(a.metres));
+        lines << u"Source: "_s + geozone::sourceName(a.zone->src);
+        if (!a.zone->info.isEmpty()) lines << (a.zone->info.size() > 200 ? a.zone->info.left(199) + u"…"_s : a.zone->info);
     } else if (!a.rule.isEmpty()) {
         lines << a.rule;
     }
-    lines << QStringLiteral("Click to silence until the next connection");
-    return lines.join(QLatin1Char('\n'));
+    lines << u"Click to silence until the next connection"_s;
+    return lines.join('\n'_L1);
 }
 } // namespace
 
 GeoZonesPtr GeoZoneController::shownZones() { return g_shown; }
-int GeoZoneController::shownVersion() { return g_shownVersion; }
 
 GeoZoneController::GeoZoneController(VehicleHub *hub, PlanController *plan, QObject *parent)
     : QObject(parent), m_hub(hub), m_plan(plan), m_store(new GeoZoneStore(DataRoot::geozonesDir(), this))
 {
     s_instance = this;
-    m_enabled = Settings::instance().value(QStringLiteral("geozones-enabled"), QStringLiteral("0")).toString() == QLatin1String("1");
+    m_enabled = Settings::instance().value(u"geozones-enabled"_s, u"0"_s).toString() == "1"_L1;
     connect(m_store, &GeoZoneStore::changed, this, &GeoZoneController::query);
     m_evalTimer.setInterval(250);
     connect(&m_evalTimer, &QTimer::timeout, this, &GeoZoneController::evaluate);
@@ -97,7 +98,7 @@ void GeoZoneController::setEnabled(bool on)
 {
     if (on == m_enabled) return;
     m_enabled = on;
-    Settings::instance().setValue(QStringLiteral("geozones-enabled"), on ? QStringLiteral("1") : QStringLiteral("0"));
+    Settings::instance().setValue(u"geozones-enabled"_s, on ? u"1"_s : u"0"_s);
     LOG_I("geozones") << (on ? "on" : "off");
     emit enabledChanged();
     if (on) {
@@ -119,7 +120,7 @@ bool GeoZoneController::vehiclePosition(double *lat, double *lon) const
     const auto s = m_hub->snapshot();
     // The vehicle's position, when there is a real one: a link or a log, not the demo nor the relative frame
     if (s->isDemo() || !s->relativeSource.isEmpty()) return false;
-    if (!s->connected && s->mode != QLatin1String("REPLAY")) return false;
+    if (!s->connected && s->mode != "REPLAY"_L1) return false;
     if (!std::isfinite(s->lat) || !std::isfinite(s->lon) || (s->lat == 0 && s->lon == 0) || s->sceneOriginEpoch <= 0) return false;
     *lat = s->lat;
     *lon = s->lon;
@@ -140,10 +141,10 @@ void GeoZoneController::query()
     }
     // One circle per mission point not already within 10 km of an earlier one
     if (m_plan) {
-        for (const QJsonValue &seg : m_plan->route().value(QStringLiteral("segments")).toArray()) {
-            for (const QJsonValue &pv : seg.toObject().value(QStringLiteral("points")).toArray()) {
+        for (const QJsonValue &seg : m_plan->route().value(u"segments"_s).toArray()) {
+            for (const QJsonValue &pv : seg.toObject().value(u"points"_s).toArray()) {
                 const QJsonObject p = pv.toObject();
-                const double lat = p.value(QStringLiteral("lat")).toDouble(NAN), lon = p.value(QStringLiteral("lng")).toDouble(NAN);
+                const double lat = p.value(u"lat"_s).toDouble(NAN), lon = p.value(u"lng"_s).toDouble(NAN);
                 if (!std::isfinite(lat) || !std::isfinite(lon)) continue;
                 bool near = false;
                 for (const auto &c : circles)
@@ -157,13 +158,13 @@ void GeoZoneController::query()
     m_pending = r.pending;
     QStringList lines;
     for (const auto &src : r.sources) {
-        QString line = QStringLiteral("%1 (%2): %3 / %4 %5").arg(src.name, src.country).arg(src.ready).arg(src.tiles).arg(src.tiles == 1 && src.id == QLatin1String("bazl") ? QStringLiteral("file") : QStringLiteral("tiles"));
-        if (src.pending) line += QStringLiteral(", %1 loading").arg(src.pending);
-        if (!src.error.isEmpty()) line += QStringLiteral(" — ") + src.error.left(80);
+        QString line = u"%1 (%2): %3 / %4 %5"_s.arg(src.name, src.country).arg(src.ready).arg(src.tiles).arg(src.tiles == 1 && src.id == "bazl"_L1 ? u"file"_s : u"tiles"_s);
+        if (src.pending) line += u", %1 loading"_s.arg(src.pending);
+        if (!src.error.isEmpty()) line += u" — "_s + src.error.left(80);
         lines << line;
     }
-    if (lines.isEmpty()) lines << (circles.isEmpty() ? QStringLiteral("No vehicle and no mission: nothing to ask") : QStringLiteral("No online source covers this area: import the state's ED-269 file"));
-    m_sourcesText = lines.join(QLatin1Char('\n'));
+    if (lines.isEmpty()) lines << (circles.isEmpty() ? u"No vehicle and no mission: nothing to ask"_s : u"No online source covers this area: import the state's ED-269 file"_s);
+    m_sourcesText = lines.join('\n'_L1);
     notify();
 }
 
@@ -180,8 +181,8 @@ QVariantList GeoZoneController::imports() const
 {
     QVariantList out;
     for (const auto &i : m_store->imports())
-        out << QVariantMap{{QStringLiteral("file"), i.file}, {QStringLiteral("name"), i.name}, {QStringLiteral("count"), i.count},
-                           {QStringLiteral("date"), QDateTime::fromMSecsSinceEpoch(i.at).toString(QStringLiteral("yyyy-MM-dd"))}};
+        out << QVariantMap{{u"file"_s, i.file}, {u"name"_s, i.name}, {u"count"_s, i.count},
+                           {u"date"_s, QDateTime::fromMSecsSinceEpoch(i.at).toString(u"yyyy-MM-dd"_s)}};
     return out;
 }
 
@@ -192,10 +193,10 @@ void GeoZoneController::importFile(const QUrl &file)
     const int n = m_store->importFile(path, &error);
     if (n < 0) {
         LOG_W("geozones") << "import of" << path << "failed:" << error;
-        emit toast(QStringLiteral("Import failed: ") + error);
+        emit toast(u"Import failed: "_s + error);
         return;
     }
-    emit toast(QStringLiteral("%1: %2 zones imported").arg(QFileInfo(path).fileName()).arg(n));
+    emit toast(u"%1: %2 zones imported"_s.arg(QFileInfo(path).fileName()).arg(n));
     query();
 }
 
@@ -246,7 +247,7 @@ void GeoZoneController::evaluate()
 
     const auto s = m_hub->snapshot();
     const QString type = modes::vehicleTypeName(s->vehicleType);
-    if (!have || !m_zones || (type != QLatin1String("Copter") && type != QLatin1String("Plane"))) {
+    if (!have || !m_zones || (type != "Copter"_L1 && type != "Plane"_L1)) {
         clear();
         m_wasArmed = -1;
         return;
@@ -264,8 +265,8 @@ void GeoZoneController::evaluate()
     QVariantList alerts;
     for (const geozone::Alert &a : e.alerts) {
         if (m_silenced.contains(a.id)) continue;
-        alerts << QVariantMap{{QStringLiteral("id"), a.id}, {QStringLiteral("level"), a.level}, {QStringLiteral("icon"), a.icon},
-                              {QStringLiteral("label"), a.label}, {QStringLiteral("value"), a.value}, {QStringLiteral("title"), alertTitle(a)}};
+        alerts << QVariantMap{{u"id"_s, a.id}, {u"level"_s, a.level}, {u"icon"_s, a.icon},
+                              {u"label"_s, a.label}, {u"value"_s, a.value}, {u"title"_s, alertTitle(a)}};
     }
     if (alerts != m_alerts || e.overHeight != m_overHeight) {
         m_alerts = alerts;
@@ -276,11 +277,11 @@ void GeoZoneController::evaluate()
     // Armed inside a zone: the banner and the HUD line
     if (m_wasArmed == 0 && s->armed) {
         if (const auto a = geozone::armingAlert(e.here, ground, e.limit)) {
-            m_armAlert = QVariantMap{{QStringLiteral("level"), a->level}, {QStringLiteral("title"), a->title}, {QStringLiteral("detail"), a->detail}};
+            m_armAlert = QVariantMap{{u"level"_s, a->level}, {u"title"_s, a->title}, {u"detail"_s, a->detail}};
             m_armTimer.start();
             emit armAlertChanged();
-            emit hudMessage(a->title + QStringLiteral(": ") + a->detail, a->level == QLatin1String("warn") ? QStringLiteral("error") : QStringLiteral("warning"));
-            if (a->level == QLatin1String("warn")) LOG_W("geozones") << a->title << ":" << a->detail;
+            emit hudMessage(a->title + u": "_s + a->detail, a->level == "warn"_L1 ? u"error"_s : u"warning"_s);
+            if (a->level == "warn"_L1) LOG_W("geozones") << a->title << ":" << a->detail;
             else LOG_I("geozones") << a->title << ":" << a->detail;
         }
     }

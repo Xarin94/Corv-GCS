@@ -54,9 +54,6 @@ public:
 
     void setTarget(int system, int component);
     int targetSystem() const { return m_sys; }
-    void setListTimeout(int ms) { m_listTimeoutMs = ms; }
-    void setStallTimeout(int ms) { m_stallMs = ms; }
-    void setRetries(int n) { m_retries = n; }
 
     /// LOG_ENTRY and LOG_DATA; anything else is ignored.
     void onMessage(const mavlink_message_t &m);
@@ -71,7 +68,6 @@ public:
     /// Fetch log `id` of `size` bytes into `path` (via path + ".part"). False if busy or the file cannot be made.
     bool download(int id, quint32 size, const QString &path, QString *error = nullptr);
     bool downloading() const { return m_dl != nullptr; }
-    int currentId() const;
     /// Stop the download in progress (the partial file is removed) and send LOG_REQUEST_END.
     void cancel();
 

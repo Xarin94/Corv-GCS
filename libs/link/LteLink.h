@@ -69,11 +69,9 @@ class RecordFramer
 {
 public:
     QList<QByteArray> feed(const QByteArray &data);
-    qint64 garbage() const { return m_garbage; }
 
 private:
     QByteArray m_buf;
-    qint64 m_garbage = 0;
 };
 
 /// Anti-replay window: true the first time a counter is seen within the window.

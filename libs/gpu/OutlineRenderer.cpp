@@ -8,6 +8,8 @@
 #include <cmath>
 #include <cstring>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -55,8 +57,8 @@ OutlineRenderer::OutlineRenderer(QRhi *rhi) : m_rhi(rhi)
         LOG_W("gpu") << "no sampleable D32F depth: the schematic view is drawn without outlines";
         return;
     }
-    m_vs = loadShader(QStringLiteral(":/shaders/outline.vert.qsb"));
-    m_fs = loadShader(QStringLiteral(":/shaders/outline.frag.qsb"));
+    m_vs = loadShader(u":/shaders/outline.vert.qsb"_s);
+    m_fs = loadShader(u":/shaders/outline.frag.qsb"_s);
     m_sampler.reset(m_rhi->newSampler(QRhiSampler::Nearest, QRhiSampler::Nearest, QRhiSampler::None, QRhiSampler::ClampToEdge,
                                       QRhiSampler::ClampToEdge));
     m_sampler->create();

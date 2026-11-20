@@ -9,6 +9,8 @@
 #include <cmath>
 #include <limits>
 
+using namespace Qt::StringLiterals;
+
 namespace corv::mission {
 
 namespace {
@@ -44,6 +46,24 @@ struct Pattern {
     QList<LanePoint> points;
     int count = 0;
 };
+
+/// Of the four ways to walk a pattern (build(reversed order, other side first)), the one
+/// starting nearest to `near`; without it, the first.
+template <typename Build>
+auto nearestStart(const Build &build, const std::optional<XY> &near)
+{
+    decltype(build(false, false)) best;
+    double bestD = std::numeric_limits<double>::infinity();
+    for (bool a : {false, true}) {
+        for (bool b : {false, true}) {
+            auto pts = build(a, b);
+            if (!near) return pts;
+            const double d = std::hypot(pts[0].q.x - near->x, pts[0].q.y - near->y);
+            if (d < bestD) { bestD = d; best = pts; }
+        }
+    }
+    return best;
+}
 
 /// Boustrophedon lanes across a polygon, centred so the outermost lanes sit half a
 /// spacing from the boundary, entered at the corner nearest to `startNear`.
@@ -87,30 +107,16 @@ Pattern lawnmower(const QList<LL> &polyLL, double headingDeg, double spacing, do
             QList<std::pair<double, double>> spans = lane.spans;
             if (!rightward) std::reverse(spans.begin(), spans.end());
             for (const auto &[x0, x1] : spans) {
-                const QString laneId = QStringLiteral("%1:%2").arg(lane.y, 0, 'f', 2).arg(x0, 0, 'f', 1);
+                const QString laneId = u"%1:%2"_s.arg(lane.y, 0, 'f', 2).arg(x0, 0, 'f', 1);
                 if (rightward) { pts.append({{x0, lane.y}, laneId}); pts.append({{x1, lane.y}, laneId}); }
                 else { pts.append({{x1, lane.y}, laneId}); pts.append({{x0, lane.y}, laneId}); }
             }
         }
         return pts;
     };
-    std::optional<XY> near;
-    if (startNear) near = rot.fwd(f.toXY(*startNear));
-    QList<P> best;
-    double bestD = std::numeric_limits<double>::infinity();
-    for (bool rl : {false, true}) {
-        bool done = false;
-        for (bool sr : {false, true}) {
-            QList<P> pts = build(rl, sr);
-            const double d = near ? std::hypot(pts[0].q.x - near->x, pts[0].q.y - near->y) : 0;
-            if (d < bestD) { bestD = d; best = pts; }
-            if (!near) { done = true; break; }
-        }
-        if (done) break;
-    }
     Pattern out;
     out.count = int(lanes.size());
-    for (const P &p : best) {
+    for (const P &p : nearestStart(build, startNear ? std::optional<XY>(rot.fwd(f.toXY(*startNear))) : std::nullopt)) {
         const LL ll = f.toLL(rot.inv(p.q));
         out.points.append({ll.lat, ll.lng, p.lane});
     }
@@ -166,27 +172,13 @@ Pattern corridorPasses(const QList<LL> &lineLL, double width, double spacing, co
             const bool back = (idx % 2 == 1) != startBack;
             QList<XY> seq = passes[passIdx];
             if (back) std::reverse(seq.begin(), seq.end());
-            for (const XY &q : seq) pts.append({q, QStringLiteral("p%1").arg(passIdx)});
+            for (const XY &q : seq) pts.append({q, u"p%1"_s.arg(passIdx)});
         }
         return pts;
     };
-    std::optional<XY> near;
-    if (startNear) near = f.toXY(*startNear);
-    QList<Q> best;
-    double bestD = std::numeric_limits<double>::infinity();
-    for (bool rv : {false, true}) {
-        bool done = false;
-        for (bool sb : {false, true}) {
-            QList<Q> pts = build(rv, sb);
-            const double d = near ? std::hypot(pts[0].q.x - near->x, pts[0].q.y - near->y) : 0;
-            if (d < bestD) { bestD = d; best = pts; }
-            if (!near) { done = true; break; }
-        }
-        if (done) break;
-    }
     Pattern out;
     out.count = cnt;
-    for (const Q &q : best) {
+    for (const Q &q : nearestStart(build, startNear ? std::optional<XY>(f.toXY(*startNear)) : std::nullopt)) {
         const LL ll = f.toLL(q.q);
         out.points.append({ll.lat, ll.lng, q.lane});
     }
@@ -273,7 +265,7 @@ struct Shot {
 CameraPreview buildCameraPreview(const QJsonObject &route, const QList<const CompiledItem *> &navLocated, const QList<Shot> &shots,
                                  QHash<QString, int> &photosBySeg)
 {
-    const QJsonObject cam = route.value(QStringLiteral("params")).toObject().value(QStringLiteral("camera")).toObject();
+    const QJsonObject cam = route.value(u"params"_s).toObject().value(u"camera"_s).toObject();
     CameraPreview out;
     auto aglOf = [](const CompiledItem &it) { return it.terrain ? it.altMsl - *it.terrain : it.altRel; };
 
@@ -360,7 +352,7 @@ RouteStats buildStats(const QJsonObject &P, const QList<CompiledItem> &items, co
     double speed = 0, len = 0, dur = 0;
     const CompiledItem *prev = nullptr;
     for (const CompiledItem &it : items) if (it.firstLeg) speed = it.param2;
-    for (const CompiledItem &it : items) if (it.kind == QLatin1String("takeoff")) { const double ta = n(P, "takeoffAlt"); dur += (ta ? ta : 30) / kClimbRate; break; }
+    for (const CompiledItem &it : items) if (it.kind == "takeoff"_L1) { const double ta = n(P, "takeoffAlt"); dur += (ta ? ta : 30) / kClimbRate; break; }
     for (const CompiledItem &it : items) {
         if (it.command == 178) { speed = it.param2; continue; }
         if (it.command == 93) { dur += it.param1; continue; }
@@ -378,7 +370,7 @@ RouteStats buildStats(const QJsonObject &P, const QList<CompiledItem> &items, co
         if (it.landing) dur += std::max(0.0, (prev ? prev->altMsl : it.altMsl) - it.altMsl) / kDescentRate;
         prev = &it;
     }
-    if (!items.isEmpty() && items.last().kind == QLatin1String("rtl") && prev) {
+    if (!items.isEmpty() && items.last().kind == "rtl"_L1 && prev) {
         const double d = haversine(prev->ll(), home);
         len += d;
         dur += (speed > 0 ? d / speed : d / 10) + std::max(0.0, prev->altMsl - homeElev) / kDescentRate;
@@ -407,423 +399,142 @@ QList<LL> corridorOutline(const QList<LL> &line, double width)
     return out;
 }
 
-CompiledRoute compileRoute(const QJsonObject &route, const CompileContext &ctx)
-{
-    const QJsonObject P = route.value(QStringLiteral("params")).toObject();
-    const QJsonArray segments = route.value(QStringLiteral("segments")).toArray();
-    const Platform &plat = platform(ctx.platform);
-    const bool isInav = plat.id == QLatin1String("inav");
-    const int itemLimit = ctx.itemLimit > 0 ? ctx.itemLimit : plat.itemLimit;
-    const TerrainFn terrain = ctx.terrain ? ctx.terrain : TerrainFn([](double, double) { return std::optional<double>(); });
+namespace {
+
+/// A navigation point a segment expands into, before it becomes a mission item.
+struct NavPt {
+    double lat, lng, alt;
+    int command;
+    double p1 = 0, p2 = 0, p3 = 0;
+    std::optional<Loiter> loiter;
+    bool landing = false;
+    QString lane;
+};
+
+/// The nav item a photo is taken at, by identity: the boat reorder and the terrain
+/// subdivision move items around.
+struct PendingShot { QString navSegId; int navSegIdx; double lat, lng; QString segId; double pitch, yaw; };
+
+double nonZero(double v, double fallback) { return v ? v : fallback; }
+
+/// One run of compileRoute: the items as the segments emit them, then resolved and checked.
+struct Compilation {
+    const CompileContext &ctx;
+    const QJsonObject route, P;
+    const QJsonArray segments;
+    const Platform &plat;
+    const bool isInav, isPlane, onSurface;
+    const int itemLimit;
+    const TerrainFn terrain;
 
     CompiledRoute R;
-    R.platform = plat.id;
-    auto addIssue = [&](const QString &level, const QString &text, const QString &segId = {}) { R.issues.append({level, text, segId}); };
-
-    // ── Take-off point ──
-    std::optional<LL> firstPt;
-    for (const QJsonValue &v : segments) {
-        const QList<LL> pts = pointsOf(v.toObject());
-        if (!pts.isEmpty()) { firstPt = pts.first(); break; }
-    }
-    std::optional<LL> home;
-    const QJsonObject ph = P.value(QStringLiteral("home")).toObject();
-    if (!ph.isEmpty()) home = LL{n(ph, "lat"), n(ph, "lng")};
-    else if (ctx.home) home = ctx.home;
-    else home = firstPt;
-    if (!home || segments.isEmpty()) {
-        if (segments.isEmpty()) addIssue(QStringLiteral("info"), QStringLiteral("Pick a tool on the map and start drawing"));
-        if (home) {
-            const auto t = terrain(home->lat, home->lng);
-            R.home = Home{home->lat, home->lng, t ? *t : ctx.homeAlt};
-        }
-        return R;
-    }
-    const auto homeTerrain = terrain(home->lat, home->lng);
-    const double homeElev = homeTerrain ? *homeTerrain : ctx.homeAlt;
-    if (!homeTerrain) addIssue(QStringLiteral("warn"), QStringLiteral("No elevation data at the take-off point — vehicle home altitude assumed"));
-
-    const bool isPlane = ctx.vehicleType == 1;
-    // A rover, a boat or a sub has nothing to take off from
-    const bool onSurface = ctx.vehicleType == 10 || ctx.vehicleType == 11 || ctx.vehicleType == 12;
-
+    LL home;
+    double homeElev = 0;
+    bool takeoff = false;
     QList<CompiledItem> out;
-    auto push = [&](const CompiledItem &it) -> int { out.append(it); return int(out.size()) - 1; };
-    auto doItem = [&](int command, double p1, double p2, double p3, double p4, const QString &segId, double alt = 0) {
+    double currentSpeed = 0;
+    LL lastNav;
+    int lastNavItem = -1;
+    bool roiActive = false;
+    std::optional<RoiTarget> roiTarget;
+    double gimbalPitch = -90, gimbalYaw = 0;
+    QList<PendingShot> pendingShots;
+
+    Compilation(const QJsonObject &r, const CompileContext &c)
+        : ctx(c), route(r), P(r.value(u"params"_s).toObject()), segments(r.value(u"segments"_s).toArray()), plat(platform(c.platform)),
+          isInav(plat.id == "inav"_L1), isPlane(c.vehicleType == 1),
+          // A rover, a boat or a sub has nothing to take off from
+          onSurface(c.vehicleType == 10 || c.vehicleType == 11 || c.vehicleType == 12),
+          itemLimit(c.itemLimit > 0 ? c.itemLimit : plat.itemLimit),
+          terrain(c.terrain ? c.terrain : TerrainFn([](double, double) { return std::optional<double>(); }))
+    {
+        const double gp = num(P.value(u"gimbalPitch"_s), NAN);
+        gimbalPitch = std::isfinite(gp) ? gp : -90;
+        gimbalYaw = n(P, "gimbalYaw");
+    }
+
+    void issue(const QString &level, const QString &text, const QString &segId = {}) { R.issues.append({level, text, segId}); }
+    int push(const CompiledItem &it) { out.append(it); return int(out.size()) - 1; }
+    int doItem(int command, double p1, double p2, double p3, double p4, const QString &segId, double alt = 0)
+    {
         CompiledItem it;
         it.command = command;
         it.segId = segId;
         it.param1 = p1; it.param2 = p2; it.param3 = p3; it.param4 = p4;
         it.alt = alt;
         return push(it);
-    };
-
+    }
+    static CompiledItem located(int command, const LL &at, double alt)
     {
-        CompiledItem h;
-        h.command = 16;
-        h.lat = home->lat; h.lng = home->lng;
-        h.loc = true;
-        h.isHome = true;
-        push(h);
+        CompiledItem it;
+        it.command = command;
+        it.lat = at.lat; it.lng = at.lng; it.alt = alt;
+        it.loc = true;
+        return it;
     }
-    // INAV has no take-off waypoint at all; the operator is told so
-    const bool takeoff = truthy(P.value(QStringLiteral("takeoff")));
-    if (takeoff && isInav) addIssue(QStringLiteral("warn"), QStringLiteral("INAV has no take-off waypoint — arm and take off in a flight mode, then switch to WP"));
-    if (takeoff && !isInav && !onSurface) {
-        CompiledItem t;
-        t.command = 22;
-        t.lat = home->lat; t.lng = home->lng;
-        const double ta = n(P, "takeoffAlt");
-        t.alt = ta ? ta : 30;
-        t.loc = true;
-        t.param1 = isPlane ? 15 : 0;
-        t.kind = QStringLiteral("takeoff");
-        push(t);
+    void setSpeed(double v, const QString &segId)
+    {
+        if (v <= 0 || std::abs(v - currentSpeed) <= 0.01) return;
+        doItem(178, 1, v, -1, 0, segId);
+        currentSpeed = v;
     }
 
-    double currentSpeed = 0;
-    auto setSpeed = [&](double v, const QString &segId) {
-        if (v > 0 && std::abs(v - currentSpeed) > 0.01) {
-            doItem(178, 1, v, -1, 0, segId);
-            currentSpeed = v;
+    CompiledRoute run();
+    std::optional<LL> takeoffPoint() const;
+    void begin();
+    void addSegment(const QJsonObject &seg);
+    void addPoi(const QJsonObject &sp, const QList<LL> &pts, const QString &segId);
+    QList<NavPt> navPoints(const QJsonObject &seg, const QString &type, SegStats &stats, double &trigger);
+    Pattern survey(const QJsonObject &seg, bool area, double alt, SegStats &stats, double &trigger);
+    void addNavItem(const NavPt &np, const QString &type, const QString &segId, int idx, double trigger, SegStats &stats);
+    void addActions(const QJsonArray &actions, const QString &segId);
+    void finish();
+    void boatFirstSpeed();
+    void resolveAltitudes(QList<CompiledItem> &items);
+    std::optional<double> validate(const QList<const CompiledItem *> &navLocated, qsizetype itemCount);
+    QList<Shot> shotsAt(const QList<const CompiledItem *> &navLocated) const;
+};
+
+CompiledRoute Compilation::run()
+{
+    R.platform = plat.id;
+    const std::optional<LL> start = takeoffPoint();
+    if (!start || segments.isEmpty()) {
+        if (segments.isEmpty()) issue(u"info"_s, u"Pick a tool on the map and start drawing"_s);
+        if (start) {
+            const auto t = terrain(start->lat, start->lng);
+            R.home = Home{start->lat, start->lng, t ? *t : ctx.homeAlt};
         }
-    };
-    if (n(P, "defaultSpeed") > 0) setSpeed(n(P, "defaultSpeed"), {});
-
-    LL lastNav = *home;
-    int lastNavItem = -1;
-    bool roiActive = false;
-    std::optional<RoiTarget> roiTarget;
-    const QJsonValue gp = P.value(QStringLiteral("gimbalPitch"));
-    double gimbalPitch = std::isfinite(num(gp, NAN)) ? num(gp, NAN) : -90;
-    double gimbalYaw = n(P, "gimbalYaw");
-    // The nav item a photo is taken at, by identity: the boat reorder and the terrain
-    // subdivision below move items around
-    struct PendingShot { QString navSegId; int navSegIdx; double lat, lng; QString segId; double pitch, yaw; };
-    QList<PendingShot> pendingShots;
-
-    // ── Segments ──
-    for (const QJsonValue &sv : segments) {
-        const QJsonObject seg = sv.toObject();
-        const QString type = str(seg, "type");
-        if (!segmentTypes().contains(type)) continue;
-        const QString segId = str(seg, "id");
-        const QJsonObject sp = seg.value(QStringLiteral("params")).toObject();
-        const QList<LL> pts = pointsOf(seg);
-        const double alt = segmentAlt(seg, P);
-        SegStats &stats = R.segStats[segId];
-        stats = SegStats{};
-        const double speed = n(sp, "speed") > 0 ? n(sp, "speed") : n(P, "defaultSpeed");
-
-        if (type == QLatin1String("poi")) {
-            if (str(sp, "mode") == QLatin1String("clear")) {
-                doItem(197, 0, 0, 0, 0, segId);
-                roiActive = false;
-                roiTarget.reset();
-            } else {
-                if (pts.isEmpty()) continue;
-                CompiledItem it;
-                it.command = 201;
-                it.lat = pts[0].lat; it.lng = pts[0].lng;
-                it.alt = n(sp, "alt");
-                it.loc = true;
-                it.roi = true;
-                it.segId = segId;
-                push(it);
-                roiActive = true;
-                roiTarget = RoiTarget{pts[0].lat, pts[0].lng, n(sp, "alt"), segId};
-            }
-            continue;
-        }
-
-        struct NavPt { double lat, lng, alt; int command; double p1 = 0, p2 = 0, p3 = 0; std::optional<Loiter> loiter; bool landing = false; QString lane; };
-        QList<NavPt> navPts;
-        double navTrigger = 0;
-        const QString turn = str(sp, "turn");
-        const int cmdWp = ((turn == QLatin1String("route") || turn.isEmpty() ? str(P, "turnType") : turn) == QLatin1String("spline")) ? 82 : 16;
-
-        if (type == QLatin1String("waypoint")) {
-            if (!pts.isEmpty()) navPts.append({pts[0].lat, pts[0].lng, alt, cmdWp, n(sp, "delay"), n(sp, "acceptRadius")});
-        } else if (type == QLatin1String("circle")) {
-            if (!pts.isEmpty()) {
-                const double rr = n(sp, "radius");
-                const double r = std::max(5.0, rr ? rr : 50);
-                const double tt = n(sp, "turns");
-                const int turns = std::max(1, int(std::lround(tt ? tt : 1)));
-                NavPt np{pts[0].lat, pts[0].lng, alt, 18, double(turns), 0, str(sp, "direction") == QLatin1String("ccw") ? -r : r};
-                np.loiter = Loiter{r, turns};
-                navPts.append(np);
-            }
-        } else if (type == QLatin1String("perimeter")) {
-            if (pts.size() < 3) {
-                addIssue(QStringLiteral("error"), QStringLiteral("Perimeter needs at least 3 vertices"), segId);
-            } else {
-                QList<LL> ring = pts;
-                if (str(sp, "direction") == QLatin1String("ccw")) {
-                    QList<LL> rev{ring[0]};
-                    for (qsizetype i = ring.size() - 1; i >= 1; --i) rev.append(ring[i]);
-                    ring = rev;
-                }
-                if (truthy(sp.value(QStringLiteral("closed")))) ring.append(ring[0]);
-                for (const LL &p : ring) navPts.append({p.lat, p.lng, alt, cmdWp});
-            }
-        } else if (type == QLatin1String("area")) {
-            if (pts.size() < 3) {
-                addIssue(QStringLiteral("error"), QStringLiteral("Area scan needs at least 3 vertices"), segId);
-            } else {
-                const SurveyGeometry g = surveyGeometry(seg, alt, P.value(QStringLiteral("camera")).toObject());
-                if (g.hasSensor && !g.sensor.swath) {
-                    addIssue(QStringLiteral("error"), QStringLiteral("The surface (%1 m) is beyond the sensor's range").arg(g.sensorDistance), segId);
-                } else {
-                    stats.gsd = g.gsd;
-                    stats.area = polygonArea(pts);
-                    if (g.hasSensor) stats.swath = g.sensor.swath;
-                    const double angle = n(sp, "angle");
-                    Pattern lanes = lawnmower(pts, angle, g.sideDistance, n(sp, "overshoot"), lastNav);
-                    stats.lanes = lanes.count;
-                    if (truthy(sp.value(QStringLiteral("doubleGrid")))) {
-                        const std::optional<LL> from = lanes.points.isEmpty() ? std::optional<LL>(lastNav)
-                                                                              : std::optional<LL>(LL{lanes.points.last().lat, lanes.points.last().lng});
-                        Pattern cross = lawnmower(pts, angle + 90, g.sideDistance, n(sp, "overshoot"), from);
-                        for (LanePoint &q : cross.points) q.lane = QStringLiteral("x") + q.lane;
-                        lanes.points.append(cross.points);
-                        stats.lanes += cross.count;
-                    }
-                    if (lanes.points.isEmpty()) {
-                        addIssue(QStringLiteral("error"), QStringLiteral("Area too small for the lane spacing — reduce side distance or overlap"), segId);
-                    } else {
-                        for (const LanePoint &q : lanes.points) { NavPt np{q.lat, q.lng, alt, 16}; np.lane = q.lane; navPts.append(np); }
-                        if (truthy(sp.value(QStringLiteral("trigger"))) && !g.hasSensor) navTrigger = g.triggerDistance;
-                    }
-                }
-            }
-        } else if (type == QLatin1String("corridor")) {
-            if (pts.size() < 2) {
-                addIssue(QStringLiteral("error"), QStringLiteral("Corridor needs at least 2 points"), segId);
-            } else {
-                const SurveyGeometry g = surveyGeometry(seg, alt, P.value(QStringLiteral("camera")).toObject());
-                if (g.hasSensor && !g.sensor.swath) {
-                    addIssue(QStringLiteral("error"), QStringLiteral("The surface (%1 m) is beyond the sensor's range").arg(g.sensorDistance), segId);
-                } else {
-                    stats.gsd = g.gsd;
-                    const double w = n(sp, "width");
-                    const Pattern passes = corridorPasses(pts, std::max(1.0, w ? w : 60), g.sideDistance, lastNav);
-                    stats.lanes = passes.count;
-                    for (const LanePoint &q : passes.points) { NavPt np{q.lat, q.lng, alt, 16}; np.lane = q.lane; navPts.append(np); }
-                    if (truthy(sp.value(QStringLiteral("trigger"))) && !g.hasSensor) navTrigger = g.triggerDistance;
-                }
-            }
-        } else if (type == QLatin1String("landing")) {
-            if (!pts.isEmpty()) {
-                NavPt np{pts[0].lat, pts[0].lng, 0, truthy(sp.value(QStringLiteral("vtol"))) ? 85 : 21, n(sp, "abortAlt")};
-                np.landing = true;
-                navPts.append(np);
-            }
-        }
-        if (navPts.isEmpty()) continue;
-
-        setSpeed(speed, segId);
-
-        const QJsonArray actions = seg.value(QStringLiteral("actions")).toArray();
-        auto actionsAt = [&](int idx) {
-            if (idx > 0 && str(P, "actionExec") != QLatin1String("every")) return;
-            for (const QJsonValue &av : actions) {
-                const QJsonObject a = av.toObject();
-                const QString at = str(a, "type");
-                if (at == QLatin1String("trigger_dist")) doItem(206, n(a, "distance"), 0, 1, 0, segId);
-                else if (at == QLatin1String("shot")) doItem(203, 0, 0, 0, 0, segId);
-                else if (at == QLatin1String("gimbal")) doItem(205, n(a, "pitch"), 0, n(a, "yaw"), 0, segId, 2);   // z = MAV_MOUNT_MODE_MAVLINK_TARGETING
-                else if (at == QLatin1String("yaw")) doItem(115, n(a, "heading"), 0, 1, 0, segId);
-                else if (at == QLatin1String("wait")) doItem(93, n(a, "seconds"), -1, -1, 0, segId);
-                else if (at == QLatin1String("speed")) doItem(178, 1, n(a, "speed"), -1, 0, segId);
-                else if (at == QLatin1String("servo")) doItem(183, n(a, "channel"), n(a, "pwm"), 0, 0, segId);
-                else if (at == QLatin1String("relay")) doItem(181, n(a, "relay"), n(a, "state") != 0 ? 1 : 0, 0, 0, segId);
-                else if (at == QLatin1String("raw")) doItem(int(n(a, "command")), n(a, "param1"), n(a, "param2"), n(a, "param3"), n(a, "param4"), segId);
-                // A DO_ command runs once the previous waypoint is reached: that is where the camera is
-                if (at == QLatin1String("gimbal")) { gimbalPitch = n(a, "pitch"); gimbalYaw = n(a, "yaw"); }
-                if (at == QLatin1String("shot") && lastNavItem >= 0) {
-                    const CompiledItem &nav = out[lastNavItem];
-                    pendingShots.append({nav.segId, nav.segIdx, nav.lat, nav.lng, segId, gimbalPitch, gimbalYaw});
-                }
-            }
-        };
-        // Actions come AFTER the point they belong to: ArduPilot runs a DO_ command once
-        // the preceding NAV item is reached, which is what "at the segment start" means.
-        for (qsizetype i = 0; i < navPts.size(); ++i) {
-            const NavPt &np = navPts[i];
-            CompiledItem it;
-            it.command = np.command;
-            it.lat = np.lat; it.lng = np.lng; it.alt = np.alt;
-            it.loc = true;
-            it.segId = segId;
-            it.segType = type;
-            it.param1 = np.p1; it.param2 = np.p2; it.param3 = np.p3;
-            it.loiter = np.loiter;
-            it.landing = np.landing;
-            it.segIdx = int(i);
-            it.lane = np.lane;
-            it.gimbalPitch = gimbalPitch;
-            it.gimbalYaw = gimbalYaw;
-            if (roiActive) it.roiTarget = roiTarget;
-            it.trigger = navTrigger;
-            const int idx = push(it);
-            stats.waypoints++;
-            stats.lengthM += haversine(lastNav, {np.lat, np.lng});
-            if (np.loiter) stats.lengthM += 2 * M_PI * np.loiter->r * np.loiter->turns;
-            lastNav = {np.lat, np.lng};
-            lastNavItem = idx;
-            if (i == 0 && navTrigger > 0) doItem(206, navTrigger, 0, 1, 0, segId);
-            actionsAt(int(i));
-        }
-        if (navTrigger > 0) doItem(206, 0, 0, 0, 0, segId);
-        if (speed > 0) stats.durationS = stats.lengthM / speed;
-        for (const QJsonValue &av : actions)
-            if (str(av.toObject(), "type") == QLatin1String("wait")) stats.durationS += n(av.toObject(), "seconds");
+        return R;
     }
+    home = lastNav = *start;
+    const auto homeTerrain = terrain(home.lat, home.lng);
+    homeElev = homeTerrain ? *homeTerrain : ctx.homeAlt;
+    if (!homeTerrain) issue(u"warn"_s, u"No elevation data at the take-off point — vehicle home altitude assumed"_s);
 
-    // ── End of route ──
-    const bool endsWithLanding = !segments.isEmpty() && str(segments.last().toObject(), "type") == QLatin1String("landing");
-    if (roiActive) doItem(197, 0, 0, 0, 0, {});
-    const QString endAction = str(P, "endAction");
-    const bool lastNavIsHome = std::abs(lastNav.lat - home->lat) < 1e-12 && std::abs(lastNav.lng - home->lng) < 1e-12 && lastNavItem < 0;
-    if (!endsWithLanding && endAction == QLatin1String("rtl")) {
-        const int i = doItem(20, 0, 0, 0, 0, {});
-        out[i].kind = QStringLiteral("rtl");
-    } else if (!endsWithLanding && endAction == QLatin1String("land") && !lastNavIsHome) {
-        CompiledItem l;
-        l.command = 21;
-        l.lat = lastNav.lat; l.lng = lastNav.lng;
-        l.loc = true;
-        l.landing = true;
-        push(l);
-    }
+    begin();
+    for (const QJsonValue &sv : segments) addSegment(sv.toObject());
+    finish();
+    if (ctx.vehicleType == 11) boatFirstSpeed();
 
-    // ── A boat's first speed ──
-    // ArduRover starts AUTO on a boat in loiter: a DO_CHANGE_SPEED before the first
-    // waypoint goes to the loiter. After the first navigation item it runs as that leg starts.
-    if (ctx.vehicleType == 11) {
-        auto isNav = [](const CompiledItem &it) { return it.loc && !it.isHome && !it.roi; };
-        qsizetype first = -1;
-        for (qsizetype i = 0; i < out.size(); ++i) if (isNav(out[i])) { first = i; break; }
-        QList<CompiledItem> early;
-        if (first > 0) {
-            QList<CompiledItem> kept;
-            for (qsizetype i = 0; i < out.size(); ++i) {
-                if (i < first && out[i].command == 178) { CompiledItem e = out[i]; e.firstLeg = true; early.append(e); }
-                else kept.append(out[i]);
-            }
-            out = kept;
-        }
-        if (!early.isEmpty()) {
-            qsizetype f2 = 0;
-            for (qsizetype i = 0; i < out.size(); ++i) if (isNav(out[i])) { f2 = i; break; }
-            for (qsizetype k = 0; k < early.size(); ++k) out.insert(f2 + 1 + k, early[k]);
-        }
-    }
-
-    // ── Terrain-following waypoints (AGL mode, opt-in) ──
+    // Terrain-following waypoints (AGL mode, opt-in)
     QList<CompiledItem> items = out;
-    const QString altMode = str(P, "altMode");
-    if (altMode == QLatin1String("agl") && truthy(P.value(QStringLiteral("terrainWaypoints")))) {
-        const double tol = n(P, "aglTolerance");
-        items = subdivideForTerrain(out, tol ? tol : 10, terrain);
-    }
-
-    // ── Resolve altitudes ──
-    int missingTerrain = 0;
-    for (CompiledItem &it : items) {
-        if (!it.loc) continue;
-        const auto t = terrain(it.lat, it.lng);
-        it.terrain = t;
-        if (it.isHome) { it.altMsl = homeElev; it.altRel = 0; it.alt = 0; continue; }
-        if (it.roi) { it.altMsl = homeElev + it.alt; it.altRel = it.alt; continue; }
-        if (it.landing) { it.altMsl = t ? *t : homeElev; it.altRel = it.altMsl - homeElev; it.alt = 0; continue; }
-        if (it.kind == QLatin1String("takeoff")) { it.altMsl = homeElev + it.alt; it.altRel = it.alt; continue; }
-        if (!t && !it.derived) ++missingTerrain;
-        const double a = it.alt;
-        if (altMode == QLatin1String("amsl")) {
-            it.altMsl = a;
-            it.altRel = a - homeElev;
-            it.alt = t ? a - *t : a - homeElev;
-        } else if (altMode == QLatin1String("rel")) {
-            it.altMsl = homeElev + a;
-            it.altRel = a;
-            it.alt = t ? it.altMsl - *t : a;
-        } else {
-            it.altMsl = (t ? *t : homeElev) + a;
-            it.altRel = it.altMsl - homeElev;
-            it.alt = a;
-        }
-    }
-    if (missingTerrain)
-        addIssue(QStringLiteral("warn"), QStringLiteral("No elevation data under %1 point%2 — take-off elevation assumed")
-                                             .arg(missingTerrain).arg(missingTerrain > 1 ? QStringLiteral("s") : QString()));
-
+    if (str(P, "altMode") == "agl"_L1 && truthy(P.value(u"terrainWaypoints"_s)))
+        items = subdivideForTerrain(out, nonZero(n(P, "aglTolerance"), 10), terrain);
+    resolveAltitudes(items);
     // Sequence numbers now: the pointers below must not see the list change again
     for (qsizetype i = 0; i < items.size(); ++i) { items[i].seq = int(i); items[i].frame = items[i].loc ? 0 : 3; }
 
-    // ── Validation ──
     QList<const CompiledItem *> navLocated;
     for (const CompiledItem &it : items) if (it.loc && !it.roi) navLocated.append(&it);
-    QList<const CompiledItem *> flying;
-    for (const CompiledItem *it : navLocated) if (!it->isHome && !it->landing) flying.append(it);
-    const double minClear = n(P, "minClearance");
-    const double maxAgl = n(P, "maxAgl");
-    QList<QString> below, low, high;   // ordered sets, as the JS Sets
-    auto addOnce = [](QList<QString> &l, const QString &id) { if (!l.contains(id)) l.append(id); };
-    if (!onSurface) {
-        for (const CompiledItem *it : flying) {
-            if (!it->terrain) continue;
-            const double agl = it->altMsl - *it->terrain;
-            if (agl <= 0) addOnce(below, it->segId);
-            else if (agl < minClear) addOnce(low, it->segId);
-            if (maxAgl > 0 && agl > maxAgl) addOnce(high, it->segId);
-        }
-    }
-    // Legs: the straight line between two safe waypoints may clip a ridge
-    std::optional<double> legMinAgl;
-    for (qsizetype i = 1; i < (onSurface ? 0 : navLocated.size()); ++i) {
-        const CompiledItem &a = *navLocated[i - 1], &b = *navLocated[i];
-        if (a.landing || b.landing || b.isHome || a.isHome) continue;
-        const auto hit = legClearance(a, b, terrain);
-        if (!hit) continue;
-        if (!legMinAgl || *hit < *legMinAgl) legMinAgl = hit;
-        if (*hit <= 0) addOnce(below, b.segId);
-        else if (*hit < minClear) addOnce(low, b.segId);
-    }
-    for (const QString &id : below) addIssue(QStringLiteral("error"), QStringLiteral("Path goes below the terrain"), id);
-    for (const QString &id : low) if (!below.contains(id)) addIssue(QStringLiteral("warn"), QStringLiteral("Clearance under %1 m").arg(minClear), id);
-    for (const QString &id : high) addIssue(QStringLiteral("warn"), QStringLiteral("Above the %1 m AGL ceiling").arg(maxAgl), id);
+    const std::optional<double> legMinAgl = validate(navLocated, items.size());
 
-    if (!isInav && itemLimit > 0 && items.size() > itemLimit)
-        addIssue(QStringLiteral("error"), QStringLiteral("%1 items — %2 stores at most %3").arg(items.size()).arg(plat.label).arg(itemLimit));
-    if (!takeoff && !isPlane && !isInav && !onSurface && !segments.isEmpty())
-        addIssue(QStringLiteral("warn"), QStringLiteral("No automatic take-off — the vehicle must already be airborne when AUTO starts"));
-    if (!segments.isEmpty() && !flying.isEmpty()) {
-        const double far = haversine(*home, flying[0]->ll());
-        if (far > 5000) addIssue(QStringLiteral("warn"), QStringLiteral("First waypoint is %1 km from the take-off point").arg(far / 1000, 0, 'f', 1));
-    }
-    for (const QJsonValue &sv : segments) {
-        const QJsonObject seg = sv.toObject();
-        double spd = n(seg.value(QStringLiteral("params")).toObject(), "speed");
-        if (!spd) spd = n(P, "defaultSpeed");
-        if (spd > 40) addIssue(QStringLiteral("warn"), QStringLiteral("%1 m/s is fast for a multirotor").arg(spd), str(seg, "id"));
-    }
-
-    // ── Camera preview ──
-    QList<Shot> shots;
-    for (const PendingShot &ps : pendingShots) {
-        const CompiledItem *target = nullptr;
-        for (const CompiledItem *it : navLocated)
-            if (!it->derived && it->segId == ps.navSegId && it->segIdx == ps.navSegIdx && it->lat == ps.lat && it->lng == ps.lng) { target = it; break; }
-        if (target) shots.append({int(navLocated.indexOf(target)), ps.segId, ps.pitch, ps.yaw});
-    }
     QHash<QString, int> photosBySeg;
-    R.camera = buildCameraPreview(route, navLocated, shots, photosBySeg);
+    R.camera = buildCameraPreview(route, navLocated, shotsAt(navLocated), photosBySeg);
     for (auto it = photosBySeg.begin(); it != photosBySeg.end(); ++it)
         if (R.segStats.contains(it.key())) R.segStats[it.key()].photos = it.value();
 
-    // ── Profile path, stats ──
+    // Profile path, stats
     double dist = 0;
     const CompiledItem *prev = nullptr;
     for (const CompiledItem *it : navLocated) {
@@ -839,18 +550,356 @@ CompiledRoute compileRoute(const QJsonObject &route, const CompileContext &ctx)
         R.navPath.append(p);
         prev = it;
     }
-    R.stats = buildStats(P, items, navLocated, R.segStats, homeElev, *home);
+    R.stats = buildStats(P, items, navLocated, R.segStats, homeElev, home);
     // The lowest point of the flight can be in the middle of a straight leg
     if (legMinAgl && (!R.stats.minAgl || *legMinAgl < *R.stats.minAgl)) R.stats.minAgl = legMinAgl;
 
-    // ── INAV encoding ──
     if (isInav) {
-        R.inav = toInavMission(items, truthy(P.value(QStringLiteral("inavAltAmsl"))), itemLimit);
+        R.inav = toInavMission(items, truthy(P.value(u"inavAltAmsl"_s)), itemLimit);
         R.issues.append(R.inav->issues);
     }
     R.items = items;
-    R.home = Home{home->lat, home->lng, homeElev};
+    R.home = Home{home.lat, home.lng, homeElev};
     return R;
+}
+
+std::optional<LL> Compilation::takeoffPoint() const
+{
+    const QJsonObject ph = P.value(u"home"_s).toObject();
+    if (!ph.isEmpty()) return LL{n(ph, "lat"), n(ph, "lng")};
+    if (ctx.home) return ctx.home;
+    for (const QJsonValue &v : segments)
+        if (const QList<LL> pts = pointsOf(v.toObject()); !pts.isEmpty()) return pts.first();
+    return std::nullopt;
+}
+
+void Compilation::begin()
+{
+    CompiledItem h = located(16, home, 0);
+    h.isHome = true;
+    push(h);
+    // INAV has no take-off waypoint at all; the operator is told so
+    takeoff = truthy(P.value(u"takeoff"_s));
+    if (takeoff && isInav) issue(u"warn"_s, u"INAV has no take-off waypoint — arm and take off in a flight mode, then switch to WP"_s);
+    if (takeoff && !isInav && !onSurface) {
+        CompiledItem t = located(22, home, nonZero(n(P, "takeoffAlt"), 30));
+        t.param1 = isPlane ? 15 : 0;
+        t.kind = u"takeoff"_s;
+        push(t);
+    }
+    setSpeed(n(P, "defaultSpeed"), {});
+}
+
+void Compilation::addSegment(const QJsonObject &seg)
+{
+    const QString type = str(seg, "type");
+    if (!segmentTypes().contains(type)) return;
+    const QString segId = str(seg, "id");
+    const QJsonObject sp = seg.value(u"params"_s).toObject();
+    SegStats &stats = R.segStats[segId];
+    stats = SegStats{};
+    if (type == "poi"_L1) return addPoi(sp, pointsOf(seg), segId);
+
+    double trigger = 0;
+    const QList<NavPt> navPts = navPoints(seg, type, stats, trigger);
+    if (navPts.isEmpty()) return;
+    const double speed = n(sp, "speed") > 0 ? n(sp, "speed") : n(P, "defaultSpeed");
+    setSpeed(speed, segId);
+    // Actions come AFTER the point they belong to: ArduPilot runs a DO_ command once
+    // the preceding NAV item is reached, which is what "at the segment start" means.
+    const QJsonArray actions = seg.value(u"actions"_s).toArray();
+    for (qsizetype i = 0; i < navPts.size(); ++i) {
+        addNavItem(navPts[i], type, segId, int(i), trigger, stats);
+        if (i == 0 && trigger > 0) doItem(206, trigger, 0, 1, 0, segId);
+        if (i == 0 || str(P, "actionExec") == "every"_L1) addActions(actions, segId);
+    }
+    if (trigger > 0) doItem(206, 0, 0, 0, 0, segId);
+    if (speed > 0) stats.durationS = stats.lengthM / speed;
+    for (const QJsonValue &av : actions)
+        if (str(av.toObject(), "type") == "wait"_L1) stats.durationS += n(av.toObject(), "seconds");
+}
+
+void Compilation::addPoi(const QJsonObject &sp, const QList<LL> &pts, const QString &segId)
+{
+    if (str(sp, "mode") == "clear"_L1) {
+        doItem(197, 0, 0, 0, 0, segId);
+        roiActive = false;
+        roiTarget.reset();
+        return;
+    }
+    if (pts.isEmpty()) return;
+    CompiledItem it = located(201, pts[0], n(sp, "alt"));
+    it.roi = true;
+    it.segId = segId;
+    push(it);
+    roiActive = true;
+    roiTarget = RoiTarget{pts[0].lat, pts[0].lng, n(sp, "alt"), segId};
+}
+
+QList<NavPt> Compilation::navPoints(const QJsonObject &seg, const QString &type, SegStats &stats, double &trigger)
+{
+    const QString segId = str(seg, "id");
+    const QJsonObject sp = seg.value(u"params"_s).toObject();
+    const QList<LL> pts = pointsOf(seg);
+    const double alt = segmentAlt(seg, P);
+    const QString turn = str(sp, "turn");
+    const int cmdWp = ((turn == "route"_L1 || turn.isEmpty() ? str(P, "turnType") : turn) == "spline"_L1) ? 82 : 16;
+    QList<NavPt> navPts;
+    if (type == "waypoint"_L1) {
+        if (!pts.isEmpty()) navPts.append({pts[0].lat, pts[0].lng, alt, cmdWp, n(sp, "delay"), n(sp, "acceptRadius")});
+    } else if (type == "circle"_L1) {
+        if (!pts.isEmpty()) {
+            const double r = std::max(5.0, nonZero(n(sp, "radius"), 50));
+            const int turns = std::max(1, int(std::lround(nonZero(n(sp, "turns"), 1))));
+            NavPt np{pts[0].lat, pts[0].lng, alt, 18, double(turns), 0, str(sp, "direction") == "ccw"_L1 ? -r : r};
+            np.loiter = Loiter{r, turns};
+            navPts.append(np);
+        }
+    } else if (type == "perimeter"_L1) {
+        if (pts.size() < 3) {
+            issue(u"error"_s, u"Perimeter needs at least 3 vertices"_s, segId);
+        } else {
+            QList<LL> ring = pts;
+            if (str(sp, "direction") == "ccw"_L1) std::reverse(ring.begin() + 1, ring.end());   // same start, walked the other way
+            if (truthy(sp.value(u"closed"_s))) ring.append(ring[0]);
+            for (const LL &p : ring) navPts.append({p.lat, p.lng, alt, cmdWp});
+        }
+    } else if (type == "area"_L1 || type == "corridor"_L1) {
+        for (const LanePoint &q : survey(seg, type == "area"_L1, alt, stats, trigger).points) {
+            NavPt np{q.lat, q.lng, alt, 16};
+            np.lane = q.lane;
+            navPts.append(np);
+        }
+    } else if (type == "landing"_L1) {
+        if (!pts.isEmpty()) {
+            NavPt np{pts[0].lat, pts[0].lng, 0, truthy(sp.value(u"vtol"_s)) ? 85 : 21, n(sp, "abortAlt")};
+            np.landing = true;
+            navPts.append(np);
+        }
+    }
+    return navPts;
+}
+
+Pattern Compilation::survey(const QJsonObject &seg, bool area, double alt, SegStats &stats, double &trigger)
+{
+    // The lanes of an area scan or the passes of a corridor; none, with the error raised, when they cannot be laid out
+    const QString segId = str(seg, "id");
+    const QJsonObject sp = seg.value(u"params"_s).toObject();
+    const QList<LL> pts = pointsOf(seg);
+    if (pts.size() < (area ? 3 : 2)) {
+        issue(u"error"_s, area ? u"Area scan needs at least 3 vertices"_s : u"Corridor needs at least 2 points"_s, segId);
+        return {};
+    }
+    const SurveyGeometry g = surveyGeometry(seg, alt, P.value(u"camera"_s).toObject());
+    if (g.hasSensor && !g.sensor.swath) {
+        issue(u"error"_s, u"The surface (%1 m) is beyond the sensor's range"_s.arg(g.sensorDistance), segId);
+        return {};
+    }
+    stats.gsd = g.gsd;
+    Pattern pat;
+    if (area) {
+        stats.area = polygonArea(pts);
+        if (g.hasSensor) stats.swath = g.sensor.swath;
+        const double angle = n(sp, "angle");
+        pat = lawnmower(pts, angle, g.sideDistance, n(sp, "overshoot"), lastNav);
+        stats.lanes = pat.count;
+        if (truthy(sp.value(u"doubleGrid"_s))) {
+            const LL from = pat.points.isEmpty() ? lastNav : LL{pat.points.last().lat, pat.points.last().lng};
+            Pattern cross = lawnmower(pts, angle + 90, g.sideDistance, n(sp, "overshoot"), from);
+            for (LanePoint &q : cross.points) q.lane = u"x"_s + q.lane;
+            pat.points.append(cross.points);
+            stats.lanes += cross.count;
+        }
+        if (pat.points.isEmpty()) {
+            issue(u"error"_s, u"Area too small for the lane spacing — reduce side distance or overlap"_s, segId);
+            return {};
+        }
+    } else {
+        pat = corridorPasses(pts, std::max(1.0, nonZero(n(sp, "width"), 60)), g.sideDistance, lastNav);
+        stats.lanes = pat.count;
+    }
+    if (truthy(sp.value(u"trigger"_s)) && !g.hasSensor) trigger = g.triggerDistance;
+    return pat;
+}
+
+void Compilation::addNavItem(const NavPt &np, const QString &type, const QString &segId, int idx, double trigger, SegStats &stats)
+{
+    CompiledItem it = located(np.command, {np.lat, np.lng}, np.alt);
+    it.segId = segId;
+    it.segType = type;
+    it.param1 = np.p1; it.param2 = np.p2; it.param3 = np.p3;
+    it.loiter = np.loiter;
+    it.landing = np.landing;
+    it.segIdx = idx;
+    it.lane = np.lane;
+    it.gimbalPitch = gimbalPitch;
+    it.gimbalYaw = gimbalYaw;
+    if (roiActive) it.roiTarget = roiTarget;
+    it.trigger = trigger;
+    lastNavItem = push(it);
+    stats.waypoints++;
+    stats.lengthM += haversine(lastNav, {np.lat, np.lng});
+    if (np.loiter) stats.lengthM += 2 * M_PI * np.loiter->r * np.loiter->turns;
+    lastNav = {np.lat, np.lng};
+}
+
+void Compilation::addActions(const QJsonArray &actions, const QString &segId)
+{
+    for (const QJsonValue &av : actions) {
+        const QJsonObject a = av.toObject();
+        const QString at = str(a, "type");
+        if (at == "trigger_dist"_L1) doItem(206, n(a, "distance"), 0, 1, 0, segId);
+        else if (at == "shot"_L1) doItem(203, 0, 0, 0, 0, segId);
+        else if (at == "gimbal"_L1) doItem(205, n(a, "pitch"), 0, n(a, "yaw"), 0, segId, 2);   // z = MAV_MOUNT_MODE_MAVLINK_TARGETING
+        else if (at == "yaw"_L1) doItem(115, n(a, "heading"), 0, 1, 0, segId);
+        else if (at == "wait"_L1) doItem(93, n(a, "seconds"), -1, -1, 0, segId);
+        else if (at == "speed"_L1) doItem(178, 1, n(a, "speed"), -1, 0, segId);
+        else if (at == "servo"_L1) doItem(183, n(a, "channel"), n(a, "pwm"), 0, 0, segId);
+        else if (at == "relay"_L1) doItem(181, n(a, "relay"), n(a, "state") != 0 ? 1 : 0, 0, 0, segId);
+        else if (at == "raw"_L1) doItem(int(n(a, "command")), n(a, "param1"), n(a, "param2"), n(a, "param3"), n(a, "param4"), segId);
+        // A DO_ command runs once the previous waypoint is reached: that is where the camera is
+        if (at == "gimbal"_L1) { gimbalPitch = n(a, "pitch"); gimbalYaw = n(a, "yaw"); }
+        if (at == "shot"_L1 && lastNavItem >= 0) {
+            const CompiledItem &nav = out[lastNavItem];
+            pendingShots.append({nav.segId, nav.segIdx, nav.lat, nav.lng, segId, gimbalPitch, gimbalYaw});
+        }
+    }
+}
+
+void Compilation::finish()
+{
+    if (roiActive) doItem(197, 0, 0, 0, 0, {});
+    if (str(segments.last().toObject(), "type") == "landing"_L1) return;
+    const QString endAction = str(P, "endAction");
+    if (endAction == "rtl"_L1) {
+        out[doItem(20, 0, 0, 0, 0, {})].kind = u"rtl"_s;
+    } else if (endAction == "land"_L1 && lastNavItem >= 0) {
+        CompiledItem l = located(21, lastNav, 0);
+        l.landing = true;
+        push(l);
+    }
+}
+
+void Compilation::boatFirstSpeed()
+{
+    // ArduRover starts AUTO on a boat in loiter: a DO_CHANGE_SPEED before the first
+    // waypoint goes to the loiter. After the first navigation item it runs as that leg starts.
+    auto isNav = [](const CompiledItem &it) { return it.loc && !it.isHome && !it.roi; };
+    const qsizetype first = std::find_if(out.cbegin(), out.cend(), isNav) - out.cbegin();
+    QList<CompiledItem> early, kept;
+    for (qsizetype i = 0; i < out.size(); ++i) {
+        if (i < first && out[i].command == 178) {
+            early.append(out[i]);
+            early.last().firstLeg = true;
+        } else {
+            kept.append(out[i]);
+        }
+    }
+    if (early.isEmpty()) return;
+    const qsizetype after = first - early.size() + 1;   // right after the first navigation item
+    for (qsizetype k = 0; k < early.size(); ++k) kept.insert(after + k, early[k]);
+    out = kept;
+}
+
+void Compilation::resolveAltitudes(QList<CompiledItem> &items)
+{
+    const QString altMode = str(P, "altMode");
+    int missingTerrain = 0;
+    for (CompiledItem &it : items) {
+        if (!it.loc) continue;
+        const auto t = terrain(it.lat, it.lng);
+        it.terrain = t;
+        if (it.isHome) { it.altMsl = homeElev; it.altRel = 0; it.alt = 0; continue; }
+        if (it.roi || it.kind == "takeoff"_L1) { it.altMsl = homeElev + it.alt; it.altRel = it.alt; continue; }
+        if (it.landing) { it.altMsl = t ? *t : homeElev; it.altRel = it.altMsl - homeElev; it.alt = 0; continue; }
+        if (!t && !it.derived) ++missingTerrain;
+        const double a = it.alt;
+        if (altMode == "amsl"_L1) {
+            it.altMsl = a;
+            it.altRel = a - homeElev;
+            it.alt = t ? a - *t : a - homeElev;
+        } else if (altMode == "rel"_L1) {
+            it.altMsl = homeElev + a;
+            it.altRel = a;
+            it.alt = t ? it.altMsl - *t : a;
+        } else {
+            it.altMsl = (t ? *t : homeElev) + a;
+            it.altRel = it.altMsl - homeElev;
+            it.alt = a;
+        }
+    }
+    if (missingTerrain)
+        issue(u"warn"_s, u"No elevation data under %1 point%2 — take-off elevation assumed"_s.arg(missingTerrain).arg(missingTerrain > 1 ? u"s"_s : QString()));
+}
+
+std::optional<double> Compilation::validate(const QList<const CompiledItem *> &navLocated, qsizetype itemCount)
+{
+    // Returns the lowest clearance along the legs, which can sit between two waypoints
+    QList<const CompiledItem *> flying;
+    for (const CompiledItem *it : navLocated) if (!it->isHome && !it->landing) flying.append(it);
+    const double minClear = n(P, "minClearance");
+    const double maxAgl = n(P, "maxAgl");
+    QList<QString> below, low, high;   // ordered sets, as the JS Sets
+    auto addOnce = [](QList<QString> &l, const QString &id) { if (!l.contains(id)) l.append(id); };
+    std::optional<double> legMinAgl;
+    if (!onSurface) {
+        for (const CompiledItem *it : flying) {
+            if (!it->terrain) continue;
+            const double agl = it->altMsl - *it->terrain;
+            if (agl <= 0) addOnce(below, it->segId);
+            else if (agl < minClear) addOnce(low, it->segId);
+            if (maxAgl > 0 && agl > maxAgl) addOnce(high, it->segId);
+        }
+        // Legs: the straight line between two safe waypoints may clip a ridge
+        for (qsizetype i = 1; i < navLocated.size(); ++i) {
+            const CompiledItem &a = *navLocated[i - 1], &b = *navLocated[i];
+            if (a.landing || b.landing || b.isHome || a.isHome) continue;
+            const auto hit = legClearance(a, b, terrain);
+            if (!hit) continue;
+            if (!legMinAgl || *hit < *legMinAgl) legMinAgl = hit;
+            if (*hit <= 0) addOnce(below, b.segId);
+            else if (*hit < minClear) addOnce(low, b.segId);
+        }
+    }
+    for (const QString &id : below) issue(u"error"_s, u"Path goes below the terrain"_s, id);
+    for (const QString &id : low) if (!below.contains(id)) issue(u"warn"_s, u"Clearance under %1 m"_s.arg(minClear), id);
+    for (const QString &id : high) issue(u"warn"_s, u"Above the %1 m AGL ceiling"_s.arg(maxAgl), id);
+
+    if (!isInav && itemLimit > 0 && itemCount > itemLimit)
+        issue(u"error"_s, u"%1 items — %2 stores at most %3"_s.arg(itemCount).arg(plat.label).arg(itemLimit));
+    if (!takeoff && !isPlane && !isInav && !onSurface)
+        issue(u"warn"_s, u"No automatic take-off — the vehicle must already be airborne when AUTO starts"_s);
+    if (!flying.isEmpty()) {
+        const double far = haversine(home, flying[0]->ll());
+        if (far > 5000) issue(u"warn"_s, u"First waypoint is %1 km from the take-off point"_s.arg(far / 1000, 0, 'f', 1));
+    }
+    for (const QJsonValue &sv : segments) {
+        const QJsonObject seg = sv.toObject();
+        const double spd = nonZero(n(seg.value(u"params"_s).toObject(), "speed"), n(P, "defaultSpeed"));
+        if (spd > 40) issue(u"warn"_s, u"%1 m/s is fast for a multirotor"_s.arg(spd), str(seg, "id"));
+    }
+    return legMinAgl;
+}
+
+QList<Shot> Compilation::shotsAt(const QList<const CompiledItem *> &navLocated) const
+{
+    QList<Shot> shots;
+    for (const PendingShot &ps : pendingShots) {
+        for (qsizetype i = 0; i < navLocated.size(); ++i) {
+            const CompiledItem *it = navLocated[i];
+            if (it->derived || it->segId != ps.navSegId || it->segIdx != ps.navSegIdx || it->lat != ps.lat || it->lng != ps.lng) continue;
+            shots.append({int(i), ps.segId, ps.pitch, ps.yaw});
+            break;
+        }
+    }
+    return shots;
+}
+
+} // namespace
+
+CompiledRoute compileRoute(const QJsonObject &route, const CompileContext &ctx)
+{
+    return Compilation(route, ctx).run();
 }
 
 // ── INAV ─────────────────────────────────────────────────────────────────────
@@ -923,20 +972,20 @@ InavMission toInavMission(const QList<CompiledItem> &items, bool amsl, int limit
     for (qsizetype i = 0; i < m.wps.size(); ++i) { m.wps[i].index = int(i) + 1; m.wps[i].flag = 0; }
     if (!m.wps.isEmpty()) m.wps.last().flag = 0xA5;
 
-    if (takeoffSeen) add(QStringLiteral("warn"), QStringLiteral("INAV has no take-off waypoint — automatic take-off is not uploaded"));
-    if (splineSeen) add(QStringLiteral("warn"), QStringLiteral("INAV flies straight legs — spline waypoints upload as ordinary waypoints"));
-    for (const QString &segId : loiterSegs) add(QStringLiteral("warn"), QStringLiteral("A circle cannot be uploaded to INAV — the segment is skipped"), segId);
-    for (const auto &[cmd, cnt] : dropped) add(QStringLiteral("warn"), QStringLiteral("%1 × command %2 has no INAV equivalent — not uploaded").arg(cnt).arg(cmd));
+    if (takeoffSeen) add(u"warn"_s, u"INAV has no take-off waypoint — automatic take-off is not uploaded"_s);
+    if (splineSeen) add(u"warn"_s, u"INAV flies straight legs — spline waypoints upload as ordinary waypoints"_s);
+    for (const QString &segId : loiterSegs) add(u"warn"_s, u"A circle cannot be uploaded to INAV — the segment is skipped"_s, segId);
+    for (const auto &[cmd, cnt] : dropped) add(u"warn"_s, u"%1 × command %2 has no INAV equivalent — not uploaded"_s.arg(cnt).arg(cmd));
     if (m.wps.isEmpty()) {
-        add(QStringLiteral("error"), QStringLiteral("Nothing in this route can be uploaded to INAV"));
+        add(u"error"_s, u"Nothing in this route can be uploaded to INAV"_s);
     } else {
-        if (m.wps.size() > limit) add(QStringLiteral("error"), QStringLiteral("%1 waypoints — INAV stores at most %2").arg(m.wps.size()).arg(limit));
+        if (m.wps.size() > limit) add(u"error"_s, u"%1 waypoints — INAV stores at most %2"_s.arg(m.wps.size()).arg(limit));
         const int last = m.wps.last().action;
         if (last != WAYPOINT && last != HOLD_TIME && last != RTH && last != LAND) {
-            static const QHash<int, QString> names{{1, QStringLiteral("WAYPOINT")}, {3, QStringLiteral("HOLD")}, {4, QStringLiteral("RTH")},
-                                                   {5, QStringLiteral("POI")}, {6, QStringLiteral("JUMP")}, {7, QStringLiteral("HEADING")}, {8, QStringLiteral("LAND")}};
-            add(QStringLiteral("warn"), QStringLiteral("The mission ends on %1 — INAV expects a navigation waypoint last")
-                                            .arg(names.value(last, QStringLiteral("ACTION %1").arg(last))));
+            static const QHash<int, QString> names{{1, u"WAYPOINT"_s}, {3, u"HOLD"_s}, {4, u"RTH"_s},
+                                                   {5, u"POI"_s}, {6, u"JUMP"_s}, {7, u"HEADING"_s}, {8, u"LAND"_s}};
+            add(u"warn"_s, u"The mission ends on %1 — INAV expects a navigation waypoint last"_s
+                                            .arg(names.value(last, u"ACTION %1"_s.arg(last))));
         }
     }
     return m;

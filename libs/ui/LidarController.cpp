@@ -17,49 +17,51 @@
 #include <QRandomGenerator>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
-const QString kStorageKey = QStringLiteral("lidar-config");
+const QString kStorageKey = u"lidar-config"_s;
 
 // Every setting with its default (the values of the Electron page)
 const QVariantMap &defaults()
 {
-    static const QVariantMap d{{QStringLiteral("lidarIp"), QStringLiteral("192.168.1.12")},
-                               {QStringLiteral("hostIp"), QStringLiteral("auto")},
-                               {QStringLiteral("dataType"), 1},
-                               {QStringLiteral("mountRoll"), 0.0},
-                               {QStringLiteral("mountPitch"), 0.0},
-                               {QStringLiteral("mountYaw"), 0.0},
-                               {QStringLiteral("leverX"), 0.0},
-                               {QStringLiteral("leverY"), 0.0},
-                               {QStringLiteral("leverZ"), 0.0},
-                               {QStringLiteral("lagMs"), 0.0},
-                               {QStringLiteral("minRange"), 2.5},
-                               {QStringLiteral("maxRange"), 70.0},
-                               {QStringLiteral("voxel"), 0.25},
-                               {QStringLiteral("maxPoints"), 3000000.0},
-                               {QStringLiteral("dropNoise"), true},
-                               {QStringLiteral("minFix"), 3},
-                               {QStringLiteral("minSats"), 8.0},
-                               {QStringLiteral("maxHdop"), 2.0},
-                               {QStringLiteral("requireEkf"), true},
-                               {QStringLiteral("liveSeconds"), 3.0},
-                               {QStringLiteral("colorMode"), QStringLiteral("height")},
-                               {QStringLiteral("pointSize"), 2.0},
-                               {QStringLiteral("overTerrain"), true},
-                               {QStringLiteral("recordRaw"), false}};
+    static const QVariantMap d{{u"lidarIp"_s, u"192.168.1.12"_s},
+                               {u"hostIp"_s, u"auto"_s},
+                               {u"dataType"_s, 1},
+                               {u"mountRoll"_s, 0.0},
+                               {u"mountPitch"_s, 0.0},
+                               {u"mountYaw"_s, 0.0},
+                               {u"leverX"_s, 0.0},
+                               {u"leverY"_s, 0.0},
+                               {u"leverZ"_s, 0.0},
+                               {u"lagMs"_s, 0.0},
+                               {u"minRange"_s, 2.5},
+                               {u"maxRange"_s, 70.0},
+                               {u"voxel"_s, 0.25},
+                               {u"maxPoints"_s, 3000000.0},
+                               {u"dropNoise"_s, true},
+                               {u"minFix"_s, 3},
+                               {u"minSats"_s, 8.0},
+                               {u"maxHdop"_s, 2.0},
+                               {u"requireEkf"_s, true},
+                               {u"liveSeconds"_s, 3.0},
+                               {u"colorMode"_s, u"height"_s},
+                               {u"pointSize"_s, 2.0},
+                               {u"overTerrain"_s, true},
+                               {u"recordRaw"_s, false}};
     return d;
 }
 // Display-only keys stay here; the others go to the client
-const QSet<QString> kLocal{QStringLiteral("colorMode"), QStringLiteral("pointSize"), QStringLiteral("overTerrain")};
+const QSet<QString> kLocal{u"colorMode"_s, u"pointSize"_s, u"overTerrain"_s};
 
 QString fmt(qint64 n) { return QLocale(QLocale::English).toString(n); }
 QString esc(const QString &s) { return s.toHtmlEscaped(); }
 QString span(const QString &cls, const QString &text)
 {
-    const char *c = cls == QLatin1String("ok") ? "#44ff44" : cls == QLatin1String("warn") ? "#ffaa00" : "#ff4444";
-    return QStringLiteral("<font color=\"%1\">%2</font>").arg(QLatin1String(c), text);
+    const char *c = cls == "ok"_L1 ? "#44ff44" : cls == "warn"_L1 ? "#ffaa00" : "#ff4444";
+    return u"<font color=\"%1\">%2</font>"_s.arg(QLatin1String(c), text);
 }
 
 // Demo sensor: a Mid-360 band with its spin axis along the fuselage
@@ -98,16 +100,16 @@ LidarController::LidarController(MessageBus *bus, VehicleHub *hub, QObject *pare
     for (auto it = saved.constBegin(); it != saved.constEnd(); ++it)
         if (m_cfg.contains(it.key())) m_cfg.insert(it.key(), it.value().toVariant());
 
-    m_thread.setObjectName(QStringLiteral("lidar"));
+    m_thread.setObjectName(u"lidar"_s);
     m_core = new LidarCore;
     m_core->moveToThread(&m_thread);
     connect(&m_thread, &QThread::finished, m_core, &QObject::deleteLater);
     m_thread.start();
     connect(m_core, &LidarCore::originChanged, this, [](const QVariantMap &o) {
         if (o.isEmpty()) return;
-        PointCloudData::instance().setOrigin({o.value(QStringLiteral("lat")).toDouble(), o.value(QStringLiteral("lon")).toDouble(),
-                                              o.value(QStringLiteral("alt")).toDouble(), o.value(QStringLiteral("mPerLat")).toDouble(),
-                                              o.value(QStringLiteral("mPerLon")).toDouble(), o.value(QStringLiteral("epoch")).toInt()});
+        PointCloudData::instance().setOrigin({o.value(u"lat"_s).toDouble(), o.value(u"lon"_s).toDouble(),
+                                              o.value(u"alt"_s).toDouble(), o.value(u"mPerLat"_s).toDouble(),
+                                              o.value(u"mPerLon"_s).toDouble(), o.value(u"epoch"_s).toInt()});
     });
     connect(m_core, &LidarCore::points, this, [this](int epoch, const QVector<float> &enu, const QByteArray &intensity) {
         PointCloudData::instance().appendMapped(epoch, enu.constData(), reinterpret_cast<const std::uint8_t *>(intensity.constData()), int(enu.size() / 3));
@@ -134,7 +136,7 @@ LidarController::LidarController(MessageBus *bus, VehicleHub *hub, QObject *pare
             PointCloudData::instance().visible = false;
             setActive(false);
             emit enabledChanged();
-            emit hudMessage(QStringLiteral("LIDAR: demo scan stopped — link up, enable again for the sensor"), QStringLiteral("info"));
+            emit hudMessage(u"LIDAR: demo scan stopped — link up, enable again for the sensor"_s, u"info"_s);
         });
 
     m_rangeTimer.setInterval(250);
@@ -178,10 +180,10 @@ void LidarController::saveConfig() { Settings::instance().setJson(kStorageKey, Q
 void LidarController::applyDisplayConfig()
 {
     PointCloudData &d = PointCloudData::instance();
-    d.intensityColors = m_cfg.value(QStringLiteral("colorMode")).toString() == QLatin1String("intensity");
-    d.pointSize = std::max(1.0, m_cfg.value(QStringLiteral("pointSize")).toDouble());
-    d.maxPoints = int(std::clamp(m_cfg.value(QStringLiteral("maxPoints")).toDouble(), 1000.0, 50000000.0));   // as LidarCore::applyConfig
-    d.overTerrain = m_cfg.value(QStringLiteral("overTerrain")).toBool();
+    d.intensityColors = m_cfg.value(u"colorMode"_s).toString() == "intensity"_L1;
+    d.pointSize = std::max(1.0, m_cfg.value(u"pointSize"_s).toDouble());
+    d.maxPoints = int(std::clamp(m_cfg.value(u"maxPoints"_s).toDouble(), 1000.0, 50000000.0));   // as LidarCore::applyConfig
+    d.overTerrain = m_cfg.value(u"overTerrain"_s).toBool();
 }
 
 void LidarController::setField(const QString &key, const QVariant &value)
@@ -200,7 +202,7 @@ void LidarController::setField(const QString &key, const QVariant &value)
         const double n = value.toString().trimmed().toDouble(&ok);
         v = ok && std::isfinite(n) ? n : def.toDouble();
     } else {
-        v = key == QLatin1String("lidarIp") ? value.toString().trimmed() : value.toString();
+        v = key == "lidarIp"_L1 ? value.toString().trimmed() : value.toString();
     }
     m_cfg.insert(key, v);
     saveConfig();
@@ -217,11 +219,11 @@ void LidarController::setField(const QString &key, const QVariant &value)
 
 void LidarController::applyPreset(const QString &rpy)
 {
-    const QStringList p = rpy.split(QLatin1Char(','));
+    const QStringList p = rpy.split(','_L1);
     if (p.size() != 3) return;
-    m_cfg.insert(QStringLiteral("mountRoll"), p[0].toDouble());
-    m_cfg.insert(QStringLiteral("mountPitch"), p[1].toDouble());
-    m_cfg.insert(QStringLiteral("mountYaw"), p[2].toDouble());
+    m_cfg.insert(u"mountRoll"_s, p[0].toDouble());
+    m_cfg.insert(u"mountPitch"_s, p[1].toDouble());
+    m_cfg.insert(u"mountYaw"_s, p[2].toDouble());
     saveConfig();
     emit cfgChanged();
     const QVariantMap c = coreConfig();
@@ -234,11 +236,11 @@ void LidarController::applyPreset(const QString &rpy)
 void LidarController::refreshInterfaces()
 {
     // Host interface list: AUTO + every IPv4 on this machine
-    m_hostOptions = {QVariantMap{{QStringLiteral("value"), QStringLiteral("auto")}, {QStringLiteral("label"), QStringLiteral("AUTO (interface on the LiDAR subnet)")}}};
+    m_hostOptions = {QVariantMap{{u"value"_s, u"auto"_s}, {u"label"_s, u"AUTO (interface on the LiDAR subnet)"_s}}};
     for (const QVariant &v : LidarCore::listInterfaces()) {
         const QVariantMap ni = v.toMap();
-        m_hostOptions << QVariantMap{{QStringLiteral("value"), ni.value(QStringLiteral("address"))},
-                                     {QStringLiteral("label"), QStringLiteral("%1 (%2)").arg(ni.value(QStringLiteral("address")).toString(), ni.value(QStringLiteral("name")).toString())}};
+        m_hostOptions << QVariantMap{{u"value"_s, ni.value(u"address"_s)},
+                                     {u"label"_s, u"%1 (%2)"_s.arg(ni.value(u"address"_s).toString(), ni.value(u"name"_s).toString())}};
     }
     emit hostOptionsChanged();
 }
@@ -261,22 +263,22 @@ void LidarController::setEnabled(bool on)
         m_enabled = true;   // the checkbox stays on while the client starts
         emit enabledChanged();
         const QVariantMap c = coreConfig();
-        const QString ip = m_cfg.value(QStringLiteral("lidarIp")).toString();
+        const QString ip = m_cfg.value(u"lidarIp"_s).toString();
         call([c](LidarCore *core) { return core->connectLidar(c); },
              [this, ip](const QVariantMap &res) {
-                 if (!res.value(QStringLiteral("success")).toBool()) {
-                     const QString err = res.value(QStringLiteral("error")).toString();
+                 if (!res.value(u"success"_s).toBool()) {
+                     const QString err = res.value(u"error"_s).toString();
                      m_enabled = false;
                      emit enabledChanged();
-                     emit hudMessage(QStringLiteral("LIDAR: %1").arg(err.isEmpty() ? QStringLiteral("connection failed") : err), QStringLiteral("error"));
-                     renderStatus({{QStringLiteral("connected"), false}, {QStringLiteral("link"), QStringLiteral("OFF")}, {QStringLiteral("error"), err}});
+                     emit hudMessage(u"LIDAR: %1"_s.arg(err.isEmpty() ? u"connection failed"_s : err), u"error"_s);
+                     renderStatus({{u"connected"_s, false}, {u"link"_s, u"OFF"_s}, {u"error"_s, err}});
                      return;
                  }
                  m_lastGateOk = -1;
                  PointCloudData::instance().visible = true;
                  m_rangeTimer.start();
-                 setStrip(QStringLiteral("search"), QStringLiteral("SEARCHING"));
-                 emit hudMessage(QStringLiteral("LIDAR: connecting to %1").arg(ip), QStringLiteral("info"));
+                 setStrip(u"search"_s, u"SEARCHING"_s);
+                 emit hudMessage(u"LIDAR: connecting to %1"_s.arg(ip), u"info"_s);
              });
     } else {
         m_enabled = false;
@@ -304,7 +306,7 @@ void LidarController::clearMap()
     }
     PointCloudData::instance().clear();
     PointCloudData::instance().clearLive();
-    emit hudMessage(QStringLiteral("LIDAR: map cleared"), QStringLiteral("info"));
+    emit hudMessage(u"LIDAR: map cleared"_s, u"info"_s);
     updateStrip(m_lastStatus);
     updateCount();
 }
@@ -312,16 +314,16 @@ void LidarController::clearMap()
 void LidarController::saveMap()
 {
     if (m_demoRunning) {
-        emit hudMessage(QStringLiteral("LIDAR: demo scan — nothing to save"), QStringLiteral("warning"));
+        emit hudMessage(u"LIDAR: demo scan — nothing to save"_s, u"warning"_s);
         return;
     }
     call([](LidarCore *core) { return core->saveMap(); },
          [this](const QVariantMap &res) {
-             if (res.value(QStringLiteral("success")).toBool())
-                 emit hudMessage(QStringLiteral("LIDAR: %1 pts saved → %2").arg(fmt(res.value(QStringLiteral("points")).toLongLong()), res.value(QStringLiteral("path")).toString()),
-                                 QStringLiteral("info"));
+             if (res.value(u"success"_s).toBool())
+                 emit hudMessage(u"LIDAR: %1 pts saved → %2"_s.arg(fmt(res.value(u"points"_s).toLongLong()), res.value(u"path"_s).toString()),
+                                 u"info"_s);
              else
-                 emit hudMessage(QStringLiteral("LIDAR: save failed — %1").arg(res.value(QStringLiteral("error")).toString()), QStringLiteral("error"));
+                 emit hudMessage(u"LIDAR: save failed — %1"_s.arg(res.value(u"error"_s).toString()), u"error"_s);
          });
 }
 
@@ -330,32 +332,32 @@ void LidarController::saveMap()
 void LidarController::renderStatus(const QVariantMap &st)
 {
     QString text;
-    if (!st.value(QStringLiteral("connected")).toBool()) {
-        const QString err = st.value(QStringLiteral("error")).toString();
-        text = err.isEmpty() ? QStringLiteral("OFF") : span(QStringLiteral("err"), esc(err));
+    if (!st.value(u"connected"_s).toBool()) {
+        const QString err = st.value(u"error"_s).toString();
+        text = err.isEmpty() ? u"OFF"_s : span(u"err"_s, esc(err));
     } else {
         QStringList lines;
         auto n = [&](const char *k) { return fmt(st.value(QLatin1String(k)).toLongLong()); };
-        const bool streaming = st.value(QStringLiteral("streaming")).toBool();
-        const QString model = st.value(QStringLiteral("model")).toString(), sn = st.value(QStringLiteral("sn")).toString();
-        lines << QStringLiteral("%1 %2 %3").arg(span(streaming ? QStringLiteral("ok") : QStringLiteral("warn"), st.value(QStringLiteral("link")).toString()), esc(model),
-                                               sn.isEmpty() ? QString() : QStringLiteral("S/N ") + esc(sn)).trimmed();
-        const QString host = st.value(QStringLiteral("hostIp")).toString();
-        lines << QStringLiteral("LiDAR %1 → host %2").arg(esc(st.value(QStringLiteral("lidarIp")).toString()), esc(host.isEmpty() ? QStringLiteral("?") : host));
-        lines << QStringLiteral("%1 pkt/s · %2 pts/s · %3 kbit/s").arg(n("pps"), n("pointsPs"), n("kbps"));
-        const bool gateOk = st.value(QStringLiteral("gateOk")).toBool();
-        lines << QStringLiteral("%1 · fix %2 · %3 sats · HDOP %4 · EKF var %5")
-                     .arg(span(gateOk ? QStringLiteral("ok") : QStringLiteral("warn"), esc(st.value(QStringLiteral("gateReason")).toString())))
-                     .arg(st.value(QStringLiteral("navFix")).toInt())
-                     .arg(st.value(QStringLiteral("navSats")).toInt())
-                     .arg(st.value(QStringLiteral("navHdop")).toDouble(), 0, 'f', 1)
-                     .arg(st.value(QStringLiteral("navEkfPosVar")).toDouble(), 0, 'f', 2);
-        lines << QStringLiteral("map %1 / %2 pts · +%3/s · filtered %4/s · live %5/s").arg(n("mapPoints"), n("maxPoints"), n("acceptedPs"), n("filteredPs"), n("livePs"));
-        if (st.value(QStringLiteral("recording")).toBool())
-            lines << QStringLiteral("%1 %2 pts → %3").arg(span(QStringLiteral("ok"), QStringLiteral("REC")), n("recordedPoints"), esc(st.value(QStringLiteral("recordPath")).toString()));
-        const QString err = st.value(QStringLiteral("error")).toString();
-        if (!err.isEmpty()) lines << span(QStringLiteral("err"), esc(err));
-        text = lines.join(QStringLiteral("<br>"));
+        const bool streaming = st.value(u"streaming"_s).toBool();
+        const QString model = st.value(u"model"_s).toString(), sn = st.value(u"sn"_s).toString();
+        lines << u"%1 %2 %3"_s.arg(span(streaming ? u"ok"_s : u"warn"_s, st.value(u"link"_s).toString()), esc(model),
+                                               sn.isEmpty() ? QString() : u"S/N "_s + esc(sn)).trimmed();
+        const QString host = st.value(u"hostIp"_s).toString();
+        lines << u"LiDAR %1 → host %2"_s.arg(esc(st.value(u"lidarIp"_s).toString()), esc(host.isEmpty() ? u"?"_s : host));
+        lines << u"%1 pkt/s · %2 pts/s · %3 kbit/s"_s.arg(n("pps"), n("pointsPs"), n("kbps"));
+        const bool gateOk = st.value(u"gateOk"_s).toBool();
+        lines << u"%1 · fix %2 · %3 sats · HDOP %4 · EKF var %5"_s
+                     .arg(span(gateOk ? u"ok"_s : u"warn"_s, esc(st.value(u"gateReason"_s).toString())))
+                     .arg(st.value(u"navFix"_s).toInt())
+                     .arg(st.value(u"navSats"_s).toInt())
+                     .arg(st.value(u"navHdop"_s).toDouble(), 0, 'f', 1)
+                     .arg(st.value(u"navEkfPosVar"_s).toDouble(), 0, 'f', 2);
+        lines << u"map %1 / %2 pts · +%3/s · filtered %4/s · live %5/s"_s.arg(n("mapPoints"), n("maxPoints"), n("acceptedPs"), n("filteredPs"), n("livePs"));
+        if (st.value(u"recording"_s).toBool())
+            lines << u"%1 %2 pts → %3"_s.arg(span(u"ok"_s, u"REC"_s), n("recordedPoints"), esc(st.value(u"recordPath"_s).toString()));
+        const QString err = st.value(u"error"_s).toString();
+        if (!err.isEmpty()) lines << span(u"err"_s, esc(err));
+        text = lines.join(u"<br>"_s);
     }
     if (text == m_statusText) return;
     m_statusText = text;
@@ -372,7 +374,7 @@ void LidarController::setStrip(const QString &state, const QString &label)
 
 void LidarController::updateCount()
 {
-    const QString c = QStringLiteral("%1 pts").arg(fmt(PointCloudData::instance().total));
+    const QString c = u"%1 pts"_s.arg(fmt(PointCloudData::instance().total));
     if (c == m_stripCount) return;
     m_stripCount = c;
     emit stripChanged();
@@ -381,24 +383,24 @@ void LidarController::updateCount()
 void LidarController::updateStrip(const QVariantMap &st)
 {
     if (!m_enabled || m_demoRunning) return;
-    QString state = QStringLiteral("search"), label = QStringLiteral("SEARCHING");
+    QString state = u"search"_s, label = u"SEARCHING"_s;
     if (!st.isEmpty()) {
-        const bool streaming = st.value(QStringLiteral("streaming")).toBool();
-        const QString reason = st.value(QStringLiteral("gateReason")).toString();
-        if (!st.value(QStringLiteral("error")).toString().isEmpty() && !streaming) {
-            state = QStringLiteral("error");
-            label = QStringLiteral("ERROR");
+        const bool streaming = st.value(u"streaming"_s).toBool();
+        const QString reason = st.value(u"gateReason"_s).toString();
+        if (!st.value(u"error"_s).toString().isEmpty() && !streaming) {
+            state = u"error"_s;
+            label = u"ERROR"_s;
         } else if (!streaming) {
-            label = st.value(QStringLiteral("link")).toString();
-        } else if (st.value(QStringLiteral("gateOk")).toBool()) {
-            state = QStringLiteral("accum");
-            label = QStringLiteral("ACCUMULATING");
-        } else if (reason == QLatin1String("MAP FULL")) {
-            state = QStringLiteral("full");
-            label = QStringLiteral("MAP FULL");
+            label = st.value(u"link"_s).toString();
+        } else if (st.value(u"gateOk"_s).toBool()) {
+            state = u"accum"_s;
+            label = u"ACCUMULATING"_s;
+        } else if (reason == "MAP FULL"_L1) {
+            state = u"full"_s;
+            label = u"MAP FULL"_s;
         } else {
-            state = QStringLiteral("hold");
-            label = QStringLiteral("LIVE ONLY · ") + reason;
+            state = u"hold"_s;
+            label = u"LIVE ONLY · "_s + reason;
         }
     }
     setStrip(state, label);
@@ -421,15 +423,15 @@ void LidarController::onStatus(const QVariantMap &st)
     }
     renderStatus(st);
     updateStrip(st);
-    setActive(st.value(QStringLiteral("connected")).toBool());
-    if (!m_enabled || !st.value(QStringLiteral("streaming")).toBool()) return;
+    setActive(st.value(u"connected"_s).toBool());
+    if (!m_enabled || !st.value(u"streaming"_s).toBool()) return;
     // Announce gate transitions on the HUD, once per change
-    const int gateOk = st.value(QStringLiteral("gateOk")).toBool() ? 1 : 0;
+    const int gateOk = st.value(u"gateOk"_s).toBool() ? 1 : 0;
     if (m_lastGateOk != gateOk) {
         if (m_lastGateOk != -1 || gateOk)
-            emit hudMessage(gateOk ? QStringLiteral("LIDAR: georeferenced — accumulating")
-                                   : QStringLiteral("LIDAR: live only, not kept — ") + st.value(QStringLiteral("gateReason")).toString(),
-                            gateOk ? QStringLiteral("info") : QStringLiteral("warning"));
+            emit hudMessage(gateOk ? u"LIDAR: georeferenced — accumulating"_s
+                                   : u"LIDAR: live only, not kept — "_s + st.value(u"gateReason"_s).toString(),
+                            gateOk ? u"info"_s : u"warning"_s);
         m_lastGateOk = gateOk;
     }
 }
@@ -451,13 +453,13 @@ void LidarController::startDemo()
     m_demoCountTimer.start();
     m_rangeTimer.start();
     PointCloudData::instance().visible = true;
-    setStrip(QStringLiteral("accum"), QStringLiteral("DEMO · SYNTHETIC SCAN"));
-    m_statusText = span(QStringLiteral("ok"), QStringLiteral("DEMO")) +
-                   QStringLiteral(" synthetic scan of the SRTM terrain under the demo flight — no LiDAR link.<br>Connect a vehicle and enable again for the real sensor.");
+    setStrip(u"accum"_s, u"DEMO · SYNTHETIC SCAN"_s);
+    m_statusText = span(u"ok"_s, u"DEMO"_s) +
+                   u" synthetic scan of the SRTM terrain under the demo flight — no LiDAR link.<br>Connect a vehicle and enable again for the real sensor."_s;
     setActive(true);
     emit statusChanged();
     emit enabledChanged();
-    emit hudMessage(QStringLiteral("LIDAR: demo — synthetic terrain scan"), QStringLiteral("info"));
+    emit hudMessage(u"LIDAR: demo — synthetic terrain scan"_s, u"info"_s);
 }
 
 void LidarController::stopDemo()
@@ -469,7 +471,7 @@ void LidarController::stopDemo()
     m_demoVoxels.clear();
     m_demoTotal = 0;
     PointCloudData::instance().clear();
-    m_statusText = QStringLiteral("OFF");
+    m_statusText = u"OFF"_s;
     emit statusChanged();
     emit enabledChanged();
 }
@@ -508,7 +510,7 @@ void LidarController::demoTick()
     const double vehE = (s->lon - m_demoOLon) * m_demoMPerLon;
     const double vehN = (s->lat - m_demoOLat) * m_demoMPerLat;
     const double vehU = s->rawAlt - m_demoOAlt;
-    const double minRange = std::max(0.0, m_cfg.value(QStringLiteral("minRange")).toDouble());
+    const double minRange = std::max(0.0, m_cfg.value(u"minRange"_s).toDouble());
     auto terrainAt = [&](double e, double n) { return hgt.elevation(m_demoOLat + n / m_demoMPerLat, m_demoOLon + e / m_demoMPerLon); };
     const double inv = 1 / kDemoVoxel;
     std::vector<float> xyz;

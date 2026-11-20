@@ -4,6 +4,8 @@
 
 #include <QThread>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 UdpTransport::UdpTransport(QString host, quint16 port, QObject *parent)
@@ -34,7 +36,7 @@ bool UdpTransport::open(QString *error)
                 m_remote = from;
                 m_remotePort = fromPort;
                 m_hasRemote = true;
-                LOG_I("mavlink") << QStringLiteral("UDP first packet from %1:%2 (replies go there)").arg(from.toString()).arg(fromPort);
+                LOG_I("mavlink") << u"UDP first packet from %1:%2 (replies go there)"_s.arg(from.toString()).arg(fromPort);
             }
             emit received(d);
         }
@@ -48,7 +50,7 @@ void UdpTransport::close()
     m_sock->close();
     m_sock->deleteLater();
     m_sock = nullptr;
-    emit closed(QStringLiteral("UDP socket closed"));
+    emit closed(u"UDP socket closed"_s);
 }
 
 qint64 UdpTransport::write(const QByteArray &bytes)
@@ -58,7 +60,7 @@ qint64 UdpTransport::write(const QByteArray &bytes)
 }
 
 TcpTransport::TcpTransport(QString host, quint16 port, QString label, QObject *parent)
-    : Transport(parent), m_host(host.isEmpty() ? QStringLiteral("127.0.0.1") : std::move(host)),
+    : Transport(parent), m_host(host.isEmpty() ? u"127.0.0.1"_s : std::move(host)),
       m_port(port ? port : 5760), m_label(std::move(label))
 {
 }
@@ -72,7 +74,7 @@ bool TcpTransport::open(QString *error)
         m_sock->setSocketOption(QAbstractSocket::LowDelayOption, 1);
         m_sock->connectToHost(m_host, m_port);
         if (m_sock->waitForConnected(3000)) break;
-        LOG_I("mavlink") << QStringLiteral("TCP attempt %1/%2 failed: %3").arg(attempt).arg(kAttempts).arg(m_sock->errorString());
+        LOG_I("mavlink") << u"TCP attempt %1/%2 failed: %3"_s.arg(attempt).arg(kAttempts).arg(m_sock->errorString());
         if (attempt == kAttempts) {
             if (error) *error = m_sock->errorString();
             delete m_sock;
@@ -83,12 +85,12 @@ bool TcpTransport::open(QString *error)
         m_sock = nullptr;
         QThread::msleep(kRetryMs);
     }
-    LOG_I("mavlink") << QStringLiteral("TCP connected to %1:%2").arg(m_host).arg(m_port);
+    LOG_I("mavlink") << u"TCP connected to %1:%2"_s.arg(m_host).arg(m_port);
     connect(m_sock, &QTcpSocket::readyRead, this, [this] { emit received(m_sock->readAll()); });
     // The vehicle side closing the link must end the connection (fixes the
     // Electron version, where STATE.connected stayed true)
     connect(m_sock, &QTcpSocket::disconnected, this, [this] {
-        if (!m_closing) emit closed(QStringLiteral("TCP closed"));
+        if (!m_closing) emit closed(u"TCP closed"_s);
     });
     connect(m_sock, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError e) {
         if (m_closing || e == QAbstractSocket::RemoteHostClosedError) return;

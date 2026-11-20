@@ -8,6 +8,8 @@
 #include <array>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -51,11 +53,11 @@ int clampI16(int v) { return std::clamp(v, -32768, 32767); }
 /// Synthetic INAV mode numbers: the mode table maps custom_mode to a name, so they only need to be stable.
 quint32 inavModeNumber(const QString &m)
 {
-    static const QHash<QString, quint32> n = {{QStringLiteral("MANUAL"), 0}, {QStringLiteral("ACRO"), 1}, {QStringLiteral("ANGLE"), 2},
-                                              {QStringLiteral("HORIZON"), 3}, {QStringLiteral("ALTHOLD"), 4}, {QStringLiteral("POSHOLD"), 5},
-                                              {QStringLiteral("COURSE HOLD"), 6}, {QStringLiteral("CRUISE"), 7}, {QStringLiteral("WAYPOINT"), 8},
-                                              {QStringLiteral("RTH"), 9}, {QStringLiteral("FAILSAFE"), 10}, {QStringLiteral("ARMED"), 1},
-                                              {QStringLiteral("DISARMED"), 0}};
+    static const QHash<QString, quint32> n = {{u"MANUAL"_s, 0}, {u"ACRO"_s, 1}, {u"ANGLE"_s, 2},
+                                              {u"HORIZON"_s, 3}, {u"ALTHOLD"_s, 4}, {u"POSHOLD"_s, 5},
+                                              {u"COURSE HOLD"_s, 6}, {u"CRUISE"_s, 7}, {u"WAYPOINT"_s, 8},
+                                              {u"RTH"_s, 9}, {u"FAILSAFE"_s, 10}, {u"ARMED"_s, 1},
+                                              {u"DISARMED"_s, 0}};
     return n.value(m, 0);
 }
 } // namespace
@@ -126,7 +128,7 @@ bool MspSession::decodeWaypoint(const QByteArray &b, MspWaypoint *wp)
 MspSession::MspSession(WriteFn write, MessageFn message, const QString &profile, QObject *parent)
     : QObject(parent), m_write(std::move(write)), m_message(std::move(message))
 {
-    const bool slow = profile == QLatin1String("slow");
+    const bool slow = profile == "slow"_L1;
     // Poll rates; "slow" for long-range radio links where 25 Hz attitude would use the whole budget
     if (slow) {
         m_schedule = {{MSP_ATTITUDE, 5}, {MSP_ALTITUDE, 2}, {MSP_RAW_GPS, 2}, {MSP2_INAV_STATUS, 1}, {MSP2_INAV_ANALOG, 0.5}, {MSP_COMP_GPS, 0.5}};
@@ -154,7 +156,7 @@ MspSession::~MspSession()
     if (m_pending && m_pendingJob.fail) orphans.push_back(m_pendingJob.fail);
     m_queue.clear();
     m_pending = false;
-    for (auto &f : orphans) f(QStringLiteral("MSP link closed during the transfer"));
+    for (auto &f : orphans) f(u"MSP link closed during the transfer"_s);
 }
 
 void MspSession::push(const QByteArray &bytes)
@@ -252,7 +254,7 @@ void MspSession::onTimeout()
             m_queue.push_front(job);
             return;
         }
-        job.fail(QStringLiteral("No reply to MSP command %1").arg(job.cmd));
+        job.fail(u"No reply to MSP command %1"_s.arg(job.cmd));
         return;
     }
     const int n = ++m_misses[job.cmd];
@@ -260,7 +262,7 @@ void MspSession::onTimeout()
         const qsizetype before = m_schedule.size();
         m_schedule.removeIf([&](const Entry &e) { return e.cmd == job.cmd; });
         if (m_schedule.size() != before)
-            LOG_W("msp") << QStringLiteral("command 0x%1 unanswered %2x: removed from the poll schedule").arg(job.cmd, 0, 16).arg(n);
+            LOG_W("msp") << u"command 0x%1 unanswered %2x: removed from the poll schedule"_s.arg(job.cmd, 0, 16).arg(n);
     }
 }
 
@@ -282,7 +284,7 @@ void MspSession::rejected(int cmd)
     if (!m_pending || m_pendingJob.cmd != cmd) return;
     m_timeout.stop();
     m_pending = false;
-    if (m_pendingJob.fail) m_pendingJob.fail(QStringLiteral("Flight controller rejected MSP command %1").arg(cmd));
+    if (m_pendingJob.fail) m_pendingJob.fail(u"Flight controller rejected MSP command %1"_s.arg(cmd));
 }
 
 void MspSession::request(int cmd, const QByteArray &payload, int timeoutMs, std::function<void(const QByteArray &)> ok,
@@ -299,9 +301,8 @@ void MspSession::decode(int cmd, const QByteArray &p)
         break;
     case MSP_FC_VERSION:
         if (p.size() >= 3) {
-            m_fcVersion = QStringLiteral("%1.%2.%3").arg(uint8_t(p[0])).arg(uint8_t(p[1])).arg(uint8_t(p[2]));
+            m_fcVersion = u"%1.%2.%3"_s.arg(uint8_t(p[0])).arg(uint8_t(p[1])).arg(uint8_t(p[2]));
             LOG_I("msp") << "flight controller" << m_fcVariant << m_fcVersion;
-            emit identified(m_fcVariant, m_fcVersion);
         }
         break;
     case MSP_ATTITUDE:
@@ -383,7 +384,7 @@ void MspSession::decode(int cmd, const QByteArray &p)
         break;
     }
     case MSP_BOXNAMES:
-        m_boxNames = QString::fromLatin1(p).split(QLatin1Char(';'), Qt::SkipEmptyParts);
+        m_boxNames = QString::fromLatin1(p).split(';'_L1, Qt::SkipEmptyParts);
         break;
     case MSP_RC: {
         m_rc.clear();
@@ -400,13 +401,13 @@ QString MspSession::modeName(const std::array<quint32, 4> &boxes) const
 {
     // INAV / Betaflight have no mode enum: the first active box in the order the OSD shows them
     static const QList<QPair<QString, QString>> priority = {
-        {QStringLiteral("FAILSAFE"), QStringLiteral("FAILSAFE")}, {QStringLiteral("NAV RTH"), QStringLiteral("RTH")},
-        {QStringLiteral("NAV WP"), QStringLiteral("WAYPOINT")}, {QStringLiteral("NAV CRUISE"), QStringLiteral("CRUISE")},
-        {QStringLiteral("NAV COURSE HOLD"), QStringLiteral("COURSE HOLD")}, {QStringLiteral("NAV POSHOLD"), QStringLiteral("POSHOLD")},
-        {QStringLiteral("NAV ALTHOLD"), QStringLiteral("ALTHOLD")}, {QStringLiteral("ANGLE"), QStringLiteral("ANGLE")},
-        {QStringLiteral("HORIZON"), QStringLiteral("HORIZON")}, {QStringLiteral("MANUAL"), QStringLiteral("MANUAL")},
-        {QStringLiteral("ACRO"), QStringLiteral("ACRO")}};
-    if (m_boxNames.isEmpty()) return m_armed ? QStringLiteral("ARMED") : QStringLiteral("DISARMED");
+        {u"FAILSAFE"_s, u"FAILSAFE"_s}, {u"NAV RTH"_s, u"RTH"_s},
+        {u"NAV WP"_s, u"WAYPOINT"_s}, {u"NAV CRUISE"_s, u"CRUISE"_s},
+        {u"NAV COURSE HOLD"_s, u"COURSE HOLD"_s}, {u"NAV POSHOLD"_s, u"POSHOLD"_s},
+        {u"NAV ALTHOLD"_s, u"ALTHOLD"_s}, {u"ANGLE"_s, u"ANGLE"_s},
+        {u"HORIZON"_s, u"HORIZON"_s}, {u"MANUAL"_s, u"MANUAL"_s},
+        {u"ACRO"_s, u"ACRO"_s}};
+    if (m_boxNames.isEmpty()) return m_armed ? u"ARMED"_s : u"DISARMED"_s;
     auto active = [&](const QString &name) {
         const int idx = int(m_boxNames.indexOf(name));
         if (idx < 0 || idx >= 128) return false;
@@ -414,7 +415,7 @@ QString MspSession::modeName(const std::array<quint32, 4> &boxes) const
     };
     for (const auto &[box, label] : priority)
         if (active(box)) return label;
-    return QStringLiteral("ACRO");
+    return u"ACRO"_s;
 }
 
 // ── Synthetic MAVLink ────────────────────────────────────────────────────────
@@ -502,8 +503,8 @@ void MspSession::emitHeartbeat()
 
 void MspSession::missionUpload(const QList<MspWaypoint> &wpsIn, bool save)
 {
-    if (m_missionBusy) { emit missionDone(QStringLiteral("upload"), false, QStringLiteral("A mission transfer is already running"), {}); return; }
-    if (wpsIn.isEmpty()) { emit missionDone(QStringLiteral("upload"), false, QStringLiteral("No waypoints to upload"), {}); return; }
+    if (m_missionBusy) { emit missionDone(u"upload"_s, false, u"A mission transfer is already running"_s, {}); return; }
+    if (wpsIn.isEmpty()) { emit missionDone(u"upload"_s, false, u"No waypoints to upload"_s, {}); return; }
     m_missionBusy = true;
     auto wps = std::make_shared<QList<MspWaypoint>>(wpsIn);
     // The board knows its own limit: refuse before writing half a mission
@@ -512,8 +513,8 @@ void MspSession::missionUpload(const QList<MspWaypoint> &wpsIn, bool save)
                 const int maxWp = p.size() >= 4 ? uint8_t(p[1]) : 0;
                 if (maxWp && wps->size() > maxWp) {
                     m_missionBusy = false;
-                    emit missionDone(QStringLiteral("upload"), false,
-                                     QStringLiteral("%1 waypoints — this board stores at most %2").arg(wps->size()).arg(maxWp), {{QStringLiteral("maxWaypoints"), maxWp}});
+                    emit missionDone(u"upload"_s, false,
+                                     u"%1 waypoints — this board stores at most %2"_s.arg(wps->size()).arg(maxWp), {{u"maxWaypoints"_s, maxWp}});
                     return;
                 }
                 uploadNext(wps, 0, save, maxWp);
@@ -525,13 +526,13 @@ void MspSession::uploadNext(std::shared_ptr<QList<MspWaypoint>> wps, int i, bool
 {
     auto fail = [this](const QString &e) {
         m_missionBusy = false;
-        emit missionDone(QStringLiteral("upload"), false, e, {});
+        emit missionDone(u"upload"_s, false, e, {});
     };
     if (i >= wps->size()) {
         auto finish = [this, wps, save, maxWaypoints] {
             m_missionBusy = false;
-            emit missionDone(QStringLiteral("upload"), true, {},
-                             {{QStringLiteral("count"), int(wps->size())}, {QStringLiteral("saved"), save}, {QStringLiteral("maxWaypoints"), maxWaypoints}});
+            emit missionDone(u"upload"_s, true, {},
+                             {{u"count"_s, int(wps->size())}, {u"saved"_s, save}, {u"maxWaypoints"_s, maxWaypoints}});
         };
         // The list lives in RAM until it is written to the board's storage
         if (save) request(MSP_WP_MISSION_SAVE, QByteArray(1, '\0'), 4000, [finish](const QByteArray &) { finish(); }, fail);
@@ -542,7 +543,7 @@ void MspSession::uploadNext(std::shared_ptr<QList<MspWaypoint>> wps, int i, bool
     wp.index = i + 1;
     request(MSP_SET_WP, encodeWaypoint(wp), kMissionTimeoutMs,
             [this, wps, i, save, maxWaypoints](const QByteArray &) {
-                emit missionProgress(QStringLiteral("upload"), i + 1, int(wps->size()));
+                emit missionProgress(u"upload"_s, i + 1, int(wps->size()));
                 uploadNext(wps, i + 1, save, maxWaypoints);
             },
             fail);
@@ -550,20 +551,20 @@ void MspSession::uploadNext(std::shared_ptr<QList<MspWaypoint>> wps, int i, bool
 
 void MspSession::missionDownload()
 {
-    if (m_missionBusy) { emit missionDone(QStringLiteral("download"), false, QStringLiteral("A mission transfer is already running"), {}); return; }
+    if (m_missionBusy) { emit missionDone(u"download"_s, false, u"A mission transfer is already running"_s, {}); return; }
     m_missionBusy = true;
     request(MSP_WP_GETINFO, {}, kMissionTimeoutMs,
             [this](const QByteArray &p) {
                 if (p.size() < 4) {
                     m_missionBusy = false;
-                    emit missionDone(QStringLiteral("download"), false, QStringLiteral("Short MSP_WP_GETINFO reply"), {});
+                    emit missionDone(u"download"_s, false, u"Short MSP_WP_GETINFO reply"_s, {});
                     return;
                 }
                 downloadNext(std::make_shared<QVariantList>(), 1, uint8_t(p[3]), uint8_t(p[1]), uint8_t(p[2]) == 1);
             },
             [this](const QString &e) {
                 m_missionBusy = false;
-                emit missionDone(QStringLiteral("download"), false, e, {});
+                emit missionDone(u"download"_s, false, e, {});
             });
 }
 
@@ -571,8 +572,8 @@ void MspSession::downloadNext(std::shared_ptr<QVariantList> out, int i, int coun
 {
     if (i > count) {
         m_missionBusy = false;
-        emit missionDone(QStringLiteral("download"), true, {},
-                         {{QStringLiteral("wps"), *out}, {QStringLiteral("count"), count}, {QStringLiteral("maxWaypoints"), maxWaypoints}, {QStringLiteral("valid"), valid}});
+        emit missionDone(u"download"_s, true, {},
+                         {{u"wps"_s, *out}, {u"count"_s, count}, {u"maxWaypoints"_s, maxWaypoints}, {u"valid"_s, valid}});
         return;
     }
     request(MSP_WP, QByteArray(1, char(i)), kMissionTimeoutMs,
@@ -580,18 +581,18 @@ void MspSession::downloadNext(std::shared_ptr<QVariantList> out, int i, int coun
                 MspWaypoint w;
                 if (!decodeWaypoint(p, &w)) {
                     m_missionBusy = false;
-                    emit missionDone(QStringLiteral("download"), false, QStringLiteral("Short MSP_WP reply"), {});
+                    emit missionDone(u"download"_s, false, u"Short MSP_WP reply"_s, {});
                     return;
                 }
-                out->append(QVariantMap{{QStringLiteral("index"), w.index}, {QStringLiteral("action"), w.action}, {QStringLiteral("lat"), w.lat},
-                                        {QStringLiteral("lon"), w.lon}, {QStringLiteral("alt"), w.alt}, {QStringLiteral("p1"), w.p1},
-                                        {QStringLiteral("p2"), w.p2}, {QStringLiteral("p3"), w.p3}, {QStringLiteral("flag"), w.flag}});
-                emit missionProgress(QStringLiteral("download"), i, count);
+                out->append(QVariantMap{{u"index"_s, w.index}, {u"action"_s, w.action}, {u"lat"_s, w.lat},
+                                        {u"lon"_s, w.lon}, {u"alt"_s, w.alt}, {u"p1"_s, w.p1},
+                                        {u"p2"_s, w.p2}, {u"p3"_s, w.p3}, {u"flag"_s, w.flag}});
+                emit missionProgress(u"download"_s, i, count);
                 downloadNext(out, i + 1, count, maxWaypoints, valid);
             },
             [this](const QString &e) {
                 m_missionBusy = false;
-                emit missionDone(QStringLiteral("download"), false, e, {});
+                emit missionDone(u"download"_s, false, e, {});
             });
 }
 

@@ -7,6 +7,8 @@
 #include <QJsonDocument>
 #include <QSaveFile>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 Settings &Settings::instance()
@@ -17,7 +19,7 @@ Settings &Settings::instance()
 
 void Settings::load(const QString &path)
 {
-    m_path = path.isEmpty() ? DataRoot::root() + QStringLiteral("/settings.json") : path;
+    m_path = path.isEmpty() ? DataRoot::root() + u"/settings.json"_s : path;
     m_data = {};
     QFile f(m_path);
     if (f.open(QIODevice::ReadOnly)) {

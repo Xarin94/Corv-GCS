@@ -59,7 +59,6 @@ public:
     /// Entries of the firmware of the class, and where they come from.
     int count(const QString &vehicleClass);
     QString source(const QString &vehicleClass);
-    bool hasDownloaded(const QString &vehicleClass);
 
     /// A downloaded apm.pdef.json: parsed, saved under <data>/params, used from now on.
     bool installDownloaded(const QString &vehicleClass, const QByteArray &json, int *count = nullptr, QString *error = nullptr);
@@ -70,7 +69,6 @@ public:
     static bool parse(const QByteArray &json, QHash<QString, ParamInfo> &out, QString *source = nullptr, QString *error = nullptr);
     /// The folder of the downloaded tables (tests point it elsewhere).
     static QString downloadDir();
-    static void setDownloadDir(const QString &dir);
 
 private:
     ParamMeta() = default;

@@ -8,6 +8,8 @@
 #include <cmath>
 #include <cstring>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -109,8 +111,8 @@ int initialSatLayers(int size)
 
 TerrainRenderer::TerrainRenderer(QRhi *rhi) : m_rhi(rhi)
 {
-    m_vs = loadShader(QStringLiteral(":/shaders/terrain.vert.qsb"));
-    m_fs = loadShader(QStringLiteral(":/shaders/terrain.frag.qsb"));
+    m_vs = loadShader(u":/shaders/terrain.vert.qsb"_s);
+    m_fs = loadShader(u":/shaders/terrain.frag.qsb"_s);
     if (!m_rhi->isTextureFormatSupported(QRhiTexture::R16)) {
         m_heightFormat = QRhiTexture::R32F;
         LOG_W("gpu") << "R16 textures not supported, heights in R32F";
@@ -121,8 +123,8 @@ TerrainRenderer::TerrainRenderer(QRhi *rhi) : m_rhi(rhi)
     // four times the memory. CORV_SAT_FORMAT=bc1 / rgba8 forces one (diagnosis).
     const QString satFormat = qEnvironmentVariable("CORV_SAT_FORMAT").toLower();
     m_bc1 = m_rhi->isTextureFormatSupported(QRhiTexture::BC1) && m_rhi->backend() != QRhi::OpenGLES2;
-    if (satFormat == QLatin1String("bc1")) m_bc1 = m_rhi->isTextureFormatSupported(QRhiTexture::BC1);
-    else if (satFormat == QLatin1String("rgba8")) m_bc1 = false;
+    if (satFormat == "bc1"_L1) m_bc1 = m_rhi->isTextureFormatSupported(QRhiTexture::BC1);
+    else if (satFormat == "rgba8"_L1) m_bc1 = false;
     m_maxLayers = std::max(64, m_rhi->resourceLimit(QRhi::TextureArraySizeMax));
     LOG_I("gpu") << "satellite imagery in" << (m_bc1 ? "BC1" : "RGBA8") << "texture arrays, up to" << m_maxLayers << "layers";
     m_ubuf.reset(m_rhi->newBuffer(QRhiBuffer::Dynamic, QRhiBuffer::UniformBuffer, m_rhi->ubufAligned(sizeof(Ubuf))));
@@ -357,7 +359,7 @@ void TerrainRenderer::addImage(const std::shared_ptr<const ChunkImage> &img, QRh
     }
     if (a.freeLayers.empty()) {
         if (a.capacity * 2 > m_maxLayers) {
-            if (DebugLog::throttle(QStringLiteral("sat-layers"), 30000) >= 0)
+            if (DebugLog::throttle(u"sat-layers"_s, 30000) >= 0)
                 LOG_W("gpu") << "satellite array" << a.size << "full at" << a.capacity << "layers";
             return;
         }

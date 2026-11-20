@@ -56,7 +56,6 @@ public:
 
     /// The zones the maps draw (null while off) and a version that changes with them. GUI thread.
     static GeoZonesPtr shownZones();
-    static int shownVersion();
 
     bool enabled() const { return m_enabled; }
     void setEnabled(bool on);

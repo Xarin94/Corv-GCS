@@ -39,7 +39,6 @@ public:
     /// Write the relative position into the state (once per message batch / frame).
     void apply(VehicleState &s, std::int64_t now) const;
     QString source(std::int64_t now) const;
-    QString deadReckoningSource() const { return m_drSrc; }
 
 private:
     struct Vel {

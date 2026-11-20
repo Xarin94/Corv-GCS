@@ -18,11 +18,13 @@
 #include <cmath>
 #include <cstring>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
 
-const QString kNtripKey = QStringLiteral("ntrip-settings");
+const QString kNtripKey = u"ntrip-settings"_s;
 constexpr qint64 kRateWindowMs = 5000;
 constexpr int kMaxTypes = 12;
 constexpr int kReconnectMs = 5000;
@@ -31,14 +33,14 @@ constexpr int kSourcetableTimeoutMs = 10000;
 
 QString formatBytes(qint64 bytes)
 {
-    if (bytes > 1048576) return QString::number(bytes / 1048576.0, 'f', 1) + QStringLiteral(" MB");
-    if (bytes > 1024) return QString::number(bytes / 1024.0, 'f', 1) + QStringLiteral(" KB");
-    return QString::number(bytes) + QStringLiteral(" B");
+    if (bytes > 1048576) return QString::number(bytes / 1048576.0, 'f', 1) + u" MB"_s;
+    if (bytes > 1024) return QString::number(bytes / 1024.0, 'f', 1) + u" KB"_s;
+    return QString::number(bytes) + u" B"_s;
 }
 
 QByteArray basicAuth(const QString &user, const QString &pass)
 {
-    return "Authorization: Basic " + (user + QLatin1Char(':') + pass).toUtf8().toBase64() + "\r\n";
+    return "Authorization: Basic " + (user + ':'_L1 + pass).toUtf8().toBase64() + "\r\n";
 }
 
 } // namespace
@@ -98,11 +100,11 @@ void RtkController::handleData(const QByteArray &data)
         m_msgPerSec = int(std::lround(m_window.size() / 5.0));
         // Last message types, unique, newest first
         for (qsizetype i = 0; i < m_types.size(); ++i)
-            if (m_types[i].toMap().value(QStringLiteral("id")).toInt() == f.type) {
+            if (m_types[i].toMap().value(u"id"_s).toInt() == f.type) {
                 m_types.removeAt(i);
                 break;
             }
-        m_types.prepend(QVariantMap{{QStringLiteral("id"), f.type}, {QStringLiteral("name"), rtcm::typeName(f.type)}});
+        m_types.prepend(QVariantMap{{u"id"_s, f.type}, {u"name"_s, rtcm::typeName(f.type)}});
         if (m_types.size() > kMaxTypes) m_types.removeLast();
         inject(f.raw);
     }
@@ -140,26 +142,26 @@ void RtkController::setConnStatus(const QString &text, bool active)
 
 QString RtkController::streamStatus() const
 {
-    if (!m_connected) return QStringLiteral("No data");
-    return m_msgPerSec > 0 ? QStringLiteral("Streaming RTCM3") : QStringLiteral("Connected, waiting for data...");
+    if (!m_connected) return u"No data"_s;
+    return m_msgPerSec > 0 ? u"Streaming RTCM3"_s : u"Connected, waiting for data..."_s;
 }
 
 QString RtkController::activeSource() const
 {
-    if (!m_connected) return QStringLiteral("---");
-    return m_source == QLatin1String("ntrip") ? QStringLiteral("NTRIP Caster") : QStringLiteral("Serial Base");
+    if (!m_connected) return u"---"_s;
+    return m_source == "ntrip"_L1 ? u"NTRIP Caster"_s : u"Serial Base"_s;
 }
 
 QString RtkController::bytesText() const { return formatBytes(m_bytes); }
 
 QString RtkController::ggaSent() const
 {
-    return m_source == QLatin1String("ntrip") && m_ntripCfg ? QString::number(m_ggaSentCount) : QStringLiteral("---");
+    return m_source == "ntrip"_L1 && m_ntripCfg ? QString::number(m_ggaSentCount) : u"---"_s;
 }
 
 QString RtkController::reconnects() const
 {
-    return m_source == QLatin1String("ntrip") && m_ntripCfg ? QString::number(m_reconnects) : QStringLiteral("---");
+    return m_source == "ntrip"_L1 && m_ntripCfg ? QString::number(m_reconnects) : u"---"_s;
 }
 
 // ── Serial base station ─────────────────────────────────────────────────────
@@ -167,7 +169,7 @@ QString RtkController::reconnects() const
 void RtkController::connectSerial(const QString &port, int baud)
 {
     if (port.isEmpty()) {
-        DialogHub::toast(QStringLiteral("Select a serial port first"));
+        DialogHub::toast(u"Select a serial port first"_s);
         return;
     }
     closeSerial();
@@ -179,13 +181,13 @@ void RtkController::connectSerial(const QString &port, int baud)
         const QString err = sp->errorString();
         delete sp;
         LOG_E("rtk") << "connect failed:" << err;
-        DialogHub::toast(QStringLiteral("RTK connect failed: ") + err);
+        DialogHub::toast(u"RTK connect failed: "_s + err);
         return;
     }
     m_serial = sp;
     m_portPath = port;
     m_baud = baud;
-    resetStats(QStringLiteral("serial"));
+    resetStats(u"serial"_s);
     connect(sp, &QSerialPort::readyRead, this, [this, sp] { handleData(sp->readAll()); });
     connect(sp, &QSerialPort::errorOccurred, this, [this, sp](QSerialPort::SerialPortError e) {
         if (e == QSerialPort::NoError) return;
@@ -194,13 +196,13 @@ void RtkController::connectSerial(const QString &port, int baud)
             // the port went away: 'close'
             LOG_I("rtk") << "port closed";
             m_connected = false;
-            setConnStatus(QStringLiteral("Not connected"), false);
+            setConnStatus(u"Not connected"_s, false);
         } else {
             notify(true);
         }
     });
-    LOG_I("rtk") << QStringLiteral("connected to %1 at %2 baud").arg(port).arg(baud);
-    setConnStatus(QStringLiteral("Serial — %1").arg(port), true);
+    LOG_I("rtk") << u"connected to %1 at %2 baud"_s.arg(port).arg(baud);
+    setConnStatus(u"Serial — %1"_s.arg(port), true);
 }
 
 void RtkController::closeSerial()
@@ -210,17 +212,17 @@ void RtkController::closeSerial()
     m_serial->close();
     m_serial->deleteLater();
     m_serial = nullptr;
-    if (m_source == QLatin1String("serial")) {
+    if (m_source == "serial"_L1) {
         m_connected = false;
         LOG_I("rtk") << "disconnected";
-        setConnStatus(QStringLiteral("Not connected"), false);
+        setConnStatus(u"Not connected"_s, false);
     }
 }
 
 void RtkController::disconnectSerial()
 {
     closeSerial();
-    setConnStatus(QStringLiteral("Disconnected"), false);
+    setConnStatus(u"Disconnected"_s, false);
 }
 
 // ── NTRIP client ────────────────────────────────────────────────────────────
@@ -231,25 +233,25 @@ void RtkController::disconnectSerial()
 void RtkController::ntripConnect(const QVariantMap &cfg, const QString &source)
 {
     NtripConfig c;
-    c.host = cfg.value(QStringLiteral("host")).toString().trimmed();
-    c.port = cfg.value(QStringLiteral("port")).toInt();
+    c.host = cfg.value(u"host"_s).toString().trimmed();
+    c.port = cfg.value(u"port"_s).toInt();
     if (c.port <= 0) c.port = 2101;
-    c.mountpoint = cfg.value(QStringLiteral("mountpoint")).toString().trimmed();
-    c.mountpoint.remove(QRegularExpression(QStringLiteral("^/")));
-    c.username = cfg.value(QStringLiteral("username")).toString();
-    c.password = cfg.value(QStringLiteral("password")).toString();
-    c.tls = cfg.value(QStringLiteral("tls")).toBool();
-    c.ggaMode = cfg.value(QStringLiteral("ggaMode"), QStringLiteral("off")).toString();
+    c.mountpoint = cfg.value(u"mountpoint"_s).toString().trimmed();
+    c.mountpoint.remove(QRegularExpression(u"^/"_s));
+    c.username = cfg.value(u"username"_s).toString();
+    c.password = cfg.value(u"password"_s).toString();
+    c.tls = cfg.value(u"tls"_s).toBool();
+    c.ggaMode = cfg.value(u"ggaMode"_s, u"off"_s).toString();
     bool ok = false;
-    c.lat = cfg.value(QStringLiteral("lat")).toDouble(&ok);
+    c.lat = cfg.value(u"lat"_s).toDouble(&ok);
     if (!ok) c.lat = qQNaN();
-    c.lon = cfg.value(QStringLiteral("lon")).toDouble(&ok);
+    c.lon = cfg.value(u"lon"_s).toDouble(&ok);
     if (!ok) c.lon = qQNaN();
-    c.alt = cfg.value(QStringLiteral("alt")).toDouble();
-    c.ggaInterval = std::max(1, cfg.value(QStringLiteral("ggaInterval")).toInt());
-    if (!cfg.contains(QStringLiteral("ggaInterval"))) c.ggaInterval = 10;
+    c.alt = cfg.value(u"alt"_s).toDouble();
+    c.ggaInterval = std::max(1, cfg.value(u"ggaInterval"_s).toInt());
+    if (!cfg.contains(u"ggaInterval"_s)) c.ggaInterval = 10;
     if (c.host.isEmpty() || c.mountpoint.isEmpty()) {
-        DialogHub::toast(QStringLiteral("Caster host and mountpoint are required"));
+        DialogHub::toast(u"Caster host and mountpoint are required"_s);
         return;
     }
     closeSerial();   // a single correction source at a time
@@ -261,7 +263,7 @@ void RtkController::ntripConnect(const QVariantMap &cfg, const QString &source)
     m_firstAttempt = true;
     m_connecting = true;
     saveNtrip(c, source);   // Electron saves after a successful connect; the source choice goes with it
-    setConnStatus(QStringLiteral("Connecting to caster..."), false);
+    setConnStatus(u"Connecting to caster..."_s, false);
     ntripOpen();
 }
 
@@ -313,8 +315,8 @@ void RtkController::ntripFail(const QString &message, bool fatal)
     if (m_firstAttempt) {
         m_firstAttempt = false;
         m_connecting = false;
-        setConnStatus(QStringLiteral("Error: ") + message, false);
-        DialogHub::toast(QStringLiteral("NTRIP connect failed: ") + message);
+        setConnStatus(u"Error: "_s + message, false);
+        DialogHub::toast(u"NTRIP connect failed: "_s + message);
     }
 }
 
@@ -338,17 +340,17 @@ void RtkController::ntripOnData()
     const QString header = QString::fromLatin1(m_headerBuf.left(idx));
     const QByteArray body = m_headerBuf.mid(idx + 4);
     m_headerBuf.clear();
-    const QString statusLine = header.section(QStringLiteral("\r\n"), 0, 0).trimmed();
+    const QString statusLine = header.section(u"\r\n"_s, 0, 0).trimmed();
     const auto rx = [](const char *p) { return QRegularExpression(QLatin1String(p), QRegularExpression::CaseInsensitiveOption); };
 
     if (rx("^SOURCETABLE").match(statusLine).hasMatch() || rx("Content-Type:\\s*gnss/sourcetable").match(header).hasMatch()) {
-        ntripFail(QStringLiteral("Mountpoint \"%1\" not found (caster returned sourcetable)").arg(m_ntripCfg->mountpoint), true);
+        ntripFail(u"Mountpoint \"%1\" not found (caster returned sourcetable)"_s.arg(m_ntripCfg->mountpoint), true);
         sock->abort();
         return;
     }
     if (!rx("^(ICY 200|HTTP/\\d\\.\\d 200)").match(statusLine).hasMatch()) {
-        ntripFail(rx("401|Unauthorized").match(statusLine).hasMatch() ? QStringLiteral("NTRIP authentication failed (check username/password)")
-                                                                       : QStringLiteral("NTRIP caster error: ") + statusLine,
+        ntripFail(rx("401|Unauthorized").match(statusLine).hasMatch() ? u"NTRIP authentication failed (check username/password)"_s
+                                                                       : u"NTRIP caster error: "_s + statusLine,
                   true);
         sock->abort();
         return;
@@ -357,16 +359,16 @@ void RtkController::ntripOnData()
     m_headerParsed = true;
     m_firstAttempt = false;
     m_connecting = false;
-    resetStats(QStringLiteral("ntrip"));
+    resetStats(u"ntrip"_s);
     const NtripConfig &c = *m_ntripCfg;
-    LOG_I("ntrip") << QStringLiteral("connected to %1:%2/%3%4").arg(c.host).arg(c.port).arg(c.mountpoint, m_chunked ? QStringLiteral(" (chunked)") : QString());
+    LOG_I("ntrip") << u"connected to %1:%2/%3%4"_s.arg(c.host).arg(c.port).arg(c.mountpoint, m_chunked ? u" (chunked)"_s : QString());
     // GGA upload
     m_ggaTimer.stop();
-    if (c.ggaMode != QLatin1String("off")) {
+    if (c.ggaMode != "off"_L1) {
         sendGga();
         m_ggaTimer.start(c.ggaInterval * 1000);
     }
-    setConnStatus(QStringLiteral("NTRIP — %1:%2/%3").arg(c.host).arg(c.port).arg(c.mountpoint), true);
+    setConnStatus(u"NTRIP — %1:%2/%3"_s.arg(c.host).arg(c.port).arg(c.mountpoint), true);
     if (!body.isEmpty()) {
         const QByteArray payload = m_chunked ? m_dechunk.feed(body) : body;
         if (!payload.isEmpty()) handleData(payload);
@@ -383,15 +385,15 @@ void RtkController::ntripOnClosed()
     m_headerParsed = false;
     m_ggaTimer.stop();
     m_idleTimer.stop();
-    if (m_source == QLatin1String("ntrip") && m_connected) {
+    if (m_source == "ntrip"_L1 && m_connected) {
         m_connected = false;
-        setConnStatus(QStringLiteral("Not connected"), false);
+        setConnStatus(u"Not connected"_s, false);
     }
-    if (m_firstAttempt) ntripFail(QStringLiteral("NTRIP connection closed"), false);
+    if (m_firstAttempt) ntripFail(u"NTRIP connection closed"_s, false);
     // Reconnect unless the user disconnected or the configuration is invalid
     if (!m_userDisconnect && m_ntripCfg) {
         ++m_reconnects;
-        LOG_I("ntrip") << QStringLiteral("connection lost — reconnecting in 5 s (attempt %1)").arg(m_reconnects);
+        LOG_I("ntrip") << u"connection lost — reconnecting in 5 s (attempt %1)"_s.arg(m_reconnects);
         m_reconnectTimer.start();
     }
 }
@@ -413,16 +415,16 @@ void RtkController::stopNtrip(bool userRequested)
     if (userRequested) m_ntripCfg.reset();
     m_connecting = false;
     m_firstAttempt = false;
-    if (m_source == QLatin1String("ntrip") && m_connected) {
+    if (m_source == "ntrip"_L1 && m_connected) {
         m_connected = false;
-        setConnStatus(QStringLiteral("Not connected"), false);
+        setConnStatus(u"Not connected"_s, false);
     }
 }
 
 void RtkController::ntripDisconnect()
 {
     stopNtrip(true);
-    setConnStatus(QStringLiteral("Disconnected"), false);
+    setConnStatus(u"Disconnected"_s, false);
 }
 
 // ── GGA upload (VRS networks) ───────────────────────────────────────────────
@@ -432,7 +434,7 @@ void RtkController::sendGga()
     if (!m_ntripCfg || !m_ntrip || !m_headerParsed) return;
     const NtripConfig &c = *m_ntripCfg;
     double lat = c.lat, lon = c.lon, alt = c.alt;
-    if (c.ggaMode != QLatin1String("manual")) {
+    if (c.ggaMode != "manual"_L1) {
         // The vehicle position (fed at 1 Hz in Electron while NTRIP is up)
         const auto s = m_hub->snapshot();
         lat = s->lat;
@@ -449,11 +451,11 @@ void RtkController::sendGga()
 
 void RtkController::fetchSourcetable(const QVariantMap &cfg)
 {
-    const QString host = cfg.value(QStringLiteral("host")).toString().trimmed();
-    int port = cfg.value(QStringLiteral("port")).toInt();
+    const QString host = cfg.value(u"host"_s).toString().trimmed();
+    int port = cfg.value(u"port"_s).toInt();
     if (port <= 0) port = 2101;
     if (host.isEmpty()) {
-        DialogHub::toast(QStringLiteral("Enter the caster host first"));
+        DialogHub::toast(u"Enter the caster host first"_s);
         return;
     }
     if (m_table) m_table->abort();
@@ -464,8 +466,8 @@ void RtkController::fetchSourcetable(const QVariantMap &cfg)
     auto *sock = new QSslSocket(this);
     m_table = sock;
     sock->setPeerVerifyMode(QSslSocket::VerifyNone);
-    const QString user = cfg.value(QStringLiteral("username")).toString(), pass = cfg.value(QStringLiteral("password")).toString();
-    const bool tls = cfg.value(QStringLiteral("tls")).toBool();
+    const QString user = cfg.value(u"username"_s).toString(), pass = cfg.value(u"password"_s).toString();
+    const bool tls = cfg.value(u"tls"_s).toBool();
     const auto onConnect = [sock, host, port, user, pass] {
         QByteArray req = "GET / HTTP/1.1\r\nHost: " + host.toUtf8() + ':' + QByteArray::number(port) +
                          "\r\nUser-Agent: NTRIP CORV-GCS\r\nAccept: */*\r\n";
@@ -489,7 +491,7 @@ void RtkController::fetchSourcetable(const QVariantMap &cfg)
         if (err.isEmpty() && !rtcm::parseSourcetable(m_tableBuf, &list, &err)) {}
         if (!err.isEmpty()) {
             emit mountsChanged();
-            DialogHub::toast(QStringLiteral("Sourcetable fetch failed: ") + err);
+            DialogHub::toast(u"Sourcetable fetch failed: "_s + err);
             return;
         }
         m_mounts.clear();
@@ -497,11 +499,11 @@ void RtkController::fetchSourcetable(const QVariantMap &cfg)
             QStringList details;
             for (const QString &d : {m.format, m.navSystem, m.country})
                 if (!d.isEmpty()) details << d;
-            m_mounts << QVariantMap{{QStringLiteral("value"), m.mountpoint},
-                                    {QStringLiteral("label"), m.mountpoint + (details.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(details.join(QStringLiteral(" · "))))}};
+            m_mounts << QVariantMap{{u"value"_s, m.mountpoint},
+                                    {u"label"_s, m.mountpoint + (details.isEmpty() ? QString() : u" (%1)"_s.arg(details.join(u" · "_s)))}};
         }
         emit mountsChanged();
-        if (list.isEmpty()) DialogHub::toast(QStringLiteral("Caster returned an empty sourcetable"));
+        if (list.isEmpty()) DialogHub::toast(u"Caster returned an empty sourcetable"_s);
     };
     connect(sock, &QSslSocket::readyRead, this, [this, sock, finish] {
         m_tableBuf.append(sock->readAll());
@@ -532,24 +534,24 @@ QVariantMap RtkController::saved() const
 void RtkController::saveNtrip(const NtripConfig &c, const QString &source) const
 {
     QJsonObject o;
-    o.insert(QStringLiteral("host"), c.host);
-    o.insert(QStringLiteral("port"), c.port);
-    o.insert(QStringLiteral("mountpoint"), c.mountpoint);
-    o.insert(QStringLiteral("username"), c.username);
-    o.insert(QStringLiteral("tls"), c.tls);
-    o.insert(QStringLiteral("ggaMode"), c.ggaMode);
-    o.insert(QStringLiteral("ggaInterval"), c.ggaInterval);
-    o.insert(QStringLiteral("lat"), std::isfinite(c.lat) ? QJsonValue(c.lat) : QJsonValue());
-    o.insert(QStringLiteral("lon"), std::isfinite(c.lon) ? QJsonValue(c.lon) : QJsonValue());
-    o.insert(QStringLiteral("alt"), c.alt);
-    o.insert(QStringLiteral("source"), source.isEmpty() ? QStringLiteral("ntrip") : source);
+    o.insert(u"host"_s, c.host);
+    o.insert(u"port"_s, c.port);
+    o.insert(u"mountpoint"_s, c.mountpoint);
+    o.insert(u"username"_s, c.username);
+    o.insert(u"tls"_s, c.tls);
+    o.insert(u"ggaMode"_s, c.ggaMode);
+    o.insert(u"ggaInterval"_s, c.ggaInterval);
+    o.insert(u"lat"_s, std::isfinite(c.lat) ? QJsonValue(c.lat) : QJsonValue());
+    o.insert(u"lon"_s, std::isfinite(c.lon) ? QJsonValue(c.lon) : QJsonValue());
+    o.insert(u"alt"_s, c.alt);
+    o.insert(u"source"_s, source.isEmpty() ? u"ntrip"_s : source);
     Settings::instance().setJson(kNtripKey, o);
 }
 
 void RtkController::setSourceChoice(const QString &source)
 {
     QVariantMap s = saved();
-    s.insert(QStringLiteral("source"), source);
+    s.insert(u"source"_s, source);
     Settings::instance().setJson(kNtripKey, QJsonObject::fromVariantMap(s));
 }
 
@@ -559,14 +561,14 @@ void RtkController::updateDrone()
 {
     const auto s = m_hub->snapshot();
     static const char *names[] = {"No GPS", "No Fix", "2D Fix", "3D Fix", "DGPS", "RTK Float", "RTK Fixed"};
-    const QString fix = s->gpsFix >= 0 && s->gpsFix < 7 ? QString::fromLatin1(names[s->gpsFix]) : QStringLiteral("Fix %1").arg(s->gpsFix);
-    const QString color = s->gpsFix == 6 ? QStringLiteral("#00ff7f") : s->gpsFix == 5 ? QStringLiteral("#ffcc00")
-                        : s->gpsFix >= 3 ? QStringLiteral("#00d2ff") : QStringLiteral("#ff3333");
-    const QString sat = s->gpsNumSat ? QString::number(s->gpsNumSat) : QStringLiteral("---");
-    const QString hdop = s->gpsHdop < 99 ? QString::number(s->gpsHdop, 'f', 1) : QStringLiteral("---");
-    const QString baseline = s->rtkBaseline > 0 ? QString::number(s->rtkBaseline / 1000, 'f', 3) + QStringLiteral(" m") : QStringLiteral("---");
-    const QString accuracy = s->rtkAccuracy > 0 ? QString::number(s->rtkAccuracy / 10, 'f', 1) + QStringLiteral(" mm") : QStringLiteral("---");
-    const QString iar = s->rtkIar > 0 ? QString::number(s->rtkIar) : QStringLiteral("---");
+    const QString fix = s->gpsFix >= 0 && s->gpsFix < 7 ? QString::fromLatin1(names[s->gpsFix]) : u"Fix %1"_s.arg(s->gpsFix);
+    const QString color = s->gpsFix == 6 ? u"#00ff7f"_s : s->gpsFix == 5 ? u"#ffcc00"_s
+                        : s->gpsFix >= 3 ? u"#00d2ff"_s : u"#ff3333"_s;
+    const QString sat = s->gpsNumSat ? QString::number(s->gpsNumSat) : u"---"_s;
+    const QString hdop = s->gpsHdop < 99 ? QString::number(s->gpsHdop, 'f', 1) : u"---"_s;
+    const QString baseline = s->rtkBaseline > 0 ? QString::number(s->rtkBaseline / 1000, 'f', 3) + u" m"_s : u"---"_s;
+    const QString accuracy = s->rtkAccuracy > 0 ? QString::number(s->rtkAccuracy / 10, 'f', 1) + u" mm"_s : u"---"_s;
+    const QString iar = s->rtkIar > 0 ? QString::number(s->rtkIar) : u"---"_s;
     if (fix == m_droneFix && color == m_droneFixColor && sat == m_droneSat && hdop == m_droneHdop && baseline == m_droneBaseline &&
         accuracy == m_droneAccuracy && iar == m_droneIar)
         return;

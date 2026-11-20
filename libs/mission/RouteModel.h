@@ -75,4 +75,11 @@ double num(const QJsonValue &v, double fallback = 0);
 /// JS truthiness.
 bool truthy(const QJsonValue &v);
 
+/// A number as the route editor prints it: 20, 2.5, -90, never 20.0.
+QString fmtNum(double v);
+/// "850 m", "1.2 km", "12 km".
+QString fmtDist(double m);
+/// "--" for none, "12 min", "1h 05m".
+QString fmtTime(double s);
+
 } // namespace corv::mission

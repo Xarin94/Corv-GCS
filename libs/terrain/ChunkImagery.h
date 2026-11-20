@@ -70,9 +70,6 @@ public:
     /// Every chunk was dropped (new scene origin): images must be sent again.
     void resetResident();
 
-    int residentCount() const { return int(m_resident.size()); }
-    qint64 residentBytes() const { return m_bytes; }
-    int jobCount() const { return int(m_jobs.size()); }
 
 private:
     struct Job {

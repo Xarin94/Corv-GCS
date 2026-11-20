@@ -15,6 +15,8 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -41,8 +43,8 @@ rospts::Anchor toPts(const RosAnchor &a) { return {a.lat, a.lon, a.alt, a.mPerLa
 QVariantMap anchorMap(const std::optional<RosAnchor> &a)
 {
     if (!a) return {};
-    return {{QStringLiteral("lat"), a->lat}, {QStringLiteral("lon"), a->lon}, {QStringLiteral("alt"), a->alt},
-            {QStringLiteral("rel"), a->rel}, {QStringLiteral("epoch"), a->epoch}};
+    return {{u"lat"_s, a->lat}, {u"lon"_s, a->lon}, {u"alt"_s, a->alt},
+            {u"rel"_s, a->rel}, {u"epoch"_s, a->epoch}};
 }
 } // namespace
 
@@ -103,7 +105,7 @@ void RosClient::connectTo(const QString &url)
 {
     disconnectLink();
     m_url = url;
-    m_link = QStringLiteral("CONNECTING");
+    m_link = u"CONNECTING"_s;
     open();
     if (m_poseTimer) m_poseTimer->start();
     postStatus();
@@ -121,7 +123,7 @@ void RosClient::open()
     m_ws = ws;
     connect(ws, &QWebSocket::connected, this, [this, ws] {
         if (m_ws != ws) return;
-        m_link = QStringLiteral("CONNECTED");
+        m_link = u"CONNECTED"_s;
         m_lastError.clear();
         LOG_I("ros") << "rosbridge connected:" << m_url;
         listTopics();
@@ -130,7 +132,7 @@ void RosClient::open()
     });
     connect(ws, &QWebSocket::errorOccurred, this, [this, ws](QAbstractSocket::SocketError) {
         if (m_ws != ws) return;
-        m_lastError = QStringLiteral("cannot reach %1").arg(m_url);
+        m_lastError = u"cannot reach %1"_s.arg(m_url);
         if (ws->state() != QAbstractSocket::ConnectedState) scheduleReconnect();
     });
     connect(ws, &QWebSocket::disconnected, this, [this, ws] {
@@ -144,10 +146,10 @@ void RosClient::open()
 
 void RosClient::scheduleReconnect()
 {
-    if (m_link == QLatin1String("OFF")) return;
+    if (m_link == "OFF"_L1) return;
     if (!m_subId.isEmpty()) m_subId.clear();
-    if (m_link != QLatin1String("RECONNECTING")) LOG_W("ros") << "rosbridge link lost:" << m_url << m_lastError;
-    m_link = QStringLiteral("RECONNECTING");
+    if (m_link != "RECONNECTING"_L1) LOG_W("ros") << "rosbridge link lost:" << m_url << m_lastError;
+    m_link = u"RECONNECTING"_s;
     if (!m_reconnect->isActive()) m_reconnect->start();
     postStatus();
 }
@@ -164,7 +166,7 @@ void RosClient::disconnectLink()
         ws->deleteLater();
     }
     if (m_poseTimer) m_poseTimer->stop();
-    m_link = QStringLiteral("OFF");
+    m_link = u"OFF"_s;
     m_topics.clear();
 }
 
@@ -177,33 +179,33 @@ void RosClient::sendJson(const QVariantMap &m)
 void RosClient::listTopics()
 {
     if (!m_ws || m_ws->state() != QAbstractSocket::ConnectedState) return;
-    m_topicsCallId = QStringLiteral("call_service:/rosapi/topics:%1").arg(m_nextId++);
-    sendJson({{QStringLiteral("op"), QStringLiteral("call_service")},
-              {QStringLiteral("id"), m_topicsCallId},
-              {QStringLiteral("service"), QStringLiteral("/rosapi/topics")},
-              {QStringLiteral("type"), QStringLiteral("rosapi/Topics")},
-              {QStringLiteral("args"), QVariantMap{}}});
+    m_topicsCallId = u"call_service:/rosapi/topics:%1"_s.arg(m_nextId++);
+    sendJson({{u"op"_s, u"call_service"_s},
+              {u"id"_s, m_topicsCallId},
+              {u"service"_s, u"/rosapi/topics"_s},
+              {u"type"_s, u"rosapi/Topics"_s},
+              {u"args"_s, QVariantMap{}}});
 }
 
 void RosClient::subscribe()
 {
     unsubscribe();
     if (!m_ws || m_ws->state() != QAbstractSocket::ConnectedState || !m_sel || m_sel->kind.isEmpty()) return;
-    m_subId = QStringLiteral("subscribe:%1:%2").arg(m_sel->topic).arg(m_nextId++);
-    sendJson({{QStringLiteral("op"), QStringLiteral("subscribe")},
-              {QStringLiteral("id"), m_subId},
-              {QStringLiteral("type"), m_sel->type},
-              {QStringLiteral("topic"), m_sel->topic},
-              {QStringLiteral("compression"), m_cfg.transport == QLatin1String("json") ? QStringLiteral("none") : QStringLiteral("cbor")},
-              {QStringLiteral("throttle_rate"), int(std::lround(1000 / std::max(0.1, m_cfg.rateHz)))},
-              {QStringLiteral("queue_length"), 1}});
+    m_subId = u"subscribe:%1:%2"_s.arg(m_sel->topic).arg(m_nextId++);
+    sendJson({{u"op"_s, u"subscribe"_s},
+              {u"id"_s, m_subId},
+              {u"type"_s, m_sel->type},
+              {u"topic"_s, m_sel->topic},
+              {u"compression"_s, m_cfg.transport == "json"_L1 ? u"none"_s : u"cbor"_s},
+              {u"throttle_rate"_s, int(std::lround(1000 / std::max(0.1, m_cfg.rateHz)))},
+              {u"queue_length"_s, 1}});
     LOG_I("ros") << "subscribed to" << m_sel->topic << m_sel->type << "at" << m_cfg.rateHz << "Hz," << m_cfg.transport;
 }
 
 void RosClient::unsubscribe()
 {
     if (m_subId.isEmpty()) return;
-    if (m_sel) sendJson({{QStringLiteral("op"), QStringLiteral("unsubscribe")}, {QStringLiteral("id"), m_subId}, {QStringLiteral("topic"), m_sel->topic}});
+    if (m_sel) sendJson({{u"op"_s, u"unsubscribe"_s}, {u"id"_s, m_subId}, {u"topic"_s, m_sel->topic}});
     m_subId.clear();
 }
 
@@ -222,26 +224,26 @@ void RosClient::onBinary(const QByteArray &data)
 
 void RosClient::onRosMessage(const QCborMap &m)
 {
-    const QString op = m.value(QLatin1String("op")).toString();
-    if (op == QLatin1String("publish")) {
-        if (!m_sel || m.value(QLatin1String("topic")).toString() != m_sel->topic || m_subId.isEmpty()) return;
-        onMessage(m.value(QLatin1String("msg")).toMap(), wallMs());
-    } else if (op == QLatin1String("service_response")) {
-        if (m.value(QLatin1String("id")).toString() != m_topicsCallId) return;
-        const QCborValue values = m.value(QLatin1String("values"));
-        const QCborValue result = m.value(QLatin1String("result"));
+    const QString op = m.value("op"_L1).toString();
+    if (op == "publish"_L1) {
+        if (!m_sel || m.value("topic"_L1).toString() != m_sel->topic || m_subId.isEmpty()) return;
+        onMessage(m.value("msg"_L1).toMap(), wallMs());
+    } else if (op == "service_response"_L1) {
+        if (m.value("id"_L1).toString() != m_topicsCallId) return;
+        const QCborValue values = m.value("values"_L1);
+        const QCborValue result = m.value("result"_L1);
         if (result.isFalse() || !values.isMap()) {
-            m_lastError = QStringLiteral("rosapi: %1 — is rosapi running (rosbridge_websocket_launch)?")
-                              .arg(values.isString() ? values.toString() : QStringLiteral("no topics"));
+            m_lastError = u"rosapi: %1 — is rosapi running (rosbridge_websocket_launch)?"_s
+                              .arg(values.isString() ? values.toString() : u"no topics"_s);
             postStatus();
             return;
         }
-        const QCborArray names = values.toMap().value(QLatin1String("topics")).toArray();
-        const QCborArray types = values.toMap().value(QLatin1String("types")).toArray();
+        const QCborArray names = values.toMap().value("topics"_L1).toArray();
+        const QCborArray types = values.toMap().value("types"_L1).toArray();
         m_topics.clear();
         for (qsizetype i = 0; i < names.size(); ++i) {
             const QString type = types.at(i).toString();
-            m_topics << QVariantMap{{QStringLiteral("name"), names.at(i).toString()}, {QStringLiteral("type"), type}, {QStringLiteral("kind"), rospts::kindOf(type)}};
+            m_topics << QVariantMap{{u"name"_s, names.at(i).toString()}, {u"type"_s, type}, {u"kind"_s, rospts::kindOf(type)}};
         }
         emit topicsChanged(m_topics);
     }
@@ -258,9 +260,9 @@ void RosClient::snapshotTick()
     PoseSnap p;
     const qint64 now = wallMs();
     if (s->isDemo()) {
-        p.reason = QStringLiteral("NO VEHICLE");
+        p.reason = u"NO VEHICLE"_s;
     } else if (!std::isfinite(s->lat) || !std::isfinite(s->lon) || (!s->relativeMode && s->lat == 0 && s->lon == 0)) {
-        p.reason = QStringLiteral("NO POSITION");
+        p.reason = u"NO POSITION"_s;
     } else {
         p.valid = true;
         p.rel = s->relativeMode;
@@ -309,7 +311,7 @@ void RosClient::snapshotTick()
 // Every ATTITUDE / GLOBAL_POSITION_INT, kept until the next snapshot
 void RosClient::onBusMessage(const MavMessage &m)
 {
-    if (m_link == QLatin1String("OFF") || !m_hub) return;
+    if (m_link == "OFF"_L1 || !m_hub) return;
     const auto s = m_hub->snapshot();
     if (m.id() == MAVLINK_MSG_ID_ATTITUDE) {
         mavlink_attitude_t a;
@@ -338,7 +340,7 @@ void RosClient::pushPose(const PoseSnap &p, const std::vector<rospts::AttSample>
                          const std::vector<rospts::PosSample> &pos, const std::vector<double> &posBoot)
 {
     if (!p.valid) {
-        m_poseReason = p.reason.isEmpty() ? QStringLiteral("NO POSE") : p.reason;
+        m_poseReason = p.reason.isEmpty() ? u"NO POSE"_s : p.reason;
         return;
     }
     auto pushAtt = [this](const AttS &s) {
@@ -428,7 +430,7 @@ std::optional<RosClient::Pose> RosClient::poseAt(double t) const
     p.rel = q.rel;
     p.home = q.home;
     // A boat at the water surface (VERTICAL 'water'): no home yet, no height
-    if (m_cfg.vertical == QLatin1String("water")) {
+    if (m_cfg.vertical == "water"_L1) {
         if (!q.home) return std::nullopt;
         p.p.alt = q.home->alt;
     }
@@ -438,26 +440,26 @@ std::optional<RosClient::Pose> RosClient::poseAt(double t) const
 // Time of a message on this clock (see the header)
 double RosClient::messageTime(const QCborMap &msg, double arrival)
 {
-    if (m_cfg.timeBase == QLatin1String("stamp")) {
-        const QCborMap st = msg.value(QLatin1String("header")).toMap().value(QLatin1String("stamp")).toMap();
+    if (m_cfg.timeBase == "stamp"_L1) {
+        const QCborMap st = msg.value("header"_L1).toMap().value("stamp"_L1).toMap();
         if (!st.isEmpty()) {
-            double sec = rospts::num(st.value(QLatin1String("sec")));
-            if (!std::isfinite(sec)) sec = rospts::num(st.value(QLatin1String("secs")));
-            double ns = rospts::num(st.value(QLatin1String("nanosec")));
-            if (!std::isfinite(ns)) ns = rospts::num(st.value(QLatin1String("nsecs")));
+            double sec = rospts::num(st.value("sec"_L1));
+            if (!std::isfinite(sec)) sec = rospts::num(st.value("secs"_L1));
+            double ns = rospts::num(st.value("nanosec"_L1));
+            if (!std::isfinite(ns)) ns = rospts::num(st.value("nsecs"_L1));
             if (!std::isfinite(ns)) ns = 0;
             if (std::isfinite(sec)) {
                 const double ts = sec * 1000 + ns / 1e6;
                 if (std::abs(ts - arrival) <= kStampTrustMs) {
                     m_stampOff.reset();
-                    m_timeRef = QStringLiteral("stamp");
+                    m_timeRef = u"stamp"_s;
                     return ts + m_cfg.lagMs;
                 }
                 m_stampOff = ts - arrival;
             }
         }
     }
-    m_timeRef = QStringLiteral("arrival");
+    m_timeRef = u"arrival"_s;
     return arrival - m_cfg.lagMs;
 }
 
@@ -543,12 +545,12 @@ void RosClient::handle(const QCborMap &msg, qint64 now)
     if (!m_sel) return;
     ++m_totalMsgs;
     ++m_rate.msgs;
-    const QString frameId = msg.value(QLatin1String("header")).toMap().value(QLatin1String("frame_id")).toString();
+    const QString frameId = msg.value("header"_L1).toMap().value("frame_id"_L1).toString();
     const QString frame = rospts::frameOf(frameId, m_cfg.frame);
     m_lastFrameId = frameId;
     m_lastFrame = frame;
 
-    const bool sensor = frame == QLatin1String("sensor");
+    const bool sensor = frame == "sensor"_L1;
     const int maxPts = std::min(int(m_cfg.maxPoints), kMaxPoints);
     const rospts::Decoded decoded = rospts::decodePoints(m_sel->kind, msg, m_pts.data(), kMaxPoints, maxPts, sensor ? m_cfg.minRange : 0,
                                                          sensor ? m_cfg.maxRange : std::numeric_limits<double>::infinity(), m_times.data());
@@ -561,7 +563,7 @@ void RosClient::handle(const QCborMap &msg, qint64 now)
     m_rate.pointsIn += total;
     m_rate.sampled += count;
     // Spikes along the scan, in the sensor frame where the order is the beams'
-    if (sensor && m_cfg.despike != QLatin1String("off") && m_sel->kind != QLatin1String("range")) {
+    if (sensor && m_cfg.despike != "off"_L1 && m_sel->kind != "range"_L1) {
         // A sweep sent in parts: the previous part's last beams lead in, and
         // this part's last beams are kept for the next (before filtering)
         int lead = 0;
@@ -601,11 +603,11 @@ void RosClient::handle(const QCborMap &msg, qint64 now)
         count = kept;
         m_unordered = !d.ordered;
     }
-    if (m_sel->kind == QLatin1String("range")) {
-        m_zoneMeta = {{QStringLiteral("fov"), rospts::num(msg.value(QLatin1String("field_of_view")))}};
-    } else if (m_sel->kind == QLatin1String("scan")) {
+    if (m_sel->kind == "range"_L1) {
+        m_zoneMeta = {{u"fov"_s, rospts::num(msg.value("field_of_view"_L1))}};
+    } else if (m_sel->kind == "scan"_L1) {
         // The angles of the last 10 s: a sector sonar sends its sweep in parts
-        const double a0 = rospts::num(msg.value(QLatin1String("angle_min"))), a1 = rospts::num(msg.value(QLatin1String("angle_max")));
+        const double a0 = rospts::num(msg.value("angle_min"_L1)), a1 = rospts::num(msg.value("angle_max"_L1));
         m_scanSpans.push_back({std::min(a0, a1), std::max(a0, a1), double(now)});
         while (!m_scanSpans.empty() && now - m_scanSpans.front()[2] > kDirKeepMs) m_scanSpans.pop_front();
         double lo = 1e300, hi = -1e300;
@@ -613,7 +615,7 @@ void RosClient::handle(const QCborMap &msg, qint64 now)
             lo = std::min(lo, z[0]);
             hi = std::max(hi, z[1]);
         }
-        m_zoneMeta = {{QStringLiteral("min"), lo}, {QStringLiteral("max"), hi}};
+        m_zoneMeta = {{u"min"_s, lo}, {u"max"_s, hi}};
     }
     if (sensor && count) {
         const int step = std::max(1, count / kDirSamples);
@@ -626,7 +628,7 @@ void RosClient::handle(const QCborMap &msg, qint64 now)
     }
     // (decoded first: the zone shows on the bench, with no vehicle yet)
     double t = messageTime(msg, double(now));
-    if (timed && m_timeRef == QLatin1String("arrival")) t -= 1000 * decoded.span / m_clockRate;   // the first beam
+    if (timed && m_timeRef == "arrival"_L1) t -= 1000 * decoded.span / m_clockRate;   // the first beam
     const auto pose = poseAt(t);
     if (!pose) {
         ++m_rate.noPose;
@@ -639,12 +641,12 @@ void RosClient::handle(const QCborMap &msg, qint64 now)
         if (!m_posRing.empty()) miss.pos = std::round(t - timeOf(m_posRing.back().t, m_posRing.back().b));
         miss.clockRate = m_clockRate;
         m_poseMiss = miss;
-        const bool noHome = m_cfg.vertical == QLatin1String("water") && !m_posRing.empty() && !m_posRing.back().home;
-        m_blocked = noHome ? QStringLiteral("NO HOME (water surface)") : m_poseReason;
+        const bool noHome = m_cfg.vertical == "water"_L1 && !m_posRing.empty() && !m_posRing.back().home;
+        m_blocked = noHome ? u"NO HOME (water surface)"_s : m_poseReason;
         return;
     }
     if (!count) {
-        m_blocked = total ? QStringLiteral("NO VALID POINTS") : QStringLiteral("EMPTY MESSAGES");
+        m_blocked = total ? u"NO VALID POINTS"_s : u"EMPTY MESSAGES"_s;
         return;
     }
 
@@ -653,10 +655,10 @@ void RosClient::handle(const QCborMap &msg, qint64 now)
         m_anchor = RosAnchor{a.lat, a.lon, a.alt, a.mPerLat, a.mPerLon, pose->rel, ++m_epoch};
     } else if (m_anchor->rel != pose->rel) {
         ++m_rate.noPose;
-        m_blocked = QStringLiteral("FRAME CHANGED · CLEAR");
+        m_blocked = u"FRAME CHANGED · CLEAR"_s;
         return;
     }
-    const bool cave = m_cfg.layers == QLatin1String("cave");
+    const bool cave = m_cfg.layers == "cave"_L1;
 
     if (timed) {
         count = placeTimed(count, t, cave);
@@ -671,11 +673,11 @@ void RosClient::handle(const QCborMap &msg, qint64 now)
     } else {
         if (!pose->home) {
             ++m_rate.noHome;
-            m_blocked = QStringLiteral("NO HOME (world frame)");
+            m_blocked = u"NO HOME (world frame)"_s;
             return;
         }
         m_org = rospts::toEnu(toPts(*m_anchor), pose->home->lat, pose->home->lon, pose->home->alt);
-        rospts::worldToEnu(m_pts.data(), count, frame == QLatin1String("world-ned"), m_org, m_enu.data());
+        rospts::worldToEnu(m_pts.data(), count, frame == "world-ned"_L1, m_org, m_enu.data());
     }
     if (cave) {
         // Rays from the sensor
@@ -703,11 +705,11 @@ void RosClient::postTiles()
 
 QString RosClient::state() const
 {
-    if (m_link == QLatin1String("OFF")) return QStringLiteral("OFF");
-    if (m_link != QLatin1String("CONNECTED")) return m_lastError.isEmpty() ? QStringLiteral("CONNECTING") : QStringLiteral("NO ROSBRIDGE");
-    if (!m_sel || m_sel->kind.isEmpty()) return QStringLiteral("NO TOPIC");
-    if (wallMs() - m_lastMsgAt > 3000) return QStringLiteral("NO DATA");
-    return m_blocked.isEmpty() ? QStringLiteral("ACCUMULATING") : m_blocked;
+    if (m_link == "OFF"_L1) return u"OFF"_s;
+    if (m_link != "CONNECTED"_L1) return m_lastError.isEmpty() ? u"CONNECTING"_s : u"NO ROSBRIDGE"_s;
+    if (!m_sel || m_sel->kind.isEmpty()) return u"NO TOPIC"_s;
+    if (wallMs() - m_lastMsgAt > 3000) return u"NO DATA"_s;
+    return m_blocked.isEmpty() ? u"ACCUMULATING"_s : m_blocked;
 }
 
 // The mission's survey areas (lat/lng polygons from the planner) and how much
@@ -723,15 +725,15 @@ void RosClient::updateCoverage()
     for (const QVariant &v : std::as_const(m_areas)) {
         const QVariantMap area = v.toMap();
         std::vector<QPointF> poly;
-        for (const QVariant &pv : area.value(QStringLiteral("points")).toList()) {
+        for (const QVariant &pv : area.value(u"points"_s).toList()) {
             const QVariantMap p = pv.toMap();
-            const auto e = rospts::toEnu(a, p.value(QStringLiteral("lat")).toDouble(), p.value(QStringLiteral("lng")).toDouble(), a.alt);
+            const auto e = rospts::toEnu(a, p.value(u"lat"_s).toDouble(), p.value(u"lng"_s).toDouble(), a.alt);
             poly.emplace_back(e[0], e[1]);
         }
         const double areaM2 = polygonAreaXY(poly);
-        m_coverage << QVariantMap{{QStringLiteral("name"), area.value(QStringLiteral("name"))},
-                                  {QStringLiteral("area"), areaM2},
-                                  {QStringLiteral("covered"), std::min(areaM2, coveredArea(m_surface, poly, block))}};
+        m_coverage << QVariantMap{{u"name"_s, area.value(u"name"_s)},
+                                  {u"area"_s, areaM2},
+                                  {u"covered"_s, std::min(areaM2, coveredArea(m_surface, poly, block))}};
     }
 }
 
@@ -742,46 +744,46 @@ QVariantMap RosClient::status() const
     for (std::size_t b = 0; b < m_dirSeen.size(); ++b)
         if (now - m_dirSeen[b] < kDirKeepMs) bins << int(b);
     QVariantMap zone = m_zoneMeta;
-    zone.insert(QStringLiteral("dirs"), QVariantMap{{QStringLiteral("az"), kDirAz}, {QStringLiteral("el"), kDirEl}, {QStringLiteral("bins"), bins}});
+    zone.insert(u"dirs"_s, QVariantMap{{u"az"_s, kDirAz}, {u"el"_s, kDirEl}, {u"bins"_s, bins}});
     QVariantMap miss;
     if (m_poseMiss && now - m_poseMiss->at < 3000) {
         auto opt = [](const std::optional<double> &v) { return v ? QVariant(*v) : QVariant(); };
-        miss = {{QStringLiteral("att"), opt(m_poseMiss->att)}, {QStringLiteral("pos"), opt(m_poseMiss->pos)},
-                {QStringLiteral("oldest"), opt(m_poseMiss->oldest)}, {QStringLiteral("clockRate"), m_poseMiss->clockRate}};
+        miss = {{u"att"_s, opt(m_poseMiss->att)}, {u"pos"_s, opt(m_poseMiss->pos)},
+                {u"oldest"_s, opt(m_poseMiss->oldest)}, {u"clockRate"_s, m_poseMiss->clockRate}};
     }
-    const QVariantMap rate{{QStringLiteral("msgs"), m_lastRate.msgs},       {QStringLiteral("pointsIn"), m_lastRate.pointsIn},
-                           {QStringLiteral("sampled"), m_lastRate.sampled}, {QStringLiteral("used"), m_lastRate.used},
-                           {QStringLiteral("spikes"), m_lastRate.spikes},   {QStringLiteral("noPose"), m_lastRate.noPose},
-                           {QStringLiteral("noHome"), m_lastRate.noHome}};
-    const QVariantMap surface{{QStringLiteral("cell"), m_surface.cell()},     {QStringLiteral("maxTiles"), m_surface.maxTiles()},
-                              {QStringLiteral("tileCells"), SurfaceTiles::kTile}, {QStringLiteral("layers"), m_cfg.layers},
-                              {QStringLiteral("tiles"), m_surface.size()},     {QStringLiteral("filled"), m_surface.filled()},
-                              {QStringLiteral("chunks"), m_volume.size()},     {QStringLiteral("maxChunks"), m_volume.maxChunks()},
-                              {QStringLiteral("coverage"), m_coverage}};
+    const QVariantMap rate{{u"msgs"_s, m_lastRate.msgs},       {u"pointsIn"_s, m_lastRate.pointsIn},
+                           {u"sampled"_s, m_lastRate.sampled}, {u"used"_s, m_lastRate.used},
+                           {u"spikes"_s, m_lastRate.spikes},   {u"noPose"_s, m_lastRate.noPose},
+                           {u"noHome"_s, m_lastRate.noHome}};
+    const QVariantMap surface{{u"cell"_s, m_surface.cell()},     {u"maxTiles"_s, m_surface.maxTiles()},
+                              {u"tileCells"_s, SurfaceTiles::kTile}, {u"layers"_s, m_cfg.layers},
+                              {u"tiles"_s, m_surface.size()},     {u"filled"_s, m_surface.filled()},
+                              {u"chunks"_s, m_volume.size()},     {u"maxChunks"_s, m_volume.maxChunks()},
+                              {u"coverage"_s, m_coverage}};
     QVariant waterAlt;
     if (!m_posRing.empty() && m_posRing.back().home) waterAlt = m_posRing.back().home->alt;
-    return {{QStringLiteral("link"), m_link},
-            {QStringLiteral("url"), m_url},
-            {QStringLiteral("error"), m_lastError},
-            {QStringLiteral("state"), state()},
-            {QStringLiteral("topic"), m_sel ? m_sel->topic : QString()},
-            {QStringLiteral("type"), m_sel ? m_sel->type : QString()},
-            {QStringLiteral("kind"), m_sel ? m_sel->kind : QString()},
-            {QStringLiteral("frameId"), m_lastFrameId},
-            {QStringLiteral("frame"), m_lastFrame},
-            {QStringLiteral("timeBase"), m_cfg.timeBase},
-            {QStringLiteral("stampOff"), m_stampOff ? QVariant(*m_stampOff) : QVariant()},
-            {QStringLiteral("clockRate"), m_clockRate},
-            {QStringLiteral("timedSpan"), m_timedSpan},
-            {QStringLiteral("poseMiss"), miss},
-            {QStringLiteral("vertical"), m_cfg.vertical},
-            {QStringLiteral("waterAlt"), waterAlt},
-            {QStringLiteral("despike"), m_cfg.despike != QLatin1String("off") ? (m_unordered ? QStringLiteral("unordered") : QStringLiteral("on")) : QStringLiteral("off")},
-            {QStringLiteral("zone"), zone},
-            {QStringLiteral("rate"), rate},
-            {QStringLiteral("totalMsgs"), m_totalMsgs},
-            {QStringLiteral("surface"), surface},
-            {QStringLiteral("anchor"), anchorMap(m_anchor)}};
+    return {{u"link"_s, m_link},
+            {u"url"_s, m_url},
+            {u"error"_s, m_lastError},
+            {u"state"_s, state()},
+            {u"topic"_s, m_sel ? m_sel->topic : QString()},
+            {u"type"_s, m_sel ? m_sel->type : QString()},
+            {u"kind"_s, m_sel ? m_sel->kind : QString()},
+            {u"frameId"_s, m_lastFrameId},
+            {u"frame"_s, m_lastFrame},
+            {u"timeBase"_s, m_cfg.timeBase},
+            {u"stampOff"_s, m_stampOff ? QVariant(*m_stampOff) : QVariant()},
+            {u"clockRate"_s, m_clockRate},
+            {u"timedSpan"_s, m_timedSpan},
+            {u"poseMiss"_s, miss},
+            {u"vertical"_s, m_cfg.vertical},
+            {u"waterAlt"_s, waterAlt},
+            {u"despike"_s, m_cfg.despike != "off"_L1 ? (m_unordered ? u"unordered"_s : u"on"_s) : u"off"_s},
+            {u"zone"_s, zone},
+            {u"rate"_s, rate},
+            {u"totalMsgs"_s, m_totalMsgs},
+            {u"surface"_s, surface},
+            {u"anchor"_s, anchorMap(m_anchor)}};
 }
 
 // ============== CONFIG ==============

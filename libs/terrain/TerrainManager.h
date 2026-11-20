@@ -50,7 +50,6 @@ public:
     int activeChunks() const { return int(m_active.size()); }
 
 signals:
-    void chunksChanged(int active);
 
 private:
     void updateChunks(double lat, double lon);

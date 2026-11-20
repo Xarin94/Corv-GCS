@@ -10,6 +10,8 @@
 #include <QQuickWindow>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 VehicleHub *HudItem::s_hub = nullptr;
@@ -162,7 +164,7 @@ void HudItem::frame(double nowMs)
     f.navFresh = s.navDataTime > 0 && wallMs() - s.navDataTime < 3000;
 
     if (s.armed != m_prevArmed) {
-        if (s.armed) pushMessage(QStringLiteral("ARMED"), QStringLiteral("warning"));
+        if (s.armed) pushMessage(u"ARMED"_s, u"warning"_s);
         m_prevArmed = s.armed;
     }
 

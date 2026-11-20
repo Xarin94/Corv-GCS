@@ -40,7 +40,6 @@ public:
     void setRelativeNav(const RelativeNav::Settings &s);
     /// SYS CONFIG → RESET ESTIMATE: the relative position and the dead-reckoned track start again from zero.
     void resetRelativeNav();
-    void setSubSurfaceAlt(std::optional<double> alt);
     void resetTelemetry();
     /// A stream opened: its first valid position becomes the scene origin.
     void awaitSceneOriginFix();
@@ -48,14 +47,10 @@ public:
     /// Start the demo flight (60 Hz on the link thread while LIVE and not connected).
     void startDemo(DemoFlight::TerrainFn terrain);
 
-    /// The GUI side found the connection gone (MSP disconnects).
-    void setConnected(bool connected, const QString &type);
-
 signals:
     void commandAck(int command, int result);
     void statusText(int severity, const QString &text);
     void lastHomeChanged(double lat, double lon);
-    void sceneOriginChanged(double lat, double lon, int epoch);
     void connectionChanged(bool connected, const QString &type);
     /// After every publish (link thread). Cheap listeners only.
     void published();

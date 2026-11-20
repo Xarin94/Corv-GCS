@@ -32,6 +32,8 @@
 #include <QScreen>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 VehicleHub *SceneItem::s_hub = nullptr;
@@ -100,10 +102,10 @@ const Palette kLight{QColor(0xe3261c), QColor(0x0a8f2a), QColor(0x05561b), QColo
 
 QColor segmentColour(const Palette &pal, const QString &segType)
 {
-    if (segType == QLatin1String("area")) return pal.area;
-    if (segType == QLatin1String("corridor")) return pal.corridor;
-    if (segType == QLatin1String("perimeter")) return pal.perimeter;
-    if (segType == QLatin1String("circle")) return pal.circle;
+    if (segType == "area"_L1) return pal.area;
+    if (segType == "corridor"_L1) return pal.corridor;
+    if (segType == "perimeter"_L1) return pal.perimeter;
+    if (segType == "circle"_L1) return pal.circle;
     return pal.route;
 }
 
@@ -191,7 +193,7 @@ public:
                           + QString::number(haloPx) + QChar(1) + QString::number(dpr, 'f', 2);
         if (const auto it = m_slots.constFind(key); it != m_slots.cend()) return it.value();
 
-        QFont fm(QStringLiteral("Rajdhani"));
+        QFont fm(u"Rajdhani"_s);
         fm.setPixelSize(std::max(1, qRound(15 * dpr)));
         fm.setWeight(QFont::DemiBold);
         QFont fs = fm;
@@ -265,9 +267,9 @@ struct LabelSpec {
 
 std::vector<QPointF> shapePx(const QString &kind, double r)
 {
-    if (kind == QLatin1String("takeoff")) return {{0, r}, {-0.87 * r, -0.5 * r}, {0.87 * r, -0.5 * r}};
-    if (kind == QLatin1String("land")) return {{0, r}, {r, 0}, {0, -r}, {-r, 0}};
-    if (kind == QLatin1String("loiter")) return circlePx(r, 20);
+    if (kind == "takeoff"_L1) return {{0, r}, {-0.87 * r, -0.5 * r}, {0.87 * r, -0.5 * r}};
+    if (kind == "land"_L1) return {{0, r}, {r, 0}, {0, -r}, {-r, 0}};
+    if (kind == "loiter"_L1) return circlePx(r, 20);
     const double h = r * 0.8;
     return {{-h, -h}, {h, -h}, {h, h}, {-h, h}};
 }
@@ -728,7 +730,7 @@ private:
         if (s.homeLat && s.homeLon) {
             const auto hg = hgt.elevation(*s.homeLat, *s.homeLon);
             const double ground = hg ? *hg : s.homeAlt.value_or(0);
-            specs.push_back({world(*s.homeLat, *s.homeLon, ground + 0.5 + kHomePoleM, origin), QStringLiteral("HOME"), {},
+            specs.push_back({world(*s.homeLat, *s.homeLon, ground + 0.5 + kHomePoleM, origin), u"HOME"_s, {},
                              pal.label.isValid() ? pal.label : pal.home, kHomeLabelPx});
         }
         // Mission items: built with the route
@@ -741,9 +743,9 @@ private:
                 QString main = t.callsign.trimmed();
                 if (main.isEmpty()) main = t.icao24.toUpper();
                 const int rel = int(std::lround((t.alt - vehicleAlt) / 10.0)) * 10;
-                QString sub = (rel >= 0 ? QStringLiteral("+") : QStringLiteral("\u2212")) + QString::number(std::abs(rel)) + QStringLiteral(" m");
-                if (t.vertRate > 2) sub += QStringLiteral(" \u2191");
-                else if (t.vertRate < -2) sub += QStringLiteral(" \u2193");
+                QString sub = (rel >= 0 ? u"+"_s : u"\u2212"_s) + QString::number(std::abs(rel)) + u" m"_s;
+                if (t.vertRate > 2) sub += u" \u2191"_s;
+                else if (t.vertRate < -2) sub += u" \u2193"_s;
                 specs.push_back({p, main, sub, pal.traffic, kTrafficLabelPx});
             }
         }
@@ -910,34 +912,34 @@ private:
             const MissionPoint3D &p = m_missionPts[i];
             const QVector3D &w = m_missionWorld[i];
             if (i > 0) m_missionLines.push_back(LineSeg::make(m_missionWorld[i - 1], w, pal.route, 3, 0.35f, 2));
-            if (p.derived || p.kind == QLatin1String("home")) continue;
+            if (p.derived || p.kind == "home"_L1) continue;
             if (p.segPos == 2) continue;   // inside a pattern only its ends are marked
             // The label (Mission3D.js marks)
             {
                 const QString seq = QString::number(p.seq);
-                const QString alt = QStringLiteral("%1 m").arg(qRound(p.alt));
+                const QString alt = u"%1 m"_s.arg(qRound(p.alt));
                 Mark m{i, {}, {}, pal.route, false};
-                if (p.kind == QLatin1String("loiter") && p.loiterRadius > 0) {
+                if (p.kind == "loiter"_L1 && p.loiterRadius > 0) {
                     m.color = pal.circle;
-                    m.main = seq + QStringLiteral(" CIRC");
-                    m.sub = alt + (p.turns > 1 ? QStringLiteral(" \u00b7 %1\u00d7").arg(p.turns) : QString());
+                    m.main = seq + u" CIRC"_s;
+                    m.sub = alt + (p.turns > 1 ? u" \u00b7 %1\u00d7"_s.arg(p.turns) : QString());
                 } else if (!p.segType.isEmpty()) {
                     m.color = segmentColour(pal, p.segType);
-                    static const QHash<QString, QString> tags{{QStringLiteral("area"), QStringLiteral("AREA")},
-                                                              {QStringLiteral("corridor"), QStringLiteral("CORR")},
-                                                              {QStringLiteral("perimeter"), QStringLiteral("PERIM")},
-                                                              {QStringLiteral("circle"), QStringLiteral("CIRC")}};
-                    m.main = p.segPos == 1 ? (seq + QLatin1Char(' ') + tags.value(p.segType)).trimmed() : seq;
+                    static const QHash<QString, QString> tags{{u"area"_s, u"AREA"_s},
+                                                              {u"corridor"_s, u"CORR"_s},
+                                                              {u"perimeter"_s, u"PERIM"_s},
+                                                              {u"circle"_s, u"CIRC"_s}};
+                    m.main = p.segPos == 1 ? (seq + ' '_L1 + tags.value(p.segType)).trimmed() : seq;
                     if (p.segPos == 1) m.sub = alt;
                 } else {
-                    const QString tag = p.kind == QLatin1String("takeoff") ? QStringLiteral("T/O")
-                                      : p.kind == QLatin1String("land")    ? QStringLiteral("LAND")
-                                      : p.kind == QLatin1String("loiter")  ? QStringLiteral("LOIT")
+                    const QString tag = p.kind == "takeoff"_L1 ? u"T/O"_s
+                                      : p.kind == "land"_L1    ? u"LAND"_s
+                                      : p.kind == "loiter"_L1  ? u"LOIT"_s
                                                                            : QString();
-                    m.main = tag.isEmpty() ? seq : seq + QLatin1Char(' ') + tag;
-                    if (p.kind != QLatin1String("land"))
-                        m.sub = alt + (p.hold > 0 ? QStringLiteral(" \u00b7 %1 s").arg(qRound(p.hold)) : QString());
-                    m.plain = p.kind == QLatin1String("wp");
+                    m.main = tag.isEmpty() ? seq : seq + ' '_L1 + tag;
+                    if (p.kind != "land"_L1)
+                        m.sub = alt + (p.hold > 0 ? u" \u00b7 %1 s"_s.arg(qRound(p.hold)) : QString());
+                    m.plain = p.kind == "wp"_L1;
                 }
                 marks.push_back(m);
             }
@@ -945,8 +947,8 @@ private:
             // Drop line to the ground and the symbol of the item
             const auto ground = p.ground ? p.ground : hgt.elevation(p.lat, p.lon);
             if (ground) m_missionLines.push_back(LineSeg::make(world(p.lat, p.lon, *ground, origin), w, col, 1.5f, 0, 0, 0.5f));
-            symbol(m_missionLines, w, shapePx(p.segType.isEmpty() ? p.kind : QStringLiteral("wp"), 7), col, 2.5f);
-            if (p.kind == QLatin1String("loiter") && p.loiterRadius > 0) {
+            symbol(m_missionLines, w, shapePx(p.segType.isEmpty() ? p.kind : u"wp"_s, 7), col, 2.5f);
+            if (p.kind == "loiter"_L1 && p.loiterRadius > 0) {
                 const int n = 72;
                 for (int k = 0; k < n; ++k) {
                     const double a0 = 2 * kPi * k / n, a1 = 2 * kPi * (k + 1) / n;
@@ -1240,9 +1242,9 @@ void SceneItem::loadModel(const QString &name, double scale)
     m_modelScale = scale;
     QByteArray bytes;
     QString from;
-    for (const QString &dir : {DataRoot::installDir() + QStringLiteral("/models"), DataRoot::installDir() + QStringLiteral("/resources/models"),
-                               QStringLiteral(":/models")}) {
-        QFile f(dir + QLatin1Char('/') + name);
+    for (const QString &dir : {DataRoot::installDir() + u"/models"_s, DataRoot::installDir() + u"/resources/models"_s,
+                               u":/models"_s}) {
+        QFile f(dir + '/'_L1 + name);
         if (f.open(QIODevice::ReadOnly)) {
             bytes = f.readAll();
             from = f.fileName();
@@ -1252,7 +1254,7 @@ void SceneItem::loadModel(const QString &name, double scale)
     QString error;
     std::shared_ptr<ModelData> m = bytes.isEmpty() ? nullptr : ModelData::fromGlb(bytes, float(scale), name, &error);
     if (!m) {
-        LOG_W("gpu") << "model" << name << "not loaded:" << (bytes.isEmpty() ? QStringLiteral("no such file") : error) << "- placeholder";
+        LOG_W("gpu") << "model" << name << "not loaded:" << (bytes.isEmpty() ? u"no such file"_s : error) << "- placeholder";
         m = ModelData::placeholder();
     } else {
         LOG_I("gpu") << "model" << name << "loaded from" << from << ":" << m->vertexCount() / 3 << "triangles, scale" << scale;
@@ -1272,11 +1274,11 @@ void SceneItem::tick()
 
     // SYS CONFIG -> 3D VIEW: terrain clipping, model and scale
     Settings &st = Settings::instance();
-    const QString mode = st.value(QStringLiteral("ground-clamp-mode")).toString();
-    m_clamp = mode == QLatin1String("off") ? 0 : mode == QLatin1String("vehicle") ? 1 : mode == QLatin1String("all") ? 2
-            : st.value(QStringLiteral("ground-clamp-enabled"), QStringLiteral("1")).toString() == QLatin1String("0") ? 0 : 2;
-    QString model = st.value(QStringLiteral("selectedModel"), QStringLiteral("plane.glb")).toString();
-    const double scale = std::clamp(st.value(QStringLiteral("modelScale"), 1.0).toDouble(), 0.1, 5.0);
+    const QString mode = st.value(u"ground-clamp-mode"_s).toString();
+    m_clamp = mode == "off"_L1 ? 0 : mode == "vehicle"_L1 ? 1 : mode == "all"_L1 ? 2
+            : st.value(u"ground-clamp-enabled"_s, u"1"_s).toString() == "0"_L1 ? 0 : 2;
+    QString model = st.value(u"selectedModel"_s, u"plane.glb"_s).toString();
+    const double scale = std::clamp(st.value(u"modelScale"_s, 1.0).toDouble(), 0.1, 5.0);
     // The airframe on screen follows the one announced by HEARTBEAT (syncModelToVehicleType);
     // a pick in SYS CONFIG sticks until the vehicle type itself changes
     if (s->vehicleType && s->vehicleType != m_lastVehicleType) {
@@ -1284,12 +1286,12 @@ void SceneItem::tick()
         const QString wanted = modelForVehicleType(s->vehicleType);
         if (wanted != model) {
             model = wanted;
-            st.setValue(QStringLiteral("selectedModel"), model);
+            st.setValue(u"selectedModel"_s, model);
         }
     }
     if (model != m_modelName || std::abs(scale - m_modelScale) > 1e-6 || !m_model) loadModel(model, scale);
     // SYS CONFIG -> SATELLITE DETAIL: the sharpest imagery around the aircraft
-    m_detail.setMaxZoom(st.value(QStringLiteral("satDetailMaxZoom"), SatelliteDetail::kDefaultMaxZoom).toInt());
+    m_detail.setMaxZoom(st.value(u"satDetailMaxZoom"_s, SatelliteDetail::kDefaultMaxZoom).toInt());
     // render() asks for the next frame itself; this restarts the chain should a frame be
     // skipped (not while a capped frame is waiting for its vblank: that would draw off the grid)
     if (!m_frameTimer.isActive()) update();

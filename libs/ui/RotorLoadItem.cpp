@@ -19,13 +19,15 @@
 #include <map>
 #include <vector>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 using namespace hudpaint;
 
 namespace {
 
-const QString kCfgKey = QStringLiteral("rotor-load-cfg");
+const QString kCfgKey = u"rotor-load-cfg"_s;
 
 double clamp(double v, double lo, double hi) { return std::min(std::max(v, lo), hi); }
 double wrap180(double d) { return std::fmod(std::fmod(d + 180, 360) + 360, 360) - 180; }
@@ -160,8 +162,8 @@ constexpr int kFoilSteps = 24;
 
 QString signedDeg(double d)
 {
-    const QString sign = d > 0.05 ? QStringLiteral("+") : d < -0.05 ? QStringLiteral("−") : QString();
-    return sign + QString::number(std::abs(d), 'f', 0) + QStringLiteral("°");
+    const QString sign = d > 0.05 ? u"+"_s : d < -0.05 ? u"−"_s : QString();
+    return sign + QString::number(std::abs(d), 'f', 0) + u"°"_s;
 }
 
 } // namespace
@@ -198,15 +200,15 @@ void RotorLoadItem::loadConfig()
         return ok && std::isfinite(x) ? x : def;
     };
     if (auto *sc = SysConfig::s_instance) {
-        d.enabled = sc->jsonField(kCfgKey, QStringLiteral("enabled"), true).toBool();
-        d.pwmMin = num(sc->jsonField(kCfgKey, QStringLiteral("pwmMin"), 1000), 1000);
-        d.pwmMax = num(sc->jsonField(kCfgKey, QStringLiteral("pwmMax"), 2000), 2000);
-        d.thGreen = num(sc->jsonField(kCfgKey, QStringLiteral("thGreen"), 1100), 1100);
-        d.thOrange = num(sc->jsonField(kCfgKey, QStringLiteral("thOrange"), 1500), 1500);
-        d.thRed = num(sc->jsonField(kCfgKey, QStringLiteral("thRed"), 1700), 1700);
-        d.frame = sc->jsonField(kCfgKey, QStringLiteral("frame"), QStringLiteral("auto")).toString();
-        d.singleChannel = int(num(sc->jsonField(kCfgKey, QStringLiteral("singleChannel"), 3), 3));
-        d.rudderMax = num(sc->jsonField(kCfgKey, QStringLiteral("rudderMax"), 35), 35);
+        d.enabled = sc->jsonField(kCfgKey, u"enabled"_s, true).toBool();
+        d.pwmMin = num(sc->jsonField(kCfgKey, u"pwmMin"_s, 1000), 1000);
+        d.pwmMax = num(sc->jsonField(kCfgKey, u"pwmMax"_s, 2000), 2000);
+        d.thGreen = num(sc->jsonField(kCfgKey, u"thGreen"_s, 1100), 1100);
+        d.thOrange = num(sc->jsonField(kCfgKey, u"thOrange"_s, 1500), 1500);
+        d.thRed = num(sc->jsonField(kCfgKey, u"thRed"_s, 1700), 1700);
+        d.frame = sc->jsonField(kCfgKey, u"frame"_s, u"auto"_s).toString();
+        d.singleChannel = int(num(sc->jsonField(kCfgKey, u"singleChannel"_s, 3), 3));
+        d.rudderMax = num(sc->jsonField(kCfgKey, u"rudderMax"_s, 35), 35);
     }
     // Thresholds that cross over each other would make the colours and the
     // scale meaningless, so they are forced back into ascending order.
@@ -217,7 +219,7 @@ void RotorLoadItem::loadConfig()
     d.thRed = std::min(std::max(d.thRed, d.thOrange), d.pwmMax);
     d.singleChannel = std::min(std::max(d.singleChannel, 1), 16);
     d.rudderMax = std::min(std::max(d.rudderMax, 1.0), 180.0);
-    if (d.frame.isEmpty()) d.frame = QStringLiteral("auto");
+    if (d.frame.isEmpty()) d.frame = u"auto"_s;
     m_cfg = d;
 }
 
@@ -233,7 +235,7 @@ std::optional<double> RotorLoadItem::param(const QString &name) const
 /// Rotor count currently on screen: manual override, else MAV_TYPE, else 1.
 int RotorLoadItem::activeRotorCount() const
 {
-    if (m_cfg.frame != QLatin1String("auto")) {
+    if (m_cfg.frame != "auto"_L1) {
         bool ok = false;
         const int n = m_cfg.frame.toInt(&ok);
         if (ok && n >= 1) return n;
@@ -244,7 +246,7 @@ int RotorLoadItem::activeRotorCount() const
 
 bool RotorLoadItem::isHiddenVehicle() const
 {
-    return m_cfg.frame == QLatin1String("auto") && m_s && hiddenMavType(m_s->vehicleType);
+    return m_cfg.frame == "auto"_L1 && m_s && hiddenMavType(m_s->vehicleType);
 }
 
 /// The servo map applies to a vehicle on a link or in a replay; the demo has
@@ -264,18 +266,18 @@ bool RotorLoadItem::servosApply() const
 RotorLoadItem::Rotors RotorLoadItem::rotors() const
 {
     Rotors r;
-    if (m_cfg.frame == QLatin1String("auto") && servosApply() && m_servos.complete()) {
+    if (m_cfg.frame == "auto"_L1 && servosApply() && m_servos.complete()) {
         const int type = m_s->vehicleType;
         const int rsc = m_servos.first(servo::kHeliRsc);
         if ((type == kMavHelicopter || type == kMavCoaxial) && rsc) {
-            r.centre.push_back({rsc, QStringLiteral("CH%1").arg(rsc), std::nullopt});
+            r.centre.push_back({rsc, u"CH%1"_s.arg(rsc), std::nullopt});
             return r;
         }
         if (type != kMavHelicopter) {
             const std::map<int, int> motors = rotorMotors(m_servos.motors(), type);
             if (type == kMavCoaxial || motors.size() == 1) {
                 // Coaxial rotors share the axis: side by side in the middle
-                for (const auto &[n, ch] : motors) r.centre.push_back({ch, QStringLiteral("M%1").arg(n), std::nullopt});
+                for (const auto &[n, ch] : motors) r.centre.push_back({ch, u"M%1"_s.arg(n), std::nullopt});
             } else if (motors.size() > 1) {
                 std::vector<int> nums;
                 for (const auto &m : motors) nums.push_back(m.first);
@@ -291,24 +293,24 @@ RotorLoadItem::Rotors RotorLoadItem::rotors() const
                         const auto it = std::find(f.outputs.begin(), f.outputs.end(), nums[i]);
                         angle = f.angles[std::size_t(it - f.outputs.begin())];
                     }
-                    r.ring.push_back({motors.at(nums[i]), QStringLiteral("M%1").arg(nums[i]), angle});
+                    r.ring.push_back({motors.at(nums[i]), u"M%1"_s.arg(nums[i]), angle});
                 }
             }
             for (const ServoMap::Engine &e : m_servos.throttles())
-                r.centre.push_back({e.output, QStringLiteral("CH%1").arg(e.output), std::nullopt});
+                r.centre.push_back({e.output, u"CH%1"_s.arg(e.output), std::nullopt});
             if (!r.ring.empty() || !r.centre.empty()) return r;
         }
     }
     const int count = activeRotorCount();
     if (count == 1) {
-        r.centre.push_back({m_cfg.singleChannel, QStringLiteral("CH%1").arg(m_cfg.singleChannel), std::nullopt});
+        r.centre.push_back({m_cfg.singleChannel, u"CH%1"_s.arg(m_cfg.singleChannel), std::nullopt});
         return r;
     }
     // Labelled by output channel, not by index — a tricopter's tail motor is
     // M4 on output 4, and the label has to match what the autopilot says
     const Frame f = frameFor(count);
     for (std::size_t i = 0; i < f.angles.size(); ++i)
-        r.ring.push_back({f.outputs[i], QStringLiteral("M%1").arg(f.outputs[i]), f.angles[i]});
+        r.ring.push_back({f.outputs[i], u"M%1"_s.arg(f.outputs[i]), f.angles[i]});
     return r;
 }
 
@@ -317,31 +319,31 @@ std::optional<RotorLoadItem::SailLayout> RotorLoadItem::sailLayout() const
 {
     const int sail = m_servos.first(servo::kMastRotation);
     const int rudder = m_servos.first(servo::kGroundSteering);
-    const auto enable = param(QStringLiteral("SAIL_ENABLE"));
-    if (m_cfg.frame != QLatin1String("sail") && !sail && !(enable && *enable >= 1)) return std::nullopt;
+    const auto enable = param(u"SAIL_ENABLE"_s);
+    if (m_cfg.frame != "sail"_L1 && !sail && !(enable && *enable >= 1)) return std::nullopt;
     // Until the parameters arrive: ArduPilot's defaults, and AutoSail's mast on 4
-    return SailLayout{sail ? sail : 4, rudder ? rudder : 1, param(QStringLiteral("SAIL_ANGLE_MAX")).value_or(90)};
+    return SailLayout{sail ? sail : 4, rudder ? rudder : 1, param(u"SAIL_ANGLE_MAX"_s).value_or(90)};
 }
 
 /// The sail layout when the dials replace the rotor gauges, else none.
 std::optional<RotorLoadItem::SailLayout> RotorLoadItem::sailMode() const
 {
-    if (m_cfg.frame == QLatin1String("sail")) return sailLayout();
-    if (m_cfg.frame != QLatin1String("auto") || !m_s || !roverMavType(m_s->vehicleType)) return std::nullopt;
+    if (m_cfg.frame == "sail"_L1) return sailLayout();
+    if (m_cfg.frame != "auto"_L1 || !m_s || !roverMavType(m_s->vehicleType)) return std::nullopt;
     return sailLayout();
 }
 
 QStringList RotorLoadItem::wantedParams() const
 {
     QStringList names;
-    for (int ch = 1; ch <= servo::kOutputs; ++ch) names << QStringLiteral("SERVO%1_FUNCTION").arg(ch);
+    for (int ch = 1; ch <= servo::kOutputs; ++ch) names << u"SERVO%1_FUNCTION"_s.arg(ch);
     // The sail settings only where a sail can be: a Rover, or FRAME on SAILBOAT
-    if (m_cfg.frame == QLatin1String("sail") || (m_s && roverMavType(m_s->vehicleType))) {
-        names << QStringLiteral("SAIL_ENABLE") << QStringLiteral("SAIL_ANGLE_MAX");
+    if (m_cfg.frame == "sail"_L1 || (m_s && roverMavType(m_s->vehicleType))) {
+        names << u"SAIL_ENABLE"_s << u"SAIL_ANGLE_MAX"_s;
         if (const auto lay = sailLayout()) {
             for (int ch : {lay->sail, lay->rudder})
-                names << QStringLiteral("SERVO%1_MIN").arg(ch) << QStringLiteral("SERVO%1_TRIM").arg(ch)
-                      << QStringLiteral("SERVO%1_MAX").arg(ch);
+                names << u"SERVO%1_MIN"_s.arg(ch) << u"SERVO%1_TRIM"_s.arg(ch)
+                      << u"SERVO%1_MAX"_s.arg(ch);
         }
     }
     names << m_servos.flapParams();
@@ -351,7 +353,7 @@ QStringList RotorLoadItem::wantedParams() const
 void RotorLoadItem::probeParams(std::int64_t now)
 {
     const VehicleState &s = *m_s;
-    if (!s.connected || s.mode != QLatin1String("LIVE") || !s.connectionType.startsWith(QLatin1String("mavlink"))) {
+    if (!s.connected || s.mode != "LIVE"_L1 || !s.connectionType.startsWith("mavlink"_L1)) {
         // The next link starts again
         if (m_probe.sys != -1) m_probe = Probe{};
         return;
@@ -360,7 +362,7 @@ void RotorLoadItem::probeParams(std::int64_t now)
     if (!m_cfg.enabled) return;
     if (s.autopilotType == kAutopilotPx4) return;
     // Nothing to draw on a tracker, a GCS or a sub; a Rover may still have a sail
-    if (m_cfg.frame == QLatin1String("auto") && hiddenMavType(s.vehicleType) && !roverMavType(s.vehicleType)) return;
+    if (m_cfg.frame == "auto"_L1 && hiddenMavType(s.vehicleType) && !roverMavType(s.vehicleType)) return;
     // Another vehicle on the link, or the link restarted
     if (s.heartbeatCount < m_probe.hb || s.systemId != m_probe.sys) {
         m_probe = Probe{};
@@ -397,9 +399,9 @@ std::optional<double> RotorLoadItem::commandedDeg(int output, double maxDeg) con
 {
     const double pwm = m_s->servoOutputs[std::size_t(output - 1)];
     if (pwm <= 0) return std::nullopt;
-    const double lo = param(QStringLiteral("SERVO%1_MIN").arg(output)).value_or(1100);
-    const double trim = param(QStringLiteral("SERVO%1_TRIM").arg(output)).value_or(1500);
-    const double hi = param(QStringLiteral("SERVO%1_MAX").arg(output)).value_or(1900);
+    const double lo = param(u"SERVO%1_MIN"_s.arg(output)).value_or(1100);
+    const double trim = param(u"SERVO%1_TRIM"_s.arg(output)).value_or(1500);
+    const double hi = param(u"SERVO%1_MAX"_s.arg(output)).value_or(1900);
     if (pwm >= trim) return hi > trim ? clamp((pwm - trim) / (hi - trim), 0, 1) * maxDeg : 0;
     return trim > lo ? -clamp((trim - pwm) / (trim - lo), 0, 1) * maxDeg : 0;
 }
@@ -711,8 +713,8 @@ void RotorLoadItem::drawSail(QPainter *p, double w, double h, const SailLayout &
         std::optional<double> wind;
     };
     const std::array<Dial, 2> dials{
-        Dial{w * 0.25, QStringLiteral("SAIL"), sailDeg, sailDeg, travelDeg(lay.sailMax), apparentWindDeg(now)},
-        Dial{w * 0.75, QStringLiteral("RUDDER"), rudderDeg, rudderDeg ? std::optional<double>(-*rudderDeg) : std::nullopt,
+        Dial{w * 0.25, u"SAIL"_s, sailDeg, sailDeg, travelDeg(lay.sailMax), apparentWindDeg(now)},
+        Dial{w * 0.75, u"RUDDER"_s, rudderDeg, rudderDeg ? std::optional<double>(-*rudderDeg) : std::nullopt,
              travelDeg(m_cfg.rudderMax), std::nullopt}};
     const QFont font = uiFont(fs);
     const QFontMetricsF fm(font);
@@ -724,9 +726,9 @@ void RotorLoadItem::drawSail(QPainter *p, double w, double h, const SailLayout &
     for (const Dial &d : dials) {
         drawDial(p, d.cx, cy, r, d.le, d.travel, d.wind);
         const double y = cy + r + fs * 1.15;
-        centred(d.name + QLatin1Char(' ') + (d.deg ? signedDeg(*d.deg) : QStringLiteral("---")), d.cx, y,
+        centred(d.name + ' '_L1 + (d.deg ? signedDeg(*d.deg) : u"---"_s), d.cx, y,
                 d.deg ? kText : kNoData);
-        if (d.wind) centred(QStringLiteral("WIND ") + signedDeg(*d.wind), d.cx, y + fs * 1.1, kRed);
+        if (d.wind) centred(u"WIND "_s + signedDeg(*d.wind), d.cx, y + fs * 1.1, kRed);
     }
 }
 

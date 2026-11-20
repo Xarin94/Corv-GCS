@@ -43,7 +43,6 @@ public:
     static QString electronUserDataDir();
 
     /// Forget the resolved root (tests only).
-    static void resetForTests();
 };
 
 } // namespace corv

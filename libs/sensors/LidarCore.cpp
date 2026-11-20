@@ -16,6 +16,8 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -78,13 +80,13 @@ Pt readPoint(const std::uint8_t *b, int dataType)
     return {d * std::sin(theta) * std::cos(phi), d * std::sin(theta) * std::sin(phi), d * std::cos(theta), b[8], b[9]};
 }
 
-QString stamp() { return QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyy-MM-ddTHH-mm-ss")); }
+QString stamp() { return QDateTime::currentDateTimeUtc().toString(u"yyyy-MM-ddTHH-mm-ss"_s); }
 
 QUdpSocket *bindUdp(QObject *parent, quint16 port, QString *error)
 {
     auto *s = new QUdpSocket(parent);
     if (!s->bind(QHostAddress::AnyIPv4, port, QAbstractSocket::ShareAddress | QAbstractSocket::ReuseAddressHint)) {
-        *error = QStringLiteral("%1: %2").arg(port).arg(s->errorString());
+        *error = u"%1: %2"_s.arg(port).arg(s->errorString());
         delete s;
         return nullptr;
     }
@@ -236,21 +238,21 @@ void LidarCore::onMavlink(const mavlink_message_t &msg, qint64 now)
 LidarCore::Gate LidarCore::evaluateGate(qint64 now) const
 {
     constexpr qint64 kFresh = 2000;
-    if (!m_connected) return {false, QStringLiteral("NO LINK")};
-    if (m_pos.n == 0 || now - m_pos.t[std::size_t(m_pos.newest())] > kFresh) return {false, QStringLiteral("NO POSITION")};
-    if (m_att.n == 0 || now - m_att.t[std::size_t(m_att.newest())] > kFresh) return {false, QStringLiteral("NO ATTITUDE")};
-    if (now - m_nav.gpsTime > 5000) return {false, QStringLiteral("NO GPS")};
-    if (m_nav.fix < m_cfg.minFix) return {false, QStringLiteral("GPS FIX %1 < %2").arg(m_nav.fix).arg(m_cfg.minFix)};
-    if (m_nav.sats < m_cfg.minSats) return {false, QStringLiteral("SATS %1 < %2").arg(m_nav.sats).arg(m_cfg.minSats)};
-    if (m_nav.hdop > m_cfg.maxHdop) return {false, QStringLiteral("HDOP %1 > %2").arg(m_nav.hdop, 0, 'f', 1).arg(m_cfg.maxHdop)};
+    if (!m_connected) return {false, u"NO LINK"_s};
+    if (m_pos.n == 0 || now - m_pos.t[std::size_t(m_pos.newest())] > kFresh) return {false, u"NO POSITION"_s};
+    if (m_att.n == 0 || now - m_att.t[std::size_t(m_att.newest())] > kFresh) return {false, u"NO ATTITUDE"_s};
+    if (now - m_nav.gpsTime > 5000) return {false, u"NO GPS"_s};
+    if (m_nav.fix < m_cfg.minFix) return {false, u"GPS FIX %1 < %2"_s.arg(m_nav.fix).arg(m_cfg.minFix)};
+    if (m_nav.sats < m_cfg.minSats) return {false, u"SATS %1 < %2"_s.arg(m_nav.sats).arg(m_cfg.minSats)};
+    if (m_nav.hdop > m_cfg.maxHdop) return {false, u"HDOP %1 > %2"_s.arg(m_nav.hdop, 0, 'f', 1).arg(m_cfg.maxHdop)};
     if (m_cfg.requireEkf) {
-        if (m_nav.ekfTime == 0) return {false, QStringLiteral("NO EKF REPORT")};
-        if (now - m_nav.ekfTime > 5000) return {false, QStringLiteral("EKF STALE")};
-        if ((m_nav.ekfFlags & kEkfRequired) != kEkfRequired) return {false, QStringLiteral("EKF NOT CONVERGED")};
-        if (m_nav.ekfPosVar > 0.5 || m_nav.ekfVelVar > 0.5) return {false, QStringLiteral("EKF VARIANCE HIGH")};
+        if (m_nav.ekfTime == 0) return {false, u"NO EKF REPORT"_s};
+        if (now - m_nav.ekfTime > 5000) return {false, u"EKF STALE"_s};
+        if ((m_nav.ekfFlags & kEkfRequired) != kEkfRequired) return {false, u"EKF NOT CONVERGED"_s};
+        if (m_nav.ekfPosVar > 0.5 || m_nav.ekfVelVar > 0.5) return {false, u"EKF VARIANCE HIGH"_s};
     }
-    if (m_voxelCount >= m_cfg.maxPoints) return {false, QStringLiteral("MAP FULL")};
-    return {true, QStringLiteral("ACCUMULATING")};
+    if (m_voxelCount >= m_cfg.maxPoints) return {false, u"MAP FULL"_s};
+    return {true, u"ACCUMULATING"_s};
 }
 
 // ============== VOXEL MAP ==============
@@ -424,7 +426,7 @@ void LidarCore::livePacket(const QByteArray &buf, int dotNum, int dataType, qint
     const int iAtt = m_att.n ? m_att.newest() : -1;
     const bool levelled = iAtt >= 0 && now - m_att.t[std::size_t(iAtt)] < 2000;
     if (levelled) eulerToMatrix(m_attR[std::size_t(iAtt)], m_attP[std::size_t(iAtt)], m_attY[std::size_t(iAtt)], m_attM);
-    const QString frame = levelled ? QStringLiteral("ned") : QStringLiteral("body");
+    const QString frame = levelled ? u"ned"_s : u"body"_s;
     if (frame != m_liveFrame && m_liveN > 0) flushBatch();
     m_liveFrame = frame;
     const auto &a = m_attM;
@@ -506,19 +508,19 @@ void LidarCore::georeferencePacket(const QByteArray &buf, int dotNum, int dataTy
 
 std::optional<LidarCore::Ply> LidarCore::openPly(const QString &path, bool withTime) const
 {
-    QStringList header{QStringLiteral("ply"), QStringLiteral("format binary_little_endian 1.0"), QStringLiteral("comment Corv-GCS Livox point cloud"),
-                       QStringLiteral("comment frame ENU metres, x=east y=north z=up, relative to origin")};
-    header << (m_origin ? QStringLiteral("comment origin_lat %1 origin_lon %2 origin_alt_msl %3")
+    QStringList header{u"ply"_s, u"format binary_little_endian 1.0"_s, u"comment Corv-GCS Livox point cloud"_s,
+                       u"comment frame ENU metres, x=east y=north z=up, relative to origin"_s};
+    header << (m_origin ? u"comment origin_lat %1 origin_lon %2 origin_alt_msl %3"_s
                               .arg(m_origin->lat, 0, 'f', 8).arg(m_origin->lon, 0, 'f', 8).arg(m_origin->alt, 0, 'f', 3)
-                        : QStringLiteral("comment origin_lat unset origin_lon unset origin_alt_msl unset"));
-    header << QStringLiteral("comment created ") + QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
-    header << QStringLiteral("comment lidar %1 %2").arg(m_lidar.sn.isEmpty() ? QStringLiteral("unknown") : m_lidar.sn, livox::deviceName(m_lidar.devType));
-    header << QStringLiteral("element vertex ") + QLatin1String(kCountField);
-    header << QStringLiteral("property float x") << QStringLiteral("property float y") << QStringLiteral("property float z")
-           << QStringLiteral("property uchar intensity");
-    if (withTime) header << QStringLiteral("property double time");
-    header << QStringLiteral("end_header");
-    const QByteArray text = (header.join(QLatin1Char('\n')) + QLatin1Char('\n')).toUtf8();
+                        : u"comment origin_lat unset origin_lon unset origin_alt_msl unset"_s);
+    header << u"comment created "_s + QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    header << u"comment lidar %1 %2"_s.arg(m_lidar.sn.isEmpty() ? u"unknown"_s : m_lidar.sn, livox::deviceName(m_lidar.devType));
+    header << u"element vertex "_s + QLatin1String(kCountField);
+    header << u"property float x"_s << u"property float y"_s << u"property float z"_s
+           << u"property uchar intensity"_s;
+    if (withTime) header << u"property double time"_s;
+    header << u"end_header"_s;
+    const QByteArray text = (header.join('\n'_L1) + '\n'_L1).toUtf8();
     Ply w;
     w.file = std::make_unique<QFile>(path);
     if (!w.file->open(QIODevice::WriteOnly | QIODevice::Truncate)) return std::nullopt;
@@ -555,17 +557,17 @@ void LidarCore::closePly(Ply &w)
 {
     plyFlush(w);
     w.file->seek(w.countPos);
-    w.file->write(QString::number(w.count).rightJustified(int(qstrlen(kCountField)), QLatin1Char('0')).toLatin1());
+    w.file->write(QString::number(w.count).rightJustified(int(qstrlen(kCountField)), '0'_L1).toLatin1());
     w.file->close();
 }
 
 QString LidarCore::startRecording()
 {
     if (m_rec) return m_rec->path;
-    const QString path = QDir(lidarDir()).filePath(QStringLiteral("raw-%1.ply").arg(stamp()));
+    const QString path = QDir(lidarDir()).filePath(u"raw-%1.ply"_s.arg(stamp()));
     m_rec = openPly(path, true);
     if (!m_rec) {
-        m_lastError = QStringLiteral("cannot write %1").arg(path);
+        m_lastError = u"cannot write %1"_s.arg(path);
         return {};
     }
     LOG_I("lidar") << "recording raw points to" << path;
@@ -584,24 +586,24 @@ QString LidarCore::stopRecording()
 
 QVariantMap LidarCore::saveMap()
 {
-    if (!m_origin || m_mapCount == 0) return {{QStringLiteral("success"), false}, {QStringLiteral("error"), QStringLiteral("Map is empty")}};
-    const QString path = QDir(lidarDir()).filePath(QStringLiteral("map-%1.ply").arg(stamp()));
+    if (!m_origin || m_mapCount == 0) return {{u"success"_s, false}, {u"error"_s, u"Map is empty"_s}};
+    const QString path = QDir(lidarDir()).filePath(u"map-%1.ply"_s.arg(stamp()));
     auto w = openPly(path, false);
-    if (!w) return {{QStringLiteral("success"), false}, {QStringLiteral("error"), QStringLiteral("cannot write %1").arg(path)}};
+    if (!w) return {{u"success"_s, false}, {u"error"_s, u"cannot write %1"_s.arg(path)}};
     for (const MapChunk &c : m_mapChunks)
         for (int k = 0; k < c.n; ++k)
             plyWrite(*w, c.xyz[std::size_t(k) * 3], c.xyz[std::size_t(k) * 3 + 1], c.xyz[std::size_t(k) * 3 + 2], c.i[std::size_t(k)], 0);
     closePly(*w);
     LOG_I("lidar") << m_mapCount << "points saved to" << path;
-    return {{QStringLiteral("success"), true}, {QStringLiteral("path"), path}, {QStringLiteral("points"), m_mapCount}};
+    return {{u"success"_s, true}, {u"path"_s, path}, {u"points"_s, m_mapCount}};
 }
 
 // ============== NETWORK ==============
 
 QString LidarCore::pickHostIp(const QString &lidarIp) const
 {
-    if (!m_cfg.hostIp.isEmpty() && m_cfg.hostIp != QLatin1String("auto")) return m_cfg.hostIp;
-    const QString prefix = lidarIp.section(QLatin1Char('.'), 0, 2) + QLatin1Char('.');
+    if (!m_cfg.hostIp.isEmpty() && m_cfg.hostIp != "auto"_L1) return m_cfg.hostIp;
+    const QString prefix = lidarIp.section('.'_L1, 0, 2) + '.'_L1;
     QString fallback;
     for (const QNetworkInterface &ni : QNetworkInterface::allInterfaces()) {
         if (!(ni.flags() & QNetworkInterface::IsUp) || (ni.flags() & QNetworkInterface::IsLoopBack)) continue;
@@ -612,7 +614,7 @@ QString LidarCore::pickHostIp(const QString &lidarIp) const
             if (fallback.isEmpty()) fallback = a;
         }
     }
-    return fallback.isEmpty() ? QStringLiteral("0.0.0.0") : fallback;
+    return fallback.isEmpty() ? u"0.0.0.0"_s : fallback;
 }
 
 QVariantList LidarCore::listInterfaces()
@@ -622,7 +624,7 @@ QVariantList LidarCore::listInterfaces()
         if (ni.flags() & QNetworkInterface::IsLoopBack) continue;
         for (const QNetworkAddressEntry &e : ni.addressEntries())
             if (e.ip().protocol() == QAbstractSocket::IPv4Protocol)
-                out << QVariantMap{{QStringLiteral("name"), ni.humanReadableName()}, {QStringLiteral("address"), e.ip().toString()}};
+                out << QVariantMap{{u"name"_s, ni.humanReadableName()}, {u"address"_s, e.ip().toString()}};
     }
     return out;
 }
@@ -630,7 +632,7 @@ QVariantList LidarCore::listInterfaces()
 QVariantMap LidarCore::connectLidar(const QVariantMap &cfg)
 {
     applyConfig(cfg);
-    if (m_connected) return {{QStringLiteral("success"), true}};
+    if (m_connected) return {{u"success"_s, true}};
     resetPose();
     m_queue.clear();
     m_stats = {};
@@ -657,8 +659,8 @@ QVariantMap LidarCore::connectLidar(const QVariantMap &cfg)
     if (!m_imu) {
         m_lastError = err;
         closeSockets();
-        return {{QStringLiteral("success"), false},
-                {QStringLiteral("error"), QStringLiteral("UDP bind failed (%1) — is Livox Viewer or another GCS running?").arg(err)}};
+        return {{u"success"_s, false},
+                {u"error"_s, u"UDP bind failed (%1) — is Livox Viewer or another GCS running?"_s.arg(err)}};
     }
     connect(m_search, &QUdpSocket::readyRead, this, [this] { onSearchReply(m_search); });
     connect(m_cmd, &QUdpSocket::readyRead, this, [this] { onCmdReply(m_cmd); });
@@ -675,7 +677,7 @@ QVariantMap LidarCore::connectLidar(const QVariantMap &cfg)
     sendStatus();
     LOG_I("lidar") << "connecting to" << m_cfg.lidarIp << "host" << pickHostIp(m_cfg.lidarIp) << "ports" << m_cmd->localPort() << m_push->localPort()
                    << m_point->localPort() << m_imu->localPort();
-    return {{QStringLiteral("success"), true}};
+    return {{u"success"_s, true}};
 }
 
 void LidarCore::closeSockets()
@@ -691,7 +693,7 @@ void LidarCore::closeSockets()
 
 QVariantMap LidarCore::disconnectLidar()
 {
-    if (!m_connected) return {{QStringLiteral("success"), true}};
+    if (!m_connected) return {{u"success"_s, true}};
     m_connected = false;
     m_handshakeTimer->stop();
     m_processTimer->stop();
@@ -704,7 +706,7 @@ QVariantMap LidarCore::disconnectLidar()
     m_gate = {};
     sendStatus();
     LOG_I("lidar") << "disconnected";
-    return {{QStringLiteral("success"), true}};
+    return {{u"success"_s, true}};
 }
 
 void LidarCore::resetPose()
@@ -742,7 +744,7 @@ void LidarCore::handshakeTick()
 void LidarCore::sendConfig()
 {
     const QString host = pickHostIp(m_cfg.lidarIp);
-    if (host == QLatin1String("0.0.0.0")) m_lastError = QStringLiteral("no local IPv4 interface found — set HOST IP manually");
+    if (host == "0.0.0.0"_L1) m_lastError = u"no local IPv4 interface found — set HOST IP manually"_s;
     const QHostAddress to(m_cfg.lidarIp);
     m_cmd->writeDatagram(livox::packCommand(livox::kCmdWorkMode, livox::buildKvRequest({
                                                 {livox::kKeyStateHostIp, livox::hostIpValue(host, m_push->localPort(), livox::kLidarPush)},
@@ -765,9 +767,9 @@ void LidarCore::onSearchReply(QUdpSocket *s)
         // DetectionData: ret_code u8, dev_type u8, sn[16], lidar_ip[4], cmd_port u16
         const auto *b = reinterpret_cast<const std::uint8_t *>(pkt->data.constData());
         if (b[0] != 0) continue;
-        const QString ip = QStringLiteral("%1.%2.%3.%4").arg(b[18]).arg(b[19]).arg(b[20]).arg(b[21]);
+        const QString ip = u"%1.%2.%3.%4"_s.arg(b[18]).arg(b[19]).arg(b[20]).arg(b[21]);
         QString from = d.senderAddress().toString();
-        if (from.startsWith(QLatin1String("::ffff:"))) from = from.mid(7);
+        if (from.startsWith("::ffff:"_L1)) from = from.mid(7);
         // Another unit answered the broadcast - only the configured one is used
         if (ip != m_cfg.lidarIp && from != m_cfg.lidarIp) continue;
         m_lidar.devType = b[1];
@@ -787,7 +789,7 @@ void LidarCore::onCmdReply(QUdpSocket *s)
             const int errKey = qFromLittleEndian<quint16>(b + 1);
             m_lidar.lastAck = wallMs();
             if (ret == 0) m_lidar.configured = true;
-            else m_lastError = QStringLiteral("config rejected (ret %1, key 0x%2)").arg(ret).arg(errKey, 0, 16);
+            else m_lastError = u"config rejected (ret %1, key 0x%2)"_s.arg(ret).arg(errKey, 0, 16);
         }
     }
 }
@@ -808,13 +810,13 @@ void LidarCore::rollStats()
     const double dt = (now - m_statsT0) / 1000.0;
     if (dt < 0.4) return;
     auto r = [dt](qint64 v) { return qint64(std::lround(v / dt)); };
-    m_statsShown = {{QStringLiteral("pps"), r(m_stats.packets)},
-                    {QStringLiteral("pointsPs"), r(m_stats.points)},
-                    {QStringLiteral("acceptedPs"), r(m_stats.accepted)},
-                    {QStringLiteral("gatedPs"), r(m_stats.gated)},
-                    {QStringLiteral("filteredPs"), r(m_stats.filtered)},
-                    {QStringLiteral("livePs"), r(m_stats.live)},
-                    {QStringLiteral("kbps"), qint64(std::lround(m_stats.bytes * 8 / dt / 1000))}};
+    m_statsShown = {{u"pps"_s, r(m_stats.packets)},
+                    {u"pointsPs"_s, r(m_stats.points)},
+                    {u"acceptedPs"_s, r(m_stats.accepted)},
+                    {u"gatedPs"_s, r(m_stats.gated)},
+                    {u"filteredPs"_s, r(m_stats.filtered)},
+                    {u"livePs"_s, r(m_stats.live)},
+                    {u"kbps"_s, qint64(std::lround(m_stats.bytes * 8 / dt / 1000))}};
     m_stats = {};
     m_statsT0 = now;
 }
@@ -823,32 +825,32 @@ QVariantMap LidarCore::status() const
 {
     const qint64 now = wallMs();
     const bool streaming = m_lidar.lastPacket && now - m_lidar.lastPacket < 2000;
-    QString link = QStringLiteral("OFF");
+    QString link = u"OFF"_s;
     if (m_connected)
-        link = streaming ? QStringLiteral("STREAMING") : m_lidar.configured ? QStringLiteral("CONFIGURED") : !m_lidar.sn.isEmpty() ? QStringLiteral("FOUND") : QStringLiteral("SEARCHING");
+        link = streaming ? u"STREAMING"_s : m_lidar.configured ? u"CONFIGURED"_s : !m_lidar.sn.isEmpty() ? u"FOUND"_s : u"SEARCHING"_s;
     QString model = livox::deviceName(m_lidar.devType);
-    if (model.isEmpty() && m_lidar.devType) model = QStringLiteral("type %1").arg(m_lidar.devType);
-    QVariantMap st{{QStringLiteral("connected"), m_connected},
-                   {QStringLiteral("link"), link},
-                   {QStringLiteral("streaming"), streaming},
-                   {QStringLiteral("lidarIp"), m_cfg.lidarIp},
-                   {QStringLiteral("hostIp"), m_connected ? pickHostIp(m_cfg.lidarIp) : QString()},
-                   {QStringLiteral("sn"), m_lidar.sn},
-                   {QStringLiteral("model"), model},
-                   {QStringLiteral("gateOk"), m_gate.ok},
-                   {QStringLiteral("gateReason"), m_gate.reason},
-                   {QStringLiteral("navFix"), m_nav.fix},
-                   {QStringLiteral("navSats"), m_nav.sats},
-                   {QStringLiteral("navHdop"), m_nav.hdop},
-                   {QStringLiteral("navEkfFlags"), m_nav.ekfFlags},
-                   {QStringLiteral("navEkfPosVar"), m_nav.ekfPosVar},
-                   {QStringLiteral("mapPoints"), m_mapCount},
-                   {QStringLiteral("maxPoints"), m_cfg.maxPoints},
-                   {QStringLiteral("queue"), qint64(m_queue.size())},
-                   {QStringLiteral("recording"), bool(m_rec)},
-                   {QStringLiteral("recordPath"), m_rec ? m_rec->path : QString()},
-                   {QStringLiteral("recordedPoints"), m_rec ? m_rec->count : 0},
-                   {QStringLiteral("error"), m_lastError}};
+    if (model.isEmpty() && m_lidar.devType) model = u"type %1"_s.arg(m_lidar.devType);
+    QVariantMap st{{u"connected"_s, m_connected},
+                   {u"link"_s, link},
+                   {u"streaming"_s, streaming},
+                   {u"lidarIp"_s, m_cfg.lidarIp},
+                   {u"hostIp"_s, m_connected ? pickHostIp(m_cfg.lidarIp) : QString()},
+                   {u"sn"_s, m_lidar.sn},
+                   {u"model"_s, model},
+                   {u"gateOk"_s, m_gate.ok},
+                   {u"gateReason"_s, m_gate.reason},
+                   {u"navFix"_s, m_nav.fix},
+                   {u"navSats"_s, m_nav.sats},
+                   {u"navHdop"_s, m_nav.hdop},
+                   {u"navEkfFlags"_s, m_nav.ekfFlags},
+                   {u"navEkfPosVar"_s, m_nav.ekfPosVar},
+                   {u"mapPoints"_s, m_mapCount},
+                   {u"maxPoints"_s, m_cfg.maxPoints},
+                   {u"queue"_s, qint64(m_queue.size())},
+                   {u"recording"_s, bool(m_rec)},
+                   {u"recordPath"_s, m_rec ? m_rec->path : QString()},
+                   {u"recordedPoints"_s, m_rec ? m_rec->count : 0},
+                   {u"error"_s, m_lastError}};
     for (auto it = m_statsShown.cbegin(); it != m_statsShown.cend(); ++it) st.insert(it.key(), it.value());
     return st;
 }
@@ -856,12 +858,12 @@ QVariantMap LidarCore::status() const
 void LidarCore::sendOrigin()
 {
     if (!m_origin) return;
-    emit originChanged({{QStringLiteral("lat"), m_origin->lat},
-                        {QStringLiteral("lon"), m_origin->lon},
-                        {QStringLiteral("alt"), m_origin->alt},
-                        {QStringLiteral("mPerLat"), m_origin->mPerLat},
-                        {QStringLiteral("mPerLon"), m_origin->mPerLon},
-                        {QStringLiteral("epoch"), m_origin->epoch}});
+    emit originChanged({{u"lat"_s, m_origin->lat},
+                        {u"lon"_s, m_origin->lon},
+                        {u"alt"_s, m_origin->alt},
+                        {u"mPerLat"_s, m_origin->mPerLat},
+                        {u"mPerLon"_s, m_origin->mPerLon},
+                        {u"epoch"_s, m_origin->epoch}});
 }
 
 // ============== COMMANDS ==============
@@ -936,15 +938,6 @@ void LidarCore::clear()
 {
     resetMap();
     sendStatus();
-}
-
-QVariantMap LidarCore::resync()
-{
-    if (!m_origin) return {{QStringLiteral("success"), true}, {QStringLiteral("points"), 0}};
-    sendOrigin();
-    for (const MapChunk &c : m_mapChunks)
-        emit points(m_epoch, QVector<float>(c.xyz.begin(), c.xyz.begin() + c.n * 3), QByteArray(reinterpret_cast<const char *>(c.i.data()), c.n));
-    return {{QStringLiteral("success"), true}, {QStringLiteral("points"), m_mapCount}};
 }
 
 } // namespace corv

@@ -6,6 +6,8 @@
 #include <cstring>
 #include <random>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -73,18 +75,18 @@ LineSeg LineSeg::make(const QVector3D &a, const QVector3D &b, const QColor &c, f
 
 OverlayRenderer::OverlayRenderer(QRhi *rhi) : m_rhi(rhi)
 {
-    m_lineVs = loadShader(QStringLiteral(":/shaders/line.vert.qsb"));
-    m_lineFs = loadShader(QStringLiteral(":/shaders/line.frag.qsb"));
-    m_meshVs = loadShader(QStringLiteral(":/shaders/mesh.vert.qsb"));
-    m_meshFs = loadShader(QStringLiteral(":/shaders/mesh.frag.qsb"));
-    m_fillVs = loadShader(QStringLiteral(":/shaders/fill.vert.qsb"));
-    m_fillFs = loadShader(QStringLiteral(":/shaders/fill.frag.qsb"));
-    m_waterVs = loadShader(QStringLiteral(":/shaders/water.vert.qsb"));
-    m_waterFs = loadShader(QStringLiteral(":/shaders/water.frag.qsb"));
-    m_partVs = loadShader(QStringLiteral(":/shaders/particles.vert.qsb"));
-    m_partFs = loadShader(QStringLiteral(":/shaders/particles.frag.qsb"));
-    m_labelVs = loadShader(QStringLiteral(":/shaders/label.vert.qsb"));
-    m_labelFs = loadShader(QStringLiteral(":/shaders/label.frag.qsb"));
+    m_lineVs = loadShader(u":/shaders/line.vert.qsb"_s);
+    m_lineFs = loadShader(u":/shaders/line.frag.qsb"_s);
+    m_meshVs = loadShader(u":/shaders/mesh.vert.qsb"_s);
+    m_meshFs = loadShader(u":/shaders/mesh.frag.qsb"_s);
+    m_fillVs = loadShader(u":/shaders/fill.vert.qsb"_s);
+    m_fillFs = loadShader(u":/shaders/fill.frag.qsb"_s);
+    m_waterVs = loadShader(u":/shaders/water.vert.qsb"_s);
+    m_waterFs = loadShader(u":/shaders/water.frag.qsb"_s);
+    m_partVs = loadShader(u":/shaders/particles.vert.qsb"_s);
+    m_partFs = loadShader(u":/shaders/particles.frag.qsb"_s);
+    m_labelVs = loadShader(u":/shaders/label.vert.qsb"_s);
+    m_labelFs = loadShader(u":/shaders/label.frag.qsb"_s);
     m_atlas.reset(m_rhi->newTexture(QRhiTexture::RGBA8, QSize(1024, 512)));
     m_atlas->create();
     m_atlasSampler.reset(m_rhi->newSampler(QRhiSampler::Linear, QRhiSampler::Linear, QRhiSampler::None,

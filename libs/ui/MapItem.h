@@ -14,19 +14,18 @@
 #include <QQuickPaintedItem>
 #include <QTimer>
 #include <deque>
+#include <functional>
 #include <vector>
 
 namespace corv {
 
 class VehicleHub;
+struct VehicleState;
 
 class MapItem : public QQuickPaintedItem
 {
     Q_OBJECT
     QML_ELEMENT
-    Q_PROPERTY(int zoom READ zoom WRITE setZoom NOTIFY viewChanged)
-    Q_PROPERTY(bool follow READ follow WRITE setFollow NOTIFY viewChanged)
-    Q_PROPERTY(QString provider READ provider WRITE setProvider NOTIFY viewChanged)
 
 public:
     explicit MapItem(QQuickItem *parent = nullptr);
@@ -36,18 +35,9 @@ public:
     static void setFrozenTrail(std::vector<LatLon> points);
 
     void paint(QPainter *p) override;
-
-    int zoom() const { return m_zoom; }
-    void setZoom(int z);
-    bool follow() const { return m_follow; }
-    void setFollow(bool f);
-    QString provider() const { return m_provider; }
-    void setProvider(const QString &p);
-
     Q_INVOKABLE void clearTrail() { m_trail.clear(); update(); }
 
 signals:
-    void viewChanged();
     /// Click on the map (guided target in the Electron version).
     void clicked(double lat, double lon);
 
@@ -62,6 +52,11 @@ private:
     QPointF project(double lat, double lon) const;   // world pixels at the current zoom
     LatLon unproject(QPointF world) const;
     void sample();
+    void setZoom(int z);
+    void setFollow(bool f);
+    void drawTiles(QPainter *p, QPointF origin);
+    void drawCells(QPainter *p, const VehicleState &s, const std::function<QPointF(double, double)> &toScreen);
+    void drawVehicle(QPainter *p, QPointF at, double yaw);
 
     static VehicleHub *s_hub;
     static std::vector<LatLon> s_frozen;
@@ -70,7 +65,6 @@ private:
     PacedTimer m_timer;   // on the 3D view's frames while it paces them (RENDER FPS CAP)
     int m_zoom = 13;
     bool m_follow = true;
-    QString m_provider = QStringLiteral("satellite");
     LatLon m_center = kDefaultOrigin;
     std::deque<LatLon> m_trail;
     QPointF m_press;

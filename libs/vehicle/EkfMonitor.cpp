@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstring>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -61,14 +63,14 @@ const EkfSeries &EkfMonitor::series(const QString &name) const
 
 QString EkfMonitor::source(double now) const
 {
-    if (now - m_ap.time < kStaleMs) return QStringLiteral("ardupilot");
+    if (now - m_ap.time < kStaleMs) return u"ardupilot"_s;
     return m_lastSource;
 }
 
 bool EkfMonitor::live(double now) const
 {
     const QString s = source(now);
-    if (s == QLatin1String("ardupilot")) return now - m_ap.time < kStaleMs;
+    if (s == "ardupilot"_L1) return now - m_ap.time < kStaleMs;
     return false;
 }
 
@@ -81,16 +83,16 @@ void EkfMonitor::ingestMavlink(const mavlink_message_t &msg, double now)
         mavlink_ekf_status_report_t d;
         mavlink_msg_ekf_status_report_decode(&msg, &d);
         m_ap.time = now;
-        m_lastSource = QStringLiteral("ardupilot");
+        m_lastSource = u"ardupilot"_s;
         m_ap.flags = int(d.flags);
-        get(QStringLiteral("apVel")).push(now, d.velocity_variance);
-        get(QStringLiteral("apPosH")).push(now, d.pos_horiz_variance);
-        get(QStringLiteral("apPosV")).push(now, d.pos_vert_variance);
-        get(QStringLiteral("apMag")).push(now, d.compass_variance);
+        get(u"apVel"_s).push(now, d.velocity_variance);
+        get(u"apPosH"_s).push(now, d.pos_horiz_variance);
+        get(u"apPosV"_s).push(now, d.pos_vert_variance);
+        get(u"apMag"_s).push(now, d.compass_variance);
         m_ap.terr = std::isfinite(d.terrain_alt_variance) ? std::optional<double>(double(d.terrain_alt_variance)) : std::nullopt;
         // No pitot, no airspeed fusion: the ratio stays 0 and is not drawn
-        if (std::isfinite(d.airspeed_variance) && (d.airspeed_variance > 0 || !get(QStringLiteral("apTas")).empty()))
-            get(QStringLiteral("apTas")).push(now, d.airspeed_variance);
+        if (std::isfinite(d.airspeed_variance) && (d.airspeed_variance > 0 || !get(u"apTas"_s).empty()))
+            get(u"apTas"_s).push(now, d.airspeed_variance);
         break;
     }
     case MAVLINK_MSG_ID_GPS_RAW_INT: {   // accuracies in mm and mm/s, 0 = not reported
@@ -100,13 +102,13 @@ void EkfMonitor::ingestMavlink(const mavlink_message_t &msg, double now)
         if (d.satellites_visible != 255) m_ap.sats = int(d.satellites_visible);
         if (d.eph != 65535) {
             m_ap.hdop = d.eph / 100.0;
-            get(QStringLiteral("apHdop")).push(now, d.eph / 100.0);
+            get(u"apHdop"_s).push(now, d.eph / 100.0);
         }
         // Without a fix the receiver may still quote its last accuracy: not plotted
         if (d.fix_type < 2) break;
-        if (d.h_acc > 0) get(QStringLiteral("apHAcc")).push(now, d.h_acc / 1000.0);
-        if (d.v_acc > 0) get(QStringLiteral("apVAcc")).push(now, d.v_acc / 1000.0);
-        if (d.vel_acc > 0) get(QStringLiteral("apVelAcc")).push(now, d.vel_acc / 1000.0);
+        if (d.h_acc > 0) get(u"apHAcc"_s).push(now, d.h_acc / 1000.0);
+        if (d.v_acc > 0) get(u"apVAcc"_s).push(now, d.v_acc / 1000.0);
+        if (d.vel_acc > 0) get(u"apVelAcc"_s).push(now, d.vel_acc / 1000.0);
         break;
     }
     case MAVLINK_MSG_ID_ATTITUDE: {   // the EKF's
@@ -123,7 +125,7 @@ void EkfMonitor::ingestMavlink(const mavlink_message_t &msg, double now)
         mavlink_msg_ahrs2_decode(&msg, &d);
         if (!std::isfinite(d.roll)) return;
         m_ap.time = now;
-        m_lastSource = QStringLiteral("ardupilot");
+        m_lastSource = u"ardupilot"_s;
         resolveAhrs2(now, true);
         m_pendingAhrs2 = Att{now, d.roll * kDeg, d.pitch * kDeg, d.yaw * kDeg};
         resolveAhrs2(now, false);
@@ -160,9 +162,9 @@ void EkfMonitor::resolveAhrs2(double now, bool force)
     } else {
         return;
     }
-    get(QStringLiteral("apDRoll")).push(a.t, e.r - a.r);
-    get(QStringLiteral("apDPitch")).push(a.t, e.p - a.p);
-    get(QStringLiteral("apDYaw")).push(a.t, wrapDeg(e.y - a.y));
+    get(u"apDRoll"_s).push(a.t, e.r - a.r);
+    get(u"apDPitch"_s).push(a.t, e.p - a.p);
+    get(u"apDYaw"_s).push(a.t, wrapDeg(e.y - a.y));
     m_pendingAhrs2.reset();
 }
 

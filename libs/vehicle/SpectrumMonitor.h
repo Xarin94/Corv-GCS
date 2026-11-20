@@ -173,6 +173,11 @@ private:
     int m_version = 0;
 };
 
+/// Frequency resolution, "0.977 Hz" / "3.91 Hz" / "15.6 Hz".
+QString fmtDf(double v);
+/// A window length, "850 ms" / "2.5 s" / "12 s".
+QString fmtDur(double ms);
+
 } // namespace corv
 
 Q_DECLARE_METATYPE(corv::LogSpectrumMsg)

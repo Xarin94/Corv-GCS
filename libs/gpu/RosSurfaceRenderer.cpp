@@ -8,6 +8,8 @@
 #include <cmath>
 #include <cstring>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -82,10 +84,10 @@ double boxDistance(const QVector3D &p, const QVector3D &lo, const QVector3D &hi)
 
 RosSurfaceRenderer::RosSurfaceRenderer(QRhi *rhi) : m_rhi(rhi)
 {
-    m_meshVs = loadShader(QStringLiteral(":/shaders/rosmesh.vert.qsb"));
-    m_meshFs = loadShader(QStringLiteral(":/shaders/rosmesh.frag.qsb"));
-    m_volVs = loadShader(QStringLiteral(":/shaders/rosvolume.vert.qsb"));
-    m_volFs = loadShader(QStringLiteral(":/shaders/rosvolume.frag.qsb"));
+    m_meshVs = loadShader(u":/shaders/rosmesh.vert.qsb"_s);
+    m_meshFs = loadShader(u":/shaders/rosmesh.frag.qsb"_s);
+    m_volVs = loadShader(u":/shaders/rosvolume.vert.qsb"_s);
+    m_volFs = loadShader(u":/shaders/rosvolume.frag.qsb"_s);
     if (!m_rhi->isTextureFormatSupported(QRhiTexture::RGBA32F)) LOG_W("gpu") << "RGBA32F textures not supported: no ROS surface";
     m_sampler.reset(m_rhi->newSampler(QRhiSampler::Nearest, QRhiSampler::Nearest, QRhiSampler::None, QRhiSampler::ClampToEdge, QRhiSampler::ClampToEdge));
     m_sampler->create();

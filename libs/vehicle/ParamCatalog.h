@@ -40,8 +40,6 @@ public:
 
     /// Remember names (upper-cased, 16 characters at most). Returns how many were new.
     int learn(const QStringList &names);
-    int learnedCount() const { return int(m_learned.size()); }
-    void clearLearned();
 
     bool isFavorite(const QString &name) const { return m_favorites.contains(name); }
     bool toggleFavorite(const QString &name);
@@ -50,7 +48,6 @@ public:
     /// Built-ins of the vehicle class ('Plane', 'Copter', 'Rover', 'Sub'; Plane otherwise)
     /// + common + learned + `loaded`, sorted.
     QStringList catalog(const QString &vehicleClass, const QStringList &loaded) const;
-    bool isBuiltin(const QString &name) const;
 
     /// SERVO1_FUNCTION -> SERVO, EK3_ENABLE -> EK, Q_A_RAT_RLL_P -> Q, FLTMODE1 -> FLTMODE
     static QString groupOf(const QString &name);

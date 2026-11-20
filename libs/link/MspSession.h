@@ -71,7 +71,6 @@ signals:
     void missionProgress(const QString &phase, int done, int total);
     /// op: upload | download; result: count, saved, maxWaypoints, wps (QVariantList of maps), valid
     void missionDone(const QString &op, bool ok, const QString &error, const QVariantMap &result);
-    void identified(const QString &variant, const QString &version);
 
 private:
     struct Job {

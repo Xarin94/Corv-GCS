@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -34,29 +36,29 @@ TileStore::TileStore()
 
 QString TileStore::urlTemplate(const QString &provider) const
 {
-    const QString custom = Settings::instance().value(QStringLiteral("tile-url-") + provider).toString();
+    const QString custom = Settings::instance().value(u"tile-url-"_s + provider).toString();
     if (!custom.isEmpty()) return custom;
-    if (provider == QLatin1String("osm")) return QStringLiteral("https://tile.openstreetmap.org/{z}/{x}/{y}.png");
+    if (provider == "osm"_L1) return u"https://tile.openstreetmap.org/{z}/{x}/{y}.png"_s;
     // The satellite source of the Electron mini-map (MapEngine.js)
-    return QStringLiteral("https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}");
+    return u"https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"_s;
 }
 
 QSqlDatabase TileStore::db(const QString &provider)
 {
     auto it = m_connections.find(provider);
     if (it != m_connections.end()) return QSqlDatabase::database(*it);
-    const QString name = QStringLiteral("tiles-") + provider;
-    QSqlDatabase d = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), name);
-    d.setDatabaseName(DataRoot::tilesDir() + QLatin1Char('/') + provider + QStringLiteral(".mbtiles"));
+    const QString name = u"tiles-"_s + provider;
+    QSqlDatabase d = QSqlDatabase::addDatabase(u"QSQLITE"_s, name);
+    d.setDatabaseName(DataRoot::tilesDir() + '/'_L1 + provider + u".mbtiles"_s);
     if (!d.open()) {
         LOG_E("tiles") << "cannot open the tile store:" << d.lastError().text();
     } else {
         QSqlQuery q(d);
         q.exec(QStringLiteral("CREATE TABLE IF NOT EXISTS tiles (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER, tile_data BLOB, "
                               "PRIMARY KEY (zoom_level, tile_column, tile_row))"));
-        q.exec(QStringLiteral("CREATE TABLE IF NOT EXISTS metadata (name TEXT PRIMARY KEY, value TEXT)"));
-        q.exec(QStringLiteral("INSERT OR IGNORE INTO metadata VALUES ('name', '%1'), ('format', 'png'), ('type', 'baselayer')").arg(provider));
-        q.exec(QStringLiteral("PRAGMA journal_mode=WAL"));
+        q.exec(u"CREATE TABLE IF NOT EXISTS metadata (name TEXT PRIMARY KEY, value TEXT)"_s);
+        q.exec(u"INSERT OR IGNORE INTO metadata VALUES ('name', '%1'), ('format', 'png'), ('type', 'baselayer')"_s.arg(provider));
+        q.exec(u"PRAGMA journal_mode=WAL"_s);
     }
     m_connections.insert(provider, name);
     return d;
@@ -96,7 +98,7 @@ void TileStore::load(const QString &provider, int z, int x, int y)
     QSqlDatabase d = db(provider);
     if (d.isOpen()) {
         QSqlQuery q(d);
-        q.prepare(QStringLiteral("SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?"));
+        q.prepare(u"SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?"_s);
         q.addBindValue(z);
         q.addBindValue(x);
         q.addBindValue((1 << z) - 1 - y);
@@ -132,10 +134,10 @@ void TileStore::pump()
     while (m_inFlight < kMaxInFlight && !m_queue.isEmpty()) {
         const Req r = m_queue.dequeue();
         QString url = urlTemplate(r.provider);
-        url.replace(QStringLiteral("{z}"), QString::number(r.z))
-            .replace(QStringLiteral("{x}"), QString::number(r.x))
-            .replace(QStringLiteral("{y}"), QString::number(r.y))
-            .replace(QStringLiteral("{s}"), QStringLiteral("a"));
+        url.replace(u"{z}"_s, QString::number(r.z))
+            .replace(u"{x}"_s, QString::number(r.x))
+            .replace(u"{y}"_s, QString::number(r.y))
+            .replace(u"{s}"_s, u"a"_s);
         QNetworkRequest req{QUrl(url)};
         // A generic client name: nothing about the user goes to the tile server
         req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("CORV-GCS/" CORV_VERSION));
@@ -150,7 +152,7 @@ void TileStore::pump()
             QImage img;
             if (reply->error() != QNetworkReply::NoError || !img.loadFromData(data)) {
                 m_failed.insert(k);
-                if (DebugLog::throttle(QStringLiteral("tile-fail"), 30000) >= 0)
+                if (DebugLog::throttle(u"tile-fail"_s, 30000) >= 0)
                     LOG_W("tiles") << "tile" << k << "failed:" << reply->errorString();
                 emit tileFailed(r.provider, r.z, r.x, r.y);
             } else {
@@ -162,7 +164,7 @@ void TileStore::pump()
                 QSqlDatabase d = db(r.provider);
                 if (d.isOpen()) {
                     QSqlQuery q(d);
-                    q.prepare(QStringLiteral("INSERT OR REPLACE INTO tiles VALUES (?, ?, ?, ?)"));
+                    q.prepare(u"INSERT OR REPLACE INTO tiles VALUES (?, ?, ?, ?)"_s);
                     q.addBindValue(r.z);
                     q.addBindValue(r.x);
                     q.addBindValue((1 << r.z) - 1 - r.y);
@@ -203,7 +205,7 @@ bool TileStore::onDisk(const QString &provider, int z, int x, int y)
     QSqlDatabase d = db(provider);
     if (!d.isOpen()) return false;
     QSqlQuery q(d);
-    q.prepare(QStringLiteral("SELECT 1 FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?"));
+    q.prepare(u"SELECT 1 FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?"_s);
     q.addBindValue(z);
     q.addBindValue(x);
     q.addBindValue((1 << z) - 1 - y);
@@ -243,8 +245,8 @@ void TileStore::pumpPrefetch()
             continue;
         }
         QString url = urlTemplate(m_bulk.provider);
-        url.replace(QStringLiteral("{z}"), QString::number(t[0])).replace(QStringLiteral("{x}"), QString::number(t[1]))
-            .replace(QStringLiteral("{y}"), QString::number(t[2])).replace(QStringLiteral("{s}"), QStringLiteral("a"));
+        url.replace(u"{z}"_s, QString::number(t[0])).replace(u"{x}"_s, QString::number(t[1]))
+            .replace(u"{y}"_s, QString::number(t[2])).replace(u"{s}"_s, u"a"_s);
         QNetworkRequest req{QUrl(url)};
         req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("CORV-GCS/" CORV_VERSION));
         ++m_bulk.inFlight;
@@ -261,7 +263,7 @@ void TileStore::pumpPrefetch()
                 QSqlDatabase d = db(provider);
                 if (d.isOpen()) {
                     QSqlQuery q(d);
-                    q.prepare(QStringLiteral("INSERT OR REPLACE INTO tiles VALUES (?, ?, ?, ?)"));
+                    q.prepare(u"INSERT OR REPLACE INTO tiles VALUES (?, ?, ?, ?)"_s);
                     q.addBindValue(t[0]);
                     q.addBindValue(t[1]);
                     q.addBindValue((1 << t[0]) - 1 - t[2]);

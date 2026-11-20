@@ -11,15 +11,17 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 QString HgtTile::name(int latBase, int lonBase)
 {
-    return QStringLiteral("%1%2%3%4")
-        .arg(latBase >= 0 ? QLatin1Char('N') : QLatin1Char('S'))
-        .arg(std::abs(latBase), 2, 10, QLatin1Char('0'))
-        .arg(lonBase >= 0 ? QLatin1Char('E') : QLatin1Char('W'))
-        .arg(std::abs(lonBase), 3, 10, QLatin1Char('0'));
+    return u"%1%2%3%4"_s
+        .arg(latBase >= 0 ? 'N'_L1 : 'S'_L1)
+        .arg(std::abs(latBase), 2, 10, '0'_L1)
+        .arg(lonBase >= 0 ? 'E'_L1 : 'W'_L1)
+        .arg(std::abs(lonBase), 3, 10, '0'_L1);
 }
 
 std::shared_ptr<HgtTile> HgtTile::load(const QString &path, int latBase, int lonBase, QString *error)
@@ -34,7 +36,7 @@ std::shared_ptr<HgtTile> HgtTile::load(const QString &path, int latBase, int lon
     if (bytes == 3601LL * 3601 * 2) size = 3601;
     else if (bytes == 1201LL * 1201 * 2) size = 1201;
     else {
-        if (error) *error = QStringLiteral("not an SRTM size: %1 bytes").arg(bytes);
+        if (error) *error = u"not an SRTM size: %1 bytes"_s.arg(bytes);
         return nullptr;
     }
     auto t = std::make_shared<HgtTile>();
@@ -43,7 +45,7 @@ std::shared_ptr<HgtTile> HgtTile::load(const QString &path, int latBase, int lon
     t->size = size;
     t->data.resize(std::size_t(size) * size);
     if (f.read(reinterpret_cast<char *>(t->data.data()), bytes) != bytes) {
-        if (error) *error = QStringLiteral("short read");
+        if (error) *error = u"short read"_s;
         return nullptr;
     }
     // Big-endian on disk
@@ -73,27 +75,27 @@ QStringList HgtStore::searchDirs() const
 {
     QStringList dirs;
     const QString install = DataRoot::installDir();
-    dirs << install + QStringLiteral("/topography") << install + QStringLiteral("/topo");
+    dirs << install + u"/topography"_s << install + u"/topo"_s;
     dirs << DataRoot::terrainDir();
     {
         QMutexLocker l(&m_lock);
         dirs << m_extraDirs;
     }
 #ifdef CORV_SOURCE_DIR
-    dirs << QStringLiteral(CORV_SOURCE_DIR) + QStringLiteral("/topo");
+    dirs << QStringLiteral(CORV_SOURCE_DIR) + u"/topo"_s;
 #endif
-    for (const QString &d : qEnvironmentVariable("CORV_TOPO_DIRS").split(QLatin1Char(';'), Qt::SkipEmptyParts)) dirs << d;
+    for (const QString &d : qEnvironmentVariable("CORV_TOPO_DIRS").split(';'_L1, Qt::SkipEmptyParts)) dirs << d;
     return dirs;
 }
 
 QString HgtStore::find(int latBase, int lonBase) const
 {
-    const QString want = HgtTile::name(latBase, lonBase) + QStringLiteral(".hgt");
+    const QString want = HgtTile::name(latBase, lonBase) + u".hgt"_s;
     for (const QString &d : searchDirs()) {
         const QDir dir(d);
         if (!dir.exists()) continue;
         // Names match whatever their case
-        for (const QString &f : dir.entryList({QStringLiteral("*.hgt"), QStringLiteral("*.HGT")}, QDir::Files))
+        for (const QString &f : dir.entryList({u"*.hgt"_s, u"*.HGT"_s}, QDir::Files))
             if (f.compare(want, Qt::CaseInsensitive) == 0) return dir.filePath(f);
     }
     return {};
@@ -135,7 +137,7 @@ int HgtStore::availableCount() const
     for (const QString &d : searchDirs()) {
         const QDir dir(d);
         if (!dir.exists()) continue;
-        for (const QString &f : dir.entryList({QStringLiteral("*.hgt"), QStringLiteral("*.HGT")}, QDir::Files)) names.insert(f.toUpper());
+        for (const QString &f : dir.entryList({u"*.hgt"_s, u"*.HGT"_s}, QDir::Files)) names.insert(f.toUpper());
     }
     return int(names.size());
 }

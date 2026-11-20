@@ -15,6 +15,8 @@
 #include <QUrlQuery>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -68,14 +70,14 @@ QJsonObject zonesToJson(qint64 at, const GeoZoneList &zones)
 {
     QJsonArray a;
     for (const GeoZone &z : zones) a.append(z.toJson());
-    return QJsonObject{{QStringLiteral("at"), double(at)}, {QStringLiteral("zones"), a}};
+    return QJsonObject{{u"at"_s, double(at)}, {u"zones"_s, a}};
 }
 
 std::shared_ptr<GeoZoneList> zonesFromJson(const QJsonObject &o)
 {
-    if (!o.value(QStringLiteral("zones")).isArray()) return nullptr;
+    if (!o.value(u"zones"_s).isArray()) return nullptr;
     auto list = std::make_shared<GeoZoneList>();
-    for (const QJsonValue &v : o.value(QStringLiteral("zones")).toArray())
+    for (const QJsonValue &v : o.value(u"zones"_s).toArray())
         if (auto z = GeoZone::fromJson(v.toObject())) list->push_back(std::move(*z));
     return list;
 }
@@ -85,33 +87,33 @@ QString s(const QJsonObject &o, const char *k) { return o.value(QLatin1String(k)
 /// "Surface", "400' AGL", "1200 MSL" -> metres and AGL (FAA national security restrictions).
 std::pair<double, bool> faaLimitText(const QString &t, double fallbackFt)
 {
-    static const QRegularExpression sfc(QStringLiteral("surface|sfc|gnd"), QRegularExpression::CaseInsensitiveOption);
-    static const QRegularExpression num(QStringLiteral("([\\d,.]+)"));
+    static const QRegularExpression sfc(u"surface|sfc|gnd"_s, QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression num(u"([\\d,.]+)"_s);
     if (sfc.match(t).hasMatch()) return {0, true};
     const auto m = num.match(t);
-    const double ft = m.hasMatch() ? QString(m.captured(1)).remove(QLatin1Char(',')).toDouble() : fallbackFt;
-    return {ft * geozone::kFt, !t.contains(QLatin1String("msl"), Qt::CaseInsensitive)};
+    const double ft = m.hasMatch() ? QString(m.captured(1)).remove(','_L1).toDouble() : fallbackFt;
+    return {ft * geozone::kFt, !t.contains("msl"_L1, Qt::CaseInsensitive)};
 }
 
 /// FAA airspace limits: VAL, UOM, CODE (SFC, AGL, MSL, STD = flight level).
 std::pair<std::optional<double>, bool> faaLimit(const QJsonValue &val, const QString &uom, const QString &code)
 {
     const QString c = code.toUpper();
-    if (c == QLatin1String("SFC")) return {0.0, true};
+    if (c == "SFC"_L1) return {0.0, true};
     bool ok = false;
     double v = val.isDouble() ? val.toDouble() : val.toVariant().toString().toDouble(&ok);
     if (!val.isDouble() && !ok) return {std::nullopt, false};
-    if (c == QLatin1String("STD") || uom.compare(QLatin1String("FL"), Qt::CaseInsensitive) == 0) v *= 100;
-    return {geozone::toMetres(v, uom.isEmpty() ? QStringLiteral("FT") : uom), c == QLatin1String("AGL")};
+    if (c == "STD"_L1 || uom.compare("FL"_L1, Qt::CaseInsensitive) == 0) v *= 100;
+    return {geozone::toMetres(v, uom.isEmpty() ? u"FT"_s : uom), c == "AGL"_L1};
 }
 
-const QString kFaaBase = QStringLiteral("https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/ArcGIS/rest/services");
-const QString kEnaireUrl = QStringLiteral("https://servais.enaire.es/insignia/rest/services/NSF_SRV/SRV_UAS_ZG_V1/MapServer");
-const QString kDipulUrl = QStringLiteral("https://uas-betrieb.de/geoservices/dipul/wfs");
-const QString kIgnUrl = QStringLiteral("https://data.geopf.fr/wfs/ows");
-const QString kBazlUrl = QStringLiteral("https://data.geo.admin.ch/ch.bazl.einschraenkungen-drohnen/einschraenkungen-drohnen/einschraenkungen-drohnen_4326.json");
+const QString kFaaBase = u"https://services6.arcgis.com/ssFJjBXIUyZDrSYZ/ArcGIS/rest/services"_s;
+const QString kEnaireUrl = u"https://servais.enaire.es/insignia/rest/services/NSF_SRV/SRV_UAS_ZG_V1/MapServer"_s;
+const QString kDipulUrl = u"https://uas-betrieb.de/geoservices/dipul/wfs"_s;
+const QString kIgnUrl = u"https://data.geopf.fr/wfs/ows"_s;
+const QString kBazlUrl = u"https://data.geo.admin.ch/ch.bazl.einschraenkungen-drohnen/einschraenkungen-drohnen/einschraenkungen-drohnen_4326.json"_s;
 
-QString boxText(const Box &b) { return QStringLiteral("%1,%2,%3,%4").arg(b[0]).arg(b[1]).arg(b[2]).arg(b[3]); }
+QString boxText(const Box &b) { return u"%1,%2,%3,%4"_s.arg(b[0]).arg(b[1]).arg(b[2]).arg(b[3]); }
 
 /// Run async steps one after the other; the first error stops the chain.
 void chain(std::shared_ptr<QList<std::function<void(std::function<void(QString)>)>>> steps, std::function<void(QString)> done, int i = 0)
@@ -130,12 +132,12 @@ void chain(std::shared_ptr<QList<std::function<void(std::function<void(QString)>
 const QList<GeoZoneStore::Provider> &GeoZoneStore::providers()
 {
     static const QList<Provider> list = {
-        {QStringLiteral("faa"), QStringLiteral("FAA"), QStringLiteral("US"), 0.5, {}, 2,
+        {u"faa"_s, u"FAA"_s, u"US"_s, 0.5, {}, 2,
          {{-125, 24, -66.5, 49.5}, {-170, 51, -129, 72}, {-161, 18.5, -154, 22.5}, {-68, 17.5, -65, 18.7}}},
-        {QStringLiteral("dipul"), QStringLiteral("DFS DIPUL"), QStringLiteral("DE"), 1, {}, 4, {{5.8, 47.2, 15.1, 55.1}}},
-        {QStringLiteral("ign"), QStringLiteral("IGN / DGAC"), QStringLiteral("FR"), 0.5, {}, 4, {{-5.3, 41.3, 9.7, 51.2}}},
-        {QStringLiteral("enaire"), QStringLiteral("ENAIRE"), QStringLiteral("ES"), 0.5, {}, 4, {{-9.5, 35.9, 4.4, 43.9}, {-18.2, 27.6, -13.3, 29.5}}},
-        {QStringLiteral("bazl"), QStringLiteral("FOCA / BAZL"), QStringLiteral("CH"), 0, kBazlUrl, 4, {{5.9, 45.8, 10.5, 47.9}}},
+        {u"dipul"_s, u"DFS DIPUL"_s, u"DE"_s, 1, {}, 4, {{5.8, 47.2, 15.1, 55.1}}},
+        {u"ign"_s, u"IGN / DGAC"_s, u"FR"_s, 0.5, {}, 4, {{-5.3, 41.3, 9.7, 51.2}}},
+        {u"enaire"_s, u"ENAIRE"_s, u"ES"_s, 0.5, {}, 4, {{-9.5, 35.9, 4.4, 43.9}, {-18.2, 27.6, -13.3, 29.5}}},
+        {u"bazl"_s, u"FOCA / BAZL"_s, u"CH"_s, 0, kBazlUrl, 4, {{5.9, 45.8, 10.5, 47.9}}},
     };
     return list;
 }
@@ -152,25 +154,25 @@ void GeoZoneStore::markChanged() { m_changeTimer.start(); }
 
 QString GeoZoneStore::tileFile(const Provider &p, const QString &key) const
 {
-    return m_dir + QLatin1Char('/') + p.id + QLatin1Char('/') + key + QStringLiteral(".json");
+    return m_dir + '/'_L1 + p.id + '/'_L1 + key + u".json"_s;
 }
 
 GeoZoneStore::Tile &GeoZoneStore::tile(const Provider &p, const QString &key)
 {
-    const QString id = p.id + QLatin1Char('/') + key;
+    const QString id = p.id + '/'_L1 + key;
     auto it = m_tiles.find(id);
     if (it != m_tiles.end()) return *it;
     Tile t;
     const QJsonObject o = readJson(tileFile(p, key));
-    t.at = qint64(o.value(QStringLiteral("at")).toDouble());
+    t.at = qint64(o.value(u"at"_s).toDouble());
     t.zones = zonesFromJson(o);
     return m_tiles.insert(id, t).value();
 }
 
 void GeoZoneStore::want(const Provider &p, int tx, int ty, qint64 now)
 {
-    const QString key = QStringLiteral("%1_%2_%3").arg(p.tileDeg).arg(tx).arg(ty);
-    const QString id = p.id + QLatin1Char('/') + key;
+    const QString key = u"%1_%2_%3"_s.arg(p.tileDeg).arg(tx).arg(ty);
+    const QString id = p.id + '/'_L1 + key;
     Tile &t = tile(p, key);
     const bool stale = !t.at || now - t.at > kTtlMs;
     const bool backoff = t.failedAt && now - t.failedAt < kRetryMs;
@@ -185,8 +187,8 @@ GeoZoneStore::Tile &GeoZoneStore::countryFile(const Provider &p, qint64 now)
     auto it = m_files.find(p.id);
     if (it == m_files.end()) {
         Tile t;
-        const QJsonObject o = readJson(m_dir + QLatin1Char('/') + p.id + QStringLiteral(".json"));
-        t.at = qint64(o.value(QStringLiteral("at")).toDouble());
+        const QJsonObject o = readJson(m_dir + '/'_L1 + p.id + u".json"_s);
+        t.at = qint64(o.value(u"at"_s).toDouble());
         t.zones = zonesFromJson(o);
         it = m_files.insert(p.id, t);
     }
@@ -204,7 +206,7 @@ GeoZoneStore::Tile &GeoZoneStore::countryFile(const Provider &p, qint64 now)
                 auto zones = std::make_shared<GeoZoneList>(geozone::parseEdZones(doc.isArray() ? QJsonValue(doc.array()) : QJsonValue(doc.object()), pid));
                 f.at = QDateTime::currentMSecsSinceEpoch();
                 f.zones = zones;
-                writeJson(m_dir + QLatin1Char('/') + pid + QStringLiteral(".json"), zonesToJson(f.at, *zones));
+                writeJson(m_dir + '/'_L1 + pid + u".json"_s, zonesToJson(f.at, *zones));
                 m_lastError.remove(pid);
                 LOG_I("geozones") << pid << ":" << zones->size() << "zones," << t0.elapsed() / 1000.0 << "s";
             } else {
@@ -223,12 +225,12 @@ void GeoZoneStore::loadImports()
 {
     if (m_importsLoaded) return;
     m_importsLoaded = true;
-    const QDir dir(m_dir + QStringLiteral("/import"));
-    for (const QString &n : dir.entryList({QStringLiteral("*.json")}, QDir::Files)) {
+    const QDir dir(m_dir + u"/import"_s);
+    for (const QString &n : dir.entryList({u"*.json"_s}, QDir::Files)) {
         const QJsonObject o = readJson(dir.filePath(n));
         auto zones = zonesFromJson(o);
         if (!zones) continue;
-        m_imports.insert(n, {o.value(QStringLiteral("name")).toString(n), qint64(o.value(QStringLiteral("at")).toDouble()), zones});
+        m_imports.insert(n, {o.value(u"name"_s).toString(n), qint64(o.value(u"at"_s).toDouble()), zones});
     }
 }
 
@@ -287,15 +289,15 @@ GeoZoneStore::Result GeoZoneStore::query(const QList<Circle> &circlesIn)
                     const double w = std::max(b[0], c[0]), s0 = std::max(b[1], c[1]), e = std::min(b[2], c[2]), n = std::min(b[3], c[3]);
                     for (int ty = int(std::floor(s0 / p.tileDeg)); ty <= int(std::floor(n / p.tileDeg)); ++ty) {
                         for (int tx = int(std::floor(w / p.tileDeg)); tx <= int(std::floor(e / p.tileDeg)); ++tx) {
-                            const QString key = QStringLiteral("%1_%2").arg(tx).arg(ty);
+                            const QString key = u"%1_%2"_s.arg(tx).arg(ty);
                             if (seen.contains(key) || seen.size() >= kMaxTiles) continue;
                             seen.insert(key);
                             want(p, tx, ty, now);
-                            const QString tkey = QStringLiteral("%1_%2_%3").arg(p.tileDeg).arg(tx).arg(ty);
+                            const QString tkey = u"%1_%2_%3"_s.arg(p.tileDeg).arg(tx).arg(ty);
                             const Tile &t = tile(p, tkey);
                             ++src.tiles;
                             if (t.zones) { ++src.ready; add(t.zones); }
-                            if (m_inFlight.contains(p.id + QLatin1Char('/') + tkey)) ++src.pending;
+                            if (m_inFlight.contains(p.id + '/'_L1 + tkey)) ++src.pending;
                         }
                     }
                 }
@@ -359,23 +361,23 @@ int GeoZoneStore::importFile(const QString &path, QString *error)
     QJsonParseError pe;
     const QJsonDocument doc = QJsonDocument::fromJson(bytes, &pe);
     if (doc.isNull()) {
-        if (error) *error = QStringLiteral("Not JSON: %1").arg(pe.errorString());
+        if (error) *error = u"Not JSON: %1"_s.arg(pe.errorString());
         return -1;
     }
     QString base = QFileInfo(path).completeBaseName();
-    base.replace(QRegularExpression(QStringLiteral("[^\\w.-]+")), QStringLiteral("_"));
+    base.replace(QRegularExpression(u"[^\\w.-]+"_s), u"_"_s);
     auto zones = std::make_shared<GeoZoneList>(geozone::parseEdZones(doc.isArray() ? QJsonValue(doc.array()) : QJsonValue(doc.object()),
-                                                                      QStringLiteral("import-") + base));
+                                                                      u"import-"_s + base));
     if (zones->empty()) {
-        if (error) *error = QStringLiteral("No ED-269 / ED-318 zones in this file");
+        if (error) *error = u"No ED-269 / ED-318 zones in this file"_s;
         return -1;
     }
     loadImports();
-    const QString file = base + QStringLiteral(".json");
+    const QString file = base + u".json"_s;
     const qint64 at = QDateTime::currentMSecsSinceEpoch();
     QJsonObject o = zonesToJson(at, *zones);
-    o.insert(QStringLiteral("name"), QFileInfo(path).fileName());
-    writeJson(m_dir + QStringLiteral("/import/") + file, o);
+    o.insert(u"name"_s, QFileInfo(path).fileName());
+    writeJson(m_dir + u"/import/"_s + file, o);
     m_imports.insert(file, {QFileInfo(path).fileName(), at, zones});
     LOG_I("geozones") << "imported" << QFileInfo(path).fileName() << ":" << zones->size() << "zones";
     markChanged();
@@ -385,7 +387,7 @@ int GeoZoneStore::importFile(const QString &path, QString *error)
 void GeoZoneStore::removeImport(const QString &file)
 {
     const QString name = QFileInfo(file).fileName();
-    QFile::remove(m_dir + QStringLiteral("/import/") + name);
+    QFile::remove(m_dir + u"/import/"_s + name);
     m_imports.remove(name);
     markChanged();
 }
@@ -393,8 +395,8 @@ void GeoZoneStore::removeImport(const QString &file)
 void GeoZoneStore::clear()
 {
     for (const Provider &p : providers()) {
-        QDir(m_dir + QLatin1Char('/') + p.id).removeRecursively();
-        QFile::remove(m_dir + QLatin1Char('/') + p.id + QStringLiteral(".json"));
+        QDir(m_dir + '/'_L1 + p.id).removeRecursively();
+        QFile::remove(m_dir + '/'_L1 + p.id + u".json"_s);
         m_files.remove(p.id);
     }
     m_tiles.clear();
@@ -417,13 +419,13 @@ void GeoZoneStore::fetchJson(const QUrl &url, int timeoutMs, JsonDone done, int 
         const QByteArray body = reply->readAll();
         QJsonParseError pe;
         const QJsonDocument doc = QJsonDocument::fromJson(body, &pe);
-        const QJsonObject err = doc.object().value(QStringLiteral("error")).toObject();
+        const QJsonObject err = doc.object().value(u"error"_s).toObject();
         // A server that says it is busy (the FAA's ArcGIS limits parallel requests) is asked again
-        const bool busy = status == 429 || status == 503 || err.value(QStringLiteral("code")).toInt() == 429
-                          || err.value(QStringLiteral("message")).toString().contains(QLatin1String("too many requests"), Qt::CaseInsensitive);
+        const bool busy = status == 429 || status == 503 || err.value(u"code"_s).toInt() == 429
+                          || err.value(u"message"_s).toString().contains("too many requests"_L1, Qt::CaseInsensitive);
         if (busy) {
             if (attempt >= kBusyRetries) {
-                done({}, err.value(QStringLiteral("message")).toString(QStringLiteral("HTTP %1").arg(status)));
+                done({}, err.value(u"message"_s).toString(u"HTTP %1"_s.arg(status)));
                 return;
             }
             QTimer::singleShot(2000 << attempt, this, [this, url, timeoutMs, done, attempt] { fetchJson(url, timeoutMs, done, attempt + 1); });
@@ -434,11 +436,11 @@ void GeoZoneStore::fetchJson(const QUrl &url, int timeoutMs, JsonDone done, int 
             return;
         }
         if (status >= 400) {
-            done({}, QStringLiteral("HTTP %1").arg(status));
+            done({}, u"HTTP %1"_s.arg(status));
             return;
         }
         if (doc.isNull()) {
-            done({}, QStringLiteral("not JSON: %1").arg(QString::fromUtf8(body.left(120)).simplified()));
+            done({}, u"not JSON: %1"_s.arg(QString::fromUtf8(body.left(120)).simplified()));
             return;
         }
         done(doc, {});
@@ -450,32 +452,32 @@ void GeoZoneStore::arcgisFeatures(const QString &layerUrl, const Box &box, const
 {
     if (!acc) acc = std::make_shared<QJsonArray>();
     QUrlQuery q;
-    q.addQueryItem(QStringLiteral("where"), where.isEmpty() ? QStringLiteral("1=1") : where);
-    q.addQueryItem(QStringLiteral("outFields"), outFields.isEmpty() ? QStringLiteral("*") : outFields);
-    q.addQueryItem(QStringLiteral("f"), QStringLiteral("geojson"));
-    q.addQueryItem(QStringLiteral("returnGeometry"), QStringLiteral("true"));
-    q.addQueryItem(QStringLiteral("geometry"), boxText(box));
-    q.addQueryItem(QStringLiteral("geometryType"), QStringLiteral("esriGeometryEnvelope"));
-    q.addQueryItem(QStringLiteral("inSR"), QStringLiteral("4326"));
-    q.addQueryItem(QStringLiteral("outSR"), QStringLiteral("4326"));
-    q.addQueryItem(QStringLiteral("spatialRel"), QStringLiteral("esriSpatialRelIntersects"));
-    q.addQueryItem(QStringLiteral("resultOffset"), QString::number(offset));
-    q.addQueryItem(QStringLiteral("resultRecordCount"), QString::number(pageSize));
-    q.addQueryItem(QStringLiteral("maxAllowableOffset"), QString::number(geozone::kSimplifyDeg));
-    q.addQueryItem(QStringLiteral("geometryPrecision"), QStringLiteral("6"));
-    QUrl url(layerUrl + QStringLiteral("/query"));
+    q.addQueryItem(u"where"_s, where.isEmpty() ? u"1=1"_s : where);
+    q.addQueryItem(u"outFields"_s, outFields.isEmpty() ? u"*"_s : outFields);
+    q.addQueryItem(u"f"_s, u"geojson"_s);
+    q.addQueryItem(u"returnGeometry"_s, u"true"_s);
+    q.addQueryItem(u"geometry"_s, boxText(box));
+    q.addQueryItem(u"geometryType"_s, u"esriGeometryEnvelope"_s);
+    q.addQueryItem(u"inSR"_s, u"4326"_s);
+    q.addQueryItem(u"outSR"_s, u"4326"_s);
+    q.addQueryItem(u"spatialRel"_s, u"esriSpatialRelIntersects"_s);
+    q.addQueryItem(u"resultOffset"_s, QString::number(offset));
+    q.addQueryItem(u"resultRecordCount"_s, QString::number(pageSize));
+    q.addQueryItem(u"maxAllowableOffset"_s, QString::number(geozone::kSimplifyDeg));
+    q.addQueryItem(u"geometryPrecision"_s, u"6"_s);
+    QUrl url(layerUrl + u"/query"_s);
     url.setQuery(q);
     fetchJson(url, kTimeoutMs, [this, layerUrl, box, where, outFields, pageSize, done, acc, offset](const QJsonDocument &doc, const QString &err) {
         if (!err.isEmpty()) { done({}, err); return; }
         const QJsonObject o = doc.object();
-        if (o.contains(QStringLiteral("error"))) {
-            done({}, o.value(QStringLiteral("error")).toObject().value(QStringLiteral("message")).toString(QStringLiteral("ArcGIS error")));
+        if (o.contains(u"error"_s)) {
+            done({}, o.value(u"error"_s).toObject().value(u"message"_s).toString(u"ArcGIS error"_s));
             return;
         }
-        const QJsonArray feats = o.value(QStringLiteral("features")).toArray();
+        const QJsonArray feats = o.value(u"features"_s).toArray();
         for (const QJsonValue &f : feats) acc->append(f);
-        const bool more = o.value(QStringLiteral("exceededTransferLimit")).toBool()
-                          || o.value(QStringLiteral("properties")).toObject().value(QStringLiteral("exceededTransferLimit")).toBool();
+        const bool more = o.value(u"exceededTransferLimit"_s).toBool()
+                          || o.value(u"properties"_s).toObject().value(u"exceededTransferLimit"_s).toBool();
         if (!more || feats.isEmpty() || offset + feats.size() >= 100000) { done(*acc, {}); return; }
         arcgisFeatures(layerUrl, box, where, outFields, pageSize, done, acc, offset + int(feats.size()));
     });
@@ -484,11 +486,11 @@ void GeoZoneStore::arcgisFeatures(const QString &layerUrl, const Box &box, const
 void GeoZoneStore::fetchTile(const Job &job, Done done)
 {
     const QString id = job.p->id;
-    if (id == QLatin1String("faa")) fetchFaa(job.box, done);
-    else if (id == QLatin1String("enaire")) fetchEnaire(job.box, done);
-    else if (id == QLatin1String("dipul")) fetchDipul(job.box, done);
-    else if (id == QLatin1String("ign")) fetchIgn(job.box, done);
-    else done({}, QStringLiteral("unknown source"));
+    if (id == "faa"_L1) fetchFaa(job.box, done);
+    else if (id == "enaire"_L1) fetchEnaire(job.box, done);
+    else if (id == "dipul"_L1) fetchDipul(job.box, done);
+    else if (id == "ign"_L1) fetchIgn(job.box, done);
+    else done({}, u"unknown source"_s);
 }
 
 void GeoZoneStore::fetchFaa(const Box &box, Done done)
@@ -500,68 +502,68 @@ void GeoZoneStore::fetchFaa(const Box &box, Done done)
     using geozone::makeZone;
     using geozone::geojsonPolys;
     auto key = [](const QString &layer, const QJsonObject &p, const QString &fid) {
-        const QString oid = p.value(QStringLiteral("OBJECTID")).toVariant().toString();
-        return layer + QLatin1Char('-') + (oid.isEmpty() ? fid : oid);
+        const QString oid = p.value(u"OBJECTID"_s).toVariant().toString();
+        return layer + '-'_L1 + (oid.isEmpty() ? fid : oid);
     };
     QList<Layer> layers = {
-        {QStringLiteral("uasfm"), kFaaBase + QStringLiteral("/FAA_UAS_FacilityMap_Data/FeatureServer/0"), {},
-         QStringLiteral("OBJECTID,CEILING,UNIT,APT1_ICAO,APT1_FAAID,APT1_NAME,AIRSPACE_1"),
+        {u"uasfm"_s, kFaaBase + u"/FAA_UAS_FacilityMap_Data/FeatureServer/0"_s, {},
+         u"OBJECTID,CEILING,UNIT,APT1_ICAO,APT1_FAAID,APT1_NAME,AIRSPACE_1"_s,
          [key](const QJsonObject &p, const QJsonObject &g, const QString &fid) {
-             const double ft = p.value(QStringLiteral("CEILING")).toDouble();
+             const double ft = p.value(u"CEILING"_s).toDouble();
              QString apt = s(p, "APT1_ICAO");
              if (apt.isEmpty()) apt = s(p, "APT1_FAAID");
              if (apt.isEmpty()) apt = s(p, "APT1_NAME");
              const QString air = s(p, "AIRSPACE_1");
              const QString unit = s(p, "UNIT");
-             return makeZone(QStringLiteral("faa"), key(QStringLiteral("uasfm"), p, fid),
-                             QStringLiteral("UAS facility map · %1 class %2").arg(apt, air.isEmpty() ? QStringLiteral("?") : air), QStringLiteral("prohibited"),
-                             geozone::toMetres(ft, unit.isEmpty() ? QStringLiteral("Feet") : unit).value_or(0), true, std::nullopt, true, geojsonPolys(g),
-                             ft > 0 ? QStringLiteral("Controlled airspace: LAANC authorisation up to %1 ft AGL").arg(ft)
-                                    : QStringLiteral("Controlled airspace: no LAANC authorisation, ask the FAA (DroneZone)"));
+             return makeZone(u"faa"_s, key(u"uasfm"_s, p, fid),
+                             u"UAS facility map · %1 class %2"_s.arg(apt, air.isEmpty() ? u"?"_s : air), u"prohibited"_s,
+                             geozone::toMetres(ft, unit.isEmpty() ? u"Feet"_s : unit).value_or(0), true, std::nullopt, true, geojsonPolys(g),
+                             ft > 0 ? u"Controlled airspace: LAANC authorisation up to %1 ft AGL"_s.arg(ft)
+                                    : u"Controlled airspace: no LAANC authorisation, ask the FAA (DroneZone)"_s);
          }},
-        {QStringLiteral("nsufr"), kFaaBase + QStringLiteral("/DoD_Mar_13/FeatureServer/0"), {}, QStringLiteral("OBJECTID,Facility,Base,Reason,Floor,Ceiling"),
+        {u"nsufr"_s, kFaaBase + u"/DoD_Mar_13/FeatureServer/0"_s, {}, u"OBJECTID,Facility,Base,Reason,Floor,Ceiling"_s,
          [key](const QJsonObject &p, const QJsonObject &g, const QString &fid) {
              const auto lo = faaLimitText(s(p, "Floor"), 0), hi = faaLimitText(s(p, "Ceiling"), 400);
              QString name = s(p, "Facility");
              if (name.isEmpty()) name = s(p, "Base");
              const QString reason = s(p, "Reason");
-             return makeZone(QStringLiteral("faa"), key(QStringLiteral("nsufr"), p, fid), name, QStringLiteral("prohibited"), lo.first, lo.second, hi.first,
+             return makeZone(u"faa"_s, key(u"nsufr"_s, p, fid), name, u"prohibited"_s, lo.first, lo.second, hi.first,
                              hi.second, geojsonPolys(g),
-                             QStringLiteral("%1 UAS flight restriction (14 CFR 99.7)").arg(reason.isEmpty() ? QStringLiteral("National security") : reason));
+                             u"%1 UAS flight restriction (14 CFR 99.7)"_s.arg(reason.isEmpty() ? u"National security"_s : reason));
          }},
-        {QStringLiteral("nsufr-pt"), kFaaBase + QStringLiteral("/Part_Time_National_Security_UAS_Flight_Restrictions/FeatureServer/0"), {},
-         QStringLiteral("OBJECTID,Facility,Base,Reason,Floor,Ceiling,ALERTYPE"),
+        {u"nsufr-pt"_s, kFaaBase + u"/Part_Time_National_Security_UAS_Flight_Restrictions/FeatureServer/0"_s, {},
+         u"OBJECTID,Facility,Base,Reason,Floor,Ceiling,ALERTYPE"_s,
          [key](const QJsonObject &p, const QJsonObject &g, const QString &fid) {
              const auto lo = faaLimitText(s(p, "Floor"), 0), hi = faaLimitText(s(p, "Ceiling"), 400);
              QString name = s(p, "Facility");
              if (name.isEmpty()) name = s(p, "Base");
              const QString type = s(p, "ALERTYPE");
-             return makeZone(QStringLiteral("faa"), key(QStringLiteral("nsufr-pt"), p, fid), name, QStringLiteral("conditional"), lo.first, lo.second, hi.first,
+             return makeZone(u"faa"_s, key(u"nsufr-pt"_s, p, fid), name, u"conditional"_s, lo.first, lo.second, hi.first,
                              hi.second, geojsonPolys(g),
-                             QStringLiteral("Part-time national security restriction (%1): active when published by NOTAM").arg(type.isEmpty() ? QStringLiteral("intermittent") : type));
+                             u"Part-time national security restriction (%1): active when published by NOTAM"_s.arg(type.isEmpty() ? u"intermittent"_s : type));
          }},
-        {QStringLiteral("p"), kFaaBase + QStringLiteral("/Prohibited_Areas/FeatureServer/0"), {},
-         QStringLiteral("OBJECTID,NAME,CITY,UPPER_VAL,UPPER_UOM,UPPER_CODE,LOWER_VAL,LOWER_UOM,LOWER_CODE,TIMESOFUSE"),
+        {u"p"_s, kFaaBase + u"/Prohibited_Areas/FeatureServer/0"_s, {},
+         u"OBJECTID,NAME,CITY,UPPER_VAL,UPPER_UOM,UPPER_CODE,LOWER_VAL,LOWER_UOM,LOWER_CODE,TIMESOFUSE"_s,
          [key](const QJsonObject &p, const QJsonObject &g, const QString &fid) {
-             const auto lo = faaLimit(p.value(QStringLiteral("LOWER_VAL")), s(p, "LOWER_UOM"), s(p, "LOWER_CODE"));
-             const auto hi = faaLimit(p.value(QStringLiteral("UPPER_VAL")), s(p, "UPPER_UOM"), s(p, "UPPER_CODE"));
-             return makeZone(QStringLiteral("faa"), key(QStringLiteral("p"), p, fid), (s(p, "NAME") + QLatin1Char(' ') + s(p, "CITY")).trimmed(),
-                             QStringLiteral("prohibited"), lo.first.value_or(0), lo.second, hi.first, hi.second, geojsonPolys(g),
-                             QStringLiteral("Prohibited area · ") + s(p, "TIMESOFUSE"));
+             const auto lo = faaLimit(p.value(u"LOWER_VAL"_s), s(p, "LOWER_UOM"), s(p, "LOWER_CODE"));
+             const auto hi = faaLimit(p.value(u"UPPER_VAL"_s), s(p, "UPPER_UOM"), s(p, "UPPER_CODE"));
+             return makeZone(u"faa"_s, key(u"p"_s, p, fid), (s(p, "NAME") + ' '_L1 + s(p, "CITY")).trimmed(),
+                             u"prohibited"_s, lo.first.value_or(0), lo.second, hi.first, hi.second, geojsonPolys(g),
+                             u"Prohibited area · "_s + s(p, "TIMESOFUSE"));
          }},
-        {QStringLiteral("r"), kFaaBase + QStringLiteral("/Special_Use_Airspace/FeatureServer/0"), QStringLiteral("TYPE_CODE='R'"),
-         QStringLiteral("OBJECTID,NAME,UPPER_VAL,UPPER_UOM,UPPER_CODE,LOWER_VAL,LOWER_UOM,LOWER_CODE,TIMESOFUSE"),
+        {u"r"_s, kFaaBase + u"/Special_Use_Airspace/FeatureServer/0"_s, u"TYPE_CODE='R'"_s,
+         u"OBJECTID,NAME,UPPER_VAL,UPPER_UOM,UPPER_CODE,LOWER_VAL,LOWER_UOM,LOWER_CODE,TIMESOFUSE"_s,
          [key](const QJsonObject &p, const QJsonObject &g, const QString &fid) {
-             const auto lo = faaLimit(p.value(QStringLiteral("LOWER_VAL")), s(p, "LOWER_UOM"), s(p, "LOWER_CODE"));
-             const auto hi = faaLimit(p.value(QStringLiteral("UPPER_VAL")), s(p, "UPPER_UOM"), s(p, "UPPER_CODE"));
-             return makeZone(QStringLiteral("faa"), key(QStringLiteral("r"), p, fid), s(p, "NAME"), QStringLiteral("conditional"), lo.first.value_or(0),
-                             lo.second, hi.first, hi.second, geojsonPolys(g), QStringLiteral("Restricted area, when active · ") + s(p, "TIMESOFUSE"));
+             const auto lo = faaLimit(p.value(u"LOWER_VAL"_s), s(p, "LOWER_UOM"), s(p, "LOWER_CODE"));
+             const auto hi = faaLimit(p.value(u"UPPER_VAL"_s), s(p, "UPPER_UOM"), s(p, "UPPER_CODE"));
+             return makeZone(u"faa"_s, key(u"r"_s, p, fid), s(p, "NAME"), u"conditional"_s, lo.first.value_or(0),
+                             lo.second, hi.first, hi.second, geojsonPolys(g), u"Restricted area, when active · "_s + s(p, "TIMESOFUSE"));
          }},
-        {QStringLiteral("nda"), kFaaBase + QStringLiteral("/National_Defense_Airspace_TFR_Areas/FeatureServer/0"), {}, QStringLiteral("OBJECTID,NAME,WKHR_RMK"),
+        {u"nda"_s, kFaaBase + u"/National_Defense_Airspace_TFR_Areas/FeatureServer/0"_s, {}, u"OBJECTID,NAME,WKHR_RMK"_s,
          [key](const QJsonObject &p, const QJsonObject &g, const QString &fid) {
              const QString rmk = s(p, "WKHR_RMK");
-             return makeZone(QStringLiteral("faa"), key(QStringLiteral("nda"), p, fid), s(p, "NAME"), QStringLiteral("conditional"), 0, true, std::nullopt, true,
-                             geojsonPolys(g), QStringLiteral("National defense airspace TFR · ") + (rmk.isEmpty() ? QStringLiteral("by NOTAM") : rmk));
+             return makeZone(u"faa"_s, key(u"nda"_s, p, fid), s(p, "NAME"), u"conditional"_s, 0, true, std::nullopt, true,
+                             geojsonPolys(g), u"National defense airspace TFR · "_s + (rmk.isEmpty() ? u"by NOTAM"_s : rmk));
          }},
     };
     auto zones = std::make_shared<GeoZoneList>();
@@ -572,8 +574,8 @@ void GeoZoneStore::fetchFaa(const Box &box, Done done)
                 if (!err.isEmpty()) { next(err); return; }
                 for (const QJsonValue &fv : feats) {
                     const QJsonObject f = fv.toObject();
-                    if (auto z = l.zone(f.value(QStringLiteral("properties")).toObject(), f.value(QStringLiteral("geometry")).toObject(),
-                                        f.value(QStringLiteral("id")).toVariant().toString()))
+                    if (auto z = l.zone(f.value(u"properties"_s).toObject(), f.value(u"geometry"_s).toObject(),
+                                        f.value(u"id"_s).toVariant().toString()))
                         zones->push_back(std::move(*z));
                 }
                 next({});
@@ -589,25 +591,25 @@ void GeoZoneStore::fetchEnaire(const Box &box, Done done)
     auto steps = std::make_shared<QList<std::function<void(std::function<void(QString)>)>>>();
     for (const int layer : {0, 2, 3}) {   // infrastructure, aeronautical, urban
         steps->append([this, layer, box, zones](std::function<void(QString)> next) {
-            arcgisFeatures(kEnaireUrl + QLatin1Char('/') + QString::number(layer), box, {}, {}, 1000,
+            arcgisFeatures(kEnaireUrl + '/'_L1 + QString::number(layer), box, {}, {}, 1000,
                            [layer, zones, next](const QJsonArray &feats, const QString &err) {
                 if (!err.isEmpty()) { next(err); return; }
                 for (const QJsonValue &fv : feats) {
                     const QJsonObject f = fv.toObject();
-                    const QJsonObject p = f.value(QStringLiteral("properties")).toObject();
+                    const QJsonObject p = f.value(u"properties"_s).toObject();
                     QString id = s(p, "GFID");
                     if (id.isEmpty()) id = s(p, "OBJECTID");
-                    if (id.isEmpty()) id = f.value(QStringLiteral("id")).toVariant().toString();
+                    if (id.isEmpty()) id = f.value(u"id"_s).toVariant().toString();
                     QString name = s(p, "name");
                     if (name.isEmpty()) name = s(p, "identifier");
                     if (name.isEmpty()) name = s(p, "otherReasonInfo");
                     const QString other = s(p, "otherReasonInfo");
                     const QString uom = s(p, "uom");
-                    auto z = geozone::makeZone(QStringLiteral("enaire"), QStringLiteral("%1-%2").arg(layer).arg(id), name, geozone::restrictionKind(s(p, "type")),
-                                               geozone::toMetres(p.value(QStringLiteral("lower")), uom).value_or(0), geozone::isAgl(s(p, "lowerReference")),
-                                               geozone::toMetres(p.value(QStringLiteral("upper")), uom), geozone::isAgl(s(p, "upperReference")),
-                                               geozone::geojsonPolys(f.value(QStringLiteral("geometry")).toObject()),
-                                               other.isEmpty() ? s(p, "message") : other + QStringLiteral(". ") + s(p, "message"));
+                    auto z = geozone::makeZone(u"enaire"_s, u"%1-%2"_s.arg(layer).arg(id), name, geozone::restrictionKind(s(p, "type")),
+                                               geozone::toMetres(p.value(u"lower"_s), uom).value_or(0), geozone::isAgl(s(p, "lowerReference")),
+                                               geozone::toMetres(p.value(u"upper"_s), uom), geozone::isAgl(s(p, "upperReference")),
+                                               geozone::geojsonPolys(f.value(u"geometry"_s).toObject()),
+                                               other.isEmpty() ? s(p, "message") : other + u". "_s + s(p, "message"));
                     if (z) zones->push_back(std::move(*z));
                 }
                 next({});
@@ -622,53 +624,53 @@ void GeoZoneStore::fetchDipul(const Box &box, Done done)
     // Layer -> kind. Par. 21h LuftVO: prohibited unless permitted (airports, control
     // zones, sensitive sites) or under conditions set by the state (nature)
     static const QList<QPair<QString, QString>> layers = {
-        {QStringLiteral("flughaefen"), QStringLiteral("prohibited")}, {QStringLiteral("flugplaetze"), QStringLiteral("prohibited")},
-        {QStringLiteral("kontrollzonen"), QStringLiteral("prohibited")}, {QStringLiteral("flugbeschraenkungsgebiete"), QStringLiteral("prohibited")},
-        {QStringLiteral("temporaere_betriebseinschraenkungen"), QStringLiteral("prohibited")}, {QStringLiteral("militaerische_anlagen"), QStringLiteral("prohibited")},
-        {QStringLiteral("justizvollzugsanstalten"), QStringLiteral("prohibited")}, {QStringLiteral("kraftwerke"), QStringLiteral("prohibited")},
-        {QStringLiteral("umspannwerke"), QStringLiteral("prohibited")}, {QStringLiteral("industrieanlagen"), QStringLiteral("prohibited")},
-        {QStringLiteral("sicherheitsbehoerden"), QStringLiteral("prohibited")}, {QStringLiteral("polizei"), QStringLiteral("prohibited")},
-        {QStringLiteral("behoerden"), QStringLiteral("prohibited")}, {QStringLiteral("diplomatische_vertretungen"), QStringLiteral("prohibited")},
-        {QStringLiteral("internationale_organisationen"), QStringLiteral("prohibited")}, {QStringLiteral("labore"), QStringLiteral("prohibited")},
-        {QStringLiteral("krankenhaeuser"), QStringLiteral("prohibited")}, {QStringLiteral("naturschutzgebiete"), QStringLiteral("conditional")},
-        {QStringLiteral("nationalparks"), QStringLiteral("conditional")}, {QStringLiteral("ffh-gebiete"), QStringLiteral("conditional")},
-        {QStringLiteral("vogelschutzgebiete"), QStringLiteral("conditional")}, {QStringLiteral("freibaeder"), QStringLiteral("conditional")},
+        {u"flughaefen"_s, u"prohibited"_s}, {u"flugplaetze"_s, u"prohibited"_s},
+        {u"kontrollzonen"_s, u"prohibited"_s}, {u"flugbeschraenkungsgebiete"_s, u"prohibited"_s},
+        {u"temporaere_betriebseinschraenkungen"_s, u"prohibited"_s}, {u"militaerische_anlagen"_s, u"prohibited"_s},
+        {u"justizvollzugsanstalten"_s, u"prohibited"_s}, {u"kraftwerke"_s, u"prohibited"_s},
+        {u"umspannwerke"_s, u"prohibited"_s}, {u"industrieanlagen"_s, u"prohibited"_s},
+        {u"sicherheitsbehoerden"_s, u"prohibited"_s}, {u"polizei"_s, u"prohibited"_s},
+        {u"behoerden"_s, u"prohibited"_s}, {u"diplomatische_vertretungen"_s, u"prohibited"_s},
+        {u"internationale_organisationen"_s, u"prohibited"_s}, {u"labore"_s, u"prohibited"_s},
+        {u"krankenhaeuser"_s, u"prohibited"_s}, {u"naturschutzgebiete"_s, u"conditional"_s},
+        {u"nationalparks"_s, u"conditional"_s}, {u"ffh-gebiete"_s, u"conditional"_s},
+        {u"vogelschutzgebiete"_s, u"conditional"_s}, {u"freibaeder"_s, u"conditional"_s},
     };
     auto zones = std::make_shared<GeoZoneList>();
     auto steps = std::make_shared<QList<std::function<void(std::function<void(QString)>)>>>();
     for (const auto &[layer, kind] : layers) {
         steps->append([this, layer, kind, box, zones](std::function<void(QString)> next) {
             QUrlQuery q;
-            q.addQueryItem(QStringLiteral("SERVICE"), QStringLiteral("WFS"));
-            q.addQueryItem(QStringLiteral("VERSION"), QStringLiteral("2.0.0"));
-            q.addQueryItem(QStringLiteral("REQUEST"), QStringLiteral("GetFeature"));
-            q.addQueryItem(QStringLiteral("TYPENAMES"), QStringLiteral("dipul:") + layer);
-            q.addQueryItem(QStringLiteral("outputFormat"), QStringLiteral("application/json"));
-            q.addQueryItem(QStringLiteral("srsName"), QStringLiteral("EPSG:4326"));
-            q.addQueryItem(QStringLiteral("BBOX"), boxText(box) + QStringLiteral(",EPSG:4326"));
-            q.addQueryItem(QStringLiteral("count"), QStringLiteral("20000"));
+            q.addQueryItem(u"SERVICE"_s, u"WFS"_s);
+            q.addQueryItem(u"VERSION"_s, u"2.0.0"_s);
+            q.addQueryItem(u"REQUEST"_s, u"GetFeature"_s);
+            q.addQueryItem(u"TYPENAMES"_s, u"dipul:"_s + layer);
+            q.addQueryItem(u"outputFormat"_s, u"application/json"_s);
+            q.addQueryItem(u"srsName"_s, u"EPSG:4326"_s);
+            q.addQueryItem(u"BBOX"_s, boxText(box) + u",EPSG:4326"_s);
+            q.addQueryItem(u"count"_s, u"20000"_s);
             QUrl url(kDipulUrl);
             url.setQuery(q);
             fetchJson(url, kTimeoutMs, [layer, kind, zones, next](const QJsonDocument &doc, const QString &err) {
                 if (!err.isEmpty()) { next(err); return; }
-                for (const QJsonValue &fv : doc.object().value(QStringLiteral("features")).toArray()) {
+                for (const QJsonValue &fv : doc.object().value(u"features"_s).toArray()) {
                     const QJsonObject f = fv.toObject();
-                    const QJsonObject p = f.value(QStringLiteral("properties")).toObject();
-                    QString key = f.value(QStringLiteral("id")).toVariant().toString();
-                    if (key.isEmpty()) key = layer + QLatin1Char('-') + s(p, "external_reference");
+                    const QJsonObject p = f.value(u"properties"_s).toObject();
+                    QString key = f.value(u"id"_s).toVariant().toString();
+                    if (key.isEmpty()) key = layer + '-'_L1 + s(p, "external_reference");
                     QString name = s(p, "name");
                     if (name.isEmpty()) name = s(p, "generated_name_EN");
                     QStringList info;
                     const QString detail = s(p, "type_code_detail").isEmpty() ? s(p, "type_code") : s(p, "type_code_detail");
                     if (!detail.isEmpty()) info << detail;
                     if (!s(p, "legal_ref").isEmpty()) info << s(p, "legal_ref");
-                    const QJsonValue up = p.value(QStringLiteral("upper_limit_altitude"));
-                    auto z = geozone::makeZone(QStringLiteral("dipul"), key, name, kind,
-                                               geozone::toMetres(p.value(QStringLiteral("lower_limit_altitude")), s(p, "lower_limit_unit")).value_or(0),
+                    const QJsonValue up = p.value(u"upper_limit_altitude"_s);
+                    auto z = geozone::makeZone(u"dipul"_s, key, name, kind,
+                                               geozone::toMetres(p.value(u"lower_limit_altitude"_s), s(p, "lower_limit_unit")).value_or(0),
                                                geozone::isAgl(s(p, "lower_limit_alt_ref")),
                                                up.isNull() || up.isUndefined() ? std::nullopt : geozone::toMetres(up, s(p, "upper_limit_unit")),
                                                geozone::isAgl(s(p, "upper_limit_alt_ref")),
-                                               geozone::geojsonPolys(f.value(QStringLiteral("geometry")).toObject()), info.join(QStringLiteral(" · ")));
+                                               geozone::geojsonPolys(f.value(u"geometry"_s).toObject()), info.join(u" · "_s));
                     if (z) zones->push_back(std::move(*z));
                 }
                 next({});
@@ -681,31 +683,31 @@ void GeoZoneStore::fetchDipul(const Box &box, Done done)
 void GeoZoneStore::fetchIgn(const Box &box, Done done)
 {
     QUrlQuery q;
-    q.addQueryItem(QStringLiteral("SERVICE"), QStringLiteral("WFS"));
-    q.addQueryItem(QStringLiteral("VERSION"), QStringLiteral("2.0.0"));
-    q.addQueryItem(QStringLiteral("REQUEST"), QStringLiteral("GetFeature"));
-    q.addQueryItem(QStringLiteral("TYPENAMES"), QStringLiteral("TRANSPORTS.DRONES.RESTRICTIONS:carte_restriction_drones_lf"));
-    q.addQueryItem(QStringLiteral("outputFormat"), QStringLiteral("application/json"));
-    q.addQueryItem(QStringLiteral("srsName"), QStringLiteral("EPSG:4326"));
-    q.addQueryItem(QStringLiteral("BBOX"), boxText(box) + QStringLiteral(",EPSG:4326"));
-    q.addQueryItem(QStringLiteral("count"), QStringLiteral("20000"));
+    q.addQueryItem(u"SERVICE"_s, u"WFS"_s);
+    q.addQueryItem(u"VERSION"_s, u"2.0.0"_s);
+    q.addQueryItem(u"REQUEST"_s, u"GetFeature"_s);
+    q.addQueryItem(u"TYPENAMES"_s, u"TRANSPORTS.DRONES.RESTRICTIONS:carte_restriction_drones_lf"_s);
+    q.addQueryItem(u"outputFormat"_s, u"application/json"_s);
+    q.addQueryItem(u"srsName"_s, u"EPSG:4326"_s);
+    q.addQueryItem(u"BBOX"_s, boxText(box) + u",EPSG:4326"_s);
+    q.addQueryItem(u"count"_s, u"20000"_s);
     QUrl url(kIgnUrl);
     url.setQuery(q);
     fetchJson(url, kTimeoutMs, [done](const QJsonDocument &doc, const QString &err) {
         if (!err.isEmpty()) { done({}, err); return; }
-        static const QRegularExpression metres(QStringLiteral("(\\d+)\\s*m")), interdit(QStringLiteral("interdit"), QRegularExpression::CaseInsensitiveOption);
+        static const QRegularExpression metres(u"(\\d+)\\s*m"_s), interdit(u"interdit"_s, QRegularExpression::CaseInsensitiveOption);
         GeoZoneList zones;
-        for (const QJsonValue &fv : doc.object().value(QStringLiteral("features")).toArray()) {
+        for (const QJsonValue &fv : doc.object().value(u"features"_s).toArray()) {
             const QJsonObject f = fv.toObject();
-            const QJsonObject p = f.value(QStringLiteral("properties")).toObject();
+            const QJsonObject p = f.value(u"properties"_s).toObject();
             const QString limit = s(p, "limite");
             const auto m = metres.match(limit);
             if (!m.hasMatch() && !interdit.match(limit).hasMatch()) continue;
             QString name = limit;
-            name.remove(QRegularExpression(QStringLiteral("\\s*\\*$")));
-            auto z = geozone::makeZone(QStringLiteral("ign"), f.value(QStringLiteral("id")).toVariant().toString(), name, QStringLiteral("prohibited"),
+            name.remove(QRegularExpression(u"\\s*\\*$"_s));
+            auto z = geozone::makeZone(u"ign"_s, f.value(u"id"_s).toVariant().toString(), name, u"prohibited"_s,
                                        m.hasMatch() ? m.captured(1).toDouble() : 0, true, std::nullopt, true,
-                                       geozone::geojsonPolys(f.value(QStringLiteral("geometry")).toObject()), s(p, "remarque"));
+                                       geozone::geojsonPolys(f.value(u"geometry"_s).toObject()), s(p, "remarque"));
             if (z) zones.push_back(std::move(*z));
         }
         done(std::move(zones), {});

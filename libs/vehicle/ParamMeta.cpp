@@ -14,6 +14,8 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -31,27 +33,27 @@ double toNumber(const QJsonValue &v, bool *ok)
 ParamInfo parseEntry(const QJsonObject &o)
 {
     ParamInfo p;
-    p.displayName = o.value(QLatin1String("DisplayName")).toString().trimmed();
-    p.description = o.value(QLatin1String("Description")).toString().simplified();
-    p.units = o.value(QLatin1String("Units")).toString().trimmed();
-    p.user = o.value(QLatin1String("User")).toString().trimmed();
-    const QJsonObject range = o.value(QLatin1String("Range")).toObject();
+    p.displayName = o.value("DisplayName"_L1).toString().trimmed();
+    p.description = o.value("Description"_L1).toString().simplified();
+    p.units = o.value("Units"_L1).toString().trimmed();
+    p.user = o.value("User"_L1).toString().trimmed();
+    const QJsonObject range = o.value("Range"_L1).toObject();
     if (!range.isEmpty()) {
         bool okLo = false, okHi = false;
-        p.low = toNumber(range.value(QLatin1String("low")), &okLo);
-        p.high = toNumber(range.value(QLatin1String("high")), &okHi);
+        p.low = toNumber(range.value("low"_L1), &okLo);
+        p.high = toNumber(range.value("high"_L1), &okHi);
         p.hasRange = okLo && okHi && p.low <= p.high;
     }
     bool ok = false;
-    const double inc = toNumber(o.value(QLatin1String("Increment")), &ok);
+    const double inc = toNumber(o.value("Increment"_L1), &ok);
     if (ok && inc > 0 && std::isfinite(inc)) p.increment = inc;
-    const QJsonObject values = o.value(QLatin1String("Values")).toObject();
+    const QJsonObject values = o.value("Values"_L1).toObject();
     for (auto it = values.begin(); it != values.end(); ++it) {
         const double v = it.key().trimmed().toDouble(&ok);
         if (ok) p.values.append({v, it.value().toString().trimmed()});
     }
     std::sort(p.values.begin(), p.values.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
-    const QJsonObject bits = o.value(QLatin1String("Bitmask")).toObject();
+    const QJsonObject bits = o.value("Bitmask"_L1).toObject();
     for (auto it = bits.begin(); it != bits.end(); ++it) {
         const int b = it.key().trimmed().toInt(&ok);
         if (ok && b >= 0 && b < 63) p.bits.append({b, it.value().toString().trimmed()});
@@ -59,7 +61,7 @@ ParamInfo parseEntry(const QJsonObject &o)
     std::sort(p.bits.begin(), p.bits.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
     const auto flag = [&](const char *key) {
         const QJsonValue v = o.value(QLatin1String(key));
-        return v.isBool() ? v.toBool() : v.toString().compare(QLatin1String("True"), Qt::CaseInsensitive) == 0;
+        return v.isBool() ? v.toBool() : v.toString().compare("True"_L1, Qt::CaseInsensitive) == 0;
     };
     p.rebootRequired = flag("RebootRequired");
     p.readOnly = flag("ReadOnly");
@@ -79,16 +81,16 @@ QString ParamInfo::valueLabel(double v) const
 
 QString ParamInfo::bitsLabel(qint64 v) const
 {
-    if (v == 0) return QStringLiteral("none");
+    if (v == 0) return u"none"_s;
     QStringList names;
     for (int b = 0; b < 63; ++b) {
         if (!(v & (qint64(1) << b))) continue;
         QString name;
         for (const auto &[bit, label] : bits)
             if (bit == b) name = label;
-        names << (name.isEmpty() ? QStringLiteral("bit %1").arg(b) : name);
+        names << (name.isEmpty() ? u"bit %1"_s.arg(b) : name);
     }
-    return names.join(QStringLiteral(", "));
+    return names.join(u", "_s);
 }
 
 // ── ParamMeta ────────────────────────────────────────────────────────────────
@@ -101,35 +103,29 @@ ParamMeta &ParamMeta::instance()
 
 QString ParamMeta::firmwareOf(const QString &vehicleClass)
 {
-    if (vehicleClass == QLatin1String("Copter")) return QStringLiteral("ArduCopter");
-    if (vehicleClass == QLatin1String("Rover")) return QStringLiteral("Rover");
-    if (vehicleClass == QLatin1String("Sub")) return QStringLiteral("ArduSub");
-    return QStringLiteral("ArduPlane");
+    if (vehicleClass == "Copter"_L1) return u"ArduCopter"_s;
+    if (vehicleClass == "Rover"_L1) return u"Rover"_s;
+    if (vehicleClass == "Sub"_L1) return u"ArduSub"_s;
+    return u"ArduPlane"_s;
 }
 
-QStringList ParamMeta::firmwares() { return {QStringLiteral("ArduPlane"), QStringLiteral("ArduCopter"), QStringLiteral("Rover"), QStringLiteral("ArduSub")}; }
+QStringList ParamMeta::firmwares() { return {u"ArduPlane"_s, u"ArduCopter"_s, u"Rover"_s, u"ArduSub"_s}; }
 
-QString ParamMeta::downloadDir() { return g_downloadDir.isEmpty() ? DataRoot::dir(QStringLiteral("params")) : g_downloadDir; }
-
-void ParamMeta::setDownloadDir(const QString &dir)
-{
-    g_downloadDir = dir;
-    instance().m_tables.clear();
-}
+QString ParamMeta::downloadDir() { return g_downloadDir.isEmpty() ? DataRoot::dir(u"params"_s) : g_downloadDir; }
 
 bool ParamMeta::parse(const QByteArray &json, QHash<QString, ParamInfo> &out, QString *source, QString *error)
 {
     QJsonParseError pe;
     const QJsonDocument doc = QJsonDocument::fromJson(json, &pe);
     if (!doc.isObject()) {
-        if (error) *error = pe.error != QJsonParseError::NoError ? pe.errorString() : QStringLiteral("not a JSON object");
+        if (error) *error = pe.error != QJsonParseError::NoError ? pe.errorString() : u"not a JSON object"_s;
         return false;
     }
     const QJsonObject root = doc.object();
     int n = 0;
     for (auto g = root.begin(); g != root.end(); ++g) {
-        if (g.key() == QLatin1String("json")) {
-            if (source) *source = g.value().toObject().value(QLatin1String("source")).toString();
+        if (g.key() == "json"_L1) {
+            if (source) *source = g.value().toObject().value("source"_L1).toString();
             continue;
         }
         const QJsonObject group = g.value().toObject();
@@ -137,13 +133,13 @@ bool ParamMeta::parse(const QByteArray &json, QHash<QString, ParamInfo> &out, QS
             if (!it.value().isObject()) continue;
             // Older files prefix the vehicle's own parameters ("ArduPlane:THR_MAX")
             QString name = it.key();
-            if (const qsizetype colon = name.indexOf(QLatin1Char(':')); colon >= 0) name = name.mid(colon + 1);
+            if (const qsizetype colon = name.indexOf(':'_L1); colon >= 0) name = name.mid(colon + 1);
             out.insert(name, parseEntry(it.value().toObject()));
             ++n;
         }
     }
     if (n == 0) {
-        if (error) *error = QStringLiteral("no parameter in the file");
+        if (error) *error = u"no parameter in the file"_s;
         return false;
     }
     return true;
@@ -157,20 +153,20 @@ void ParamMeta::load(const QString &firmware, Table &t)
     t.params.clear();
     t.downloaded = false;
     // The bundled table
-    QFile bundled(QStringLiteral(":/params/%1.pdef.json.gz").arg(firmware));
+    QFile bundled(u":/params/%1.pdef.json.gz"_s.arg(firmware));
     if (bundled.open(QIODevice::ReadOnly)) {
         const QByteArray json = gunzip(bundled.readAll(), 2 * 1024 * 1024);
         QString src, err;
-        if (parse(json, t.params, &src, &err)) t.source = src.isEmpty() ? QStringLiteral("bundled") : QStringLiteral("bundled · ") + src;
+        if (parse(json, t.params, &src, &err)) t.source = src.isEmpty() ? u"bundled"_s : u"bundled · "_s + src;
         else LOG_W("params") << "bundled metadata of" << firmware << "unreadable:" << err;
     }
     // A downloaded one wins, entry by entry
-    QFile dl(downloadDir() + QStringLiteral("/%1.pdef.json").arg(firmware));
+    QFile dl(downloadDir() + u"/%1.pdef.json"_s.arg(firmware));
     if (dl.open(QIODevice::ReadOnly)) {
         QString err;
         if (parse(dl.readAll(), t.params, nullptr, &err)) {
             t.downloaded = true;
-            t.source = QStringLiteral("autotest.ardupilot.org · ") + QFileInfo(dl).lastModified().toString(QStringLiteral("yyyy-MM-dd"));
+            t.source = u"autotest.ardupilot.org · "_s + QFileInfo(dl).lastModified().toString(u"yyyy-MM-dd"_s);
         } else {
             LOG_W("params") << dl.fileName() << "unreadable:" << err;
         }
@@ -202,14 +198,13 @@ const ParamInfo *ParamMeta::find(const QString &name, const QString &vehicleClas
 
 int ParamMeta::count(const QString &vehicleClass) { return int(table(firmwareOf(vehicleClass)).params.size()); }
 QString ParamMeta::source(const QString &vehicleClass) { return table(firmwareOf(vehicleClass)).source; }
-bool ParamMeta::hasDownloaded(const QString &vehicleClass) { return table(firmwareOf(vehicleClass)).downloaded; }
 
 bool ParamMeta::installDownloaded(const QString &vehicleClass, const QByteArray &json, int *count, QString *error)
 {
     QHash<QString, ParamInfo> check;
     if (!parse(json, check, nullptr, error)) return false;
     const QString fw = firmwareOf(vehicleClass);
-    QSaveFile f(downloadDir() + QStringLiteral("/%1.pdef.json").arg(fw));
+    QSaveFile f(downloadDir() + u"/%1.pdef.json"_s.arg(fw));
     if (!f.open(QIODevice::WriteOnly) || f.write(json) != json.size() || !f.commit()) {
         if (error) *error = f.errorString();
         return false;
@@ -222,7 +217,7 @@ bool ParamMeta::installDownloaded(const QString &vehicleClass, const QByteArray 
 void ParamMeta::removeDownloaded(const QString &vehicleClass)
 {
     const QString fw = firmwareOf(vehicleClass);
-    QFile::remove(downloadDir() + QStringLiteral("/%1.pdef.json").arg(fw));
+    QFile::remove(downloadDir() + u"/%1.pdef.json"_s.arg(fw));
     m_tables.remove(fw);
 }
 

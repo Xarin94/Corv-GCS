@@ -5,6 +5,8 @@
 #include <QFile>
 #include <cstring>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -34,9 +36,9 @@ void retire(std::unique_ptr<T> &p)
 
 PointCloudRenderer::PointCloudRenderer(QRhi *rhi) : m_rhi(rhi)
 {
-    m_mapVs = loadShader(QStringLiteral(":/shaders/points.vert.qsb"));
-    m_liveVs = loadShader(QStringLiteral(":/shaders/livepoints.vert.qsb"));
-    m_fs = loadShader(QStringLiteral(":/shaders/points.frag.qsb"));
+    m_mapVs = loadShader(u":/shaders/points.vert.qsb"_s);
+    m_liveVs = loadShader(u":/shaders/livepoints.vert.qsb"_s);
+    m_fs = loadShader(u":/shaders/points.frag.qsb"_s);
     m_corners.reset(m_rhi->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer, 8 * sizeof(float)));
     m_corners->create();
     for (Pass *p : {&m_map, &m_live}) {

@@ -14,6 +14,8 @@
 #include <cmath>
 #include <iterator>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 CalibrationController *CalibrationController::s_instance = nullptr;
@@ -26,25 +28,25 @@ constexpr int kAccelFailed = 16777216;    // ACCELCAL_VEHICLE_POS_FAILED
 QString resultText(int result)
 {
     switch (result) {
-    case 1: return QStringLiteral("temporarily rejected — try again");
-    case 2: return QStringLiteral("denied");
-    case 3: return QStringLiteral("not supported by this firmware");
-    case 4: return QStringLiteral("failed");
-    case 5: return QStringLiteral("still in progress");
-    case 6: return QStringLiteral("cancelled");
-    default: return QStringLiteral("result %1").arg(result);
+    case 1: return u"temporarily rejected — try again"_s;
+    case 2: return u"denied"_s;
+    case 3: return u"not supported by this firmware"_s;
+    case 4: return u"failed"_s;
+    case 5: return u"still in progress"_s;
+    case 6: return u"cancelled"_s;
+    default: return u"result %1"_s.arg(result);
     }
 }
 
 QString noAnswer(int command)
 {
-    return QStringLiteral("No answer from the autopilot (No COMMAND_ACK for command %1 (timeout)).").arg(command);
+    return u"No answer from the autopilot (No COMMAND_ACK for command %1 (timeout))."_s.arg(command);
 }
 
 // Autopilot texts worth repeating next to a calibration (the rest is chatter)
 const QRegularExpression &calText()
 {
-    static const QRegularExpression re(QStringLiteral("cal|trim|baro|gyro|accel|compass|mag|disarm|level|sample|still|place|reboot|offset|fit"),
+    static const QRegularExpression re(u"cal|trim|baro|gyro|accel|compass|mag|disarm|level|sample|still|place|reboot|offset|fit"_s,
                                        QRegularExpression::CaseInsensitiveOption);
     return re;
 }
@@ -77,12 +79,12 @@ const QList<AccelImu> &accelImus()
 {
     static const QList<AccelImu> l = [] {
         QList<AccelImu> out;
-        for (const QString n : {QString(), QStringLiteral("2"), QStringLiteral("3")}) {
+        for (const QString n : {QString(), u"2"_s, u"3"_s}) {
             AccelImu i;
-            i.id = QStringLiteral("INS_ACC%1_ID").arg(n);
+            i.id = u"INS_ACC%1_ID"_s.arg(n);
             for (const char *a : {"X", "Y", "Z"}) {
-                i.ofs << QStringLiteral("INS_ACC%1OFFS_%2").arg(n, QLatin1String(a));
-                i.scal << QStringLiteral("INS_ACC%1SCAL_%2").arg(n, QLatin1String(a));
+                i.ofs << u"INS_ACC%1OFFS_%2"_s.arg(n, QLatin1String(a));
+                i.scal << u"INS_ACC%1SCAL_%2"_s.arg(n, QLatin1String(a));
             }
             out << i;
         }
@@ -95,7 +97,7 @@ const QStringList &accelParams()
     static const QStringList l = [] {
         QStringList out;
         for (const AccelImu &i : accelImus()) out << i.id << i.ofs << i.scal;
-        out << QStringLiteral("AHRS_TRIM_X") << QStringLiteral("AHRS_TRIM_Y");
+        out << u"AHRS_TRIM_X"_s << u"AHRS_TRIM_Y"_s;
         return out;
     }();
     return l;
@@ -114,11 +116,11 @@ const QList<CompassSlot> &compassSlots()
 {
     static const QList<CompassSlot> l = [] {
         QList<CompassSlot> out;
-        const QString n[3] = {QString(), QStringLiteral("2"), QStringLiteral("3")};
+        const QString n[3] = {QString(), u"2"_s, u"3"_s};
         const char *ext[3] = {"COMPASS_EXTERNAL", "COMPASS_EXTERN2", "COMPASS_EXTERN3"};
         for (int i = 0; i < 3; ++i) {
-            CompassSlot s{QStringLiteral("COMPASS_DEV_ID%1").arg(n[i]), QLatin1String(ext[i]), QStringLiteral("COMPASS_ORIENT%1").arg(n[i]), {}};
-            for (const char *a : {"X", "Y", "Z"}) s.ofs << QStringLiteral("COMPASS_OFS%1_%2").arg(n[i], QLatin1String(a));
+            CompassSlot s{u"COMPASS_DEV_ID%1"_s.arg(n[i]), QLatin1String(ext[i]), u"COMPASS_ORIENT%1"_s.arg(n[i]), {}};
+            for (const char *a : {"X", "Y", "Z"}) s.ofs << u"COMPASS_OFS%1_%2"_s.arg(n[i], QLatin1String(a));
             out << s;
         }
         return out;
@@ -127,9 +129,9 @@ const QList<CompassSlot> &compassSlots()
 }
 const QList<CompassPrio> &compassPrios()
 {
-    static const QList<CompassPrio> l = {{QStringLiteral("COMPASS_PRIO1_ID"), QStringLiteral("COMPASS_USE")},
-                                         {QStringLiteral("COMPASS_PRIO2_ID"), QStringLiteral("COMPASS_USE2")},
-                                         {QStringLiteral("COMPASS_PRIO3_ID"), QStringLiteral("COMPASS_USE3")}};
+    static const QList<CompassPrio> l = {{u"COMPASS_PRIO1_ID"_s, u"COMPASS_USE"_s},
+                                         {u"COMPASS_PRIO2_ID"_s, u"COMPASS_USE2"_s},
+                                         {u"COMPASS_PRIO3_ID"_s, u"COMPASS_USE3"_s}};
     return l;
 }
 const QStringList &compassParams()
@@ -138,7 +140,7 @@ const QStringList &compassParams()
         QStringList out;
         for (const CompassSlot &s : compassSlots()) out << s.dev << s.ext << s.orient << s.ofs;
         for (const CompassPrio &p : compassPrios()) out << p.id << p.use;
-        out << QStringLiteral("COMPASS_CAL_FIT");
+        out << u"COMPASS_CAL_FIT"_s;
         return out;
     }();
     return l;
@@ -148,14 +150,14 @@ const QStringList &compassParams()
 QString busName(int t)
 {
     switch (t) {
-    case 1: return QStringLiteral("I2C");
-    case 2: return QStringLiteral("SPI");
-    case 3: return QStringLiteral("DroneCAN");
-    case 4: return QStringLiteral("SITL");
-    case 5: return QStringLiteral("MSP");
-    case 6: return QStringLiteral("Serial");
-    case 7: return QStringLiteral("WSPI");
-    default: return QStringLiteral("bus %1").arg(t);
+    case 1: return u"I2C"_s;
+    case 2: return u"SPI"_s;
+    case 3: return u"DroneCAN"_s;
+    case 4: return u"SITL"_s;
+    case 5: return u"MSP"_s;
+    case 6: return u"Serial"_s;
+    case 7: return u"WSPI"_s;
+    default: return u"bus %1"_s.arg(t);
     }
 }
 QString compassTypeName(int t)
@@ -165,10 +167,10 @@ QString compassTypeName(int t)
         {0x08, "LIS3MDL"}, {0x09, "AK09916"}, {0x0A, "IST8310"}, {0x0B, "ICM20948"}, {0x0C, "MMC3416"}, {0x0D, "QMC5883L"},
         {0x0E, "MAG3110"}, {0x0F, "SITL"}, {0x10, "IST8308"}, {0x11, "RM3100"}, {0x12, "RM3100"}, {0x13, "MMC5983"},
         {0x14, "AK09918"}, {0x15, "AK09915"}, {0x16, "QMC5883P"}, {0x17, "BMM350"}, {0x18, "IIS2MDC"}, {0x1A, "AF9838"}};
-    const auto hex = [](int n) { return QStringLiteral("0x%1").arg(n, 2, 16, QLatin1Char('0')).toUpper().replace(QLatin1String("0X"), QLatin1String("0x")); };
-    return names.contains(t) ? QLatin1String(names.value(t)) : QStringLiteral("type %1").arg(hex(t));
+    const auto hex = [](int n) { return u"0x%1"_s.arg(n, 2, 16, '0'_L1).toUpper().replace("0X"_L1, "0x"_L1); };
+    return names.contains(t) ? QLatin1String(names.value(t)) : u"type %1"_s.arg(hex(t));
 }
-QString hex2(int n) { return QStringLiteral("0x") + QStringLiteral("%1").arg(n, 2, 16, QLatin1Char('0')).toUpper(); }
+QString hex2(int n) { return u"0x"_s + u"%1"_s.arg(n, 2, 16, '0'_L1).toUpper(); }
 
 // ArduPilot's Rotation enum, in order (rotations.h)
 QString rotationName(int v)
@@ -181,9 +183,9 @@ QString rotationName(int v)
         "Roll90Pitch180", "Roll270Pitch180", "Roll90Pitch270", "Roll180Pitch270", "Roll270Pitch270",
         "Roll90Pitch180Yaw90", "Roll90Yaw270", "Roll90Pitch68Yaw293", "Pitch315", "Roll90Pitch315", "Pitch7",
         "Roll45", "Roll315"};
-    if (v < 0) return QStringLiteral("—");
-    if (v >= 100) return v - 100 ? QStringLiteral("Custom %1").arg(v - 100) : QStringLiteral("Custom");
-    return v < int(std::size(rot)) ? QLatin1String(rot[v]) : QStringLiteral("#%1").arg(v);
+    if (v < 0) return u"—"_s;
+    if (v >= 100) return v - 100 ? u"Custom %1"_s.arg(v - 100) : u"Custom"_s;
+    return v < int(std::size(rot)) ? QLatin1String(rot[v]) : u"#%1"_s.arg(v);
 }
 
 // MAG_CAL_STATUS, extended with ArduPilot's CompassCalibrator::Status
@@ -196,12 +198,12 @@ QString magStatusName(int s)
 QString magFailHint(int s)
 {
     switch (s) {
-    case 5: return QStringLiteral("the samples do not fit a sphere — turn the vehicle more slowly through every attitude, away from metal");
-    case 6: return QStringLiteral("the compass orientation does not match the autopilot — check COMPASS_ORIENT");
-    case 7: return QStringLiteral("the field strength is out of range — metal or magnets nearby, or the wrong compass setup");
-    case 8: return QStringLiteral("the offsets are too large (COMPASS_OFFS_MAX) — interference close to the compass");
-    case 9: return QStringLiteral("the scale factors are out of range — interference or a damaged sensor");
-    case 10: return QStringLiteral("the fit residuals are too high — try FITNESS Relaxed, or move away from interference");
+    case 5: return u"the samples do not fit a sphere — turn the vehicle more slowly through every attitude, away from metal"_s;
+    case 6: return u"the compass orientation does not match the autopilot — check COMPASS_ORIENT"_s;
+    case 7: return u"the field strength is out of range — metal or magnets nearby, or the wrong compass setup"_s;
+    case 8: return u"the offsets are too large (COMPASS_OFFS_MAX) — interference close to the compass"_s;
+    case 9: return u"the scale factors are out of range — interference or a damaged sensor"_s;
+    case 10: return u"the fit residuals are too high — try FITNESS Relaxed, or move away from interference"_s;
     default: return {};
     }
 }
@@ -214,7 +216,7 @@ QString fixed(double v, int d) { return QString::number(v, 'f', d); }
 
 const QStringList &CalibrationController::magColorList()
 {
-    static const QStringList c = {QStringLiteral("#00d2ff"), QStringLiteral("#ffa020"), QStringLiteral("#ff4fd8")};
+    static const QStringList c = {u"#00d2ff"_s, u"#ffa020"_s, u"#ff4fd8"_s};
     return c;
 }
 
@@ -258,7 +260,7 @@ CalibrationController::CalibrationController(MessageBus *bus, CommandSender *cmd
     m_accelTimer.setSingleShot(true);
     connect(&m_accelTimer, &QTimer::timeout, this, [this] {
         if (m_accel.phase == Waiting)
-            failAccel(QStringLiteral("The autopilot accepted but never asked for a position (firmware without MAVLink accelerometer calibration?)."));
+            failAccel(u"The autopilot accepted but never asked for a position (firmware without MAVLink accelerometer calibration?)."_s);
     });
     // With retries on, a failure can be followed by a new attempt: decide once
     // nothing has been running for a moment.
@@ -316,8 +318,8 @@ void CalibrationController::onStatusText(const QString &text)
     if (calText().match(text).hasMatch()) {
         for (auto it = m_oneShotSaid.begin(); it != m_oneShotSaid.end(); ++it) {
             it.value() = text;
-            const QString running = m_results.value(it.key()).toMap().value(QStringLiteral("running")).toString();
-            setResult(it.key(), running + QLatin1Char('\n') + text, QStringLiteral("running"), true);
+            const QString running = m_results.value(it.key()).toMap().value(u"running"_s).toString();
+            setResult(it.key(), running + '\n'_L1 + text, u"running"_s, true);
         }
     }
     // "Disarm to allow compass calibration" and the like arrive before the refusal
@@ -346,9 +348,9 @@ QStringList CalibrationController::accelSteps() const
     const bool active = accelActive();
     QStringList out;
     for (int pos = 1; pos <= 6; ++pos) {
-        if (active && pos == m_accel.pos && m_accel.phase == Position) out << QStringLiteral("current");
-        else if (active && pos == m_accel.pos && m_accel.phase == Sampling) out << QStringLiteral("sampling");
-        else if (m_accel.done.contains(pos) && !(active && pos == m_accel.pos)) out << QStringLiteral("done");
+        if (active && pos == m_accel.pos && m_accel.phase == Position) out << u"current"_s;
+        else if (active && pos == m_accel.pos && m_accel.phase == Sampling) out << u"sampling"_s;
+        else if (m_accel.done.contains(pos) && !(active && pos == m_accel.pos)) out << u"done"_s;
         else out << QString();
     }
     return out;
@@ -357,11 +359,11 @@ QStringList CalibrationController::accelSteps() const
 QString CalibrationController::accelButton() const
 {
     switch (m_accel.phase) {
-    case Position: return QStringLiteral("CONTINUE (%1)").arg(QLatin1String(kPositions[m_accel.pos - 1].title));
-    case Sampling: return QStringLiteral("SAMPLING…");
+    case Position: return u"CONTINUE (%1)"_s.arg(QLatin1String(kPositions[m_accel.pos - 1].title));
+    case Sampling: return u"SAMPLING…"_s;
     case Starting:
-    case Waiting: return QStringLiteral("STARTING…");
-    default: return QStringLiteral("CALIBRATE ACCEL");
+    case Waiting: return u"STARTING…"_s;
+    default: return u"CALIBRATE ACCEL"_s;
     }
 }
 
@@ -370,8 +372,8 @@ bool CalibrationController::accelButtonEnabled() const { return !accelActive() |
 void CalibrationController::setAccelText(const QString &text)
 {
     m_accelText = text;
-    m_accelKind = m_accel.phase == Done ? QStringLiteral("ok") : m_accel.phase == Failed ? QStringLiteral("error")
-                  : accelActive() ? QStringLiteral("running") : QString();
+    m_accelKind = m_accel.phase == Done ? u"ok"_s : m_accel.phase == Failed ? u"error"_s
+                  : accelActive() ? u"running"_s : QString();
 }
 
 void CalibrationController::renderAccel(const QString *instruction)
@@ -389,8 +391,8 @@ void CalibrationController::accelPrimary()
 void CalibrationController::startAccel()
 {
     if (!linked()) {
-        m_accelText = QStringLiteral("Not connected to a vehicle.");
-        m_accelKind = QStringLiteral("error");
+        m_accelText = u"Not connected to a vehicle."_s;
+        m_accelKind = u"error"_s;
         emit accelChanged();
         return;
     }
@@ -398,15 +400,15 @@ void CalibrationController::startAccel()
     const int run = ++m_accelRun;
     m_accel.phase = Starting;
     m_accelLog.clear();
-    const QString t = QStringLiteral("Measuring the gyros first — keep the vehicle still…");
+    const QString t = u"Measuring the gyros first — keep the vehicle still…"_s;
     renderAccel(&t);
     m_cmd->calibrateAccel([this, run](bool got, const CommandSender::Ack &ack) {
         if (run != m_accelRun) return;
         if (!got) return failAccel(noAnswer(MAV_CMD_PREFLIGHT_CALIBRATION));
         if (m_accel.phase != Starting) return;          // the first position came first
-        if (ack.result != 0) return failAccel(QStringLiteral("The autopilot refused to start: %1.").arg(resultText(ack.result)));
+        if (ack.result != 0) return failAccel(u"The autopilot refused to start: %1."_s.arg(resultText(ack.result)));
         m_accel.phase = Waiting;
-        const QString w = QStringLiteral("Waiting for the autopilot to ask for the first position…");
+        const QString w = u"Waiting for the autopilot to ask for the first position…"_s;
         renderAccel(&w);
         m_accelTimer.start(8000);
     });
@@ -437,7 +439,7 @@ void CalibrationController::onAccelPosition(int pos)
     for (int p = 1; p < pos; ++p) m_accel.done.insert(p);
     m_accel.pos = pos;
     m_accel.phase = Position;
-    const QString t = QStringLiteral("Place the vehicle %1 and hold it still, then press CONTINUE.").arg(QLatin1String(kPositions[pos - 1].say));
+    const QString t = u"Place the vehicle %1 and hold it still, then press CONTINUE."_s.arg(QLatin1String(kPositions[pos - 1].say));
     renderAccel(&t);
 }
 
@@ -448,7 +450,7 @@ void CalibrationController::continueAccel()
     m_accel.phase = Sampling;
     m_accel.confirmedPos = pos;
     m_accel.confirmedAt = wallMs();
-    const QString t = QStringLiteral("Sampling — hold still…");
+    const QString t = u"Sampling — hold still…"_s;
     renderAccel(&t);
     m_cmd->sendAccelCalPosition(pos, [this, pos, run](bool got, const CommandSender::Ack &ack) {
         if (run != m_accelRun || m_accel.phase != Sampling || m_accel.pos != pos) return;
@@ -456,8 +458,8 @@ void CalibrationController::continueAccel()
         if (result == 0) return;                         // the next position, or the end, comes as a command
         m_accel.phase = Position;
         m_accel.confirmedPos = 0;
-        const QString why = result == -1 ? QStringLiteral("no answer") : resultText(result);
-        const QString w = QStringLiteral("The autopilot did not take position %1 (%2). Hold it still and press CONTINUE again.").arg(pos).arg(why);
+        const QString why = result == -1 ? u"no answer"_s : resultText(result);
+        const QString w = u"The autopilot did not take position %1 (%2). Hold it still and press CONTINUE again."_s.arg(pos).arg(why);
         renderAccel(&w);
     });
 }
@@ -471,12 +473,12 @@ void CalibrationController::finishAccel(bool ok, const QString &why)
     if (ok) {
         for (int p = 1; p <= 6; ++p) m_accel.done.insert(p);
         m_accel.phase = Done;
-        t = QStringLiteral("Calibration successful — offsets saved. Reboot the autopilot before arming.");
+        t = u"Calibration successful — offsets saved. Reboot the autopilot before arming."_s;
         QTimer::singleShot(1000, this, [this] { requestParams(accelParams(), true); });
     } else {
         m_accel.phase = Failed;
-        const QString extra = !why.isEmpty() && !matches(why, "failed") ? QStringLiteral(" — ") + why : QString();
-        t = QStringLiteral("Calibration FAILED%1. Hold the vehicle still and square in every position, then start again.").arg(extra);
+        const QString extra = !why.isEmpty() && !matches(why, "failed") ? u" — "_s + why : QString();
+        t = u"Calibration FAILED%1. Hold the vehicle still and square in every position, then start again."_s.arg(extra);
     }
     renderAccel(&t);
 }
@@ -492,15 +494,15 @@ void CalibrationController::failAccel(const QString &text)
 void CalibrationController::accelAbort()
 {
     if (!accelActive()) return;
-    DialogHub::confirm(QStringLiteral("MAVLink cannot cancel an accelerometer calibration: the autopilot keeps waiting for the positions until it is rebooted.\n\nReboot the autopilot now?"),
+    DialogHub::confirm(u"MAVLink cannot cancel an accelerometer calibration: the autopilot keeps waiting for the positions until it is rebooted.\n\nReboot the autopilot now?"_s,
                        [this](bool reboot) {
                            m_accelTimer.stop();
                            m_accel = Accel{};
                            ++m_accelRun;
                            m_accelEndedAt = wallMs();
                            if (reboot) m_cmd->rebootAutopilot();
-                           const QString t = reboot ? QStringLiteral("Aborted — autopilot rebooting.")
-                                                    : QStringLiteral("Aborted here — the autopilot is still waiting until it reboots.");
+                           const QString t = reboot ? u"Aborted — autopilot rebooting."_s
+                                                    : u"Aborted here — the autopilot is still waiting until it reboots."_s;
                            renderAccel(&t);
                        });
 }
@@ -508,7 +510,7 @@ void CalibrationController::accelAbort()
 void CalibrationController::rebuildAccelTable()
 {
     QVariantList rows;
-    const auto fmt = [](bool has, double v, int d) { return has ? fixed(v, d) : QStringLiteral("—"); };
+    const auto fmt = [](bool has, double v, int d) { return has ? fixed(v, d) : u"—"_s; };
     int i = 0;
     for (const AccelImu &imu : accelImus()) {
         const int n = i++;
@@ -530,16 +532,16 @@ void CalibrationController::rebuildAccelTable()
             untouched &= h && (v == 0 || v == 1);
             scal << fmt(h, v, 3);
         }
-        rows << QVariantMap{{QStringLiteral("cells"), QStringList{QStringLiteral("IMU %1").arg(n + 1), ofs.join(QLatin1String(" / ")),
-                                                                  scal.join(QLatin1String(" / ")),
-                                                                  anyMissing ? QStringLiteral("not read") : untouched ? QStringLiteral("not calibrated") : QStringLiteral("calibrated")}},
-                            {QStringLiteral("warn"), untouched}};
+        rows << QVariantMap{{u"cells"_s, QStringList{u"IMU %1"_s.arg(n + 1), ofs.join(" / "_L1),
+                                                                  scal.join(" / "_L1),
+                                                                  anyMissing ? u"not read"_s : untouched ? u"not calibrated"_s : u"calibrated"_s}},
+                            {u"warn"_s, untouched}};
     }
     bool hx = false, hy = false;
-    const double tx = param(QStringLiteral("AHRS_TRIM_X"), &hx), ty = param(QStringLiteral("AHRS_TRIM_Y"), &hy);
-    const auto deg = [](bool h, double v) { return h ? fixed(v * 180 / M_PI, 2) + QStringLiteral("°") : QStringLiteral("—"); };
-    rows << QVariantMap{{QStringLiteral("cells"), QStringList{QStringLiteral("LEVEL"), QStringLiteral("roll trim %1 · pitch trim %2").arg(deg(hx, tx), deg(hy, ty))}},
-                        {QStringLiteral("span"), true}};
+    const double tx = param(u"AHRS_TRIM_X"_s, &hx), ty = param(u"AHRS_TRIM_Y"_s, &hy);
+    const auto deg = [](bool h, double v) { return h ? fixed(v * 180 / M_PI, 2) + u"°"_s : u"—"_s; };
+    rows << QVariantMap{{u"cells"_s, QStringList{u"LEVEL"_s, u"roll trim %1 · pitch trim %2"_s.arg(deg(hx, tx), deg(hy, ty))}},
+                        {u"span"_s, true}};
     m_accelTable = rows;
 }
 
@@ -552,9 +554,9 @@ void CalibrationController::accelPageShown() { requestParams(accelParams(), fals
 void CalibrationController::setResult(const QString &id, const QString &text, const QString &kind, bool busy)
 {
     QVariantMap r = m_results.value(id).toMap();
-    r[QStringLiteral("text")] = text;
-    r[QStringLiteral("kind")] = kind;
-    r[QStringLiteral("busy")] = busy;
+    r[u"text"_s] = text;
+    r[u"kind"_s] = kind;
+    r[u"busy"_s] = busy;
     m_results[id] = r;
     emit resultsChanged();
 }
@@ -564,25 +566,25 @@ void CalibrationController::runOneShot(const QString &id, const AckCommand &comm
 {
     if (m_oneShotSaid.contains(id)) return;
     if (!linked()) {
-        setResult(id, QStringLiteral("Not connected to a vehicle."), QStringLiteral("error"), false);
+        setResult(id, u"Not connected to a vehicle."_s, u"error"_s, false);
         return;
     }
     QVariantMap r = m_results.value(id).toMap();
-    r[QStringLiteral("running")] = running;
+    r[u"running"_s] = running;
     m_results[id] = r;
     m_oneShotSaid.insert(id, QString());
-    setResult(id, running, QStringLiteral("running"), true);
+    setResult(id, running, u"running"_s, true);
     command([this, id, done, after](bool got, int result) {
         const QString said = m_oneShotSaid.take(id);
         if (got && result == 0) {
-            static const QRegularExpression chatter(QStringLiteral("^(calibrating|updating)"), QRegularExpression::CaseInsensitiveOption);
-            setResult(id, !said.isEmpty() && !chatter.match(said).hasMatch() ? done + QLatin1Char('\n') + said : done, QStringLiteral("ok"), false);
+            static const QRegularExpression chatter(u"^(calibrating|updating)"_s, QRegularExpression::CaseInsensitiveOption);
+            setResult(id, !said.isEmpty() && !chatter.match(said).hasMatch() ? done + '\n'_L1 + said : done, u"ok"_s, false);
             if (after) after();
         } else if (got) {
-            setResult(id, QStringLiteral("Refused: %1.%2").arg(resultText(result), said.isEmpty() ? QString() : QLatin1Char('\n') + said),
-                      QStringLiteral("error"), false);
+            setResult(id, u"Refused: %1.%2"_s.arg(resultText(result), said.isEmpty() ? QString() : '\n'_L1 + said),
+                      u"error"_s, false);
         } else {
-            setResult(id, noAnswer(m_lastOneShotCommand.value(id)), QStringLiteral("error"), false);
+            setResult(id, noAnswer(m_lastOneShotCommand.value(id)), u"error"_s, false);
         }
     });
 }
@@ -598,32 +600,32 @@ auto ackCommand(F f)
 
 void CalibrationController::calibrateLevel()
 {
-    m_lastOneShotCommand[QStringLiteral("level")] = MAV_CMD_PREFLIGHT_CALIBRATION;
-    runOneShot(QStringLiteral("level"), ackCommand([this](CommandSender::AckDone d) { m_cmd->calibrateLevel(std::move(d)); }),
-               QStringLiteral("Levelling — keep the vehicle still…"), QStringLiteral("Level saved (AHRS_TRIM_X / Y)."),
-               [this] { QTimer::singleShot(500, this, [this] { requestParams({QStringLiteral("AHRS_TRIM_X"), QStringLiteral("AHRS_TRIM_Y")}, true); }); });
+    m_lastOneShotCommand[u"level"_s] = MAV_CMD_PREFLIGHT_CALIBRATION;
+    runOneShot(u"level"_s, ackCommand([this](CommandSender::AckDone d) { m_cmd->calibrateLevel(std::move(d)); }),
+               u"Levelling — keep the vehicle still…"_s, u"Level saved (AHRS_TRIM_X / Y)."_s,
+               [this] { QTimer::singleShot(500, this, [this] { requestParams({u"AHRS_TRIM_X"_s, u"AHRS_TRIM_Y"_s}, true); }); });
 }
 
 void CalibrationController::calibrateSimple()
 {
-    m_lastOneShotCommand[QStringLiteral("simple")] = MAV_CMD_PREFLIGHT_CALIBRATION;
-    runOneShot(QStringLiteral("simple"), ackCommand([this](CommandSender::AckDone d) { m_cmd->calibrateAccelSimple(std::move(d)); }),
-               QStringLiteral("Calibrating — level and still…"), QStringLiteral("Accelerometers calibrated. Reboot the autopilot before arming."),
+    m_lastOneShotCommand[u"simple"_s] = MAV_CMD_PREFLIGHT_CALIBRATION;
+    runOneShot(u"simple"_s, ackCommand([this](CommandSender::AckDone d) { m_cmd->calibrateAccelSimple(std::move(d)); }),
+               u"Calibrating — level and still…"_s, u"Accelerometers calibrated. Reboot the autopilot before arming."_s,
                [this] { QTimer::singleShot(500, this, [this] { requestParams(accelParams(), true); }); });
 }
 
 void CalibrationController::calibrateGyro()
 {
-    m_lastOneShotCommand[QStringLiteral("gyro")] = MAV_CMD_PREFLIGHT_CALIBRATION;
-    runOneShot(QStringLiteral("gyro"), ackCommand([this](CommandSender::AckDone d) { m_cmd->calibrateGyro(std::move(d)); }),
-               QStringLiteral("Measuring the gyros — keep the vehicle completely still…"), QStringLiteral("Gyro offsets updated."));
+    m_lastOneShotCommand[u"gyro"_s] = MAV_CMD_PREFLIGHT_CALIBRATION;
+    runOneShot(u"gyro"_s, ackCommand([this](CommandSender::AckDone d) { m_cmd->calibrateGyro(std::move(d)); }),
+               u"Measuring the gyros — keep the vehicle completely still…"_s, u"Gyro offsets updated."_s);
 }
 
 void CalibrationController::calibrateBaro()
 {
-    m_lastOneShotCommand[QStringLiteral("baro")] = MAV_CMD_PREFLIGHT_CALIBRATION;
-    runOneShot(QStringLiteral("baro"), ackCommand([this](CommandSender::AckDone d) { m_cmd->calibrateBaro(std::move(d)); }),
-               QStringLiteral("Sampling ground pressure…"), QStringLiteral("Barometer zeroed: the altitude now reads 0 here."));
+    m_lastOneShotCommand[u"baro"_s] = MAV_CMD_PREFLIGHT_CALIBRATION;
+    runOneShot(u"baro"_s, ackCommand([this](CommandSender::AckDone d) { m_cmd->calibrateBaro(std::move(d)); }),
+               u"Sampling ground pressure…"_s, u"Barometer zeroed: the altitude now reads 0 here."_s);
 }
 
 void CalibrationController::calibrateFromHeading(const QString &yawText)
@@ -631,14 +633,14 @@ void CalibrationController::calibrateFromHeading(const QString &yawText)
     bool ok = false;
     const double yaw = QLocale::c().toDouble(yawText.trimmed(), &ok);
     if (!ok || !std::isfinite(yaw) || yaw < 0 || yaw >= 360) {
-        setResult(QStringLiteral("fixed"), QStringLiteral("Enter a heading from 0 to 359.9°."), QStringLiteral("error"), false);
+        setResult(u"fixed"_s, u"Enter a heading from 0 to 359.9°."_s, u"error"_s, false);
         return;
     }
-    m_lastOneShotCommand[QStringLiteral("fixed")] = MAV_CMD_FIXED_MAG_CAL_YAW;
-    runOneShot(QStringLiteral("fixed"),
+    m_lastOneShotCommand[u"fixed"_s] = MAV_CMD_FIXED_MAG_CAL_YAW;
+    runOneShot(u"fixed"_s,
                ackCommand([this, yaw](CommandSender::AckDone d) { m_cmd->magCalFixedYaw(float(yaw), 0, 0, 0, std::move(d)); }),
-               QStringLiteral("Calibrating from a %1° heading…").arg(QString::number(yaw)),
-               QStringLiteral("Compass offsets set from the heading. Reboot the autopilot to use them."),
+               u"Calibrating from a %1° heading…"_s.arg(QString::number(yaw)),
+               u"Compass offsets set from the heading. Reboot the autopilot to use them."_s,
                [this] { QTimer::singleShot(800, this, [this] { requestParams(compassParams(), true); }); });
 }
 
@@ -719,7 +721,7 @@ void CalibrationController::restoreRates()
 
 void CalibrationController::magStart()
 {
-    if (!linked()) return setMagText(QStringLiteral("Not connected to a vehicle."), QStringLiteral("error"));
+    if (!linked()) return setMagText(u"Not connected to a vehicle."_s, u"error"_s);
     const bool autosave = m_magAutosave;
     m_magFinish.stop();
     m_mag = Mag{};
@@ -727,7 +729,7 @@ void CalibrationController::magStart()
     m_samples.clear();
     m_magReboot = false;
     setMagButtons(false, false, false);
-    setMagText(QStringLiteral("Starting…"), QStringLiteral("running"));
+    setMagText(u"Starting…"_s, u"running"_s);
     emit magViewChanged();
 
     raiseRates();
@@ -736,19 +738,19 @@ void CalibrationController::magStart()
         if (!got) {
             setMagButtons(true, false, false);
             restoreRates();
-            return setMagText(noAnswer(MAV_CMD_DO_START_MAG_CAL), QStringLiteral("error"));
+            return setMagText(noAnswer(MAV_CMD_DO_START_MAG_CAL), u"error"_s);
         }
         if (ack.result != 0) {
             setMagButtons(true, false, false);
             restoreRates();
-            const QString said = !m_mag.said.isEmpty() ? QStringLiteral(" %1.").arg(m_mag.said)
-                                                       : QStringLiteral(" Disarm, and check that a compass is enabled.");
-            return setMagText(QStringLiteral("The autopilot refused to start: %1.%2").arg(resultText(ack.result), said), QStringLiteral("error"));
+            const QString said = !m_mag.said.isEmpty() ? u" %1."_s.arg(m_mag.said)
+                                                       : u" Disarm, and check that a compass is enabled."_s;
+            return setMagText(u"The autopilot refused to start: %1.%2"_s.arg(resultText(ack.result), said), u"error"_s);
         }
         if (m_mag.running) return;                       // progress came first and took over
         m_mag.running = true;
         setMagButtons(false, false, true);
-        setMagText(QStringLiteral("Turn the vehicle slowly through every attitude…"), QStringLiteral("running"));
+        setMagText(u"Turn the vehicle slowly through every attitude…"_s, u"running"_s);
     });
 }
 
@@ -837,17 +839,17 @@ void CalibrationController::finishMag()
         for (int i : bad) {
             const auto &p = m_mag.progress[std::size_t(i)];
             QString hint = p.has ? magFailHint(p.status) : QString();
-            if (hint.isEmpty()) hint = p.has ? magStatusName(p.status) : QStringLiteral("failed");
-            why << QStringLiteral("MAG %1: %2").arg(i + 1).arg(hint);
+            if (hint.isEmpty()) hint = p.has ? magStatusName(p.status) : u"failed"_s;
+            why << u"MAG %1: %2"_s.arg(i + 1).arg(hint);
         }
-        setMagText(QStringLiteral("%1. Press START to try again%2.")
-                       .arg(why.join(QLatin1String(". ")), ok.isEmpty() ? QString() : QStringLiteral(", or ACCEPT to keep the compasses that passed")),
-                   QStringLiteral("error"));
+        setMagText(u"%1. Press START to try again%2."_s
+                       .arg(why.join(". "_L1), ok.isEmpty() ? QString() : u", or ACCEPT to keep the compasses that passed"_s),
+                   u"error"_s);
     } else if (!unsaved.isEmpty()) {
-        setMagText(QStringLiteral("Good result. Press ACCEPT to save it."), QStringLiteral("ok"));
+        setMagText(u"Good result. Press ACCEPT to save it."_s, u"ok"_s);
     } else {
         m_magReboot = true;
-        setMagText(QStringLiteral("Calibration saved. Reboot the autopilot to use the new offsets."), QStringLiteral("ok"));
+        setMagText(u"Calibration saved. Reboot the autopilot to use the new offsets."_s, u"ok"_s);
     }
     QTimer::singleShot(1500, this, [this] { requestParams(compassParams(), true); });
 }
@@ -859,11 +861,11 @@ void CalibrationController::magAccept()
         if (m_mag.progress[std::size_t(i)].has && m_mag.progress[std::size_t(i)].status == 4) mask |= 1 << i;
     if (!mask) return;
     m_cmd->acceptMagCal(mask, [this](bool got, const CommandSender::Ack &ack) {
-        if (!got) return setMagText(noAnswer(MAV_CMD_DO_ACCEPT_MAG_CAL), QStringLiteral("error"));
-        if (ack.result != 0) return setMagText(QStringLiteral("ACCEPT refused: %1.").arg(resultText(ack.result)), QStringLiteral("error"));
+        if (!got) return setMagText(noAnswer(MAV_CMD_DO_ACCEPT_MAG_CAL), u"error"_s);
+        if (ack.result != 0) return setMagText(u"ACCEPT refused: %1."_s.arg(resultText(ack.result)), u"error"_s);
         setMagButtons(true, false, false);
         m_magReboot = true;
-        setMagText(QStringLiteral("Calibration saved. Reboot the autopilot to use the new offsets."), QStringLiteral("ok"));
+        setMagText(u"Calibration saved. Reboot the autopilot to use the new offsets."_s, u"ok"_s);
         QTimer::singleShot(800, this, [this] { requestParams(compassParams(), true); });
     });
 }
@@ -877,17 +879,17 @@ void CalibrationController::magCancel()
         restoreRates();
         refreshCoverage();
         setMagButtons(true, false, false);
-        setMagText(QStringLiteral("Cancelled. Nothing was saved."), QString());
+        setMagText(u"Cancelled. Nothing was saved."_s, QString());
     });
 }
 
 void CalibrationController::magReboot()
 {
-    DialogHub::confirm(QStringLiteral("Reboot the autopilot now?"), [this](bool ok) {
+    DialogHub::confirm(u"Reboot the autopilot now?"_s, [this](bool ok) {
         if (!ok) return;
         m_cmd->rebootAutopilot();
         m_magReboot = false;
-        setMagText(QStringLiteral("Rebooting… reconnects by itself on most links."), QString());
+        setMagText(u"Rebooting… reconnects by itself on most links."_s, QString());
     });
 }
 
@@ -911,11 +913,11 @@ void CalibrationController::updateMagInstruction()
             }
     }
     if (!p) return;
-    if (p->status == 1) return setMagText(QStringLiteral("Waiting to start — keep the vehicle ready…"), QStringLiteral("running"));
+    if (p->status == 1) return setMagText(u"Waiting to start — keep the vehicle ready…"_s, u"running"_s);
     const int covered = m_samples.covered();
-    const QString step = p->status == 3 ? QStringLiteral("Step 2 of 2: once more, every attitude. ") : QString();
-    const QString sphere = covered < 0 ? QString() : QStringLiteral("%1/80 directions covered. ").arg(covered);
-    setMagText(step + sphere + QStringLiteral("Turn the vehicle until the white marker reaches the orange patch."), QStringLiteral("running"));
+    const QString step = p->status == 3 ? u"Step 2 of 2: once more, every attitude. "_s : QString();
+    const QString sphere = covered < 0 ? QString() : u"%1/80 directions covered. "_s.arg(covered);
+    setMagText(step + sphere + u"Turn the vehicle until the white marker reaches the orange patch."_s, u"running"_s);
 }
 
 void CalibrationController::updateStats()
@@ -923,11 +925,11 @@ void CalibrationController::updateStats()
     if (!m_compassShown) return;
     const int focus = m_samples.focus();
     const int pts = m_samples.count(focus);
-    QStringList parts{QStringLiteral("%1 pts").arg(pts)};
+    QStringList parts{u"%1 pts"_s.arg(pts)};
     if (const auto f = m_samples.field(); f && *f > 0)
-        parts << QStringLiteral("|B| %1 mG%2").arg(std::lround(*f)).arg(m_samples.fitted() ? QString() : QStringLiteral(" (no fit yet)"));
-    if (m_samples.covered() >= 0) parts << QStringLiteral("%1/80").arg(m_samples.covered());
-    const QString s = pts ? parts.join(QStringLiteral(" · ")) : QStringLiteral("No samples");
+        parts << u"|B| %1 mG%2"_s.arg(std::lround(*f)).arg(m_samples.fitted() ? QString() : u" (no fit yet)"_s);
+    if (m_samples.covered() >= 0) parts << u"%1/80"_s.arg(m_samples.covered());
+    const QString s = pts ? parts.join(u" · "_s) : u"No samples"_s;
     if (s != m_magStats) {
         m_magStats = s;
         emit statsChanged();
@@ -942,18 +944,18 @@ QVariantList CalibrationController::magBars() const
     for (int i = 0; i < 3; ++i) {
         const auto &p = m_mag.progress[std::size_t(i)];
         QString state;
-        if (!p.has && !ids.contains(i)) state = QStringLiteral("idle");
-        else if (p.has && p.status == 4) state = QStringLiteral("ok");
-        else if (p.has && p.status >= 5) state = QStringLiteral("bad");
-        QString text = QStringLiteral("—");
+        if (!p.has && !ids.contains(i)) state = u"idle"_s;
+        else if (p.has && p.status == 4) state = u"ok"_s;
+        else if (p.has && p.status >= 5) state = u"bad"_s;
+        QString text = u"—"_s;
         if (p.has)
-            text = QStringLiteral("%1% · %2%3").arg(std::lround(p.pct)).arg(magStatusName(p.status),
-                                                                         p.attempt > 1 ? QStringLiteral(" · try %1").arg(p.attempt) : QString());
-        out << QVariantMap{{QStringLiteral("name"), QStringLiteral("MAG %1").arg(i + 1)},
-                           {QStringLiteral("color"), magColorList()[i]},
-                           {QStringLiteral("pct"), p.has ? std::clamp(p.pct, 0.0, 100.0) : 0.0},
-                           {QStringLiteral("state"), state},
-                           {QStringLiteral("text"), text}};
+            text = u"%1% · %2%3"_s.arg(std::lround(p.pct)).arg(magStatusName(p.status),
+                                                                         p.attempt > 1 ? u" · try %1"_s.arg(p.attempt) : QString());
+        out << QVariantMap{{u"name"_s, u"MAG %1"_s.arg(i + 1)},
+                           {u"color"_s, magColorList()[i]},
+                           {u"pct"_s, p.has ? std::clamp(p.pct, 0.0, 100.0) : 0.0},
+                           {u"state"_s, state},
+                           {u"text"_s, text}};
     }
     return out;
 }
@@ -966,18 +968,18 @@ QVariantList CalibrationController::magResults() const
         if (!r.has) continue;
         const bool ok = r.status == 4;
         const QString orient = r.newOrientation >= 0 && r.newOrientation != r.oldOrientation
-                                   ? QStringLiteral("%1 → %2").arg(rotationName(r.oldOrientation), rotationName(r.newOrientation))
+                                   ? u"%1 → %2"_s.arg(rotationName(r.oldOrientation), rotationName(r.newOrientation))
                                    : rotationName(r.oldOrientation);
-        const auto rnd = [](float v) { return std::isfinite(v) ? QString::number(std::lround(v)) : QStringLiteral("—"); };
-        out << QVariantMap{{QStringLiteral("name"), QStringLiteral("MAG %1").arg(i + 1)},
-                           {QStringLiteral("color"), magColorList()[i]},
-                           {QStringLiteral("ok"), ok},
-                           {QStringLiteral("cells"), QStringList{magStatusName(r.status),
-                                                                 std::isfinite(r.fitness) ? fixed(r.fitness, 1) : QStringLiteral("—"),
-                                                                 QStringList{rnd(r.ofsX), rnd(r.ofsY), rnd(r.ofsZ)}.join(QLatin1String(" / ")),
-                                                                 std::isfinite(r.scale) && r.scale != 0 ? fixed(r.scale, 3) : QStringLiteral("—"),
+        const auto rnd = [](float v) { return std::isfinite(v) ? QString::number(std::lround(v)) : u"—"_s; };
+        out << QVariantMap{{u"name"_s, u"MAG %1"_s.arg(i + 1)},
+                           {u"color"_s, magColorList()[i]},
+                           {u"ok"_s, ok},
+                           {u"cells"_s, QStringList{magStatusName(r.status),
+                                                                 std::isfinite(r.fitness) ? fixed(r.fitness, 1) : u"—"_s,
+                                                                 QStringList{rnd(r.ofsX), rnd(r.ofsY), rnd(r.ofsZ)}.join(" / "_L1),
+                                                                 std::isfinite(r.scale) && r.scale != 0 ? fixed(r.scale, 3) : u"—"_s,
                                                                  orient,
-                                                                 r.autosaved ? QStringLiteral("saved") : ok ? QStringLiteral("not saved") : QStringLiteral("—")}}};
+                                                                 r.autosaved ? u"saved"_s : ok ? u"not saved"_s : u"—"_s}}};
     }
     return out;
 }
@@ -998,7 +1000,7 @@ void CalibrationController::rebuildCompassRows()
         for (const QString &p : s.ofs) {
             bool h = false;
             const double v = param(p, &h);
-            o.ofs << (h ? QString::number(std::lround(v)) : QStringLiteral("—"));
+            o.ofs << (h ? QString::number(std::lround(v)) : u"—"_s);
         }
         slotList << o;
     }
@@ -1025,38 +1027,38 @@ void CalibrationController::rebuildCompassRows()
         const double use = param(p.use, &hasUse);
         const int busType = devId & 0x7, bus = (devId >> 3) & 0x1f, address = (devId >> 8) & 0xff, type = (devId >> 16) & 0xff;
         QString where = busName(busType) + QString::number(bus);
-        if (busType == 1) where += QLatin1Char(' ') + hex2(address);
-        else if (busType == 3) where += QStringLiteral(" node %1").arg(address);
-        else if (busType == 4) where = QStringLiteral("SITL");
-        rows << QVariantMap{{QStringLiteral("prio"), i + 1},
-                            {QStringLiteral("device"), compassTypeName(type)},
-                            {QStringLiteral("missing"), havePrio && !slot},
-                            {QStringLiteral("bus"), where},
-                            {QStringLiteral("use"), hasUse && use != 0},
-                            {QStringLiteral("useKnown"), hasUse},
-                            {QStringLiteral("useParam"), p.use},
-                            {QStringLiteral("mount"), !slot || !slot->hasExt ? QStringLiteral("—") : slot->ext ? QStringLiteral("external") : QStringLiteral("internal")},
-                            {QStringLiteral("orientation"), slot && slot->hasOrient ? rotationName(int(slot->orient)) : QStringLiteral("—")},
-                            {QStringLiteral("offsets"), slot ? slot->ofs.join(QLatin1String(" / ")) : QStringLiteral("—")}};
+        if (busType == 1) where += ' '_L1 + hex2(address);
+        else if (busType == 3) where += u" node %1"_s.arg(address);
+        else if (busType == 4) where = u"SITL"_s;
+        rows << QVariantMap{{u"prio"_s, i + 1},
+                            {u"device"_s, compassTypeName(type)},
+                            {u"missing"_s, havePrio && !slot},
+                            {u"bus"_s, where},
+                            {u"use"_s, hasUse && use != 0},
+                            {u"useKnown"_s, hasUse},
+                            {u"useParam"_s, p.use},
+                            {u"mount"_s, !slot || !slot->hasExt ? u"—"_s : slot->ext ? u"external"_s : u"internal"_s},
+                            {u"orientation"_s, slot && slot->hasOrient ? rotationName(int(slot->orient)) : u"—"_s},
+                            {u"offsets"_s, slot ? slot->ofs.join(" / "_L1) : u"—"_s}};
     }
     m_compassRows = rows;
-    m_compassNote = rows.isEmpty() ? (linked() ? QStringLiteral("No compass parameters yet — READ FROM VEHICLE.") : QStringLiteral("Not connected."))
+    m_compassNote = rows.isEmpty() ? (linked() ? u"No compass parameters yet — READ FROM VEHICLE."_s : u"Not connected."_s)
                                    : QString();
 }
 
 void CalibrationController::rebuildFitOptions()
 {
-    QVariantList opts{QVariantMap{{QStringLiteral("value"), QStringLiteral("4")}, {QStringLiteral("label"), QStringLiteral("Very strict")}},
-                      QVariantMap{{QStringLiteral("value"), QStringLiteral("8")}, {QStringLiteral("label"), QStringLiteral("Strict")}},
-                      QVariantMap{{QStringLiteral("value"), QStringLiteral("16")}, {QStringLiteral("label"), QStringLiteral("Default")}},
-                      QVariantMap{{QStringLiteral("value"), QStringLiteral("32")}, {QStringLiteral("label"), QStringLiteral("Relaxed")}}};
+    QVariantList opts{QVariantMap{{u"value"_s, u"4"_s}, {u"label"_s, u"Very strict"_s}},
+                      QVariantMap{{u"value"_s, u"8"_s}, {u"label"_s, u"Strict"_s}},
+                      QVariantMap{{u"value"_s, u"16"_s}, {u"label"_s, u"Default"_s}},
+                      QVariantMap{{u"value"_s, u"32"_s}, {u"label"_s, u"Relaxed"_s}}};
     bool has = false;
-    const double v = param(QStringLiteral("COMPASS_CAL_FIT"), &has);
+    const double v = param(u"COMPASS_CAL_FIT"_s, &has);
     if (has) {
         const QString s = QString::number(v);
         // A value off the list gets an entry of its own rather than being misread
-        if (s != QLatin1String("4") && s != QLatin1String("8") && s != QLatin1String("16") && s != QLatin1String("32"))
-            opts << QVariantMap{{QStringLiteral("value"), s}, {QStringLiteral("label"), QStringLiteral("Custom (%1)").arg(s)}};
+        if (s != "4"_L1 && s != "8"_L1 && s != "16"_L1 && s != "32"_L1)
+            opts << QVariantMap{{u"value"_s, s}, {u"label"_s, u"Custom (%1)"_s.arg(s)}};
         m_fitValue = s;
     }
     m_fitOptions = opts;
@@ -1064,13 +1066,13 @@ void CalibrationController::rebuildFitOptions()
 
 void CalibrationController::setMagFit(const QString &value)
 {
-    if (!linked()) return setMagText(QStringLiteral("Not connected to a vehicle."), QStringLiteral("error"));
+    if (!linked()) return setMagText(u"Not connected to a vehicle."_s, u"error"_s);
     const double v = value.toDouble();
     m_fitValue = value;
     emit paramsChanged();
-    m_params->write(QStringLiteral("COMPASS_CAL_FIT"), v, [this, value](bool ok, double) {
-        if (ok) setMagText(QStringLiteral("COMPASS_CAL_FIT set to %1.").arg(value), QString());
-        else setMagText(QStringLiteral("Could not set COMPASS_CAL_FIT: no confirmation from the autopilot"), QStringLiteral("error"));
+    m_params->write(u"COMPASS_CAL_FIT"_s, v, [this, value](bool ok, double) {
+        if (ok) setMagText(u"COMPASS_CAL_FIT set to %1."_s.arg(value), QString());
+        else setMagText(u"Could not set COMPASS_CAL_FIT: no confirmation from the autopilot"_s, u"error"_s);
         rebuildParamViews();
     });
 }
@@ -1078,7 +1080,7 @@ void CalibrationController::setMagFit(const QString &value)
 void CalibrationController::setCompassUse(const QString &param, bool on)
 {
     m_params->write(param, on ? 1 : 0, [this, param](bool ok, double) {
-        if (!ok) DialogHub::toast(QStringLiteral("Could not set %1: no confirmation from the autopilot").arg(param));
+        if (!ok) DialogHub::toast(u"Could not set %1: no confirmation from the autopilot"_s.arg(param));
         rebuildParamViews();   // the checkbox goes back to what the vehicle has
     });
 }

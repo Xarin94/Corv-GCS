@@ -13,6 +13,8 @@
 #include <QJsonObject>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 ReplayController *ReplayController::s_instance = nullptr;
@@ -23,7 +25,7 @@ const char *const kFolderKey = "dialog-dir.log-replay";
 /// log-fft-cfg as an object, whether stored as JSON or as the string localStorage kept
 QJsonObject fftConfig()
 {
-    const QJsonValue v = Settings::instance().json(QStringLiteral("log-fft-cfg"));
+    const QJsonValue v = Settings::instance().json(u"log-fft-cfg"_s);
     if (v.isObject()) return v.toObject();
     return QJsonDocument::fromJson(v.toString().toUtf8()).object();
 }
@@ -33,11 +35,11 @@ ReplayController::ReplayController(LogReplay *engine, FftController *fft, QObjec
 {
     s_instance = this;
     connect(m_engine, &LogReplay::stateChanged, this, [this](const QString &state, const QString &fileName, const QString &format, double totalMs, int total) {
-        const bool on = state == QLatin1String("LOADED") || state == QLatin1String("PLAYING") || state == QLatin1String("PAUSED");
+        const bool on = state == "LOADED"_L1 || state == "PLAYING"_L1 || state == "PAUSED"_L1;
         m_loading = false;
         if (on) {
             m_loaded = true;
-            m_playing = state == QLatin1String("PLAYING");
+            m_playing = state == "PLAYING"_L1;
             m_fileName = fileName;
             m_format = format;
             m_totalMs = totalMs;
@@ -67,7 +69,7 @@ ReplayController::ReplayController(LogReplay *engine, FftController *fft, QObjec
         m_loading = false;
         emit stateChanged();
         emit linkChanged();
-        DialogHub::toast(QStringLiteral("Failed to load log: %1").arg(e));
+        DialogHub::toast(u"Failed to load log: %1"_s.arg(e));
     });
     connect(m_engine, &LogReplay::tick, this, [this](double currentMs, double totalMs, bool playing) {
         m_playing = playing;
@@ -85,9 +87,9 @@ ReplayController::ReplayController(LogReplay *engine, FftController *fft, QObjec
     connect(m_engine, &LogReplay::spectrumConfigApplied, this, [](int n, int avg, int stepMs) {
         // The engine keeps only values off its lists: show what it uses
         const QJsonObject cur = fftConfig();
-        if (cur.value(QStringLiteral("n")).toInt(1024) != n || cur.value(QStringLiteral("avg")).toInt(1) != avg
-            || cur.value(QStringLiteral("stepMs")).toInt(250) != stepMs)
-            Settings::instance().setJson(QStringLiteral("log-fft-cfg"), QJsonObject{{QStringLiteral("n"), n}, {QStringLiteral("avg"), avg}, {QStringLiteral("stepMs"), stepMs}});
+        if (cur.value(u"n"_s).toInt(1024) != n || cur.value(u"avg"_s).toInt(1) != avg
+            || cur.value(u"stepMs"_s).toInt(250) != stepMs)
+            Settings::instance().setJson(u"log-fft-cfg"_s, QJsonObject{{u"n"_s, n}, {u"avg"_s, avg}, {u"stepMs"_s, stepMs}});
     });
     if (m_fft)
         connect(m_fft, &FftController::streamSelected, this, [this](int sensor, const QString &key) {
@@ -108,7 +110,7 @@ QString ReplayController::formatMs(double ms)
 {
     if (!std::isfinite(ms) || ms < 0) ms = 0;
     const qint64 s = qint64(ms / 1000);
-    return QStringLiteral("%1:%2").arg(s / 60, 2, 10, QLatin1Char('0')).arg(s % 60, 2, 10, QLatin1Char('0'));
+    return u"%1:%2"_s.arg(s / 60, 2, 10, '0'_L1).arg(s % 60, 2, 10, '0'_L1);
 }
 
 QUrl ReplayController::logsFolder() const
@@ -155,8 +157,8 @@ void ReplayController::scrub(double fraction)
 
 void ReplayController::setConnectionState(const QString &state)
 {
-    const bool live = state == QLatin1String("CONNECTED");
-    const bool connecting = state == QLatin1String("CONNECTING");
+    const bool live = state == "CONNECTED"_L1;
+    const bool connecting = state == "CONNECTING"_L1;
     if (live && m_loaded) unload();   // a live link drops the replay
     if (live == m_live && connecting == m_connecting) return;
     m_live = live;
@@ -167,7 +169,7 @@ void ReplayController::setConnectionState(const QString &state)
 void ReplayController::applyFftConfig()
 {
     const QJsonObject o = fftConfig();
-    const int n = o.value(QStringLiteral("n")).toInt(1024), avg = o.value(QStringLiteral("avg")).toInt(1), step = o.value(QStringLiteral("stepMs")).toInt(250);
+    const int n = o.value(u"n"_s).toInt(1024), avg = o.value(u"avg"_s).toInt(1), step = o.value(u"stepMs"_s).toInt(250);
     QMetaObject::invokeMethod(m_engine, [e = m_engine, n, avg, step] { e->setSpectrumConfig(n, avg, step); });
 }
 

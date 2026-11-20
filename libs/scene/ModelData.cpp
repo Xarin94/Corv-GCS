@@ -13,6 +13,8 @@
 #include <cstring>
 #include <limits>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -31,11 +33,11 @@ struct Accessor {
 
 int componentCount(const QString &type)
 {
-    if (type == QLatin1String("SCALAR")) return 1;
-    if (type == QLatin1String("VEC2")) return 2;
-    if (type == QLatin1String("VEC3")) return 3;
-    if (type == QLatin1String("VEC4")) return 4;
-    if (type == QLatin1String("MAT4")) return 16;
+    if (type == "SCALAR"_L1) return 1;
+    if (type == "VEC2"_L1) return 2;
+    if (type == "VEC3"_L1) return 3;
+    if (type == "VEC4"_L1) return 4;
+    if (type == "MAT4"_L1) return 16;
     return 0;
 }
 
@@ -58,21 +60,21 @@ public:
 
     bool accessor(int index, Accessor *out) const
     {
-        const QJsonArray accessors = json.value(QStringLiteral("accessors")).toArray();
+        const QJsonArray accessors = json.value(u"accessors"_s).toArray();
         if (index < 0 || index >= accessors.size()) return false;
         const QJsonObject a = accessors[index].toObject();
-        const int viewIndex = a.value(QStringLiteral("bufferView")).toInt(-1);
-        const QJsonArray views = json.value(QStringLiteral("bufferViews")).toArray();
+        const int viewIndex = a.value(u"bufferView"_s).toInt(-1);
+        const QJsonArray views = json.value(u"bufferViews"_s).toArray();
         if (viewIndex < 0 || viewIndex >= views.size()) return false;
         const QJsonObject v = views[viewIndex].toObject();
-        if (v.value(QStringLiteral("buffer")).toInt(0) != 0) return false;
-        out->count = a.value(QStringLiteral("count")).toInt();
-        out->components = componentCount(a.value(QStringLiteral("type")).toString());
-        out->componentType = a.value(QStringLiteral("componentType")).toInt();
+        if (v.value(u"buffer"_s).toInt(0) != 0) return false;
+        out->count = a.value(u"count"_s).toInt();
+        out->components = componentCount(a.value(u"type"_s).toString());
+        out->componentType = a.value(u"componentType"_s).toInt();
         const int elem = out->components * componentSize(out->componentType);
         if (!elem) return false;
-        out->stride = v.value(QStringLiteral("byteStride")).toInt(elem);
-        const qint64 offset = qint64(v.value(QStringLiteral("byteOffset")).toInt(0)) + a.value(QStringLiteral("byteOffset")).toInt(0);
+        out->stride = v.value(u"byteStride"_s).toInt(elem);
+        const qint64 offset = qint64(v.value(u"byteOffset"_s).toInt(0)) + a.value(u"byteOffset"_s).toInt(0);
         const qint64 need = offset + qint64(out->stride) * std::max(0, out->count - 1) + elem;
         if (offset < 0 || need > bin.size()) return false;
         out->data = bin.constData() + offset;
@@ -109,18 +111,18 @@ quint32 readIndex(const Accessor &a, int i)
 QMatrix4x4 nodeMatrix(const QJsonObject &n)
 {
     QMatrix4x4 m;
-    const QJsonArray mat = n.value(QStringLiteral("matrix")).toArray();
+    const QJsonArray mat = n.value(u"matrix"_s).toArray();
     if (mat.size() == 16) {
         float v[16];
         for (int i = 0; i < 16; ++i) v[i] = float(mat[i].toDouble());
         // glTF is column major, QMatrix4x4(const float*) takes row major
         return QMatrix4x4(v).transposed();
     }
-    const QJsonArray t = n.value(QStringLiteral("translation")).toArray();
+    const QJsonArray t = n.value(u"translation"_s).toArray();
     if (t.size() == 3) m.translate(float(t[0].toDouble()), float(t[1].toDouble()), float(t[2].toDouble()));
-    const QJsonArray r = n.value(QStringLiteral("rotation")).toArray();
+    const QJsonArray r = n.value(u"rotation"_s).toArray();
     if (r.size() == 4) m.rotate(QQuaternion(float(r[3].toDouble()), float(r[0].toDouble()), float(r[1].toDouble()), float(r[2].toDouble())));
-    const QJsonArray s = n.value(QStringLiteral("scale")).toArray();
+    const QJsonArray s = n.value(u"scale"_s).toArray();
     if (s.size() == 3) m.scale(float(s[0].toDouble()), float(s[1].toDouble()), float(s[2].toDouble()));
     return m;
 }
@@ -132,20 +134,20 @@ void pushVertex(std::vector<float> &out, const QVector3D &p, const QVector3D &n,
 
 void addPrimitive(const Glb &g, const QJsonObject &prim, const QMatrix4x4 &m, std::vector<float> &out)
 {
-    const int mode = prim.value(QStringLiteral("mode")).toInt(4);
+    const int mode = prim.value(u"mode"_s).toInt(4);
     if (mode != 4) return;   // triangles only
-    const QJsonObject attrs = prim.value(QStringLiteral("attributes")).toObject();
+    const QJsonObject attrs = prim.value(u"attributes"_s).toObject();
     Accessor pos, nrm, idx;
-    if (!g.accessor(attrs.value(QStringLiteral("POSITION")).toInt(-1), &pos) || pos.components != 3) return;
-    const bool hasNormals = g.accessor(attrs.value(QStringLiteral("NORMAL")).toInt(-1), &nrm) && nrm.components == 3 && nrm.count == pos.count;
-    const bool indexed = prim.contains(QStringLiteral("indices")) && g.accessor(prim.value(QStringLiteral("indices")).toInt(-1), &idx);
+    if (!g.accessor(attrs.value(u"POSITION"_s).toInt(-1), &pos) || pos.components != 3) return;
+    const bool hasNormals = g.accessor(attrs.value(u"NORMAL"_s).toInt(-1), &nrm) && nrm.components == 3 && nrm.count == pos.count;
+    const bool indexed = prim.contains(u"indices"_s) && g.accessor(prim.value(u"indices"_s).toInt(-1), &idx);
 
     QVector3D colour(0.8f, 0.8f, 0.8f);
-    const QJsonArray materials = g.json.value(QStringLiteral("materials")).toArray();
-    const int mi = prim.value(QStringLiteral("material")).toInt(-1);
+    const QJsonArray materials = g.json.value(u"materials"_s).toArray();
+    const int mi = prim.value(u"material"_s).toInt(-1);
     if (mi >= 0 && mi < materials.size()) {
-        const QJsonArray f = materials[mi].toObject().value(QStringLiteral("pbrMetallicRoughness")).toObject()
-                                 .value(QStringLiteral("baseColorFactor")).toArray();
+        const QJsonArray f = materials[mi].toObject().value(u"pbrMetallicRoughness"_s).toObject()
+                                 .value(u"baseColorFactor"_s).toArray();
         if (f.size() >= 3) colour = QVector3D(float(f[0].toDouble()), float(f[1].toDouble()), float(f[2].toDouble()));
     }
     const QMatrix3x3 nm = m.normalMatrix();
@@ -172,15 +174,15 @@ void addPrimitive(const Glb &g, const QJsonObject &prim, const QMatrix4x4 &m, st
 
 void addNode(const Glb &g, int index, const QMatrix4x4 &parent, std::vector<float> &out, int depth)
 {
-    const QJsonArray nodes = g.json.value(QStringLiteral("nodes")).toArray();
+    const QJsonArray nodes = g.json.value(u"nodes"_s).toArray();
     if (index < 0 || index >= nodes.size() || depth > 32) return;
     const QJsonObject n = nodes[index].toObject();
     const QMatrix4x4 m = parent * nodeMatrix(n);
-    const QJsonArray meshes = g.json.value(QStringLiteral("meshes")).toArray();
-    const int mesh = n.value(QStringLiteral("mesh")).toInt(-1);
+    const QJsonArray meshes = g.json.value(u"meshes"_s).toArray();
+    const int mesh = n.value(u"mesh"_s).toInt(-1);
     if (mesh >= 0 && mesh < meshes.size())
-        for (const QJsonValue &p : meshes[mesh].toObject().value(QStringLiteral("primitives")).toArray()) addPrimitive(g, p.toObject(), m, out);
-    for (const QJsonValue &c : n.value(QStringLiteral("children")).toArray()) addNode(g, c.toInt(-1), m, out, depth + 1);
+        for (const QJsonValue &p : meshes[mesh].toObject().value(u"primitives"_s).toArray()) addPrimitive(g, p.toObject(), m, out);
+    for (const QJsonValue &c : n.value(u"children"_s).toArray()) addNode(g, c.toInt(-1), m, out, depth + 1);
 }
 
 /// Pivot on the bounding box centre (the recentre of loadModel) and the bounding radius.
@@ -214,20 +216,20 @@ std::shared_ptr<ModelData> ModelData::fromGlb(const QByteArray &bytes, float sca
         if (error) *error = e;
         return nullptr;
     };
-    if (bytes.size() < 20 || qFromLittleEndian<quint32>(bytes.constData()) != kGlbMagic) return fail(QStringLiteral("not a glTF binary"));
-    if (qFromLittleEndian<quint32>(bytes.constData() + 4) != 2) return fail(QStringLiteral("glTF version is not 2"));
+    if (bytes.size() < 20 || qFromLittleEndian<quint32>(bytes.constData()) != kGlbMagic) return fail(u"not a glTF binary"_s);
+    if (qFromLittleEndian<quint32>(bytes.constData() + 4) != 2) return fail(u"glTF version is not 2"_s);
     Glb g;
     qint64 off = 12;
     while (off + 8 <= bytes.size()) {
         const quint32 len = qFromLittleEndian<quint32>(bytes.constData() + off);
         const quint32 type = qFromLittleEndian<quint32>(bytes.constData() + off + 4);
-        if (off + 8 + qint64(len) > bytes.size()) return fail(QStringLiteral("truncated chunk"));
+        if (off + 8 + qint64(len) > bytes.size()) return fail(u"truncated chunk"_s);
         const QByteArray chunk = bytes.mid(off + 8, len);
         if (type == kChunkJson) g.json = QJsonDocument::fromJson(chunk).object();
         else if (type == kChunkBin && g.bin.isEmpty()) g.bin = chunk;
         off += 8 + len;
     }
-    if (g.json.isEmpty()) return fail(QStringLiteral("no JSON chunk"));
+    if (g.json.isEmpty()) return fail(u"no JSON chunk"_s);
 
     // Electron: model.rotation.y = PI / 2 and the scale, then recentred
     QMatrix4x4 root;
@@ -235,15 +237,15 @@ std::shared_ptr<ModelData> ModelData::fromGlb(const QByteArray &bytes, float sca
     root.scale(scale);
     auto d = std::make_shared<ModelData>();
     d->name = name;
-    const QJsonArray scenes = g.json.value(QStringLiteral("scenes")).toArray();
-    const int sceneIndex = g.json.value(QStringLiteral("scene")).toInt(0);
+    const QJsonArray scenes = g.json.value(u"scenes"_s).toArray();
+    const int sceneIndex = g.json.value(u"scene"_s).toInt(0);
     if (sceneIndex >= 0 && sceneIndex < scenes.size()) {
-        for (const QJsonValue &n : scenes[sceneIndex].toObject().value(QStringLiteral("nodes")).toArray()) addNode(g, n.toInt(-1), root, d->vertices, 0);
+        for (const QJsonValue &n : scenes[sceneIndex].toObject().value(u"nodes"_s).toArray()) addNode(g, n.toInt(-1), root, d->vertices, 0);
     } else {
-        const int nodeCount = int(g.json.value(QStringLiteral("nodes")).toArray().size());
+        const int nodeCount = int(g.json.value(u"nodes"_s).toArray().size());
         for (int i = 0; i < nodeCount; ++i) addNode(g, i, root, d->vertices, 0);
     }
-    if (d->vertices.empty()) return fail(QStringLiteral("no triangles"));
+    if (d->vertices.empty()) return fail(u"no triangles"_s);
     finish(*d);
     return d;
 }
@@ -251,7 +253,7 @@ std::shared_ptr<ModelData> ModelData::fromGlb(const QByteArray &bytes, float sca
 std::shared_ptr<ModelData> ModelData::placeholder()
 {
     auto d = std::make_shared<ModelData>();
-    d->name = QStringLiteral("placeholder");
+    d->name = u"placeholder"_s;
     // Boxes in the files' frame (nose on +X), then the same quarter turn as a model
     QMatrix4x4 root;
     root.rotate(90.f, 0, 1, 0);

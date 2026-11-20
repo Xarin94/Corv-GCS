@@ -20,6 +20,7 @@
 #include <QNetworkReply>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QScopeGuard>
 #include <QSet>
 #include <QTimeZone>
 #include <QTimer>
@@ -33,6 +34,8 @@
 #include <cstring>
 #include <list>
 #include <stdexcept>
+
+using namespace Qt::StringLiterals;
 
 namespace corv {
 
@@ -257,15 +260,15 @@ void decodeTile(const QByteArray &mvt, quint32 x, quint32 y, std::vector<Row> &o
                 if (tags[k] >= quint64(keys.size()) || tags[k + 1] >= values.size()) continue;
                 const QString &key = keys[int(tags[k])];
                 const Value &val = values[tags[k + 1]];
-                if (key == QLatin1String("radio")) radio = val.s;
-                else if (key == QLatin1String("mcc")) mcc = val.d;
-                else if (key == QLatin1String("net")) net = val.d;
-                else if (key == QLatin1String("area")) area = val.d;
-                else if (key == QLatin1String("cell")) cell = val.d;
-                else if (key == QLatin1String("range")) range = val.d;
-                else if (key == QLatin1String("samples")) samples = val.d;
+                if (key == "radio"_L1) radio = val.s;
+                else if (key == "mcc"_L1) mcc = val.d;
+                else if (key == "net"_L1) net = val.d;
+                else if (key == "area"_L1) area = val.d;
+                else if (key == "cell"_L1) cell = val.d;
+                else if (key == "range"_L1) range = val.d;
+                else if (key == "samples"_L1) samples = val.d;
             }
-            if (radio != QLatin1String("LTE") || !(cell > 0)) continue;
+            if (radio != "LTE"_L1 || !(cell > 0)) continue;
             const double px = x + double(zigzag(geom[1])) / extent, py = y + double(zigzag(geom[2])) / extent;
             const double lon = px / n * 360 - 180;
             const double lat = std::atan(std::sinh(kPi * (1 - 2 * py / n))) * kRad;
@@ -298,9 +301,9 @@ using namespace celldb;
 
 namespace {
 const QByteArray kUserAgent = QByteArrayLiteral("Corv-GCS cell-db");   // the CDN refuses requests without one; beaconDB asks for one
-const QString kBeaconDbUrl = QStringLiteral("https://api.beacondb.net/v1/geolocate");
-const QString kOcidCellUrl = QStringLiteral("https://opencellid.org/cell/get");
-const QString kOcidDownloadUrl = QStringLiteral("https://opencellid.org/ocid/downloads");
+const QString kBeaconDbUrl = u"https://api.beacondb.net/v1/geolocate"_s;
+const QString kOcidCellUrl = u"https://opencellid.org/cell/get"_s;
+const QString kOcidDownloadUrl = u"https://opencellid.org/ocid/downloads"_s;
 constexpr qint64 kLookupMissMs = 6 * 3600 * 1000;   // a cell not found online is asked again after this
 constexpr int kLookupTimeoutMs = 10000;
 constexpr int kRangeTimeoutMs = 60000;
@@ -345,16 +348,90 @@ double toNumber(const char *a, const char *b)
 }
 int toInt(double v) { return std::isfinite(v) ? int(qint64(v)) : 0; }   // as JavaScript's | 0
 
+using Fields = std::vector<std::pair<const char *, const char *>>;
+
+/// CSV columns of the fields a layer keeps; -1 when absent.
+struct Cols {
+    int mcc = -1, mnc = -1, tac = -1, eci = -1, lat = -1, lon = -1, range = -1, samples = -1, updated = -1, radio = -1, src = -1;
+};
+
+/// The columns a header line names. A first line that is already data (OpenCelliD's own
+/// files have no header) gives their fixed column order and sets `isData`.
+Cols columnsOf(const Fields &fld, const QString &base, bool *isData)
+{
+    QStringList names;
+    for (const auto &[a, b] : fld) names << QString::fromUtf8(a, b - a).trimmed().toLower().remove('"'_L1);
+    static const QStringList radios{u"gsm"_s, u"umts"_s, u"lte"_s, u"nr"_s, u"cdma"_s};
+    *isData = radios.contains(names.value(0));
+    if (*isData) return {1, 2, 3, 4, 7, 6, 8, 9, 12, 0, -1};
+    auto find = [&](std::initializer_list<const char *> alts) {
+        for (int i = 0; i < names.size(); ++i)
+            for (const char *a : alts)
+                if (names[i] == QLatin1String(a)) return i;
+        return -1;
+    };
+    const Cols col{find({"mcc"}), find({"mnc", "net"}), find({"tac", "area", "lac"}), find({"eci", "cell", "cellid"}), find({"lat"}), find({"lon"}),
+                   find({"range"}), find({"samples"}), find({"updated"}), find({"radio"}), find({"src"})};
+    const std::pair<int, const char *> required[] = {{col.mcc, "mcc"}, {col.mnc, "mnc"}, {col.eci, "eci"}, {col.lat, "lat"}, {col.lon, "lon"}};
+    for (const auto &[c, n] : required)
+        if (c < 0) throw Error(u"%1: no \"%2\" column"_s.arg(base, QLatin1String(n)));
+    return col;
+}
+
+void splitFields(const char *ls, const char *le, Fields &fld)
+{
+    fld.clear();
+    for (const char *q = ls;;) {
+        const char *c = static_cast<const char *>(std::memchr(q, ',', std::size_t(le - q)));
+        fld.emplace_back(q, c ? c : le);
+        if (!c) return;
+        q = c + 1;
+    }
+}
+
+/// The LTE rows of a CSV file in file order, before they are sorted by block.
+struct Unsorted {
+    std::vector<float> lat, lon;
+    std::vector<qint32> num, key;
+    std::vector<quint8> src;
+};
+
+/// Counting sort of the rows by block into the layer's columns.
+void sortIntoBlocks(Layer &layer, Unsorted &u)
+{
+    const int n = int(u.lat.size());
+    const int blocks = 1 << (2 * kBlockZ);
+    layer.start.assign(std::size_t(blocks) + 1, 0);
+    for (qint32 &k : u.key) {
+        k = std::clamp(k, 0, blocks - 1);
+        ++layer.start[std::size_t(k) + 1];
+    }
+    for (int b = 0; b < blocks; ++b) layer.start[std::size_t(b) + 1] += layer.start[std::size_t(b)];
+    std::vector<qint32> fill(layer.start.begin(), layer.start.end() - 1);
+    layer.lat.resize(std::size_t(n));
+    layer.lon.resize(std::size_t(n));
+    layer.src.resize(std::size_t(n));
+    layer.num.resize(std::size_t(n) * 6);
+    for (std::size_t i = 0; i < std::size_t(n); ++i) {
+        const std::size_t j = std::size_t(fill[std::size_t(u.key[i])]++);
+        layer.lat[j] = u.lat[i];
+        layer.lon[j] = u.lon[i];
+        layer.src[j] = u.src[i];
+        std::copy_n(u.num.begin() + std::ptrdiff_t(i) * 6, 6, layer.num.begin() + std::ptrdiff_t(j) * 6);
+    }
+    layer.cells = n;
+}
+
 LayerPtr loadCsvLayer(const QString &file, const QString &name)
 {
     const QString base = QFileInfo(file).fileName();
     QFile f(file);
-    if (!f.open(QIODevice::ReadOnly)) throw Error(base + QStringLiteral(": cannot read the file"));
+    if (!f.open(QIODevice::ReadOnly)) throw Error(base + u": cannot read the file"_s);
     QByteArray data = f.readAll();
     f.close();
     if (data.size() >= 2 && uchar(data[0]) == 0x1f && uchar(data[1]) == 0x8b) {
         data = gunzip(data, data.size() * 5);
-        if (data.isEmpty()) throw Error(base + QStringLiteral(": not a valid gzip file"));
+        if (data.isEmpty()) throw Error(base + u": not a valid gzip file"_s);
     }
     auto layer = std::make_shared<Layer>();
     layer->name = name;
@@ -362,15 +439,11 @@ LayerPtr loadCsvLayer(const QString &file, const QString &name)
     layer->srcNames << name;
     QHash<QByteArray, int> srcIndex{{name.toUtf8(), 0}};
 
-    struct Cols {
-        int mcc = -1, mnc = -1, tac = -1, eci = -1, lat = -1, lon = -1, range = -1, samples = -1, updated = -1, radio = -1, src = -1;
-    } col;
+    Cols col;
     bool header = false;
-    std::vector<float> lat, lon;
-    std::vector<qint32> num, key;
-    std::vector<quint8> src;
+    Unsorted u;
     qint64 newest = 0;
-    std::vector<std::pair<const char *, const char *>> fld;
+    Fields fld;
     const char *p = data.constData(), *end = p + data.size();
     while (p < end) {
         const char *nl = static_cast<const char *>(std::memchr(p, '\n', std::size_t(end - p)));
@@ -378,48 +451,12 @@ LayerPtr loadCsvLayer(const QString &file, const QString &name)
         p = nl ? nl + 1 : end;
         if (le > ls && le[-1] == '\r') --le;
         if (le == ls) continue;
-        fld.clear();
-        for (const char *q = ls;;) {
-            const char *c = static_cast<const char *>(std::memchr(q, ',', std::size_t(le - q)));
-            if (!c) {
-                fld.emplace_back(q, le);
-                break;
-            }
-            fld.emplace_back(q, c);
-            q = c + 1;
-        }
+        splitFields(ls, le, fld);
         if (!header) {
             header = true;
-            QStringList names;
-            for (const auto &[a, b] : fld) names << QString::fromUtf8(a, b - a).trimmed().toLower().remove(QLatin1Char('"'));
-            static const QStringList radios{QStringLiteral("gsm"), QStringLiteral("umts"), QStringLiteral("lte"), QStringLiteral("nr"),
-                                            QStringLiteral("cdma")};
-            if (radios.contains(names.value(0))) {
-                // No header: the column order of OpenCelliD's own files
-                col = {1, 2, 3, 4, 7, 6, 8, 9, 12, 0, -1};
-            } else {
-                auto find = [&](std::initializer_list<const char *> alts) {
-                    for (int i = 0; i < names.size(); ++i)
-                        for (const char *a : alts)
-                            if (names[i] == QLatin1String(a)) return i;
-                    return -1;
-                };
-                col.mcc = find({"mcc"});
-                col.mnc = find({"mnc", "net"});
-                col.tac = find({"tac", "area", "lac"});
-                col.eci = find({"eci", "cell", "cellid"});
-                col.lat = find({"lat"});
-                col.lon = find({"lon"});
-                col.range = find({"range"});
-                col.samples = find({"samples"});
-                col.updated = find({"updated"});
-                col.radio = find({"radio"});
-                col.src = find({"src"});
-                const std::pair<int, const char *> required[] = {{col.mcc, "mcc"}, {col.mnc, "mnc"}, {col.eci, "eci"}, {col.lat, "lat"}, {col.lon, "lon"}};
-                for (const auto &[c, n] : required)
-                    if (c < 0) throw Error(QStringLiteral("%1: no \"%2\" column").arg(base, QLatin1String(n)));
-                continue;
-            }
+            bool isData = false;
+            col = columnsOf(fld, base, &isData);
+            if (!isData) continue;
         }
         auto field = [&](int i) { return i >= 0 && i < int(fld.size()) ? fld[std::size_t(i)] : std::pair<const char *, const char *>{nullptr, nullptr}; };
         auto number = [&](int i) {
@@ -433,52 +470,26 @@ LayerPtr loadCsvLayer(const QString &file, const QString &name)
         const double la = number(col.lat), lo = number(col.lon), eci = number(col.eci);
         if (!std::isfinite(la) || !std::isfinite(lo) || (la == 0 && lo == 0) || !(eci > 0) || std::abs(la) > 85) continue;
         if (col.updated >= 0) newest = std::max(newest, qint64(std::isfinite(number(col.updated)) ? number(col.updated) : 0));
-        lat.push_back(float(la));
-        lon.push_back(float(lo));
-        num.insert(num.end(), {toInt(number(col.mcc)), toInt(number(col.mnc)), col.tac >= 0 ? toInt(number(col.tac)) : 0, qint32(qint64(eci)),
-                               col.range >= 0 ? toInt(number(col.range)) : 0, col.samples >= 0 ? toInt(number(col.samples)) : 0});
-        key.push_back(blockKey(lonToX(lo, kBlockZ), latToY(la, kBlockZ)));
+        u.lat.push_back(float(la));
+        u.lon.push_back(float(lo));
+        u.num.insert(u.num.end(), {toInt(number(col.mcc)), toInt(number(col.mnc)), col.tac >= 0 ? toInt(number(col.tac)) : 0, qint32(qint64(eci)),
+                                   col.range >= 0 ? toInt(number(col.range)) : 0, col.samples >= 0 ? toInt(number(col.samples)) : 0});
+        u.key.push_back(blockKey(lonToX(lo, kBlockZ), latToY(la, kBlockZ)));
+        // Source names, up to 255 of them; the layer's own name is 0
         quint8 s = 0;
-        if (col.src >= 0) {
-            const auto [a, b] = field(col.src);
-            if (a && b > a) {
-                const QByteArray name8(a, b - a);
-                auto it = srcIndex.find(name8);
-                if (it == srcIndex.end()) {
-                    if (layer->srcNames.size() < 255) {
-                        it = srcIndex.insert(name8, int(layer->srcNames.size()));
-                        layer->srcNames << QString::fromUtf8(name8);
-                    }
-                }
-                if (it != srcIndex.end()) s = quint8(it.value());
+        if (const auto [a, b] = field(col.src); a && b > a) {
+            const QByteArray name8(a, b - a);
+            auto it = srcIndex.find(name8);
+            if (it == srcIndex.end() && layer->srcNames.size() < 255) {
+                it = srcIndex.insert(name8, int(layer->srcNames.size()));
+                layer->srcNames << QString::fromUtf8(name8);
             }
+            if (it != srcIndex.end()) s = quint8(it.value());
         }
-        src.push_back(s);
+        u.src.push_back(s);
     }
-    // Counting sort by block
-    const int n = int(lat.size());
-    const int blocks = 1 << (2 * kBlockZ);
-    layer->start.assign(std::size_t(blocks) + 1, 0);
-    for (int i = 0; i < n; ++i) {
-        const int k = std::clamp(key[std::size_t(i)], 0, blocks - 1);
-        key[std::size_t(i)] = k;
-        ++layer->start[std::size_t(k) + 1];
-    }
-    for (int b = 0; b < blocks; ++b) layer->start[std::size_t(b) + 1] += layer->start[std::size_t(b)];
-    std::vector<qint32> fill(layer->start.begin(), layer->start.end() - 1);
-    layer->lat.resize(std::size_t(n));
-    layer->lon.resize(std::size_t(n));
-    layer->src.resize(std::size_t(n));
-    layer->num.resize(std::size_t(n) * 6);
-    for (int i = 0; i < n; ++i) {
-        const std::size_t j = std::size_t(fill[std::size_t(key[std::size_t(i)])]++);
-        layer->lat[j] = lat[std::size_t(i)];
-        layer->lon[j] = lon[std::size_t(i)];
-        layer->src[j] = src[std::size_t(i)];
-        std::copy_n(num.begin() + std::ptrdiff_t(i) * 6, 6, layer->num.begin() + std::ptrdiff_t(j) * 6);
-    }
-    layer->cells = n;
-    if (newest) layer->newest = QDateTime::fromSecsSinceEpoch(newest, QTimeZone::UTC).toString(QStringLiteral("yyyy-MM-dd"));
+    sortIntoBlocks(*layer, u);
+    if (newest) layer->newest = QDateTime::fromSecsSinceEpoch(newest, QTimeZone::UTC).toString(u"yyyy-MM-dd"_s);
     return layer;
 }
 
@@ -592,12 +603,12 @@ struct CellDb::Core {
     QString dir, bundleDir, url = QString::fromLatin1(kSourceUrl);
     std::atomic<bool> cancelled{false};
 
-    QString blocksDir() const { return dir + QStringLiteral("/blocks"); }
-    QString leafDir() const { return dir + QStringLiteral("/leaves"); }
-    QString sourcesDir() const { return dir + QStringLiteral("/sources"); }
-    QString indexFile() const { return dir + QStringLiteral("/index.json"); }
-    QString lookupFile() const { return dir + QStringLiteral("/lookups.json"); }
-    QString settingsFile() const { return dir + QStringLiteral("/settings.json"); }
+    QString blocksDir() const { return dir + u"/blocks"_s; }
+    QString leafDir() const { return dir + u"/leaves"_s; }
+    QString sourcesDir() const { return dir + u"/sources"_s; }
+    QString indexFile() const { return dir + u"/index.json"_s; }
+    QString lookupFile() const { return dir + u"/lookups.json"_s; }
+    QString settingsFile() const { return dir + u"/settings.json"_s; }
 
     struct Header {
         quint64 rootOffset = 0, rootLength = 0, leafOffset = 0, leafLength = 0, dataOffset = 0, dataLength = 0;
@@ -629,15 +640,15 @@ struct CellDb::Core {
     QJsonObject settingsLocked() const
     {
         QJsonObject s = readJson(settingsFile());
-        if (!s.contains(QStringLiteral("online"))) s.insert(QStringLiteral("online"), true);
-        if (!s.contains(QStringLiteral("token"))) s.insert(QStringLiteral("token"), QString());
+        if (!s.contains(u"online"_s)) s.insert(u"online"_s, true);
+        if (!s.contains(u"token"_s)) s.insert(u"token"_s, QString());
         return s;
     }
     QJsonObject &indexLocked()
     {
         if (!indexLoaded) {
             index = readJson(indexFile());
-            if (!index.value(QStringLiteral("blocks")).isObject()) index = QJsonObject{{QStringLiteral("blocks"), QJsonObject()}};
+            if (!index.value(u"blocks"_s).isObject()) index = QJsonObject{{u"blocks"_s, QJsonObject()}};
             indexLoaded = true;
         }
         return index;
@@ -653,7 +664,7 @@ struct CellDb::Core {
     QJsonObject manifestLocked()
     {
         if (!manifestLoaded) {
-            manifest = bundleDir.isEmpty() ? QJsonObject() : readJson(bundleDir + QStringLiteral("/manifest.json"));
+            manifest = bundleDir.isEmpty() ? QJsonObject() : readJson(bundleDir + u"/manifest.json"_s);
             manifestLoaded = true;
         }
         return manifest;
@@ -663,7 +674,7 @@ struct CellDb::Core {
     QStringList sourceFiles() const
     {
         QDir d(sourcesDir());
-        QFileInfoList files = d.entryInfoList({QStringLiteral("*.csv"), QStringLiteral("*.csv.gz"), QStringLiteral("*.CSV"), QStringLiteral("*.CSV.GZ")},
+        QFileInfoList files = d.entryInfoList({u"*.csv"_s, u"*.csv.gz"_s, u"*.CSV"_s, u"*.CSV.GZ"_s},
                                               QDir::Files, QDir::Time);   // newest first
         QStringList out;
         for (const QFileInfo &f : files) out << f.fileName();
@@ -682,7 +693,7 @@ struct CellDb::Core {
         t.start();
         for (const QString &f : sourceFiles()) {
             try {
-                out.push_back(loadCsvLayer(sourcesDir() + QLatin1Char('/') + f, f));
+                out.push_back(loadCsvLayer(sourcesDir() + '/'_L1 + f, f));
             } catch (const Error &e) {
                 LOG_W("celldb") << f << ":" << e.text();
             }
@@ -694,8 +705,8 @@ struct CellDb::Core {
         }
         if (!m.isEmpty()) {
             try {
-                auto layer = std::const_pointer_cast<Layer>(loadCsvLayer(bundleDir + QLatin1Char('/') + m.value(QStringLiteral("file")).toString(),
-                                                                         QStringLiteral("bundle")));
+                auto layer = std::const_pointer_cast<Layer>(loadCsvLayer(bundleDir + '/'_L1 + m.value(u"file"_s).toString(),
+                                                                         u"bundle"_s));
                 layer->bundle = true;
                 out.push_back(layer);
             } catch (const Error &e) {
@@ -704,8 +715,8 @@ struct CellDb::Core {
         }
         if (!out.empty()) {
             QStringList parts;
-            for (const LayerPtr &l : out) parts << QStringLiteral("%1 %2").arg(l->name).arg(l->cells);
-            LOG_I("celldb") << parts.join(QStringLiteral(", ")) << "LTE cells loaded in" << t.elapsed() << "ms";
+            for (const LayerPtr &l : out) parts << u"%1 %2"_s.arg(l->name).arg(l->cells);
+            LOG_I("celldb") << parts.join(u", "_s) << "LTE cells loaded in" << t.elapsed() << "ms";
         }
         QMutexLocker l(&lock);
         layers = out;
@@ -724,7 +735,7 @@ struct CellDb::Core {
         const QByteArray r = QByteArrayLiteral("bytes=") + QByteArray::number(offset) + '-' + QByteArray::number(offset + length - 1);
         Http h = http(QUrl(url), "GET", {}, {{QByteArrayLiteral("Range"), r}}, kRangeTimeoutMs, &cancelled);
         // 200 = the server ignored Range and sent the whole archive
-        if (h.status != 206) throw Error(h.error.isEmpty() ? QStringLiteral("cell database: HTTP %1").arg(h.status) : h.error);
+        if (h.status != 206) throw Error(h.error.isEmpty() ? u"cell database: HTTP %1"_s.arg(h.status) : h.error);
         QMutexLocker l(&lock);
         ++requests;
         bytes += h.body.size();
@@ -740,7 +751,7 @@ struct CellDb::Core {
         }
         const Http r = range(0, 16384);
         const QByteArray &b = r.body;
-        if (b.size() < 127 || !b.startsWith("PMTiles") || uchar(b[7]) != 3) throw Error(QStringLiteral("not a PMTiles v3 archive"));
+        if (b.size() < 127 || !b.startsWith("PMTiles") || uchar(b[7]) != 3) throw Error(u"not a PMTiles v3 archive"_s);
         auto u64 = [&](int o) {
             quint64 v;
             std::memcpy(&v, b.constData() + o, 8);
@@ -760,24 +771,24 @@ struct CellDb::Core {
         h.minZoom = uchar(b[100]);
         h.maxZoom = uchar(b[101]);
         if (h.tileType != 1 || h.tileCompression != 2 || h.internalCompression != 2 || !h.clustered)
-            throw Error(QStringLiteral("cell database: unexpected archive layout"));
-        if (h.maxZoom != kTileZ) throw Error(QStringLiteral("cell database: max zoom %1, expected %2").arg(h.maxZoom).arg(kTileZ));
+            throw Error(u"cell database: unexpected archive layout"_s);
+        if (h.maxZoom != kTileZ) throw Error(u"cell database: max zoom %1, expected %2"_s.arg(h.maxZoom).arg(kTileZ));
         const QByteArray rootBytes = h.rootOffset + h.rootLength <= quint64(b.size()) ? b.mid(qsizetype(h.rootOffset), qsizetype(h.rootLength))
                                                                                       : range(h.rootOffset, h.rootLength).body;
         bool ok = false;
         std::vector<DirEntry> rootDir = parseDirectory(rootBytes, &ok);
-        if (!ok) throw Error(QStringLiteral("cell database: unreadable root directory"));
+        if (!ok) throw Error(u"cell database: unreadable root directory"_s);
         QMutexLocker l(&lock);
         QJsonObject &idx = indexLocked();
         const QString etag = QString::fromLatin1(r.etag);
-        if (!etag.isEmpty() && !idx.value(QStringLiteral("etag")).toString().isEmpty() && etag != idx.value(QStringLiteral("etag")).toString()) {
+        if (!etag.isEmpty() && !idx.value(u"etag"_s).toString().isEmpty() && etag != idx.value(u"etag"_s).toString()) {
             QDir(leafDir()).removeRecursively();
             leaves.clear();
             LOG_I("celldb") << "the archive changed: blocks downloaded from now on are from the new copy";
         }
-        if (!etag.isEmpty()) idx.insert(QStringLiteral("etag"), etag);
+        if (!etag.isEmpty()) idx.insert(u"etag"_s, etag);
         const QDateTime modified = QDateTime::fromString(QString::fromLatin1(r.lastModified), Qt::RFC2822Date);
-        if (modified.isValid()) idx.insert(QStringLiteral("date"), modified.toUTC().toString(QStringLiteral("yyyy-MM-dd")));
+        if (modified.isValid()) idx.insert(u"date"_s, modified.toUTC().toString(u"yyyy-MM-dd"_s));
         writeJson(indexFile(), idx);
         header = h;
         root = std::move(rootDir);
@@ -791,7 +802,7 @@ struct CellDb::Core {
             auto it = leaves.constFind(offset);
             if (it != leaves.cend()) return it.value();
         }
-        const QString file = leafDir() + QStringLiteral("/%1.gz").arg(offset);
+        const QString file = leafDir() + u"/%1.gz"_s.arg(offset);
         QByteArray gz;
         QFile f(file);
         if (f.open(QIODevice::ReadOnly)) gz = f.readAll();
@@ -807,7 +818,7 @@ struct CellDb::Core {
         }
         bool ok = false;
         std::vector<DirEntry> entries = parseDirectory(gz, &ok);
-        if (!ok) throw Error(QStringLiteral("cell database: unreadable leaf directory"));
+        if (!ok) throw Error(u"cell database: unreadable leaf directory"_s);
         QMutexLocker l(&lock);
         leaves.insert(offset, entries);
         return entries;
@@ -816,7 +827,7 @@ struct CellDb::Core {
     /// Directory entries with tile data that overlap tile ids lo..hi.
     void entriesIn(const std::vector<DirEntry> &entries, quint64 lo, quint64 hi, std::vector<DirEntry> &out, int depth)
     {
-        if (depth > 4) throw Error(QStringLiteral("cell database: directory too deep"));
+        if (depth > 4) throw Error(u"cell database: directory too deep"_s);
         for (std::size_t k = 0; k < entries.size(); ++k) {
             const DirEntry &e = entries[k];
             const quint64 end = e.runLength > 0 ? e.tileId + e.runLength : (k + 1 < entries.size() ? entries[k + 1].tileId : ~quint64(0));
@@ -853,7 +864,7 @@ struct CellDb::Core {
         std::sort(pieces.begin(), pieces.end(), [](const Piece &a, const Piece &b) { return a.offset < b.offset; });
         auto rows = std::make_shared<Rows>();
         for (std::size_t i = 0; i < pieces.size();) {
-            if (cancelled) throw Error(QStringLiteral("cancelled"));
+            if (cancelled) throw Error(u"cancelled"_s);
             const quint64 start = pieces[i].offset;
             quint64 end = start + pieces[i].length;
             std::size_t j = i + 1;
@@ -876,13 +887,13 @@ struct CellDb::Core {
         }
         QJsonArray arr;
         for (const Row &r : *rows) arr.append(QJsonArray{r.lat, r.lon, r.mcc, r.mnc, double(r.tac), double(r.eci), r.range, r.samples});
-        const QString key = QStringLiteral("%1_%2").arg(bx).arg(by);
-        writeFile(blocksDir() + QLatin1Char('/') + key + QStringLiteral(".json"), QJsonDocument(arr).toJson(QJsonDocument::Compact));
+        const QString key = u"%1_%2"_s.arg(bx).arg(by);
+        writeFile(blocksDir() + '/'_L1 + key + u".json"_s, QJsonDocument(arr).toJson(QJsonDocument::Compact));
         QMutexLocker l(&lock);
         QJsonObject &idx = indexLocked();
-        QJsonObject blocks = idx.value(QStringLiteral("blocks")).toObject();
+        QJsonObject blocks = idx.value(u"blocks"_s).toObject();
         blocks.insert(key, int(rows->size()));
-        idx.insert(QStringLiteral("blocks"), blocks);
+        idx.insert(u"blocks"_s, blocks);
         writeJson(indexFile(), idx);
         return rows;
     }
@@ -898,16 +909,16 @@ struct CellDb::Core {
     /// Rows of a block: memory, then disk, then (download) the network; null when missing.
     RowsPtr block(int bx, int by, bool download)
     {
-        const QString key = QStringLiteral("%1_%2").arg(bx).arg(by);
+        const QString key = u"%1_%2"_s.arg(bx).arg(by);
         bool listed;
         {
             QMutexLocker l(&lock);
             for (const auto &e : memBlocks)
                 if (e.first == key) return rememberLocked(key, e.second);
-            listed = indexLocked().value(QStringLiteral("blocks")).toObject().contains(key);
+            listed = indexLocked().value(u"blocks"_s).toObject().contains(key);
         }
         if (listed) {
-            QFile f(blocksDir() + QLatin1Char('/') + key + QStringLiteral(".json"));
+            QFile f(blocksDir() + '/'_L1 + key + u".json"_s);
             if (f.open(QIODevice::ReadOnly)) {
                 const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
                 if (doc.isArray()) {
@@ -939,22 +950,72 @@ struct CellDb::Core {
                 if (e.first == key) return e.second;
             inFlight.insert(key);
         }
-        RowsPtr rows;
-        try {
-            rows = downloadBlock(bx, by);
-        } catch (...) {
+        // However the download ends, the threads waiting for this block go on
+        const auto done = qScopeGuard([&] {
             QMutexLocker l(&lock);
             inFlight.remove(key);
             inFlightDone.wakeAll();
-            throw;
-        }
+        });
+        RowsPtr rows = downloadBlock(bx, by);
         QMutexLocker l(&lock);
-        inFlight.remove(key);
-        inFlightDone.wakeAll();
         return rememberLocked(key, rows);
     }
 
     // ── Query ──
+    /// The cells found online so far (call with the lock held).
+    Rows lookedUpLocked()
+    {
+        Rows looked;
+        const QJsonObject &lk = lookupsLocked();
+        for (auto it = lk.begin(); it != lk.end(); ++it) {
+            const QJsonObject v = it.value().toObject();
+            const QStringList k = it.key().split('-'_L1);
+            if (v.value(u"miss"_s).toBool() || k.size() != 3) continue;
+            looked.push_back({v.value(u"lat"_s).toDouble(), v.value(u"lon"_s).toDouble(), k[0].toInt(), k[1].toInt(), unsigned(v.value(u"tac"_s).toDouble()),
+                              k[2].toUInt(), v.value(u"range"_s).toInt(), v.value(u"samples"_s).toInt(), v.value(u"src"_s).toString()});
+        }
+        return looked;
+    }
+
+    /// Cells grouped into sites (one eNodeB of one network), the site at the samples-weighted mean.
+    struct Sites {
+        struct Acc {
+            CellSite site;
+            double w = 0;
+        };
+        std::vector<Acc> acc;
+        QHash<quint64, int> index;
+
+        void add(const Row &r)
+        {
+            const unsigned enb = r.eci / 256;
+            const quint64 sk = (quint64(quint32(r.mcc) & 0x3ff) << 30) | (quint64(quint32(r.mnc) & 0x3ff) << 20) | (enb & 0xfffff);
+            auto it = index.find(sk);
+            if (it == index.end()) {
+                it = index.insert(sk, int(acc.size()));
+                Acc a;
+                a.site.mcc = r.mcc;
+                a.site.mnc = r.mnc;
+                a.site.enb = enb;
+                acc.push_back(std::move(a));
+            }
+            Acc &a = acc[std::size_t(it.value())];
+            const double w = std::max(1, r.samples);
+            a.site.lat += r.lat * w;
+            a.site.lon += r.lon * w;
+            a.w += w;
+            a.site.cells.push_back({r.eci, r.tac, r.lat, r.lon, r.range, r.samples, r.src});
+        }
+        void finish(std::vector<CellSite> &out)
+        {
+            for (Acc &a : acc) {
+                a.site.lat /= a.w;
+                a.site.lon /= a.w;
+                out.push_back(std::move(a.site));
+            }
+        }
+    };
+
     Result query(const Query &q)
     {
         const std::vector<LayerPtr> csv = loadLayers();
@@ -962,32 +1023,10 @@ struct CellDb::Core {
         QList<int> bundleMcc;
         {
             QMutexLocker l(&lock);
-            const QJsonObject &lk = lookupsLocked();
-            for (auto it = lk.begin(); it != lk.end(); ++it) {
-                const QJsonObject v = it.value().toObject();
-                if (v.value(QStringLiteral("miss")).toBool()) continue;
-                const QStringList k = it.key().split(QLatin1Char('-'));
-                if (k.size() != 3) continue;
-                Row r;
-                r.lat = v.value(QStringLiteral("lat")).toDouble();
-                r.lon = v.value(QStringLiteral("lon")).toDouble();
-                r.mcc = k[0].toInt();
-                r.mnc = k[1].toInt();
-                r.eci = k[2].toUInt();
-                r.tac = unsigned(v.value(QStringLiteral("tac")).toDouble());
-                r.range = v.value(QStringLiteral("range")).toInt();
-                r.samples = v.value(QStringLiteral("samples")).toInt();
-                r.src = v.value(QStringLiteral("src")).toString();
-                looked.push_back(r);
-            }
-            for (const QJsonValue &m : manifestLocked().value(QStringLiteral("mcc")).toArray()) bundleMcc << m.toInt();
+            looked = lookedUpLocked();
+            for (const QJsonValue &m : manifestLocked().value(u"mcc"_s).toArray()) bundleMcc << m.toInt();
         }
-        struct Acc {
-            CellSite site;
-            double w = 0;
-        };
-        std::vector<Acc> sites;
-        QHash<quint64, int> siteIndex;
+        Sites sites;
         QSet<quint64> seen;
         Result res;
         for (const auto &blk : blocksForRadius(q.lat, q.lon, q.radiusKm)) {
@@ -1008,7 +1047,7 @@ struct CellDb::Core {
                 }
                 if (rows) {
                     Rows copy = *rows;
-                    for (Row &r : copy) r.src = QStringLiteral("ocid-2024");
+                    for (Row &r : copy) r.src = u"ocid-2024"_s;
                     sets.push_back(std::move(copy));
                 } else if (sets.empty()) {
                     ++res.missing;
@@ -1024,32 +1063,11 @@ struct CellDb::Core {
                     const quint64 ck = cellKey(r.mcc, r.mnc, r.eci);
                     if (seen.contains(ck)) continue;
                     seen.insert(ck);
-                    if (distanceKm(q.lat, q.lon, r.lat, r.lon) > q.radiusKm) continue;
-                    const unsigned enb = r.eci / 256;
-                    const quint64 sk = (quint64(quint32(r.mcc) & 0x3ff) << 30) | (quint64(quint32(r.mnc) & 0x3ff) << 20) | (enb & 0xfffff);
-                    auto it = siteIndex.find(sk);
-                    if (it == siteIndex.end()) {
-                        it = siteIndex.insert(sk, int(sites.size()));
-                        Acc a;
-                        a.site.mcc = r.mcc;
-                        a.site.mnc = r.mnc;
-                        a.site.enb = enb;
-                        sites.push_back(std::move(a));
-                    }
-                    Acc &a = sites[std::size_t(it.value())];
-                    const double w = std::max(1, r.samples);
-                    a.site.lat += r.lat * w;
-                    a.site.lon += r.lon * w;
-                    a.w += w;
-                    a.site.cells.push_back({r.eci, r.tac, r.lat, r.lon, r.range, r.samples, r.src});
+                    if (distanceKm(q.lat, q.lon, r.lat, r.lon) <= q.radiusKm) sites.add(r);
                 }
             }
         }
-        for (Acc &a : sites) {
-            a.site.lat /= a.w;
-            a.site.lon /= a.w;
-            res.sites.push_back(std::move(a.site));
-        }
+        sites.finish(res.sites);
         QMutexLocker l(&lock);
         for (const LayerPtr &layer : csv)
             if (!layer->bundle && !layer->newest.isEmpty()) {
@@ -1057,8 +1075,8 @@ struct CellDb::Core {
                 break;
             }
         if (res.date.isEmpty())
-            res.date = manifestLocked().value(QStringLiteral("sources")).toArray().at(0).toObject().value(QStringLiteral("date")).toString();
-        if (res.date.isEmpty()) res.date = indexLocked().value(QStringLiteral("date")).toString();
+            res.date = manifestLocked().value(u"sources"_s).toArray().at(0).toObject().value(u"date"_s).toString();
+        if (res.date.isEmpty()) res.date = indexLocked().value(u"date"_s).toString();
         return res;
     }
 
@@ -1067,68 +1085,68 @@ struct CellDb::Core {
     {
         if (!token.isEmpty()) {
             QUrlQuery qy;
-            qy.addQueryItem(QStringLiteral("key"), token);
-            qy.addQueryItem(QStringLiteral("mcc"), QString::number(mcc));
-            qy.addQueryItem(QStringLiteral("mnc"), QString::number(mnc));
-            qy.addQueryItem(QStringLiteral("lac"), QString::number(tac));
-            qy.addQueryItem(QStringLiteral("cellid"), QString::number(eci));
-            qy.addQueryItem(QStringLiteral("radio"), QStringLiteral("LTE"));
-            qy.addQueryItem(QStringLiteral("format"), QStringLiteral("json"));
+            qy.addQueryItem(u"key"_s, token);
+            qy.addQueryItem(u"mcc"_s, QString::number(mcc));
+            qy.addQueryItem(u"mnc"_s, QString::number(mnc));
+            qy.addQueryItem(u"lac"_s, QString::number(tac));
+            qy.addQueryItem(u"cellid"_s, QString::number(eci));
+            qy.addQueryItem(u"radio"_s, u"LTE"_s);
+            qy.addQueryItem(u"format"_s, u"json"_s);
             QUrl u(kOcidCellUrl);
             u.setQuery(qy);
             const Http r = http(u, "GET", {}, {}, kLookupTimeoutMs, &cancelled);
             const QJsonObject b = QJsonDocument::fromJson(r.body).object();
-            const double lat = b.value(QStringLiteral("lat")).toDouble(), lon = b.value(QStringLiteral("lon")).toDouble();
-            if (b.contains(QStringLiteral("lat")) && (lat != 0 || lon != 0))
-                return CellRecord{eci, tac, lat, lon, b.value(QStringLiteral("range")).toInt(), b.value(QStringLiteral("samples")).toInt(),
-                                  QStringLiteral("ocid-api")};
+            const double lat = b.value(u"lat"_s).toDouble(), lon = b.value(u"lon"_s).toDouble();
+            if (b.contains(u"lat"_s) && (lat != 0 || lon != 0))
+                return CellRecord{eci, tac, lat, lon, b.value(u"range"_s).toInt(), b.value(u"samples"_s).toInt(),
+                                  u"ocid-api"_s};
             // anything but "not found" (bad token, daily credits used up): say so, then try beaconDB
-            const QString err = b.value(QStringLiteral("error")).toString();
-            if (r.status != 200 || (!err.isEmpty() && !err.contains(QRegularExpression(QStringLiteral("not\\s*found"), QRegularExpression::CaseInsensitiveOption))))
+            const QString err = b.value(u"error"_s).toString();
+            if (r.status != 200 || (!err.isEmpty() && !err.contains(QRegularExpression(u"not\\s*found"_s, QRegularExpression::CaseInsensitiveOption))))
                 LOG_W("celldb") << "OpenCelliD API: HTTP" << r.status << (err.isEmpty() ? QString::fromUtf8(r.body.left(80)) : err);
         }
         // No IP or area fallback: only the cell itself, else beaconDB answers with the GCS position
-        const QJsonObject req{{QStringLiteral("considerIp"), false},
-                              {QStringLiteral("fallbacks"), QJsonObject{{QStringLiteral("lacf"), false}, {QStringLiteral("ipf"), false}}},
-                              {QStringLiteral("cellTowers"), QJsonArray{QJsonObject{{QStringLiteral("radioType"), QStringLiteral("lte")},
-                                                                                    {QStringLiteral("mobileCountryCode"), mcc},
-                                                                                    {QStringLiteral("mobileNetworkCode"), mnc},
-                                                                                    {QStringLiteral("locationAreaCode"), double(tac)},
-                                                                                    {QStringLiteral("cellId"), double(eci)}}}}};
+        const QJsonObject req{{u"considerIp"_s, false},
+                              {u"fallbacks"_s, QJsonObject{{u"lacf"_s, false}, {u"ipf"_s, false}}},
+                              {u"cellTowers"_s, QJsonArray{QJsonObject{{u"radioType"_s, u"lte"_s},
+                                                                                    {u"mobileCountryCode"_s, mcc},
+                                                                                    {u"mobileNetworkCode"_s, mnc},
+                                                                                    {u"locationAreaCode"_s, double(tac)},
+                                                                                    {u"cellId"_s, double(eci)}}}}};
         const Http r = http(QUrl(kBeaconDbUrl), "POST", QJsonDocument(req).toJson(QJsonDocument::Compact),
                             {{QByteArrayLiteral("Content-Type"), QByteArrayLiteral("application/json")}}, kLookupTimeoutMs, &cancelled);
         const QJsonObject b = QJsonDocument::fromJson(r.body).object();
-        const QJsonObject loc = b.value(QStringLiteral("location")).toObject();
-        if (r.status == 200 && loc.contains(QStringLiteral("lat")) && loc.contains(QStringLiteral("lng")))
-            return CellRecord{eci, tac, loc.value(QStringLiteral("lat")).toDouble(), loc.value(QStringLiteral("lng")).toDouble(),
-                              int(std::lround(b.value(QStringLiteral("accuracy")).toDouble())), 0, QStringLiteral("beacondb")};
+        const QJsonObject loc = b.value(u"location"_s).toObject();
+        if (r.status == 200 && loc.contains(u"lat"_s) && loc.contains(u"lng"_s))
+            return CellRecord{eci, tac, loc.value(u"lat"_s).toDouble(), loc.value(u"lng"_s).toDouble(),
+                              int(std::lround(b.value(u"accuracy"_s).toDouble())), 0, u"beacondb"_s};
         if (r.status == 404) return std::nullopt;
-        throw Error(r.error.isEmpty() ? QStringLiteral("beaconDB: HTTP %1").arg(r.status) : r.error);
+        throw Error(r.error.isEmpty() ? u"beaconDB: HTTP %1"_s.arg(r.status) : r.error);
     }
 
     std::optional<CellRecord> lookup(int mcc, int mnc, unsigned tac, unsigned eci)
     {
-        const QString key = QStringLiteral("%1-%2-%3").arg(mcc).arg(mnc).arg(eci);
+        const QString key = u"%1-%2-%3"_s.arg(mcc).arg(mnc).arg(eci);
         QString token;
         {
             QMutexLocker l(&lock);
             const QJsonObject hit = lookupsLocked().value(key).toObject();
-            if (!hit.isEmpty() && !hit.value(QStringLiteral("miss")).toBool())
-                return CellRecord{eci, unsigned(hit.value(QStringLiteral("tac")).toDouble()), hit.value(QStringLiteral("lat")).toDouble(),
-                                  hit.value(QStringLiteral("lon")).toDouble(), hit.value(QStringLiteral("range")).toInt(),
-                                  hit.value(QStringLiteral("samples")).toInt(), hit.value(QStringLiteral("src")).toString()};
-            if (!hit.isEmpty() && QDateTime::currentMSecsSinceEpoch() - qint64(hit.value(QStringLiteral("at")).toDouble()) < kLookupMissMs)
+            if (!hit.isEmpty() && !hit.value(u"miss"_s).toBool())
+                return CellRecord{eci, unsigned(hit.value(u"tac"_s).toDouble()), hit.value(u"lat"_s).toDouble(),
+                                  hit.value(u"lon"_s).toDouble(), hit.value(u"range"_s).toInt(),
+                                  hit.value(u"samples"_s).toInt(), hit.value(u"src"_s).toString()};
+            if (!hit.isEmpty() && QDateTime::currentMSecsSinceEpoch() - qint64(hit.value(u"at"_s).toDouble()) < kLookupMissMs)
                 return std::nullopt;
             const QJsonObject s = settingsLocked();
-            if (!s.value(QStringLiteral("online")).toBool(true)) return std::nullopt;
-            token = s.value(QStringLiteral("token")).toString();
+            if (!s.value(u"online"_s).toBool(true)) return std::nullopt;
+            token = s.value(u"token"_s).toString();
         }
         const std::optional<CellRecord> found = lookupOnline(mcc, mnc, tac, eci, token);
         const double now = double(QDateTime::currentMSecsSinceEpoch());
-        QJsonObject entry = found ? QJsonObject{{QStringLiteral("lat"), found->lat}, {QStringLiteral("lon"), found->lon},
-                                                {QStringLiteral("range"), found->range}, {QStringLiteral("samples"), found->samples},
-                                                {QStringLiteral("src"), found->src}, {QStringLiteral("tac"), double(tac)}, {QStringLiteral("at"), now}}
-                                  : QJsonObject{{QStringLiteral("miss"), true}, {QStringLiteral("at"), now}};
+        QJsonObject entry = found ? QJsonObject{{u"lat"_s, found->lat}, {u"lon"_s, found->lon},
+                                                {u"range"_s, found->range}, {u"samples"_s, found->samples},
+                                                {u"src"_s, found->src}, {u"tac"_s, double(tac)}, {u"at"_s, now}}
+                                  : QJsonObject{{u"miss"_s, true}, {u"at"_s, now}};
         {
             QMutexLocker l(&lock);
             lookupsLocked().insert(key, entry);
@@ -1146,41 +1164,41 @@ struct CellDb::Core {
         QString token;
         {
             QMutexLocker l(&lock);
-            token = settingsLocked().value(QStringLiteral("token")).toString();
+            token = settingsLocked().value(u"token"_s).toString();
         }
-        if (token.isEmpty()) throw Error(QStringLiteral("no OpenCelliD token"));
-        if (mcc < 100 || mcc > 999) throw Error(QStringLiteral("bad MCC %1").arg(mcc));
+        if (token.isEmpty()) throw Error(u"no OpenCelliD token"_s);
+        if (mcc < 100 || mcc > 999) throw Error(u"bad MCC %1"_s.arg(mcc));
         QUrlQuery qy;
-        qy.addQueryItem(QStringLiteral("token"), token);
-        qy.addQueryItem(QStringLiteral("type"), QStringLiteral("mcc"));
-        qy.addQueryItem(QStringLiteral("file"), QStringLiteral("%1.csv.gz").arg(mcc));
+        qy.addQueryItem(u"token"_s, token);
+        qy.addQueryItem(u"type"_s, u"mcc"_s);
+        qy.addQueryItem(u"file"_s, u"%1.csv.gz"_s.arg(mcc));
         QUrl u(kOcidDownloadUrl);
         u.setQuery(qy);
         const Http r = http(u, "GET", {}, {}, 600000, &cancelled);
         if (r.status != 200 || r.body.size() < 2 || uchar(r.body[0]) != 0x1f || uchar(r.body[1]) != 0x8b) {
             // OpenCelliD answers errors (bad token, limit reached) as text
             QString text = QString::fromUtf8(r.body.left(200));
-            text.remove(QRegularExpression(QStringLiteral("<[^>]+>")));
+            text.remove(QRegularExpression(u"<[^>]+>"_s));
             text = text.simplified();
-            throw Error(QStringLiteral("OpenCelliD: ") + (text.isEmpty() ? (r.error.isEmpty() ? QStringLiteral("HTTP %1").arg(r.status) : r.error) : text));
+            throw Error(u"OpenCelliD: "_s + (text.isEmpty() ? (r.error.isEmpty() ? u"HTTP %1"_s.arg(r.status) : r.error) : text));
         }
-        const QString file = sourcesDir() + QStringLiteral("/opencellid-%1.csv.gz").arg(mcc);
+        const QString file = sourcesDir() + u"/opencellid-%1.csv.gz"_s.arg(mcc);
         writeFile(file, r.body);
         resetLayers();
         for (const LayerPtr &l : loadLayers())
             if (QFileInfo(l->file) == QFileInfo(file)) return l->cells;
-        throw Error(QStringLiteral("the downloaded file could not be read"));
+        throw Error(u"the downloaded file could not be read"_s);
     }
 
     int importCsv(const QString &srcFile)
     {
         const LayerPtr probe = loadCsvLayer(srcFile, QFileInfo(srcFile).fileName());
-        if (!probe->cells) throw Error(QStringLiteral("no LTE cells in the file"));
+        if (!probe->cells) throw Error(u"no LTE cells in the file"_s);
         QDir().mkpath(sourcesDir());
-        const QString dst = sourcesDir() + QLatin1Char('/') + QFileInfo(srcFile).fileName();
+        const QString dst = sourcesDir() + '/'_L1 + QFileInfo(srcFile).fileName();
         if (QFileInfo(dst) != QFileInfo(srcFile)) {
             QFile::remove(dst);
-            if (!QFile::copy(srcFile, dst)) throw Error(QStringLiteral("cannot copy the file into the cell database"));
+            if (!QFile::copy(srcFile, dst)) throw Error(u"cannot copy the file into the cell database"_s);
         }
         resetLayers();
         return probe->cells;
@@ -1191,29 +1209,29 @@ struct CellDb::Core {
         const std::vector<LayerPtr> csv = loadLayers();
         QVariantMap out;
         QMutexLocker l(&lock);
-        const QJsonObject blocks = indexLocked().value(QStringLiteral("blocks")).toObject();
+        const QJsonObject blocks = indexLocked().value(u"blocks"_s).toObject();
         qint64 cells = 0;
         for (const QJsonValue &v : blocks) cells += v.toInt();
         qint64 size = 0;
         for (const QFileInfo &f : QDir(blocksDir()).entryInfoList(QDir::Files)) size += f.size();
-        out[QStringLiteral("blocks")] = int(blocks.size());
-        out[QStringLiteral("cells")] = cells;
-        out[QStringLiteral("bytes")] = size;
-        out[QStringLiteral("date")] = indexLocked().value(QStringLiteral("date")).toString();
-        out[QStringLiteral("source")] = url;
+        out[u"blocks"_s] = int(blocks.size());
+        out[u"cells"_s] = cells;
+        out[u"bytes"_s] = size;
+        out[u"date"_s] = indexLocked().value(u"date"_s).toString();
+        out[u"source"_s] = url;
         const QJsonObject m = manifestLocked();
-        out[QStringLiteral("bundle")] = m.isEmpty() ? QVariant() : QVariant(m.toVariantMap());
+        out[u"bundle"_s] = m.isEmpty() ? QVariant() : QVariant(m.toVariantMap());
         QVariantList files;
         for (const LayerPtr &layer : csv)
             if (!layer->bundle)
-                files << QVariantMap{{QStringLiteral("name"), layer->name}, {QStringLiteral("cells"), layer->cells}, {QStringLiteral("newest"), layer->newest}};
-        out[QStringLiteral("files")] = files;
+                files << QVariantMap{{u"name"_s, layer->name}, {u"cells"_s, layer->cells}, {u"newest"_s, layer->newest}};
+        out[u"files"_s] = files;
         int found = 0, missed = 0;
-        for (const QJsonValue &v : lookupsLocked()) (v.toObject().value(QStringLiteral("miss")).toBool() ? missed : found)++;
-        out[QStringLiteral("lookups")] = QVariantMap{{QStringLiteral("found"), found}, {QStringLiteral("missed"), missed}};
+        for (const QJsonValue &v : lookupsLocked()) (v.toObject().value(u"miss"_s).toBool() ? missed : found)++;
+        out[u"lookups"_s] = QVariantMap{{u"found"_s, found}, {u"missed"_s, missed}};
         const QJsonObject s = settingsLocked();
-        out[QStringLiteral("settings")] = QVariantMap{{QStringLiteral("online"), s.value(QStringLiteral("online")).toBool(true)},
-                                                      {QStringLiteral("hasToken"), !s.value(QStringLiteral("token")).toString().isEmpty()}};
+        out[u"settings"_s] = QVariantMap{{u"online"_s, s.value(u"online"_s).toBool(true)},
+                                                      {u"hasToken"_s, !s.value(u"token"_s).toString().isEmpty()}};
         return out;
     }
 
@@ -1245,6 +1263,25 @@ void deliver(const std::weak_ptr<CellDb::Core> &alive, F f)
         if (auto c = alive.lock(); c && !c->cancelled) f();
     }, Qt::QueuedConnection);
 }
+
+/// work(core) on `pool`; done(error, result) on the GUI thread, result default-built after an error.
+template <class Work, class Done>
+void runJob(QThreadPool &pool, const std::shared_ptr<CellDb::Core> &core, Work work, Done done)
+{
+    std::weak_ptr<CellDb::Core> alive = core;
+    (void)QtConcurrent::run(&pool, [core, alive, work, done] {
+        decltype(work(*core)) result{};
+        QString error;
+        try {
+            result = work(*core);
+        } catch (const Error &e) {
+            error = e.text();
+        } catch (const std::exception &e) {
+            error = QString::fromUtf8(e.what());
+        }
+        deliver(alive, [done, error, result] { done(error, result); });
+    });
+}
 } // namespace
 
 CellDb::CellDb(const QString &dir, const QString &bundleDir, QObject *parent) : QObject(parent), m_core(std::make_shared<Core>())
@@ -1265,63 +1302,26 @@ CellDb::~CellDb()
 
 void CellDb::query(const Query &q, std::function<void(Result)> done)
 {
-    std::weak_ptr<Core> alive = m_core;
-    (void)QtConcurrent::run(&m_pool, [core = m_core, alive, q, done] {
-        Result r;
-        try {
-            r = core->query(q);
-        } catch (const Error &e) {
-            r.error = e.text();
-        } catch (const std::exception &e) {
-            r.error = QString::fromUtf8(e.what());
-        }
-        deliver(alive, [done, r] { done(r); });
+    runJob(m_pool, m_core, [q](Core &c) { return c.query(q); }, [done](const QString &error, Result r) {
+        if (!error.isEmpty()) r.error = error;
+        done(r);
     });
 }
 
 void CellDb::lookup(int mcc, int mnc, unsigned tac, unsigned eci, std::function<void(std::optional<CellRecord>, QString)> done)
 {
-    std::weak_ptr<Core> alive = m_core;
-    (void)QtConcurrent::run(&m_pool, [core = m_core, alive, mcc, mnc, tac, eci, done] {
-        std::optional<CellRecord> hit;
-        QString error;
-        try {
-            hit = core->lookup(mcc, mnc, tac, eci);
-        } catch (const Error &e) {
-            error = e.text();
-        }
-        deliver(alive, [done, hit, error] { done(hit, error); });
-    });
+    runJob(m_pool, m_core, [=](Core &c) { return c.lookup(mcc, mnc, tac, eci); },
+           [done](const QString &error, const std::optional<CellRecord> &hit) { done(hit, error); });
 }
 
 void CellDb::downloadOpenCellid(int mcc, std::function<void(QString, int)> done)
 {
-    std::weak_ptr<Core> alive = m_core;
-    (void)QtConcurrent::run(&m_bulk, [core = m_core, alive, mcc, done] {
-        QString error;
-        int cells = 0;
-        try {
-            cells = core->downloadOpenCellid(mcc);
-        } catch (const Error &e) {
-            error = e.text();
-        }
-        deliver(alive, [done, error, cells] { done(error, cells); });
-    });
+    runJob(m_bulk, m_core, [mcc](Core &c) { return c.downloadOpenCellid(mcc); }, done);
 }
 
 void CellDb::importCsv(const QString &file, std::function<void(QString, int)> done)
 {
-    std::weak_ptr<Core> alive = m_core;
-    (void)QtConcurrent::run(&m_bulk, [core = m_core, alive, file, done] {
-        QString error;
-        int cells = 0;
-        try {
-            cells = core->importCsv(file);
-        } catch (const Error &e) {
-            error = e.text();
-        }
-        deliver(alive, [done, error, cells] { done(error, cells); });
-    });
+    runJob(m_bulk, m_core, [file](Core &c) { return c.importCsv(file); }, done);
 }
 
 void CellDb::downloadBox(double south, double west, double north, double east, std::function<void(int, int, int, int)> progress,
@@ -1374,15 +1374,15 @@ QVariantMap CellDb::settings() const
 {
     QMutexLocker l(&m_core->lock);
     const QJsonObject s = m_core->settingsLocked();
-    return {{QStringLiteral("online"), s.value(QStringLiteral("online")).toBool(true)},
-            {QStringLiteral("hasToken"), !s.value(QStringLiteral("token")).toString().isEmpty()}};
+    return {{u"online"_s, s.value(u"online"_s).toBool(true)},
+            {u"hasToken"_s, !s.value(u"token"_s).toString().isEmpty()}};
 }
 
 void CellDb::setOnline(bool on)
 {
     QMutexLocker l(&m_core->lock);
     QJsonObject s = m_core->settingsLocked();
-    s.insert(QStringLiteral("online"), on);
+    s.insert(u"online"_s, on);
     writeJson(m_core->settingsFile(), s);
 }
 
@@ -1390,12 +1390,12 @@ void CellDb::setToken(const QString &token)
 {
     QMutexLocker l(&m_core->lock);
     QJsonObject s = m_core->settingsLocked();
-    s.insert(QStringLiteral("token"), token.trimmed());
+    s.insert(u"token"_s, token.trimmed());
     writeJson(m_core->settingsFile(), s);
     // A new token may find cells that were not found before
     QJsonObject &lk = m_core->lookupsLocked();
     for (const QString &k : lk.keys())
-        if (lk.value(k).toObject().value(QStringLiteral("miss")).toBool()) lk.remove(k);
+        if (lk.value(k).toObject().value(u"miss"_s).toBool()) lk.remove(k);
     writeJson(m_core->lookupFile(), lk);
 }
 

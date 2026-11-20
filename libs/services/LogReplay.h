@@ -43,7 +43,6 @@ public:
 
     /// Log ms at the cursor (or the play clock while playing).
     double currentLogMs() const;
-    bool isLoaded() const { return m_loaded; }
 
 public slots:
     void load(const QString &path);

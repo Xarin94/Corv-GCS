@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cstring>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -40,7 +42,7 @@ LogDownloader::LogDownloader(Send send, QObject *parent) : QObject(parent), m_se
 
 LogDownloader::~LogDownloader()
 {
-    if (m_dl) endDownload(false, QStringLiteral("closed"));
+    if (m_dl) endDownload(false, u"closed"_s);
 }
 
 void LogDownloader::setTarget(int system, int component)
@@ -49,7 +51,6 @@ void LogDownloader::setTarget(int system, int component)
     m_comp = component;
 }
 
-int LogDownloader::currentId() const { return m_dl ? m_dl->id : -1; }
 
 void LogDownloader::onMessage(const mavlink_message_t &m)
 {
@@ -128,8 +129,8 @@ void LogDownloader::onListTimeout()
 {
     if (!m_listing) return;
     if (++m_listTries > 3) {
-        finishList(false, m_listExpected < 0 ? QStringLiteral("no answer from the vehicle (disarmed? logging enabled?)")
-                                             : QStringLiteral("%1 of %2 entries received").arg(m_entries.size()).arg(m_listExpected));
+        finishList(false, m_listExpected < 0 ? u"no answer from the vehicle (disarmed? logging enabled?)"_s
+                                             : u"%1 of %2 entries received"_s.arg(m_entries.size()).arg(m_listExpected));
         return;
     }
     if (m_listExpected < 0) {
@@ -155,7 +156,7 @@ void LogDownloader::finishList(bool ok, const QString &error)
 {
     m_listTimer.stop();
     m_listing = false;
-    LOG_I("logs") << "list:" << m_entries.size() << "of" << m_listExpected << (error.isEmpty() ? QString() : QStringLiteral("(") + error + QLatin1Char(')'));
+    LOG_I("logs") << "list:" << m_entries.size() << "of" << m_listExpected << (error.isEmpty() ? QString() : u"("_s + error + ')'_L1);
     emit entriesChanged();
     emit listFinished(ok, error);
 }
@@ -168,18 +169,18 @@ bool LogDownloader::download(int id, quint32 size, const QString &path, QString 
         if (error) *error = e;
         return false;
     };
-    if (m_dl) return fail(QStringLiteral("a download is in progress"));
-    if (m_listing) finishList(false, QStringLiteral("interrupted by a download"));
+    if (m_dl) return fail(u"a download is in progress"_s);
+    if (m_listing) finishList(false, u"interrupted by a download"_s);
     auto d = std::make_unique<Download>();
     d->id = id;
     d->size = size;
     d->path = path;
-    d->file.setFileName(path + QStringLiteral(".part"));
+    d->file.setFileName(path + u".part"_s);
     if (!d->file.open(QIODevice::ReadWrite | QIODevice::Truncate)) return fail(d->file.errorString());
     if (size > 0) {
         if (!d->file.resize(size)) return fail(d->file.errorString());
         d->map = d->file.map(0, size);
-        if (!d->map) return fail(QStringLiteral("cannot map %1 bytes: %2").arg(size).arg(d->file.errorString()));
+        if (!d->map) return fail(u"cannot map %1 bytes: %2"_s.arg(size).arg(d->file.errorString()));
     }
     d->blocks = (qint64(size) + kBlock - 1) / kBlock;
     d->have.assign(size_t(d->blocks), false);
@@ -265,7 +266,7 @@ void LogDownloader::onStall()
 {
     if (!m_dl) return;
     if (++m_dl->stalls > m_retries) {
-        endDownload(false, QStringLiteral("the vehicle stopped sending (%1 of %2 bytes)").arg(m_dl->received * kBlock).arg(m_dl->size));
+        endDownload(false, u"the vehicle stopped sending (%1 of %2 bytes)"_s.arg(m_dl->received * kBlock).arg(m_dl->size));
         return;
     }
     LOG_D("logs") << "log" << m_dl->id << "stalled, asking again from block" << m_dl->scan;
@@ -302,7 +303,7 @@ void LogDownloader::endDownload(bool ok, const QString &error)
         QFile::remove(dl->path);
         if (!QFile::rename(dl->file.fileName(), dl->path)) {
             ok = false;
-            err = QStringLiteral("cannot rename %1").arg(dl->file.fileName());
+            err = u"cannot rename %1"_s.arg(dl->file.fileName());
         }
     }
     if (!ok) QFile::remove(dl->file.fileName());
@@ -315,8 +316,8 @@ void LogDownloader::endDownload(bool ok, const QString &error)
 
 void LogDownloader::cancel()
 {
-    if (m_listing) finishList(false, QStringLiteral("cancelled"));
-    if (m_dl) endDownload(false, QStringLiteral("cancelled"));
+    if (m_listing) finishList(false, u"cancelled"_s);
+    if (m_dl) endDownload(false, u"cancelled"_s);
     sendRequestEnd();
 }
 

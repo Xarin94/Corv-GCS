@@ -16,6 +16,8 @@
 #include <cmath>
 #include <cstring>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 EkfController *EkfController::s_instance = nullptr;
@@ -43,11 +45,11 @@ const QColor kGrid(255, 255, 255, 18), kAxis(255, 255, 255, 56);
 
 const char *const kFixNames[] = {"NO GPS", "NO FIX", "2D", "3D", "DGPS", "RTK FLT", "RTK FIX", "STATIC", "PPP"};
 
-QString fmt(std::optional<double> v, int digits) { return v && std::isfinite(*v) ? QString::number(*v, 'f', digits) : QStringLiteral("—"); }
-QString fmtInt(std::optional<int> v) { return v ? QString::number(*v) : QStringLiteral("—"); }
+QString fmt(std::optional<double> v, int digits) { return v && std::isfinite(*v) ? QString::number(*v, 'f', digits) : u"—"_s; }
+QString fmtInt(std::optional<int> v) { return v ? QString::number(*v) : u"—"_s; }
 QVariantMap chip(const QString &k, const QString &v, const QString &status = {})
 {
-    return {{QStringLiteral("k"), k}, {QStringLiteral("v"), v}, {QStringLiteral("status"), status}};
+    return {{u"k"_s, k}, {u"v"_s, v}, {u"status"_s, status}};
 }
 
 double niceCeil(double v)
@@ -62,14 +64,14 @@ constexpr double kPadL = 30, kPadT = 6, kPadB = 13;
 
 QFont uiFont(double px)
 {
-    QFont f(QStringLiteral("Rajdhani"));
+    QFont f(u"Rajdhani"_s);
     f.setPixelSize(int(px));
     f.setWeight(QFont::DemiBold);
     return f;
 }
 QFont dataFont(double px)
 {
-    QFont f(QStringLiteral("Roboto Mono"));
+    QFont f(u"Roboto Mono"_s);
     f.setPixelSize(int(px));
     return f;
 }
@@ -80,7 +82,7 @@ EkfController::EkfController(MessageBus *bus, LinkManager *link, CommandSender *
     : QObject(parent), m_bus(bus), m_cmd(cmd), m_hub(hub)
 {
     s_instance = this;
-    m_enabled = Settings::instance().value(QLatin1String(kEnabledKey)).toString() == QLatin1String("1");
+    m_enabled = Settings::instance().value(QLatin1String(kEnabledKey)).toString() == "1"_L1;
     for (std::uint32_t id : {193u, 24u, 30u, 178u, 241u})
         m_bus->subscribe(id, this, [this](const MavMessage &m) { m_monitor.ingestMavlink(m.msg, monoMs()); });
     m_draw.setInterval(kDrawMs);
@@ -96,7 +98,7 @@ void EkfController::setEnabled(bool on)
 {
     if (on == m_enabled) return;
     m_enabled = on;
-    Settings::instance().setValue(QLatin1String(kEnabledKey), on ? QStringLiteral("1") : QStringLiteral("0"));
+    Settings::instance().setValue(QLatin1String(kEnabledKey), on ? u"1"_s : u"0"_s);
     if (m_enabled && m_shown) m_draw.start();
     else m_draw.stop();
     manageRates(monoMs());
@@ -159,7 +161,7 @@ const std::vector<EkfController::Spec> &EkfController::specs() const
         v[0].digits = 2;
         v[0].lines = {{"apVel", "VEL"}, {"apPosH", "POS H"}, {"apPosV", "POS V"}, {"apMag", "MAG"}, {"apTas", "TAS", true}};
         v[0].marks = {{0.5, "warning", "0.5"}, {0.8, "critical", "0.8"}};
-        v[0].chips = [](const EkfMonitor &m) { return QVariantList{chip(QStringLiteral("TERR"), fmt(m.ap().terr, 2))}; };
+        v[0].chips = [](const EkfMonitor &m) { return QVariantList{chip(u"TERR"_s, fmt(m.ap().terr, 2))}; };
 
         v[1].title = "GPS ACCURACY";
         v[1].unit = "H, V in m · SPEED in m/s";
@@ -171,8 +173,8 @@ const std::vector<EkfController::Spec> &EkfController::specs() const
         v[1].fallback = std::make_pair("HDOP · the receiver reports no accuracy", std::make_pair(2.0, std::vector<Line>{{"apHdop", "HDOP"}}));
         v[1].chips = [](const EkfMonitor &m) {
             const auto fix = m.ap().fix;
-            return QVariantList{chip(QStringLiteral("FIX"), fix && *fix >= 0 && *fix < 9 ? QLatin1String(kFixNames[*fix]) : QStringLiteral("—")),
-                                chip(QStringLiteral("SATS"), fmtInt(m.ap().sats)), chip(QStringLiteral("HDOP"), fmt(m.ap().hdop, 1))};
+            return QVariantList{chip(u"FIX"_s, fix && *fix >= 0 && *fix < 9 ? QLatin1String(kFixNames[*fix]) : u"—"_s),
+                                chip(u"SATS"_s, fmtInt(m.ap().sats)), chip(u"HDOP"_s, fmt(m.ap().hdop, 1))};
         };
 
         // AHRS2 is the estimator not in use: the DCM while the EKF flies
@@ -185,10 +187,10 @@ const std::vector<EkfController::Spec> &EkfController::specs() const
         v[2].chips = [](const EkfMonitor &m) {
             const auto &vibe = m.ap().vibe;
             const double worst = vibe ? std::max({(*vibe)[0], (*vibe)[1], (*vibe)[2]}) : 0;
-            const QString vt = vibe ? QStringLiteral("%1/%2/%3").arg((*vibe)[0], 0, 'f', 0).arg((*vibe)[1], 0, 'f', 0).arg((*vibe)[2], 0, 'f', 0) : QStringLiteral("—");
+            const QString vt = vibe ? u"%1/%2/%3"_s.arg((*vibe)[0], 0, 'f', 0).arg((*vibe)[1], 0, 'f', 0).arg((*vibe)[2], 0, 'f', 0) : u"—"_s;
             const auto clip = m.ap().clip;
-            return QVariantList{chip(QStringLiteral("VIBE"), vt, worst > 60 ? QStringLiteral("critical") : worst > 30 ? QStringLiteral("warning") : QString()),
-                                chip(QStringLiteral("CLIP"), fmtInt(clip), clip && *clip > 0 ? QStringLiteral("warning") : QString())};
+            return QVariantList{chip(u"VIBE"_s, vt, worst > 60 ? u"critical"_s : worst > 30 ? u"warning"_s : QString()),
+                                chip(u"CLIP"_s, fmtInt(clip), clip && *clip > 0 ? u"warning"_s : QString())};
         };
         return v;
     }();
@@ -225,23 +227,23 @@ QString EkfController::seriesColor(const Spec &s, const Line &l, int i) const
 void EkfController::updateText(double now)
 {
     const QString source = m_monitor.source(now);
-    static const QHash<QString, QString> labels = {{QStringLiteral("ardupilot"), QStringLiteral("ARDUPILOT EKF3")}};
-    m_sourceText = source.isEmpty() ? QStringLiteral("WAITING FOR ESTIMATOR DATA")
-                                    : labels.value(source) + (m_monitor.live(now) ? QString() : QStringLiteral(" · NO DATA"));
+    static const QHash<QString, QString> labels = {{u"ardupilot"_s, u"ARDUPILOT EKF3"_s}};
+    m_sourceText = source.isEmpty() ? u"WAITING FOR ESTIMATOR DATA"_s
+                                    : labels.value(source) + (m_monitor.live(now) ? QString() : u" · NO DATA"_s);
 
     QVariantList flags;
-    const auto add = [&](const QString &label, const QString &state) { flags << QVariantMap{{QStringLiteral("label"), label}, {QStringLiteral("state"), state}}; };
-    if (source == QLatin1String("ardupilot") && m_monitor.ap().flags) {
+    const auto add = [&](const QString &label, const QString &state) { flags << QVariantMap{{u"label"_s, label}, {u"state"_s, state}}; };
+    if (source == "ardupilot"_L1 && m_monitor.ap().flags) {
         const int f = *m_monitor.ap().flags;
-        const auto ok = [&](int bit, const char *label) { add(QLatin1String(label), f & bit ? QStringLiteral("good") : QStringLiteral("critical")); };
+        const auto ok = [&](int bit, const char *label) { add(QLatin1String(label), f & bit ? u"good"_s : u"critical"_s); };
         ok(ekfflags::Attitude, "ATT");
         ok(ekfflags::VelocityHoriz, "VEL H");
         ok(ekfflags::VelocityVert, "VEL V");
-        add(QStringLiteral("POS H"), f & (ekfflags::PosHorizAbs | ekfflags::PosHorizRel) ? QStringLiteral("good") : QStringLiteral("critical"));
+        add(u"POS H"_s, f & (ekfflags::PosHorizAbs | ekfflags::PosHorizRel) ? u"good"_s : u"critical"_s);
         ok(ekfflags::PosVertAbs, "POS V");
-        if (f & ekfflags::ConstPosMode) add(QStringLiteral("CONST POS"), QStringLiteral("warning"));
-        if (f & ekfflags::GpsGlitching) add(QStringLiteral("GPS GLITCH"), QStringLiteral("critical"));
-        if (f & ekfflags::Uninitialized) add(QStringLiteral("UNINITIALISED"), QStringLiteral("critical"));
+        if (f & ekfflags::ConstPosMode) add(u"CONST POS"_s, u"warning"_s);
+        if (f & ekfflags::GpsGlitching) add(u"GPS GLITCH"_s, u"critical"_s);
+        if (f & ekfflags::Uninitialized) add(u"UNINITIALISED"_s, u"critical"_s);
     }
     m_flags = flags;
 
@@ -262,12 +264,12 @@ void EkfController::updateText(double now)
             if (t) v = ser.at(*t);
             else if (ser.lastTime() && *ser.lastTime() >= now - kEkfWindowMs) v = ser.last();
             const QString text = s.log && v ? QString::number(*v, 'e', 2) : fmt(v, s.digits);
-            legend << QVariantMap{{QStringLiteral("name"), QString::fromUtf8(a.lines[i].name)},
-                                  {QStringLiteral("color"), seriesColor(s, a.lines[i], int(i))},
-                                  {QStringLiteral("value"), text}};
+            legend << QVariantMap{{u"name"_s, QString::fromUtf8(a.lines[i].name)},
+                                  {u"color"_s, seriesColor(s, a.lines[i], int(i))},
+                                  {u"value"_s, text}};
         }
-        cards << QVariantMap{{QStringLiteral("title"), QString::fromUtf8(s.title)}, {QStringLiteral("unit"), a.unit},
-                             {QStringLiteral("chips"), s.chips(m_monitor)}, {QStringLiteral("legend"), legend}};
+        cards << QVariantMap{{u"title"_s, QString::fromUtf8(s.title)}, {u"unit"_s, a.unit},
+                             {u"chips"_s, s.chips(m_monitor)}, {u"legend"_s, legend}};
     }
     m_cards = cards;
     emit textChanged();
@@ -282,6 +284,15 @@ void EkfController::setHover(int card, double x, double w)
 
 // ── Chart ────────────────────────────────────────────────────────────────
 
+/// A card's chart area: the last kEkfWindowMs on x, the value range on y.
+struct EkfController::Plot {
+    double pw = 0, ph = 0, t0 = 0, lo = 0, hi = 1;
+    bool log = false;
+    double scale(double v) const { return log ? std::log10(std::max(v, 1e-12)) : v; }
+    double X(double t) const { return kPadL + (t - t0) / kEkfWindowMs * pw; }
+    double Y(double v) const { return kPadT + ph - (scale(std::clamp(v, lo, hi)) - scale(lo)) / (scale(hi) - scale(lo)) * ph; }
+};
+
 void EkfController::drawCard(QPainter *p, int card, double w, double h, double hoverX) const
 {
     const auto &sp = specs();
@@ -289,96 +300,115 @@ void EkfController::drawCard(QPainter *p, int card, double w, double h, double h
     const Spec &spec = sp[std::size_t(card)];
     const double now = monoMs();
     const Active a = activeLines(spec);
-    const auto &lines = a.lines;
     p->setRenderHint(QPainter::Antialiasing, true);
 
     // Right margin: room for the series names at the line ends (none for a single series)
     double padR = 10;
-    const QFont endFont = uiFont(10);
-    if (lines.size() >= 2) {
-        const QFontMetricsF fm(endFont);
+    if (a.lines.size() >= 2) {
+        const QFontMetricsF fm(uiFont(10));
         double widest = 0;
-        for (const Line &l : lines) widest = std::max(widest, fm.horizontalAdvance(QString::fromUtf8(l.name)));
+        for (const Line &l : a.lines) widest = std::max(widest, fm.horizontalAdvance(QString::fromUtf8(l.name)));
         padR = std::min(80.0, std::ceil(widest) + 12);
     }
     const double pw = w - kPadL - padR, ph = h - kPadT - kPadB;
     if (pw < 20 || ph < 20) return;
-    const double t0 = now - kEkfWindowMs;
-    const auto X = [&](double t) { return kPadL + (t - t0) / kEkfWindowMs * pw; };
+    const Plot pl = plotFor(spec, a, pw, ph, now);
+    drawGrid(p, spec, pl, h);
+    drawMarks(p, spec, pl);
+    drawSeries(p, spec, a, pl, padR);
 
+    // Hover: crosshair at the pointer's time
+    if (hoverX >= kPadL && hoverX <= kPadL + pw) {
+        p->setPen(QPen(kInkSecondary, 1));
+        const double x = std::round(hoverX) + 0.5;
+        p->drawLine(QPointF(x, kPadT), QPointF(x, kPadT + ph));
+    }
+    const bool any = std::any_of(a.lines.begin(), a.lines.end(), [&](const Line &l) { return !m_monitor.series(QLatin1String(l.key)).empty(); });
+    if (!any) {
+        p->setPen(kInkMuted);
+        p->setFont(uiFont(11));
+        p->drawText(QRectF(kPadL, kPadT, pw, ph), Qt::AlignCenter, u"NO DATA"_s);
+    }
+}
+
+EkfController::Plot EkfController::plotFor(const Spec &spec, const Active &a, double pw, double ph, double now) const
+{
+    Plot pl;
+    pl.pw = pw;
+    pl.ph = ph;
+    pl.t0 = now - kEkfWindowMs;
+    pl.log = spec.log;
     // Range over what is on screen
     double mx = -INFINITY, mn = INFINITY;
-    for (const Line &l : lines) {
+    for (const Line &l : a.lines) {
         const EkfSeries &s = m_monitor.series(QLatin1String(l.key));
         for (int i = 0; i < s.size(); ++i)
-            if (s.t(i) >= t0) {
+            if (s.t(i) >= pl.t0) {
                 const double v = spec.symmetric ? std::abs(s.v(i)) : s.v(i);
                 mx = std::max(mx, v);
                 mn = std::min(mn, v);
             }
     }
-    double lo, hi;
-    std::function<double(double)> scale = [](double v) { return v; };
+    const double top = niceCeil(std::max(a.floor, std::isfinite(mx) ? mx * 1.15 : 0));
     if (spec.log) {
-        scale = [](double v) { return std::log10(std::max(v, 1e-12)); };
-        const double ea = std::isfinite(mn) ? std::floor(scale(mn)) : -3, eb = std::isfinite(mx) ? std::ceil(scale(mx)) : 0;
-        lo = std::pow(10, ea);
-        hi = std::pow(10, eb > ea ? eb : ea + 1);
+        const double ea = std::isfinite(mn) ? std::floor(pl.scale(mn)) : -3, eb = std::isfinite(mx) ? std::ceil(pl.scale(mx)) : 0;
+        pl.lo = std::pow(10, ea);
+        pl.hi = std::pow(10, eb > ea ? eb : ea + 1);
     } else if (spec.symmetric) {
-        hi = niceCeil(std::max(a.floor, std::isfinite(mx) ? mx * 1.15 : 0));
-        lo = -hi;
+        pl.hi = top;
+        pl.lo = -top;
     } else {
-        lo = spec.min.value_or(0);
-        hi = spec.max ? *spec.max : niceCeil(std::max(a.floor, std::isfinite(mx) ? mx * 1.15 : 0));
+        pl.lo = spec.min.value_or(0);
+        pl.hi = spec.max ? *spec.max : top;
     }
-    const auto Y = [&](double v) { return kPadT + ph - (scale(std::clamp(v, lo, hi)) - scale(lo)) / (scale(hi) - scale(lo)) * ph; };
+    return pl;
+}
 
+void EkfController::drawGrid(QPainter *p, const Spec &spec, const Plot &pl, double h) const
+{
     // Grid and y labels: recessive
     p->setFont(dataFont(10));
     std::vector<double> ticks;
     if (spec.log) {
-        for (int e = int(std::lround(std::log10(lo))); e <= int(std::lround(std::log10(hi))); ++e) ticks.push_back(std::pow(10, e));
+        for (int e = int(std::lround(std::log10(pl.lo))); e <= int(std::lround(std::log10(pl.hi))); ++e) ticks.push_back(std::pow(10, e));
         if (ticks.size() > 4) ticks = {ticks.front(), ticks[ticks.size() / 2], ticks.back()};
-    } else if (spec.symmetric) {
-        ticks = {lo, 0, hi};
     } else {
-        ticks = {lo, (lo + hi) / 2, hi};
+        ticks = {pl.lo, spec.symmetric ? 0 : (pl.lo + pl.hi) / 2, pl.hi};
     }
     const auto tickLabel = [&](double v) {
-        if (spec.log) {
-            const int e = int(std::lround(std::log10(v)));
-            return QStringLiteral("1e%1").arg(e);
-        }
+        if (spec.log) return u"1e%1"_s.arg(int(std::lround(std::log10(v))));
         if (std::abs(v) >= 10 || v == 0) return QString::number(v, 'f', 0);
         return QString::number(std::round(v * 100) / 100, 'g', 6);
     };
     for (double v : ticks) {
-        bool marked = false;
-        for (const Mark &m : spec.marks) marked |= m.v == v;
-        if (marked) continue;   // the threshold line carries its own label
-        const double y = std::round(Y(v)) + 0.5;
-        p->setPen(QPen(v == 0 || v == lo ? kAxis : kGrid, 1));
-        p->drawLine(QPointF(kPadL, y), QPointF(kPadL + pw, y));
+        // A threshold line carries its own label
+        if (std::any_of(spec.marks.begin(), spec.marks.end(), [v](const Mark &m) { return m.v == v; })) continue;
+        const double y = std::round(pl.Y(v)) + 0.5;
+        p->setPen(QPen(v == 0 || v == pl.lo ? kAxis : kGrid, 1));
+        p->drawLine(QPointF(kPadL, y), QPointF(kPadL + pl.pw, y));
         p->setPen(kInkMuted);
         p->drawText(QRectF(0, y - 7, kPadL - 4, 14), Qt::AlignRight | Qt::AlignVCenter, tickLabel(v));
     }
     // Time labels
     p->setPen(kInkMuted);
-    p->drawText(QRectF(kPadL, h - 13, 60, 13), Qt::AlignLeft | Qt::AlignBottom, QStringLiteral("−20 s"));
-    p->drawText(QRectF(kPadL + pw / 2 - 30, h - 13, 60, 13), Qt::AlignHCenter | Qt::AlignBottom, QStringLiteral("−10 s"));
-    p->drawText(QRectF(kPadL + pw - 60, h - 13, 60, 13), Qt::AlignRight | Qt::AlignBottom, QStringLiteral("now"));
+    p->drawText(QRectF(kPadL, h - 13, 60, 13), Qt::AlignLeft | Qt::AlignBottom, u"−20 s"_s);
+    p->drawText(QRectF(kPadL + pl.pw / 2 - 30, h - 13, 60, 13), Qt::AlignHCenter | Qt::AlignBottom, u"−10 s"_s);
+    p->drawText(QRectF(kPadL + pl.pw - 60, h - 13, 60, 13), Qt::AlignRight | Qt::AlignBottom, u"now"_s);
+}
 
+void EkfController::drawMarks(QPainter *p, const Spec &spec, const Plot &pl) const
+{
     // Thresholds: dashed, labelled; status colour only where the level is a state
     double lastLabelY = INFINITY;
     for (const Mark &m : spec.marks) {
-        if (m.v < lo || m.v > hi) continue;
-        const double y = std::round(Y(m.v)) + 0.5;
+        if (m.v < pl.lo || m.v > pl.hi) continue;
+        const double y = std::round(pl.Y(m.v)) + 0.5;
         QColor c = statusColor(m.status);
         c.setAlphaF(0.8f);
         QPen pen(c, 1);
         pen.setDashPattern({4, 3});
         p->setPen(pen);
-        p->drawLine(QPointF(kPadL, y), QPointF(kPadL + pw, y));
+        p->drawLine(QPointF(kPadL, y), QPointF(kPadL + pl.pw, y));
         if (std::abs(lastLabelY - y) < 10) continue;   // squeezed together: the lower label alone
         lastLabelY = y;
         const QString label = QString::fromUtf8(m.label);
@@ -387,18 +417,20 @@ void EkfController::drawCard(QPainter *p, int card, double w, double h, double h
         p->setPen(kInkSecondary);
         p->drawText(QRectF(kPadL + 3, y - 12, tw + 4, 12), Qt::AlignLeft | Qt::AlignBottom, label);
     }
+}
 
+void EkfController::drawSeries(QPainter *p, const Spec &spec, const Active &a, const Plot &pl, double padR) const
+{
     // Events (resamples): ticks on the baseline
     if (spec.events) {
         const EkfSeries &s = m_monitor.series(QLatin1String(spec.events));
         p->setPen(QPen(kInkSecondary, 1));
         for (int i = 0; i < s.size(); ++i)
-            if (s.t(i) >= t0) {
-                const double x = std::round(X(s.t(i))) + 0.5;
-                p->drawLine(QPointF(x, kPadT + ph), QPointF(x, kPadT + ph - 4 - std::min(6.0, s.v(i))));
+            if (s.t(i) >= pl.t0) {
+                const double x = std::round(pl.X(s.t(i))) + 0.5;
+                p->drawLine(QPointF(x, kPadT + pl.ph), QPointF(x, kPadT + pl.ph - 4 - std::min(6.0, s.v(i))));
             }
     }
-
     // Series: 2 px lines, clipped to the plot; a hole in the data stays a hole
     struct End {
         QString name;
@@ -407,20 +439,18 @@ void EkfController::drawCard(QPainter *p, int card, double w, double h, double h
     };
     std::vector<End> ends;
     p->save();
-    p->setClipRect(QRectF(kPadL, kPadT - 1, pw, ph + 2));
-    for (std::size_t i = 0; i < lines.size(); ++i) {
-        const EkfSeries &s = m_monitor.series(QLatin1String(lines[i].key));
-        const QColor color(seriesColor(spec, lines[i], int(i)));
+    p->setClipRect(QRectF(kPadL, kPadT - 1, pl.pw, pl.ph + 2));
+    for (std::size_t i = 0; i < a.lines.size(); ++i) {
+        const EkfSeries &s = m_monitor.series(QLatin1String(a.lines[i].key));
+        const QColor color(seriesColor(spec, a.lines[i], int(i)));
         QPainterPath path;
         bool started = false;
         for (int k = 0; k < s.size(); ++k) {
-            if (s.t(k) < t0 && !(k + 1 < s.size() && s.t(k + 1) >= t0)) continue;
-            const QPointF pt(X(s.t(k)), Y(s.v(k)));
+            if (s.t(k) < pl.t0 && !(k + 1 < s.size() && s.t(k + 1) >= pl.t0)) continue;
+            const QPointF pt(pl.X(s.t(k)), pl.Y(s.v(k)));
             if (started && s.t(k) - s.t(k - 1) <= kGapMs) path.lineTo(pt);
-            else {
-                path.moveTo(pt);
-                started = true;
-            }
+            else path.moveTo(pt);
+            started = true;
         }
         QPen pen(color, 2);
         pen.setCapStyle(Qt::RoundCap);
@@ -428,7 +458,7 @@ void EkfController::drawCard(QPainter *p, int card, double w, double h, double h
         p->setPen(pen);
         p->setBrush(Qt::NoBrush);
         p->drawPath(path);
-        if (s.size() && *s.lastTime() >= t0) ends.push_back({QString::fromUtf8(lines[i].name), color, X(*s.lastTime()), Y(*s.last())});
+        if (s.size() && *s.lastTime() >= pl.t0) ends.push_back({QString::fromUtf8(a.lines[i].name), color, pl.X(*s.lastTime()), pl.Y(*s.last())});
     }
     p->restore();
 
@@ -440,31 +470,14 @@ void EkfController::drawCard(QPainter *p, int card, double w, double h, double h
         p->setBrush(e.color);
         p->drawEllipse(QPointF(e.x, e.y), 2.5, 2.5);
     }
-    if (lines.size() > 1 && !ends.empty()) {
-        std::sort(ends.begin(), ends.end(), [](const End &a, const End &b) { return a.y < b.y; });
-        for (std::size_t i = 1; i < ends.size(); ++i) ends[i].y = std::max(ends[i].y, ends[i - 1].y + 10);
-        const double over = ends.back().y - (kPadT + ph);
-        if (over > 0)
-            for (End &e : ends) e.y -= over;
-        p->setFont(endFont);
-        p->setPen(kInkSecondary);
-        for (const End &e : ends) p->drawText(QRectF(kPadL + pw + 6, e.y - 7, padR, 14), Qt::AlignLeft | Qt::AlignVCenter, e.name);
-    }
-
-    // Hover: crosshair at the pointer's time
-    if (hoverX >= kPadL && hoverX <= kPadL + pw) {
-        p->setPen(QPen(kInkSecondary, 1));
-        const double x = std::round(hoverX) + 0.5;
-        p->drawLine(QPointF(x, kPadT), QPointF(x, kPadT + ph));
-    }
-
-    bool any = false;
-    for (const Line &l : lines) any |= !m_monitor.series(QLatin1String(l.key)).empty();
-    if (!any) {
-        p->setPen(kInkMuted);
-        p->setFont(uiFont(11));
-        p->drawText(QRectF(kPadL, kPadT, pw, ph), Qt::AlignCenter, QStringLiteral("NO DATA"));
-    }
+    if (a.lines.size() < 2 || ends.empty()) return;
+    std::sort(ends.begin(), ends.end(), [](const End &l, const End &r) { return l.y < r.y; });
+    for (std::size_t i = 1; i < ends.size(); ++i) ends[i].y = std::max(ends[i].y, ends[i - 1].y + 10);
+    if (const double over = ends.back().y - (kPadT + pl.ph); over > 0)
+        for (End &e : ends) e.y -= over;
+    p->setFont(uiFont(10));
+    p->setPen(kInkSecondary);
+    for (const End &e : ends) p->drawText(QRectF(kPadL + pl.pw + 6, e.y - 7, padR, 14), Qt::AlignLeft | Qt::AlignVCenter, e.name);
 }
 
 // ── EkfChart ─────────────────────────────────────────────────────────────

@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <vector>
 
+using namespace Qt::StringLiterals;
+
 namespace corv::geozone {
 
 namespace {
@@ -61,7 +63,7 @@ void paintZones(QPainter *p, const GeoZoneList &zones, const std::array<double, 
     int n = 0;
     for (const Styled &s : list) {
         const GeoZone &z = *s.z;
-        const bool faaGrid = z.id.startsWith(QLatin1String("faa:uasfm"));
+        const bool faaGrid = z.id.startsWith("faa:uasfm"_L1);
         QPainterPath path;
         path.setFillRule(Qt::OddEvenFill);
         for (const auto &rings : z.polys) {
@@ -104,14 +106,14 @@ QString describeAt(const GeoZoneList &zones, double lat, double lon)
         const auto floor = floorAgl(z);
         if (!floor || *floor >= kCeilingMaxM) continue;
         const QString what = *floor <= 0.5
-                                 ? (z.prohibited() ? QStringLiteral("No-fly or authorisation required from the surface")
-                                                   : QStringLiteral("Conditions apply from the surface"))
-                                 : QStringLiteral("Max %1 m AGL%2").arg(qRound(*floor)).arg(z.prohibited() ? QString() : QStringLiteral(" (conditions above)"));
+                                 ? (z.prohibited() ? u"No-fly or authorisation required from the surface"_s
+                                                   : u"Conditions apply from the surface"_s)
+                                 : u"Max %1 m AGL%2"_s.arg(qRound(*floor)).arg(z.prohibited() ? QString() : u" (conditions above)"_s);
         auto lim = [](std::optional<double> v, bool agl) {
-            return v ? QStringLiteral("%1 m %2").arg(qRound(*v)).arg(agl ? QStringLiteral("AGL") : QStringLiteral("MSL")) : QStringLiteral("unlimited");
+            return v ? u"%1 m %2"_s.arg(qRound(*v)).arg(agl ? u"AGL"_s : u"MSL"_s) : u"unlimited"_s;
         };
-        return QStringLiteral("%1\n%2\nZone %3 – %4 · %5%6").arg(z.name, what, lim(z.floor, z.floorAgl), lim(z.top, z.topAgl), sourceName(z.src),
-                                                             z.info.isEmpty() ? QString() : QStringLiteral("\n") + z.info.left(160));
+        return u"%1\n%2\nZone %3 – %4 · %5%6"_s.arg(z.name, what, lim(z.floor, z.floorAgl), lim(z.top, z.topAgl), sourceName(z.src),
+                                                             z.info.isEmpty() ? QString() : u"\n"_s + z.info.left(160));
     }
     return {};
 }

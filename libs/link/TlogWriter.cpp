@@ -6,14 +6,16 @@
 #include <QDir>
 #include <QtEndian>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 QString TlogWriter::start(const QString &dir)
 {
     if (m_file) return m_path;
     QDir().mkpath(dir);
-    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH-mm-ss"));
-    const QString path = dir + QLatin1Char('/') + stamp + QStringLiteral(".tlog");
+    const QString stamp = QDateTime::currentDateTime().toString(u"yyyy-MM-dd HH-mm-ss"_s);
+    const QString path = dir + '/'_L1 + stamp + u".tlog"_s;
     auto f = std::make_unique<QFile>(path);
     if (!f->open(QIODevice::WriteOnly)) {
         LOG_E("tlog") << "cannot record to" << path << f->errorString();

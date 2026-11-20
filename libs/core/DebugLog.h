@@ -42,7 +42,6 @@ public:
     /// Synchronous write (crash and quit paths).
     static void flushSync();
     /// Text of the file as it would be written now (tests).
-    static QString buildText();
 };
 
 /// One log line built with QDebug's << and written when it goes out of scope.

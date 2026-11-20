@@ -64,6 +64,9 @@ private:
     void homePosition(const mavlink_message_t &m, VehicleState &s);
     void adsbVehicle(const mavlink_message_t &m, VehicleState &s, std::int64_t now);
     void cellInfo(const mavlink_message_t &m, VehicleState &s, std::int64_t now);
+    void guidance(const mavlink_message_t &m, VehicleState &s, std::int64_t now);
+    void sensors(const mavlink_message_t &m, VehicleState &s, std::int64_t now);
+    void reports(const mavlink_message_t &m, VehicleState &s, std::int64_t now);
     void firstFix(VehicleState &s);
 
     Hooks m_hooks;

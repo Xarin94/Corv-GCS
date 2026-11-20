@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cstring>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace ftp {
@@ -87,12 +89,12 @@ ParamPack decodeParamPack(const QByteArray &raw)
     const auto *b = reinterpret_cast<const uchar *>(raw.constData());
     const qsizetype len = raw.size();
     if (len < 6) {
-        out.error = QStringLiteral("short header");
+        out.error = u"short header"_s;
         return out;
     }
     const quint16 magic = qFromLittleEndian<quint16>(b);
     if (magic != kPckMagic && magic != kPckMagicDefaults) {
-        out.error = QStringLiteral("bad magic 0x%1").arg(magic, 0, 16);
+        out.error = u"bad magic 0x%1"_s.arg(magic, 0, 16);
         return out;
     }
     const bool withDefaults = magic == kPckMagicDefaults;
@@ -111,12 +113,12 @@ ParamPack decodeParamPack(const QByteArray &raw)
         const int tlen = typeSize(ptype);
         if (!tlen) {
             out.ok = false;
-            out.error = QStringLiteral("bad type %1 at %2").arg(ptype).arg(pos);
+            out.error = u"bad type %1 at %2"_s.arg(ptype).arg(pos);
             break;
         }
         if (commonLen > lastName.size()) {
             out.ok = false;
-            out.error = QStringLiteral("bad common length at %1").arg(pos);
+            out.error = u"bad common length at %1"_s.arg(pos);
             break;
         }
         const bool hasDefault = withDefaults && (flags & 1);
@@ -218,13 +220,13 @@ void MavFtpClient::onPacket(const QByteArray &payload)
 
 void MavFtpClient::cancel(const QString &reason)
 {
-    if (m_t) abort(QStringLiteral("CANCELLED"), reason);
+    if (m_t) abort(u"CANCELLED"_s, reason);
 }
 
 void MavFtpClient::readFile(const QString &path, const Options &opts, std::function<void(const Progress &)> progress, Done done)
 {
     if (m_t) {
-        if (done) done(false, {}, QStringLiteral("BUSY"), QStringLiteral("an FTP transfer is already running"));
+        if (done) done(false, {}, u"BUSY"_s, u"an FTP transfer is already running"_s);
         return;
     }
     m_t = std::make_unique<Transfer>();
@@ -301,9 +303,9 @@ void MavFtpClient::onTimeout()
     if (!m_t || !m_t->pending) return;
     if (m_t->tries >= m_t->opts.retries) {
         if (m_t->phase == Transfer::Open)
-            abort(QStringLiteral("NOREPLY"), QStringLiteral("no FTP reply from the vehicle after %1 attempts").arg(m_t->opts.retries + 1));
+            abort(u"NOREPLY"_s, u"no FTP reply from the vehicle after %1 attempts"_s.arg(m_t->opts.retries + 1));
         else
-            abort(QStringLiteral("TIMEOUT"), QStringLiteral("FTP transfer stalled at %1 bytes").arg(m_t->bytes));
+            abort(u"TIMEOUT"_s, u"FTP transfer stalled at %1 bytes"_s.arg(m_t->bytes));
         return;
     }
     // A burst that went quiet is asked again from the first byte still missing
@@ -386,8 +388,8 @@ void MavFtpClient::handle(const Packet &op)
         const int code = op.data.isEmpty() ? Fail : uchar(op.data[0]);
         static const char *names[] = {"None", "Fail", "FailErrno", "InvalidDataSize", "InvalidSession", "NoSessionsAvailable",
                                       "EndOfFile", "UnknownCommand", "FileExists", "FileProtected", "FileNotFound"};
-        QString text = code >= 0 && code <= 10 ? QString::fromLatin1(names[code]) : QStringLiteral("error %1").arg(code);
-        if (code == FailErrno && op.data.size() > 1) text += QStringLiteral(" errno %1").arg(uchar(op.data[1]));
+        QString text = code >= 0 && code <= 10 ? QString::fromLatin1(names[code]) : u"error %1"_s.arg(code);
+        if (code == FailErrno && op.data.size() > 1) text += u" errno %1"_s.arg(uchar(op.data[1]));
         return std::make_pair(code, text);
     };
 
@@ -405,7 +407,7 @@ void MavFtpClient::handle(const Packet &op)
                 request(r);
                 return;
             }
-            abort(QStringLiteral("NAK"), QStringLiteral("open %1: %2").arg(m_t->path, text));
+            abort(u"NAK"_s, u"open %1: %2"_s.arg(m_t->path, text));
             return;
         }
         m_t->sizeHint = op.data.size() >= 4 ? qFromLittleEndian<quint32>(op.data.constData()) : 0;
@@ -440,7 +442,7 @@ void MavFtpClient::handle(const Packet &op)
                 sendNextGap();
                 return;
             }
-            abort(QStringLiteral("NAK"), QStringLiteral("burst read: %1").arg(text));
+            abort(u"NAK"_s, u"burst read: %1"_s.arg(text));
             return;
         }
         // Any ACK keeps the burst alive
@@ -480,7 +482,7 @@ void MavFtpClient::handle(const Packet &op)
                 sendNextGap();
                 return;
             }
-            abort(QStringLiteral("NAK"), QStringLiteral("read at %1: %2").arg(op.offset).arg(text));
+            abort(u"NAK"_s, u"read at %1: %2"_s.arg(op.offset).arg(text));
             return;
         }
         storeChunk(op);

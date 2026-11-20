@@ -6,6 +6,8 @@
 #include <atomic>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv::mission {
 
 namespace {
@@ -212,17 +214,17 @@ const char *kCatalog = R"JSON({
 struct Catalog {
     QJsonObject segments, actions, cameraPresets, radioPresets;
     QJsonArray cameraFields, radioFields, routeParamFields, gimbalFields;
-    QStringList segmentOrder{QStringLiteral("waypoint"), QStringLiteral("circle"), QStringLiteral("perimeter"), QStringLiteral("area"),
-                             QStringLiteral("corridor"), QStringLiteral("poi"), QStringLiteral("landing")};
-    QStringList actionOrder{QStringLiteral("trigger_dist"), QStringLiteral("shot"), QStringLiteral("gimbal"), QStringLiteral("yaw"),
-                            QStringLiteral("wait"), QStringLiteral("speed"), QStringLiteral("servo"), QStringLiteral("relay")};
+    QStringList segmentOrder{u"waypoint"_s, u"circle"_s, u"perimeter"_s, u"area"_s,
+                             u"corridor"_s, u"poi"_s, u"landing"_s};
+    QStringList actionOrder{u"trigger_dist"_s, u"shot"_s, u"gimbal"_s, u"yaw"_s,
+                            u"wait"_s, u"speed"_s, u"servo"_s, u"relay"_s};
 };
 
 QJsonArray presetOptions(const QJsonObject &presets, const QJsonArray &order)
 {
     QJsonArray opts;
     for (const QJsonValue &k : order)
-        opts.append(QJsonArray{k, presets.value(k.toString()).toObject().value(QStringLiteral("name"))});
+        opts.append(QJsonArray{k, presets.value(k.toString()).toObject().value(u"name"_s)});
     return opts;
 }
 
@@ -232,21 +234,21 @@ const Catalog &catalog()
         Catalog c;
         const QJsonObject root = QJsonDocument::fromJson(QByteArray(kCatalog)).object();
         Q_ASSERT(!root.isEmpty());
-        c.segments = root.value(QStringLiteral("segments")).toObject();
-        c.actions = root.value(QStringLiteral("actions")).toObject();
-        c.cameraPresets = root.value(QStringLiteral("cameraPresets")).toObject();
-        c.radioPresets = root.value(QStringLiteral("radioPresets")).toObject();
+        c.segments = root.value(u"segments"_s).toObject();
+        c.actions = root.value(u"actions"_s).toObject();
+        c.cameraPresets = root.value(u"cameraPresets"_s).toObject();
+        c.radioPresets = root.value(u"radioPresets"_s).toObject();
         // The preset select leads both field lists, with the preset names as options
-        c.cameraFields.append(QJsonObject{{QStringLiteral("key"), QStringLiteral("preset")}, {QStringLiteral("label"), QStringLiteral("Camera")},
-                                          {QStringLiteral("type"), QStringLiteral("select")},
-                                          {QStringLiteral("options"), presetOptions(c.cameraPresets, root.value(QStringLiteral("cameraOrder")).toArray())}});
-        for (const QJsonValue &f : root.value(QStringLiteral("cameraFields")).toArray()) c.cameraFields.append(f);
-        c.radioFields.append(QJsonObject{{QStringLiteral("key"), QStringLiteral("preset")}, {QStringLiteral("label"), QStringLiteral("Radio")},
-                                         {QStringLiteral("type"), QStringLiteral("select")},
-                                         {QStringLiteral("options"), presetOptions(c.radioPresets, root.value(QStringLiteral("radioOrder")).toArray())}});
-        for (const QJsonValue &f : root.value(QStringLiteral("radioFields")).toArray()) c.radioFields.append(f);
-        c.routeParamFields = root.value(QStringLiteral("routeParamFields")).toArray();
-        c.gimbalFields = root.value(QStringLiteral("gimbalFields")).toArray();
+        c.cameraFields.append(QJsonObject{{u"key"_s, u"preset"_s}, {u"label"_s, u"Camera"_s},
+                                          {u"type"_s, u"select"_s},
+                                          {u"options"_s, presetOptions(c.cameraPresets, root.value(u"cameraOrder"_s).toArray())}});
+        for (const QJsonValue &f : root.value(u"cameraFields"_s).toArray()) c.cameraFields.append(f);
+        c.radioFields.append(QJsonObject{{u"key"_s, u"preset"_s}, {u"label"_s, u"Radio"_s},
+                                         {u"type"_s, u"select"_s},
+                                         {u"options"_s, presetOptions(c.radioPresets, root.value(u"radioOrder"_s).toArray())}});
+        for (const QJsonValue &f : root.value(u"radioFields"_s).toArray()) c.radioFields.append(f);
+        c.routeParamFields = root.value(u"routeParamFields"_s).toArray();
+        c.gimbalFields = root.value(u"gimbalFields"_s).toArray();
         return c;
     }();
     return c;
@@ -298,35 +300,45 @@ bool truthy(const QJsonValue &v)
     return v.isObject() || v.isArray();
 }
 
-namespace {
 QString fmtNum(double v)
 {
     // JS template literals print 20, 2.5, -90 — never 20.0
     return QString::number(v, 'g', 12);
 }
-} // namespace
+
+QString fmtDist(double m)
+{
+    return m >= 1000 ? u"%1 km"_s.arg(m / 1000, 0, 'f', m >= 10000 ? 0 : 1) : u"%1 m"_s.arg(qRound64(m));
+}
+
+QString fmtTime(double s)
+{
+    if (!s) return u"--"_s;
+    const qint64 m = qRound64(s / 60);
+    return m >= 60 ? u"%1h %2m"_s.arg(m / 60).arg(m % 60, 2, 10, '0'_L1) : u"%1 min"_s.arg(m);
+}
 
 QString actionSummary(const QJsonObject &a)
 {
-    const QString t = a.value(QStringLiteral("type")).toString();
+    const QString t = a.value(u"type"_s).toString();
     auto n = [&](const char *k) { return num(a.value(QLatin1String(k))); };
-    if (t == QLatin1String("trigger_dist"))
-        return n("distance") > 0 ? QStringLiteral("every %1 m").arg(fmtNum(n("distance"))) : QStringLiteral("stop");
-    if (t == QLatin1String("shot")) return QStringLiteral("single shot");
-    if (t == QLatin1String("gimbal")) return QStringLiteral("pitch %1° yaw %2°").arg(fmtNum(n("pitch")), fmtNum(n("yaw")));
-    if (t == QLatin1String("yaw")) return QStringLiteral("%1°").arg(fmtNum(n("heading")));
-    if (t == QLatin1String("wait")) return QStringLiteral("%1 s").arg(fmtNum(n("seconds")));
-    if (t == QLatin1String("speed")) return QStringLiteral("%1 m/s").arg(fmtNum(n("speed")));
-    if (t == QLatin1String("servo")) return QStringLiteral("ch%1 → %2").arg(fmtNum(n("channel")), fmtNum(n("pwm")));
-    if (t == QLatin1String("relay"))
-        return QStringLiteral("relay %1 %2").arg(fmtNum(n("relay")), n("state") != 0 ? QStringLiteral("on") : QStringLiteral("off"));
-    return QStringLiteral("cmd %1").arg(fmtNum(n("command")));
+    if (t == "trigger_dist"_L1)
+        return n("distance") > 0 ? u"every %1 m"_s.arg(fmtNum(n("distance"))) : u"stop"_s;
+    if (t == "shot"_L1) return u"single shot"_s;
+    if (t == "gimbal"_L1) return u"pitch %1° yaw %2°"_s.arg(fmtNum(n("pitch")), fmtNum(n("yaw")));
+    if (t == "yaw"_L1) return u"%1°"_s.arg(fmtNum(n("heading")));
+    if (t == "wait"_L1) return u"%1 s"_s.arg(fmtNum(n("seconds")));
+    if (t == "speed"_L1) return u"%1 m/s"_s.arg(fmtNum(n("speed")));
+    if (t == "servo"_L1) return u"ch%1 → %2"_s.arg(fmtNum(n("channel")), fmtNum(n("pwm")));
+    if (t == "relay"_L1)
+        return u"relay %1 %2"_s.arg(fmtNum(n("relay")), n("state") != 0 ? u"on"_s : u"off"_s);
+    return u"cmd %1"_s.arg(fmtNum(n("command")));
 }
 
 QJsonObject defaultCamera()
 {
-    QJsonObject cam = cameraPresets().value(QStringLiteral("generic")).toObject();
-    cam.insert(QStringLiteral("preset"), QStringLiteral("generic"));
+    QJsonObject cam = cameraPresets().value(u"generic"_s).toObject();
+    cam.insert(u"preset"_s, u"generic"_s);
     return cam;
 }
 
@@ -338,11 +350,11 @@ QJsonObject defaultRadio()
         base = g_rememberedRadio;
     }
     if (base.isEmpty()) {
-        base = radioPresets().value(QStringLiteral("rfd900x")).toObject();
-        base.insert(QStringLiteral("preset"), QStringLiteral("rfd900x"));
+        base = radioPresets().value(u"rfd900x"_s).toObject();
+        base.insert(u"preset"_s, u"rfd900x"_s);
     }
-    return merged(QJsonObject{{QStringLiteral("losses"), 1}, {QStringLiteral("minMargin"), 10},
-                              {QStringLiteral("groundHeight"), 2}, {QStringLiteral("coverageRange"), 15}},
+    return merged(QJsonObject{{u"losses"_s, 1}, {u"minMargin"_s, 10},
+                              {u"groundHeight"_s, 2}, {u"coverageRange"_s, 15}},
                   base);
 }
 
@@ -355,55 +367,55 @@ void rememberRadio(const QJsonObject &radio)
 QJsonObject defaultRouteParams()
 {
     return QJsonObject{
-        {QStringLiteral("altMode"), QStringLiteral("agl")},
-        {QStringLiteral("defaultAlt"), 100},
-        {QStringLiteral("terrainWaypoints"), false},
-        {QStringLiteral("aglTolerance"), 10},
-        {QStringLiteral("defaultSpeed"), 10},
-        {QStringLiteral("turnType"), QStringLiteral("straight")},
-        {QStringLiteral("takeoff"), true},
-        {QStringLiteral("takeoffAlt"), 30},
-        {QStringLiteral("endAction"), QStringLiteral("rtl")},
-        {QStringLiteral("maxAgl"), 120},
-        {QStringLiteral("minClearance"), 20},
-        {QStringLiteral("actionExec"), QStringLiteral("start")},
-        {QStringLiteral("inavAltAmsl"), false},
-        {QStringLiteral("inavSaveEeprom"), false},
-        {QStringLiteral("home"), QJsonValue::Null},
-        {QStringLiteral("camera"), defaultCamera()},
-        {QStringLiteral("gimbalPitch"), -90},
-        {QStringLiteral("gimbalYaw"), 0},
-        {QStringLiteral("radio"), defaultRadio()},
-        {QStringLiteral("operator"), QJsonValue::Null},
+        {u"altMode"_s, u"agl"_s},
+        {u"defaultAlt"_s, 100},
+        {u"terrainWaypoints"_s, false},
+        {u"aglTolerance"_s, 10},
+        {u"defaultSpeed"_s, 10},
+        {u"turnType"_s, u"straight"_s},
+        {u"takeoff"_s, true},
+        {u"takeoffAlt"_s, 30},
+        {u"endAction"_s, u"rtl"_s},
+        {u"maxAgl"_s, 120},
+        {u"minClearance"_s, 20},
+        {u"actionExec"_s, u"start"_s},
+        {u"inavAltAmsl"_s, false},
+        {u"inavSaveEeprom"_s, false},
+        {u"home"_s, QJsonValue::Null},
+        {u"camera"_s, defaultCamera()},
+        {u"gimbalPitch"_s, -90},
+        {u"gimbalYaw"_s, 0},
+        {u"radio"_s, defaultRadio()},
+        {u"operator"_s, QJsonValue::Null},
     };
 }
 
 QString newId()
 {
-    return QStringLiteral("s%1%2").arg(QString::number(QDateTime::currentMSecsSinceEpoch(), 36),
+    return u"s%1%2"_s.arg(QString::number(QDateTime::currentMSecsSinceEpoch(), 36),
                                        QString::number(g_nextId.fetch_add(1), 36));
 }
 
 QJsonObject createRoute()
 {
-    return QJsonObject{{QStringLiteral("name"), QJsonValue::Null},
-                       {QStringLiteral("params"), defaultRouteParams()},
-                       {QStringLiteral("segments"), QJsonArray{}}};
+    return QJsonObject{{u"name"_s, QJsonValue::Null},
+                       {u"params"_s, defaultRouteParams()},
+                       {u"segments"_s, QJsonArray{}}};
 }
 
 QJsonArray pointsToJson(const QList<LL> &pts)
 {
     QJsonArray a;
-    for (const LL &p : pts) a.append(QJsonObject{{QStringLiteral("lat"), p.lat}, {QStringLiteral("lng"), p.lng}});
+    for (const LL &p : pts) a.append(QJsonObject{{u"lat"_s, p.lat}, {u"lng"_s, p.lng}});
     return a;
 }
 
 QList<LL> pointsOf(const QJsonObject &seg)
 {
     QList<LL> out;
-    for (const QJsonValue &v : seg.value(QStringLiteral("points")).toArray()) {
+    for (const QJsonValue &v : seg.value(u"points"_s).toArray()) {
         const QJsonObject o = v.toObject();
-        out.append({num(o.value(QStringLiteral("lat"))), num(o.value(QStringLiteral("lng")))});
+        out.append({num(o.value(u"lat"_s)), num(o.value(u"lng"_s))});
     }
     return out;
 }
@@ -411,66 +423,66 @@ QList<LL> pointsOf(const QJsonObject &seg)
 QJsonObject createSegment(const QString &type, const QList<LL> &points, const QJsonObject &overrides)
 {
     const QJsonObject def = segmentDef(type);
-    return QJsonObject{{QStringLiteral("id"), newId()},
-                       {QStringLiteral("type"), type},
-                       {QStringLiteral("points"), pointsToJson(points)},
-                       {QStringLiteral("params"), merged(def.value(QStringLiteral("defaults")).toObject(), overrides)},
-                       {QStringLiteral("actions"), QJsonArray{}}};
+    return QJsonObject{{u"id"_s, newId()},
+                       {u"type"_s, type},
+                       {u"points"_s, pointsToJson(points)},
+                       {u"params"_s, merged(def.value(u"defaults"_s).toObject(), overrides)},
+                       {u"actions"_s, QJsonArray{}}};
 }
 
 QJsonObject createAction(const QString &type, const QJsonObject &overrides)
 {
-    QJsonObject a = actionDef(type).value(QStringLiteral("defaults")).toObject();
-    a.insert(QStringLiteral("type"), type);
+    QJsonObject a = actionDef(type).value(u"defaults"_s).toObject();
+    a.insert(u"type"_s, type);
     return merged(a, overrides);
 }
 
 namespace {
 QJsonObject normalizeSegment(const QJsonObject &s)
 {
-    QString type = s.value(QStringLiteral("type")).toString();
-    if (!segmentTypes().contains(type)) type = QStringLiteral("waypoint");
+    QString type = s.value(u"type"_s).toString();
+    if (!segmentTypes().contains(type)) type = u"waypoint"_s;
     const QJsonObject def = segmentDef(type);
     QJsonArray actions;
-    for (const QJsonValue &v : s.value(QStringLiteral("actions")).toArray()) {
+    for (const QJsonValue &v : s.value(u"actions"_s).toArray()) {
         const QJsonObject a = v.toObject();
-        actions.append(merged(actionDef(a.value(QStringLiteral("type")).toString()).value(QStringLiteral("defaults")).toObject(), a));
+        actions.append(merged(actionDef(a.value(u"type"_s).toString()).value(u"defaults"_s).toObject(), a));
     }
-    QString id = s.value(QStringLiteral("id")).toString();
+    QString id = s.value(u"id"_s).toString();
     if (id.isEmpty()) id = newId();
-    return QJsonObject{{QStringLiteral("id"), id},
-                       {QStringLiteral("type"), type},
-                       {QStringLiteral("points"), pointsToJson(pointsOf(s))},
-                       {QStringLiteral("params"), merged(def.value(QStringLiteral("defaults")).toObject(), s.value(QStringLiteral("params")).toObject())},
-                       {QStringLiteral("actions"), actions}};
+    return QJsonObject{{u"id"_s, id},
+                       {u"type"_s, type},
+                       {u"points"_s, pointsToJson(pointsOf(s))},
+                       {u"params"_s, merged(def.value(u"defaults"_s).toObject(), s.value(u"params"_s).toObject())},
+                       {u"actions"_s, actions}};
 }
 } // namespace
 
 QJsonObject normalizeRoute(const QJsonObject &next)
 {
-    const QJsonObject p = next.value(QStringLiteral("params")).toObject();
+    const QJsonObject p = next.value(u"params"_s).toObject();
     QJsonObject params = merged(defaultRouteParams(), p);
-    params.insert(QStringLiteral("camera"), merged(defaultCamera(), p.value(QStringLiteral("camera")).toObject()));
-    params.insert(QStringLiteral("radio"), merged(defaultRadio(), p.value(QStringLiteral("radio")).toObject()));
+    params.insert(u"camera"_s, merged(defaultCamera(), p.value(u"camera"_s).toObject()));
+    params.insert(u"radio"_s, merged(defaultRadio(), p.value(u"radio"_s).toObject()));
     QJsonArray segs;
-    for (const QJsonValue &v : next.value(QStringLiteral("segments")).toArray()) segs.append(normalizeSegment(v.toObject()));
-    const QJsonValue name = next.value(QStringLiteral("name"));
-    return QJsonObject{{QStringLiteral("name"), name.isString() && !name.toString().isEmpty() ? name : QJsonValue(QJsonValue::Null)},
-                       {QStringLiteral("params"), params},
-                       {QStringLiteral("segments"), segs}};
+    for (const QJsonValue &v : next.value(u"segments"_s).toArray()) segs.append(normalizeSegment(v.toObject()));
+    const QJsonValue name = next.value(u"name"_s);
+    return QJsonObject{{u"name"_s, name.isString() && !name.toString().isEmpty() ? name : QJsonValue(QJsonValue::Null)},
+                       {u"params"_s, params},
+                       {u"segments"_s, segs}};
 }
 
 double segmentAlt(const QJsonObject &seg, const QJsonObject &params)
 {
-    const QJsonValue a = seg.value(QStringLiteral("params")).toObject().value(QStringLiteral("alt"));
+    const QJsonValue a = seg.value(u"params"_s).toObject().value(u"alt"_s);
     if (a.isNull() || a.isUndefined() || (a.isString() && a.toString().isEmpty()))
-        return num(params.value(QStringLiteral("defaultAlt")));
+        return num(params.value(u"defaultAlt"_s));
     return num(a);
 }
 
 bool fieldVisible(const QJsonObject &field, const QJsonObject &values)
 {
-    const QJsonObject when = field.value(QStringLiteral("when")).toObject();
+    const QJsonObject when = field.value(u"when"_s).toObject();
     for (auto it = when.begin(); it != when.end(); ++it) {
         const QJsonValue have = values.value(it.key());
         if (it.value().isArray()) {

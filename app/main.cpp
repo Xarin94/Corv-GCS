@@ -28,6 +28,8 @@
 #include <memory>
 #include <QtQml/qqmlextensionplugin.h>
 
+using namespace Qt::StringLiterals;
+
 Q_IMPORT_QML_PLUGIN(Corv_UiPlugin)
 Q_IMPORT_QML_PLUGIN(Corv_GpuPlugin)
 
@@ -47,20 +49,20 @@ int main(int argc, char *argv[])
     QGuiApplication::setApplicationName(QStringLiteral(CORV_APP_NAME));
     QGuiApplication::setApplicationVersion(QStringLiteral(CORV_VERSION));
     QGuiApplication::setOrganizationName(QString());
-    app.setWindowIcon(QIcon(QStringLiteral(":/icons/icon-256x256.png")));
+    app.setWindowIcon(QIcon(u":/icons/icon-256x256.png"_s));
 
     QCommandLineParser p;
     p.addHelpOption();
     p.addVersionOption();
-    QCommandLineOption connectOpt(QStringLiteral("connect"), QStringLiteral("Open a link at start: tcp:HOST:PORT, udp:HOST:PORT, serial:PORT:BAUD"), QStringLiteral("link"));
-    QCommandLineOption grabOpt(QStringLiteral("grab"), QStringLiteral("Save the window as an image after --grab-after ms (tests)"), QStringLiteral("file"));
-    QCommandLineOption grabAfterOpt(QStringLiteral("grab-after"), QStringLiteral("Delay before --grab, ms"), QStringLiteral("ms"), QStringLiteral("10000"));
-    QCommandLineOption quitAfterOpt(QStringLiteral("quit-after"), QStringLiteral("Quit after this many ms (tests)"), QStringLiteral("ms"));
-    QCommandLineOption tabOpt(QStringLiteral("tab"), QStringLiteral("Open this tab at start: 0 FLIGHT DATA, 1 FLIGHT PLAN, 2 SETUP, 3 SYS CONFIG (tests)"), QStringLiteral("index"));
-    QCommandLineOption importOpt(QStringLiteral("import"), QStringLiteral("Import a route file into FLIGHT PLAN at start (tests)"), QStringLiteral("file"));
-    QCommandLineOption replayOpt(QStringLiteral("replay"), QStringLiteral("Load a .tlog or .bin into LOG REPLAY at start (tests)"), QStringLiteral("file"));
-    QCommandLineOption grabsOpt(QStringLiteral("grab-script"), QStringLiteral("Tests: a file of lines 'ms tab N' / 'ms grab FILE' / 'ms select INDEX' / 'ms emit toggleSatellite' run in order"), QStringLiteral("file"));
-    QCommandLineOption debugPortOpt(QStringLiteral("debug-port"), QStringLiteral("Tests: a JSON-RPC debug server on 127.0.0.1:PORT (set, get, call, stats, screenshot, script)"), QStringLiteral("port"));
+    QCommandLineOption connectOpt(u"connect"_s, u"Open a link at start: tcp:HOST:PORT, udp:HOST:PORT, serial:PORT:BAUD"_s, u"link"_s);
+    QCommandLineOption grabOpt(u"grab"_s, u"Save the window as an image after --grab-after ms (tests)"_s, u"file"_s);
+    QCommandLineOption grabAfterOpt(u"grab-after"_s, u"Delay before --grab, ms"_s, u"ms"_s, u"10000"_s);
+    QCommandLineOption quitAfterOpt(u"quit-after"_s, u"Quit after this many ms (tests)"_s, u"ms"_s);
+    QCommandLineOption tabOpt(u"tab"_s, u"Open this tab at start: 0 FLIGHT DATA, 1 FLIGHT PLAN, 2 SETUP, 3 SYS CONFIG (tests)"_s, u"index"_s);
+    QCommandLineOption importOpt(u"import"_s, u"Import a route file into FLIGHT PLAN at start (tests)"_s, u"file"_s);
+    QCommandLineOption replayOpt(u"replay"_s, u"Load a .tlog or .bin into LOG REPLAY at start (tests)"_s, u"file"_s);
+    QCommandLineOption grabsOpt(u"grab-script"_s, u"Tests: a file of lines 'ms tab N' / 'ms grab FILE' / 'ms select INDEX' / 'ms emit toggleSatellite' run in order"_s, u"file"_s);
+    QCommandLineOption debugPortOpt(u"debug-port"_s, u"Tests: a JSON-RPC debug server on 127.0.0.1:PORT (set, get, call, stats, screenshot, script)"_s, u"port"_s);
     p.addOptions({connectOpt, grabOpt, grabAfterOpt, quitAfterOpt, tabOpt, importOpt, replayOpt, grabsOpt, debugPortOpt});
     p.process(app);
 
@@ -69,11 +71,11 @@ int main(int argc, char *argv[])
     LOG_I("app") << "CORV GCS" << CORV_VERSION << "starting, data root" << DataRoot::root();
 
     // Fonts of the Electron UI (Rajdhani for labels, Roboto Mono for data)
-    for (const QString &f : QDir(QStringLiteral(":/fonts")).entryList())
-        if (QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/") + f) < 0)
+    for (const QString &f : QDir(u":/fonts"_s).entryList())
+        if (QFontDatabase::addApplicationFont(u":/fonts/"_s + f) < 0)
             LOG_D("app") << "font not loaded:" << f;
 
-    QQuickStyle::setStyle(QStringLiteral("Basic"));
+    QQuickStyle::setStyle(u"Basic"_s);
     // The interface is dark whatever the desktop theme: the Basic style draws what the
     // QML does not style (lists of selects, tooltips, menus, the non-native file
     // dialog) with the application palette, which otherwise follows the system and
@@ -117,17 +119,17 @@ int main(int argc, char *argv[])
 
     if (auto *w = qobject_cast<QQuickWindow *>(engine.rootObjects().value(0))) {
         const auto api = w->rendererInterface()->graphicsApi();
-        static const QHash<int, QString> names = {{QSGRendererInterface::Direct3D11, QStringLiteral("Direct3D 11")},
-                                                 {QSGRendererInterface::Direct3D12, QStringLiteral("Direct3D 12")},
-                                                 {QSGRendererInterface::Vulkan, QStringLiteral("Vulkan")},
-                                                 {QSGRendererInterface::Metal, QStringLiteral("Metal")},
-                                                 {QSGRendererInterface::OpenGL, QStringLiteral("OpenGL")},
-                                                 {QSGRendererInterface::Software, QStringLiteral("software")}};
-        DebugLog::setHeader(QStringLiteral("Graphics"), names.value(api, QStringLiteral("other")));
+        static const QHash<int, QString> names = {{QSGRendererInterface::Direct3D11, u"Direct3D 11"_s},
+                                                 {QSGRendererInterface::Direct3D12, u"Direct3D 12"_s},
+                                                 {QSGRendererInterface::Vulkan, u"Vulkan"_s},
+                                                 {QSGRendererInterface::Metal, u"Metal"_s},
+                                                 {QSGRendererInterface::OpenGL, u"OpenGL"_s},
+                                                 {QSGRendererInterface::Software, u"software"_s}};
+        DebugLog::setHeader(u"Graphics"_s, names.value(api, u"other"_s));
     }
 
     if (p.isSet(connectOpt)) {
-        const QStringList parts = p.value(connectOpt).split(QLatin1Char(':'));
+        const QStringList parts = p.value(connectOpt).split(':'_L1);
         if (parts.size() == 3) {
             const QString t = parts[0].toUpper();
             QTimer::singleShot(300, &gcs, [&gcs, t, parts] {
@@ -149,7 +151,7 @@ int main(int argc, char *argv[])
     if (p.isSet(quitAfterOpt)) QTimer::singleShot(p.value(quitAfterOpt).toInt(), &app, &QCoreApplication::quit);
 
     QObject *root = engine.rootObjects().value(0);
-    QObject *header = root ? root->findChild<QObject *>(QStringLiteral("header")) : nullptr;
+    QObject *header = root ? root->findChild<QObject *>(u"header"_s) : nullptr;
     if (p.isSet(tabOpt) && header) header->setProperty("currentTab", p.value(tabOpt).toInt());
     if (p.isSet(importOpt) && PlanController::s_instance)
         QTimer::singleShot(500, &app, [file = p.value(importOpt)] { PlanController::s_instance->importFile(QUrl::fromLocalFile(file)); });
@@ -160,11 +162,11 @@ int main(int argc, char *argv[])
     if (p.isSet(grabsOpt)) {
         QFile f(p.value(grabsOpt));
         if (f.open(QIODevice::ReadOnly)) {
-            for (const QString &line : QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
-                const QStringList w = line.trimmed().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+            for (const QString &line : QString::fromUtf8(f.readAll()).split('\n'_L1, Qt::SkipEmptyParts)) {
+                const QStringList w = line.trimmed().split(' '_L1, Qt::SkipEmptyParts);
                 if (w.size() < 3) continue;
                 const int at = w[0].toInt();
-                const QString cmd = w[1], arg = w.mid(2).join(QLatin1Char(' '));
+                const QString cmd = w[1], arg = w.mid(2).join(' '_L1);
                 QTimer::singleShot(at, &app, [&driver, cmd, arg] {
                     QString error;
                     driver.run(cmd, arg, &error);

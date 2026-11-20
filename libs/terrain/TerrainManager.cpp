@@ -156,7 +156,6 @@ void TerrainManager::updateChunks(double lat, double lon)
     // New chunks inside the satellite radius want imagery now, not at the next pass
     if (added) m_imagery.touch();
     if (waiting) m_dirty = true;
-    emit chunksChanged(int(m_active.size()));
 }
 
 } // namespace corv

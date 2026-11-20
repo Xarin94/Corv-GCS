@@ -20,12 +20,14 @@
 #include <cstdio>
 #include <utility>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 UpdateController *UpdateController::s_instance = nullptr;
 
 namespace {
-const QString kCfg = QStringLiteral("update-cfg");
+const QString kCfg = u"update-cfg"_s;
 // Late enough not to compete with the map tiles and the link at start
 constexpr int kStartDelayMs = 6000;
 const QByteArray kUserAgent = QByteArrayLiteral("CORV-GCS/" CORV_VERSION);
@@ -61,35 +63,35 @@ QString UpdateController::repo() const { return QStringLiteral(CORV_UPDATE_REPO)
 bool UpdateController::notice() const
 {
     if (!m_release) return false;
-    if (m_state == QLatin1String("downloading") || m_state == QLatin1String("installing") || m_state == QLatin1String("ready"))
+    if (m_state == "downloading"_L1 || m_state == "installing"_L1 || m_state == "ready"_L1)
         return true;
-    const QString skipped = SysConfig::s_instance ? SysConfig::s_instance->jsonField(kCfg, QStringLiteral("skip"), QString()).toString() : QString();
+    const QString skipped = SysConfig::s_instance ? SysConfig::s_instance->jsonField(kCfg, u"skip"_s, QString()).toString() : QString();
     return latest() != skipped;
 }
 
 bool UpdateController::checkAtStart() const
 {
-    return SysConfig::s_instance ? SysConfig::s_instance->jsonField(kCfg, QStringLiteral("checkAtStart"), true).toBool() : true;
+    return SysConfig::s_instance ? SysConfig::s_instance->jsonField(kCfg, u"checkAtStart"_s, true).toBool() : true;
 }
 
 void UpdateController::setCheckAtStart(bool on)
 {
-    if (SysConfig::s_instance) SysConfig::s_instance->setJsonField(kCfg, QStringLiteral("checkAtStart"), on);
+    if (SysConfig::s_instance) SysConfig::s_instance->setJsonField(kCfg, u"checkAtStart"_s, on);
 }
 
 QString UpdateController::installText() const
 {
     switch (platform()) {
     case update::Platform::Windows:
-        return QStringLiteral("Downloads the installer, updates CORV GCS in its folder and starts the new version.");
+        return u"Downloads the installer, updates CORV GCS in its folder and starts the new version."_s;
     case update::Platform::MacOS:
-        return QStringLiteral("Downloads the disk image and opens it: drag CORV GCS to Applications, replacing the old one.");
+        return u"Downloads the disk image and opens it: drag CORV GCS to Applications, replacing the old one."_s;
     case update::Platform::Linux:
         break;
     }
     if (!qEnvironmentVariable("APPIMAGE").isEmpty())
-        return QStringLiteral("Downloads the new AppImage, puts it in place of this one and restarts CORV GCS.");
-    return QStringLiteral("Downloads the AppImage into the Downloads folder.");
+        return u"Downloads the new AppImage, puts it in place of this one and restarts CORV GCS."_s;
+    return u"Downloads the AppImage into the Downloads folder."_s;
 }
 
 void UpdateController::setState(const QString &state, const QString &message)
@@ -103,15 +105,15 @@ void UpdateController::setState(const QString &state, const QString &message)
 
 void UpdateController::check()
 {
-    if (m_state == QLatin1String("checking") || m_state == QLatin1String("downloading") || m_state == QLatin1String("installing"))
+    if (m_state == "checking"_L1 || m_state == "downloading"_L1 || m_state == "installing"_L1)
         return;
     const QString forced = qEnvironmentVariable("CORV_UPDATE_URL");
-    const QUrl url(forced.isEmpty() ? QStringLiteral("https://api.github.com/repos/%1/releases?per_page=30").arg(repo()) : forced);
+    const QUrl url(forced.isEmpty() ? u"https://api.github.com/repos/%1/releases?per_page=30"_s.arg(repo()) : forced);
     QNetworkRequest req(url);
     req.setRawHeader("Accept", "application/vnd.github+json");
     req.setRawHeader("X-GitHub-Api-Version", "2022-11-28");
     req.setHeader(QNetworkRequest::UserAgentHeader, kUserAgent);
-    setState(QStringLiteral("checking"), QStringLiteral("Checking for updates…"));
+    setState(u"checking"_s, u"Checking for updates…"_s);
     QNetworkReply *r = m_net.get(req);
     connect(r, &QNetworkReply::finished, this, [this, r] { onListed(r); });
 }
@@ -124,14 +126,14 @@ void UpdateController::onListed(QNetworkReply *r)
         const int code = r->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         LOG_W("update") << "release list failed:" << code << r->errorString();
         // Anonymous calls: 60 an hour per address
-        setState(QStringLiteral("error"), code == 403 || code == 429 ? QStringLiteral("GitHub refused the check for now (rate limit): try again later")
-                                                                      : QStringLiteral("Update check failed: %1").arg(r->errorString()));
+        setState(u"error"_s, code == 403 || code == 429 ? u"GitHub refused the check for now (rate limit): try again later"_s
+                                                                      : u"Update check failed: %1"_s.arg(r->errorString()));
         return;
     }
     const QJsonDocument doc = QJsonDocument::fromJson(r->readAll());
     const auto current = update::parseVersion(version());
     if (!doc.isArray() || !current) {
-        setState(QStringLiteral("error"), QStringLiteral("Update check: unexpected answer"));
+        setState(u"error"_s, u"Update check: unexpected answer"_s);
         return;
     }
     // A pre-release moves to newer pre-releases; a final release only to final ones
@@ -139,12 +141,12 @@ void UpdateController::onListed(QNetworkReply *r)
     m_asset = m_release ? update::packageFor(*m_release, platform(), update::currentArch()) : std::nullopt;
     if (!m_release) {
         LOG_I("update") << "up to date:" << version() << "(" << doc.array().size() << "releases of" << repo() << ")";
-        setState(QStringLiteral("uptodate"), QStringLiteral("CORV GCS %1 is up to date").arg(version()));
+        setState(u"uptodate"_s, u"CORV GCS %1 is up to date"_s.arg(version()));
         return;
     }
     LOG_I("update") << "available:" << latest() << m_asset->name << m_asset->size << "bytes";
-    setState(QStringLiteral("available"), QStringLiteral("CORV GCS %1 is available").arg(latest()));
-    if (atStart && notice()) DialogHub::toast(QStringLiteral("CORV GCS %1 is available: UPDATE at the top right").arg(latest()));
+    setState(u"available"_s, u"CORV GCS %1 is available"_s.arg(latest()));
+    if (atStart && notice()) DialogHub::toast(u"CORV GCS %1 is available: UPDATE at the top right"_s.arg(latest()));
 }
 
 // ── Download ────────────────────────────────────────────────────────────
@@ -154,7 +156,7 @@ void UpdateController::onListed(QNetworkReply *r)
 QString UpdateController::downloadTarget() const
 {
     if (platform() == update::Platform::Windows)
-        return QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation)).filePath(QStringLiteral("corv-gcs-update/") + m_asset->name);
+        return QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation)).filePath(u"corv-gcs-update/"_s + m_asset->name);
     if (platform() == update::Platform::Linux) {
         const QString appImage = qEnvironmentVariable("APPIMAGE");
         if (!appImage.isEmpty() && QFileInfo(QFileInfo(appImage).absolutePath()).isWritable()) return appImage;
@@ -167,18 +169,18 @@ QString UpdateController::downloadTarget() const
 void UpdateController::install()
 {
     if (!m_release || !m_asset || m_reply) return;
-    if (m_state != QLatin1String("available") && m_state != QLatin1String("error")) return;
+    if (m_state != "available"_L1 && m_state != "error"_L1) return;
     const auto s = m_hub ? m_hub->snapshot() : nullptr;
     if (s && s->connected && s->armed) {
-        setState(m_state, QStringLiteral("Disarm the vehicle before updating"));
+        setState(m_state, u"Disarm the vehicle before updating"_s);
         DialogHub::toast(m_message);
         return;
     }
     m_target = downloadTarget();
     QDir().mkpath(QFileInfo(m_target).absolutePath());
-    m_file = std::make_unique<QFile>(m_target + QStringLiteral(".part"));
+    m_file = std::make_unique<QFile>(m_target + u".part"_s);
     if (!m_file->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        setState(QStringLiteral("error"), QStringLiteral("Cannot write %1").arg(m_file->fileName()));
+        setState(u"error"_s, u"Cannot write %1"_s.arg(m_file->fileName()));
         m_file.reset();
         return;
     }
@@ -199,7 +201,7 @@ void UpdateController::install()
     });
     connect(m_reply, &QNetworkReply::finished, this, &UpdateController::onDownloaded);
     LOG_I("update") << "downloading" << m_asset->url << "to" << m_file->fileName();
-    setState(QStringLiteral("downloading"), QStringLiteral("Downloading %1…").arg(m_asset->name));
+    setState(u"downloading"_s, u"Downloading %1…"_s.arg(m_asset->name));
 }
 
 void UpdateController::cancel()
@@ -220,11 +222,11 @@ void UpdateController::onDownloaded()
     if (r->error() != QNetworkReply::NoError) {
         QFile::remove(part);
         if (r->error() == QNetworkReply::OperationCanceledError) {
-            setState(QStringLiteral("available"), QStringLiteral("Download cancelled"));
+            setState(u"available"_s, u"Download cancelled"_s);
             return;
         }
         LOG_W("update") << "download failed:" << r->errorString();
-        setState(QStringLiteral("error"), QStringLiteral("Download failed: %1").arg(r->errorString()));
+        setState(u"error"_s, u"Download failed: %1"_s.arg(r->errorString()));
         return;
     }
     // The package GitHub has, byte for byte
@@ -235,7 +237,7 @@ void UpdateController::onDownloaded()
             f.close();
             QFile::remove(part);
             LOG_W("update") << "SHA-256 mismatch on" << m_asset->name;
-            setState(QStringLiteral("error"), QStringLiteral("The download is damaged (SHA-256 does not match): try again"));
+            setState(u"error"_s, u"The download is damaged (SHA-256 does not match): try again"_s);
             return;
         }
     } else {
@@ -250,25 +252,25 @@ void UpdateController::finishInstall(const QString &part)
 {
     const auto fail = [&](const QString &why) {
         LOG_W("update") << why;
-        setState(QStringLiteral("error"), why);
+        setState(u"error"_s, why);
     };
     // The finished file under its own name (an atomic replace on POSIX)
     if (platform() == update::Platform::Windows) QFile::remove(m_target);
     if (std::rename(QFile::encodeName(part).constData(), QFile::encodeName(m_target).constData()) != 0)
-        return fail(QStringLiteral("Cannot put the download in place: %1").arg(m_target));
+        return fail(u"Cannot put the download in place: %1"_s.arg(m_target));
     LOG_I("update") << "installing" << latest() << "from" << m_target;
 
     switch (platform()) {
     case update::Platform::Windows:
         // Silent, into the folder of the installed copy; it closes this one and starts the new
-        if (!QProcess::startDetached(m_target, {QStringLiteral("/UPDATE")}))
-            return fail(QStringLiteral("Cannot start the installer %1").arg(m_target));
-        setState(QStringLiteral("installing"), QStringLiteral("Installing CORV GCS %1…").arg(latest()));
+        if (!QProcess::startDetached(m_target, {u"/UPDATE"_s}))
+            return fail(u"Cannot start the installer %1"_s.arg(m_target));
+        setState(u"installing"_s, u"Installing CORV GCS %1…"_s.arg(latest()));
         QTimer::singleShot(500, qApp, &QCoreApplication::quit);
         return;
     case update::Platform::MacOS:
         QDesktopServices::openUrl(QUrl::fromLocalFile(m_target));
-        setState(QStringLiteral("ready"), QStringLiteral("Drag CORV GCS to Applications, replacing the old one, then start it again"));
+        setState(u"ready"_s, u"Drag CORV GCS to Applications, replacing the old one, then start it again"_s);
         return;
     case update::Platform::Linux:
         break;
@@ -278,25 +280,25 @@ void UpdateController::finishInstall(const QString &part)
         // This AppImage now holds the new version (the running one stays mounted
         // until it exits): start it with the same arguments
         if (!QProcess::startDetached(m_target, QCoreApplication::arguments().mid(1)))
-            return fail(QStringLiteral("Updated: start %1 again").arg(m_target));
-        setState(QStringLiteral("installing"), QStringLiteral("Restarting with CORV GCS %1…").arg(latest()));
+            return fail(u"Updated: start %1 again"_s.arg(m_target));
+        setState(u"installing"_s, u"Restarting with CORV GCS %1…"_s.arg(latest()));
         QTimer::singleShot(500, qApp, &QCoreApplication::quit);
         return;
     }
     QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(m_target).absolutePath()));
-    setState(QStringLiteral("ready"), QStringLiteral("Saved to %1").arg(m_target));
+    setState(u"ready"_s, u"Saved to %1"_s.arg(m_target));
 }
 
 void UpdateController::skip()
 {
     if (!m_release || !SysConfig::s_instance) return;
-    SysConfig::s_instance->setJsonField(kCfg, QStringLiteral("skip"), latest());
+    SysConfig::s_instance->setJsonField(kCfg, u"skip"_s, latest());
     emit changed();
 }
 
 void UpdateController::openPage()
 {
-    const QString page = pageUrl().isEmpty() ? QStringLiteral("https://github.com/%1/releases").arg(repo()) : pageUrl();
+    const QString page = pageUrl().isEmpty() ? u"https://github.com/%1/releases"_s.arg(repo()) : pageUrl();
     QDesktopServices::openUrl(QUrl(page));
 }
 

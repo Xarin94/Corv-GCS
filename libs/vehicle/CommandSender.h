@@ -9,7 +9,6 @@
 #include "link/MavMessage.h"
 
 #include <QObject>
-#include <QVariantMap>
 #include <functional>
 
 namespace corv {
@@ -58,8 +57,6 @@ public:
     void setHome(std::optional<double> lat, std::optional<double> lon, std::optional<double> alt, AckDone done = {});
     Q_INVOKABLE void requestHomePosition();
     Q_INVOKABLE void rebootAutopilot();
-    Q_INVOKABLE void setGuidedTarget(double lat, double lng, double alt);
-    Q_INVOKABLE void changeAltitude(double alt);
     void sendRcChannelsOverride(const std::array<uint16_t, 18> &channels);
     Q_INVOKABLE void sendServoTest(int servo, int pwm);
     Q_INVOKABLE void sendRelayToggle(int relay, int state);
@@ -97,9 +94,6 @@ public:
 
     int targetSystem() const;
     int targetComponent() const;
-
-signals:
-    void commandResult(const QString &cmdName, const QString &resultName, bool ok);
 
 private:
     void sendMsg(const mavlink_message_t &m);

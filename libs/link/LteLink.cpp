@@ -15,6 +15,8 @@
 
 #ifdef CORV_HAVE_OPENSSL
 #include <openssl/evp.h>
+
+using namespace Qt::StringLiterals;
 #endif
 
 namespace corv::lte {
@@ -137,7 +139,6 @@ QList<QByteArray> RecordFramer::feed(const QByteArray &data)
         if (uint8_t(m_buf[0]) != kMagic) {
             qsizetype j = m_buf.indexOf(char(kMagic));
             if (j < 0) j = m_buf.size();
-            m_garbage += j;
             m_buf.remove(0, j);
             continue;
         }
@@ -145,7 +146,6 @@ QList<QByteArray> RecordFramer::feed(const QByteArray &data)
         const uint8_t type = uint8_t(m_buf[1]);
         const int len = qFromLittleEndian<quint16>(m_buf.constData() + 2);
         if ((type != kData && type != kKeepalive) || len > kMaxBody) {
-            ++m_garbage;
             m_buf.remove(0, 1);
             continue;
         }
@@ -183,7 +183,7 @@ constexpr int kHandshakeTimeoutMs = 20000;
 constexpr int kReconnectMs[] = {1000, 2000, 5000, 10000};
 constexpr int kMaxPendingBytes = 8192;    // written before the module's first record
 
-QString normFingerprint(const QString &fp) { return fp.toLower().remove(QRegularExpression(QStringLiteral("[^0-9a-f]"))); }
+QString normFingerprint(const QString &fp) { return fp.toLower().remove(QRegularExpression(u"[^0-9a-f]"_s)); }
 } // namespace
 
 LteTransport::LteTransport(const Options &o, QObject *parent) : Transport(parent), m_opt(o)
@@ -199,40 +199,40 @@ LteTransport::LteTransport(const Options &o, QObject *parent) : Transport(parent
     connect(&m_batchTimer, &QTimer::timeout, this, &LteTransport::flush);
     m_handshakeTimer.setSingleShot(true);
     m_handshakeTimer.setInterval(kHandshakeTimeoutMs);
-    connect(&m_handshakeTimer, &QTimer::timeout, this, [this] { fail(QStringLiteral("Relay handshake timeout"), false); });
+    connect(&m_handshakeTimer, &QTimer::timeout, this, [this] { fail(u"Relay handshake timeout"_s, false); });
 }
 
 LteTransport::~LteTransport() { close(); }
 
 QString LteTransport::describe() const
 {
-    return QStringLiteral("MAVLink LTE module %1 via %2:%3").arg(m_opt.moduleId, m_opt.host).arg(m_opt.port);
+    return u"MAVLink LTE module %1 via %2:%3"_s.arg(m_opt.moduleId, m_opt.host).arg(m_opt.port);
 }
 
 bool LteTransport::open(QString *error)
 {
     if (!lte::available()) {
-        *error = QStringLiteral("This build has no crypto backend (OpenSSL): no cellular link");
+        *error = u"This build has no crypto backend (OpenSSL): no cellular link"_s;
         return false;
     }
     const QByteArray key = QByteArray::fromHex(m_opt.keyHex.trimmed().toLatin1());
     if (key.size() != 32 || m_opt.keyHex.trimmed().size() != 64) {
-        *error = QStringLiteral("AES key must be 64 hex characters (256 bit)");
+        *error = u"AES key must be 64 hex characters (256 bit)"_s;
         return false;
     }
-    if (m_opt.moduleId.isEmpty() || m_opt.moduleId.contains(QRegularExpression(QStringLiteral("\\s")))) {
-        *error = QStringLiteral("Invalid module ID");
+    if (m_opt.moduleId.isEmpty() || m_opt.moduleId.contains(QRegularExpression(u"\\s"_s))) {
+        *error = u"Invalid module ID"_s;
         return false;
     }
     if (m_opt.host.isEmpty()) {
-        *error = QStringLiteral("Relay host missing");
+        *error = u"Relay host missing"_s;
         return false;
     }
     if (!lte::deriveKeys(key, &m_keys)) {
-        *error = QStringLiteral("Key derivation failed");
+        *error = u"Key derivation failed"_s;
         return false;
     }
-    m_opt.keyHex.fill(QLatin1Char('0'));   // the key itself is not kept
+    m_opt.keyHex.fill('0'_L1);   // the key itself is not kept
     m_stopped = false;
     m_statsTimer.start();
     // Resolves on the first successful handshake; after that the link reconnects by itself
@@ -263,7 +263,7 @@ void LteTransport::close()
         m_sock->deleteLater();
         m_sock = nullptr;
     }
-    if (m_state != QLatin1String("stopped") && m_state != QLatin1String("idle")) setState(QStringLiteral("stopped"));
+    if (m_state != "stopped"_L1 && m_state != "idle"_L1) setState(u"stopped"_s);
 }
 
 void LteTransport::resetSession()
@@ -282,7 +282,7 @@ void LteTransport::resetSession()
 void LteTransport::connectRelay()
 {
     resetSession();
-    setState(QStringLiteral("connecting"));
+    setState(u"connecting"_s);
     m_handshakeDone = false;
     m_lineBuf.clear();
     m_stage = 0;
@@ -302,7 +302,7 @@ void LteTransport::connectRelay()
         if (m_sock == s) fail(s->errorString(), false);
     });
     connect(s, &QSslSocket::disconnected, this, [this, s] {
-        if (m_sock == s) fail(QStringLiteral("Relay closed the connection"), false);
+        if (m_sock == s) fail(u"Relay closed the connection"_s, false);
     });
     m_handshakeTimer.start();
     s->connectToHostEncrypted(m_opt.host, quint16(m_opt.port));
@@ -313,15 +313,15 @@ void LteTransport::onEncrypted()
     const QSslCertificate cert = m_sock->peerCertificate();
     const QByteArray digest = cert.isNull() ? QByteArray() : cert.digest(QCryptographicHash::Sha256);
     const QString fp = QString::fromLatin1(digest.toHex(':').toUpper());
-    m_tls = QVariantMap{{QStringLiteral("version"), m_sock->sessionProtocol() == QSsl::TlsV1_3 ? QStringLiteral("TLSv1.3") : QStringLiteral("TLSv1.2")},
-                        {QStringLiteral("cipher"), m_sock->sessionCipher().name()},
-                        {QStringLiteral("fingerprint"), fp},
-                        {QStringLiteral("verified"), !m_pin.isEmpty() && normFingerprint(fp) == m_pin}};
+    m_tls = QVariantMap{{u"version"_s, m_sock->sessionProtocol() == QSsl::TlsV1_3 ? u"TLSv1.3"_s : u"TLSv1.2"_s},
+                        {u"cipher"_s, m_sock->sessionCipher().name()},
+                        {u"fingerprint"_s, fp},
+                        {u"verified"_s, !m_pin.isEmpty() && normFingerprint(fp) == m_pin}};
     if (!m_pin.isEmpty() && normFingerprint(fp) != m_pin) {
-        fail(QStringLiteral("Relay certificate does not match the pinned fingerprint"), true);
+        fail(u"Relay certificate does not match the pinned fingerprint"_s, true);
         return;
     }
-    setState(QStringLiteral("handshake"));
+    setState(u"handshake"_s);
 }
 
 void LteTransport::onData()
@@ -340,10 +340,10 @@ void LteTransport::onData()
         const QString line = QString::fromLatin1(m_lineBuf.left(nl)).trimmed();
         m_lineBuf.remove(0, nl + 1);
         if (m_stage == 0) {
-            static const QRegularExpression banner(QStringLiteral("^CRV2-GCS ([0-9a-fA-F]{32})$"));
+            static const QRegularExpression banner(u"^CRV2-GCS ([0-9a-fA-F]{32})$"_s);
             const auto m = banner.match(line);
             if (!m.hasMatch()) {
-                fail(QStringLiteral("Unexpected relay banner: ") + line, true);
+                fail(u"Unexpected relay banner: "_s + line, true);
                 return;
             }
             const QByteArray challenge = QByteArray::fromHex(m.captured(1).toLatin1());
@@ -352,23 +352,23 @@ void LteTransport::onData()
             m_stage = 1;
         } else {
             m_handshakeTimer.stop();
-            if (!line.startsWith(QLatin1String("OK"))) {
+            if (!line.startsWith("OK"_L1)) {
                 // the relay accepts any valid signature: a refusal means it does not
                 // speak CRV3 (not updated) or is full, and retrying cannot help
-                fail(line.startsWith(QLatin1String("ERR")) ? QStringLiteral("Relay refused the key signature (relay without CRV3 access?)")
-                                                           : QStringLiteral("Relay: ") + line,
+                fail(line.startsWith("ERR"_L1) ? u"Relay refused the key signature (relay without CRV3 access?)"_s
+                                                           : u"Relay: "_s + line,
                      true);
                 return;
             }
             m_handshakeDone = true;
-            m_airOnline = line.contains(QLatin1String("air=online"));
+            m_airOnline = line.contains("air=online"_L1);
             m_backoff = 0;
             m_lastError.clear();
             if (m_firstPending) {
                 m_firstPending = false;
                 m_firstOk = true;
             }
-            setState(QStringLiteral("online"));
+            setState(u"online"_s);
             if (!m_lineBuf.isEmpty()) {
                 const QByteArray rest = m_lineBuf;
                 m_lineBuf.clear();
@@ -451,12 +451,12 @@ void LteTransport::scheduleReconnect()
         m_fatal = false;
         m_stopped = true;
         m_statsTimer.stop();
-        setState(QStringLiteral("error"));
+        setState(u"error"_s);
         return;
     }
     const int delay = kReconnectMs[std::min<int>(m_backoff++, int(std::size(kReconnectMs)) - 1)];
     ++m_reconnects;
-    setState(QStringLiteral("reconnecting"));
+    setState(u"reconnecting"_s);
     m_reconnectTimer.start(delay);
 }
 
@@ -514,12 +514,12 @@ void LteTransport::setState(const QString &state)
 {
     if (state != m_state) {
         // state changes only, never the key (logLteStatus of main-mavlink.js)
-        const QString text = QStringLiteral("%1 (module=%2 relay=%3:%4 keyFingerprint=%5 airOnline=%6%7)")
+        const QString text = u"%1 (module=%2 relay=%3:%4 keyFingerprint=%5 airOnline=%6%7)"_s
                                  .arg(state, m_opt.moduleId, m_opt.host)
                                  .arg(m_opt.port)
-                                 .arg(m_keys.fingerprint, m_airOnline ? QStringLiteral("true") : QStringLiteral("false"),
-                                      m_lastError.isEmpty() ? QString() : QStringLiteral(" lastError=") + m_lastError);
-        if (state.contains(QRegularExpression(QStringLiteral("error|fail|reject|denied")))) LOG_W("lte") << text;
+                                 .arg(m_keys.fingerprint, m_airOnline ? u"true"_s : u"false"_s,
+                                      m_lastError.isEmpty() ? QString() : u" lastError="_s + m_lastError);
+        if (state.contains(QRegularExpression(u"error|fail|reject|denied"_s))) LOG_W("lte") << text;
         else LOG_I("lte") << text;
     }
     m_state = state;
@@ -528,24 +528,24 @@ void LteTransport::setState(const QString &state)
 
 void LteTransport::emitStatus()
 {
-    emit status(QVariantMap{{QStringLiteral("state"), m_state},
-                            {QStringLiteral("moduleId"), m_opt.moduleId},
-                            {QStringLiteral("relay"), QStringLiteral("%1:%2").arg(m_opt.host).arg(m_opt.port)},
-                            {QStringLiteral("keyFingerprint"), m_keys.fingerprint},
-                            {QStringLiteral("relayIdentity"), QString::fromLatin1(m_keys.pub.left(4).toHex())},
-                            {QStringLiteral("airOnline"), m_airOnline},
-                            {QStringLiteral("vehicleSession"), m_vehicleSession},
-                            {QStringLiteral("tls"), m_tls},
-                            {QStringLiteral("lastError"), m_lastError},
-                            {QStringLiteral("bytesRx"), m_bytesRx},
-                            {QStringLiteral("bytesTx"), m_bytesTx},
-                            {QStringLiteral("recordsIn"), m_recordsIn},
-                            {QStringLiteral("recordsOut"), m_recordsOut},
-                            {QStringLiteral("authFail"), m_authFail},
-                            {QStringLiteral("replay"), m_replay},
-                            {QStringLiteral("droppedNoSession"), m_droppedNoSession},
-                            {QStringLiteral("reconnects"), m_reconnects},
-                            {QStringLiteral("lastRxAge"), m_lastRx ? QVariant(wallMs() - m_lastRx) : QVariant()}});
+    emit status(QVariantMap{{u"state"_s, m_state},
+                            {u"moduleId"_s, m_opt.moduleId},
+                            {u"relay"_s, u"%1:%2"_s.arg(m_opt.host).arg(m_opt.port)},
+                            {u"keyFingerprint"_s, m_keys.fingerprint},
+                            {u"relayIdentity"_s, QString::fromLatin1(m_keys.pub.left(4).toHex())},
+                            {u"airOnline"_s, m_airOnline},
+                            {u"vehicleSession"_s, m_vehicleSession},
+                            {u"tls"_s, m_tls},
+                            {u"lastError"_s, m_lastError},
+                            {u"bytesRx"_s, m_bytesRx},
+                            {u"bytesTx"_s, m_bytesTx},
+                            {u"recordsIn"_s, m_recordsIn},
+                            {u"recordsOut"_s, m_recordsOut},
+                            {u"authFail"_s, m_authFail},
+                            {u"replay"_s, m_replay},
+                            {u"droppedNoSession"_s, m_droppedNoSession},
+                            {u"reconnects"_s, m_reconnects},
+                            {u"lastRxAge"_s, m_lastRx ? QVariant(wallMs() - m_lastRx) : QVariant()}});
 }
 
 } // namespace corv

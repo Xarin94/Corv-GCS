@@ -50,10 +50,8 @@ class GcsController : public QObject
     QML_NAMED_ELEMENT(Gcs)
     QML_SINGLETON
     Q_PROPERTY(QString version READ version CONSTANT)
-    Q_PROPERTY(QString dataRoot READ dataRoot CONSTANT)
     Q_PROPERTY(QString connectionState READ connectionState NOTIFY connectionStateChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY connectionStateChanged)
-    Q_PROPERTY(QString tlogPath READ tlogPath NOTIFY tlogPathChanged)
     Q_PROPERTY(bool gcsMuted READ gcsMuted WRITE setGcsMuted NOTIFY gcsMutedChanged)
     Q_PROPERTY(QString messageLog READ messageLog NOTIFY messageLogChanged)
 
@@ -65,18 +63,12 @@ public:
     static GcsController *s_instance;
     static GcsController *create(QQmlEngine *, QJSEngine *) { QJSEngine::setObjectOwnership(s_instance, QJSEngine::CppOwnership); return s_instance; }
 
-    VehicleHub *hub() const { return m_hub; }
     LinkManager *link() const { return m_link; }
-    MessageBus *bus() const { return m_bus.get(); }
     CommandSender *commands() const { return m_cmd; }
-    VehicleModel *vehicle() const { return m_vehicle; }
-    ParamStore *params() const { return m_params; }
 
     QString version() const;
-    QString dataRoot() const;
     QString connectionState() const { return m_state; }
     QString lastError() const { return m_error; }
-    QString tlogPath() const { return m_tlog; }
     bool gcsMuted() const;
     void setGcsMuted(bool m);
 
@@ -101,17 +93,20 @@ public:
     Q_INVOKABLE void takeoff(double altitude);
     Q_INVOKABLE void land();
     Q_INVOKABLE void returnToLaunch();
-    Q_INVOKABLE void setGuidedTarget(double lat, double lon, double alt);
 
 signals:
     void connectionStateChanged();
-    void tlogPathChanged();
     void gcsMutedChanged();
     void messageLogChanged();
     /// A line for the HUD message list: level info / warning / error.
     void hudMessage(const QString &text, const QString &level);
 
 private:
+    void startLink();
+    void createViewModels();
+    void wireViewModels();
+    void wireLink();
+
     std::unique_ptr<MessageBus> m_bus;
     QThread m_linkThread;
     LinkManager *m_link = nullptr;
@@ -145,7 +140,6 @@ private:
     ReplayController *m_replay = nullptr;
     QString m_state = QStringLiteral("DISCONNECTED");
     QString m_error;
-    QString m_tlog;
     QStringList m_log;
 };
 

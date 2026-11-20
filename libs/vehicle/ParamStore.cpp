@@ -17,13 +17,15 @@
 #include <cmath>
 #include <cstring>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 ParamStore *ParamStore::s_instance = nullptr;
 
 namespace {
 constexpr int kInterRequestGapMs = 80;
-const QString kParamFile = QStringLiteral("@PARAM/param.pck");
+const QString kParamFile = u"@PARAM/param.pck"_s;
 } // namespace
 
 ParamStore::ParamStore(LinkManager *link, MessageBus *bus, CommandSender *cmd, VehicleHub *hub, QObject *parent)
@@ -78,7 +80,7 @@ QStringList ParamStore::names() const
 
 bool ParamStore::isMavlink() const
 {
-    return m_hub && m_hub->snapshot()->connectionType.startsWith(QLatin1String("mavlink"));
+    return m_hub && m_hub->snapshot()->connectionType.startsWith("mavlink"_L1);
 }
 
 void ParamStore::flushLearned()
@@ -98,7 +100,7 @@ void ParamStore::onParamValue(const QString &name, double value, int type, int i
     if (!m_learnTimer.isActive()) m_learnTimer.start();
     if (m_streamRead) {
         const int got = received();
-        setRead(got < m_total, QStringLiteral("%1/%2").arg(got).arg(m_total), m_total ? double(got) / m_total : 0);
+        setRead(got < m_total, u"%1/%2"_s.arg(got).arg(m_total), m_total ? double(got) / m_total : 0);
         if (got >= m_total) {
             m_streamRead = false;
             LOG_I("param") << "parameter list read one by one:" << got << "in" << (monoMs() - m_readStarted) << "ms";
@@ -135,7 +137,7 @@ void ParamStore::startStream()
     m_params.clear();
     m_total = 0;
     m_streamRead = true;
-    setRead(true, QStringLiteral("0/?"), 0);
+    setRead(true, u"0/?"_s, 0);
     emit changed();
     m_cmd->requestAllParameters();
 }
@@ -149,7 +151,7 @@ void ParamStore::readAll()
         startStream();
         return;
     }
-    setRead(true, QStringLiteral("FTP · opening…"), 0);
+    setRead(true, u"FTP · opening…"_s, 0);
     MavFtpClient::Options o;
     o.targetSystem = m_cmd->targetSystem();
     o.targetComponent = m_cmd->targetComponent();
@@ -162,7 +164,7 @@ void ParamStore::readAll()
             // Count the parameters decodable so far: the progress the operator sees
             const ftp::ParamPack part = ftp::decodeParamPack(self->m_ftp->partial());
             const QString kb = QString::number(p.bytes / 1024.0, 'f', 1);
-            self->setRead(true, part.total ? QStringLiteral("%1/%2 · FTP %3 kB").arg(part.count).arg(part.total).arg(kb) : QStringLiteral("FTP %1 kB").arg(kb),
+            self->setRead(true, part.total ? u"%1/%2 · FTP %3 kB"_s.arg(part.count).arg(part.total).arg(kb) : u"FTP %1 kB"_s.arg(kb),
                           part.total ? double(part.count) / part.total : 0);
         },
         [self](bool ok, const QByteArray &data, const QString &code, const QString &text) {
@@ -176,29 +178,29 @@ void ParamStore::readAll()
                     self->ingestPack(list, pack.total);
                     const double s = (monoMs() - self->m_readStarted) / 1000.0;
                     LOG_I("ftp") << "parameters:" << pack.count << "in" << data.size() << "B," << s << "s";
-                    self->setRead(false, QStringLiteral("%1/%2 · FTP %3 s").arg(pack.total).arg(pack.total).arg(s, 0, 'f', 1), 1);
+                    self->setRead(false, u"%1/%2 · FTP %3 s"_s.arg(pack.total).arg(pack.total).arg(s, 0, 'f', 1), 1);
                     return;
                 }
-                LOG_W("ftp") << "parameter file not decodable:" << (pack.error.isEmpty() ? QStringLiteral("%1/%2 entries").arg(pack.count).arg(pack.total) : pack.error);
+                LOG_W("ftp") << "parameter file not decodable:" << (pack.error.isEmpty() ? u"%1/%2 entries"_s.arg(pack.count).arg(pack.total) : pack.error);
             } else {
                 LOG_W("param") << "FTP download failed (" << code << "):" << text << "- reading one by one";
-                if (code == QLatin1String("CANCELLED")) {
+                if (code == "CANCELLED"_L1) {
                     self->setRead(false, text, 0);
                     return;
                 }
             }
             // No FTP on this firmware, a refused file or a dead transfer: the old way works everywhere
             self->startStream();
-            self->setRead(true, QStringLiteral("no FTP · one by one…"), 0);
+            self->setRead(true, u"no FTP · one by one…"_s, 0);
         });
 }
 
 void ParamStore::cancelRead()
 {
-    if (m_ftp->busy()) m_ftp->cancel(QStringLiteral("cancelled by the operator"));
+    if (m_ftp->busy()) m_ftp->cancel(u"cancelled by the operator"_s);
     if (m_streamRead) {
         m_streamRead = false;
-        setRead(false, QStringLiteral("%1/%2 · stopped").arg(received()).arg(m_total), m_total ? double(received()) / m_total : 0);
+        setRead(false, u"%1/%2 · stopped"_s.arg(received()).arg(m_total), m_total ? double(received()) / m_total : 0);
     }
 }
 
@@ -209,9 +211,9 @@ void ParamStore::enqueueFetch(const QStringList &names)
     int added = 0;
     for (const QString &raw : names) {
         const QString name = ParamCatalog::sanitize(raw);
-        if (name.isEmpty() || m_fetchState.value(name) == QLatin1String("pending") || m_queue.contains(name)) continue;
+        if (name.isEmpty() || m_fetchState.value(name) == "pending"_L1 || m_queue.contains(name)) continue;
         m_queue << name;
-        m_fetchState[name] = QStringLiteral("pending");
+        m_fetchState[name] = u"pending"_s;
         ++added;
     }
     if (!added) return;
@@ -235,7 +237,7 @@ void ParamStore::drainQueue()
     QPointer<ParamStore> self(this);
     m_cmd->fetchParameter(name, m_fetchTimeoutMs, 2, [self, name](bool ok, float, int) {
         if (!self) return;
-        self->m_fetchState[name] = ok ? QStringLiteral("ok") : QStringLiteral("fail");
+        self->m_fetchState[name] = ok ? u"ok"_s : u"fail"_s;
         if (ok) {
             ++self->m_queueDone;
             ParamCatalog::instance().learn({name});
@@ -253,11 +255,11 @@ QString ParamStore::queueText() const
 {
     if (m_queueBusy && !m_queue.isEmpty()) {
         const int queued = int(m_queue.size()) - 1;
-        return QStringLiteral("Reading %1%2").arg(m_queue.first(), queued > 0 ? QStringLiteral(" — %1 queued").arg(queued) : QString());
+        return u"Reading %1%2"_s.arg(m_queue.first(), queued > 0 ? u" — %1 queued"_s.arg(queued) : QString());
     }
     if (m_queueDone || m_queueFailed)
-        return m_queueFailed ? QStringLiteral("%1 read, %2 no reply (raise the timeout)").arg(m_queueDone).arg(m_queueFailed)
-                             : QStringLiteral("%1 read").arg(m_queueDone);
+        return m_queueFailed ? u"%1 read, %2 no reply (raise the timeout)"_s.arg(m_queueDone).arg(m_queueFailed)
+                             : u"%1 read"_s.arg(m_queueDone);
     return {};
 }
 
@@ -318,8 +320,8 @@ bool ParamStore::saveFile(const QString &path, QString *error) const
         return false;
     }
     QStringList lines;
-    for (const auto &[name, p] : m_params) lines << name + QLatin1Char(',') + ParamCatalog::formatValue(p.value, p.type);
-    f.write(lines.join(QLatin1Char('\n')).toUtf8());
+    for (const auto &[name, p] : m_params) lines << name + ','_L1 + ParamCatalog::formatValue(p.value, p.type);
+    f.write(lines.join('\n'_L1).toUtf8());
     if (!f.commit()) {
         if (error) *error = f.errorString();
         return false;
@@ -336,10 +338,10 @@ void ParamStore::loadFile(const QString &path, std::function<void(int, int, cons
     }
     QList<QPair<QString, double>> list;
     QStringList names;
-    static const QRegularExpression sep(QStringLiteral("[,\\s]+"));
-    for (const QString &raw : QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'))) {
+    static const QRegularExpression sep(u"[,\\s]+"_s);
+    for (const QString &raw : QString::fromUtf8(f.readAll()).split('\n'_L1)) {
         const QString line = raw.trimmed();
-        if (line.isEmpty() || line.startsWith(QLatin1Char('#'))) continue;
+        if (line.isEmpty() || line.startsWith('#'_L1)) continue;
         const QStringList parts = line.split(sep, Qt::SkipEmptyParts);
         if (parts.isEmpty()) continue;
         names << parts[0];

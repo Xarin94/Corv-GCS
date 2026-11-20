@@ -12,6 +12,8 @@
 #include <cmath>
 #include <memory>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 SetupController *SetupController::s_instance = nullptr;
@@ -44,7 +46,7 @@ void SetupController::setPage(const QString &p)
     m_page = p;
     emit pageChanged();
     // Re-request the RC stream so data flows on this page (stream 3 = RC_CHANNELS at 4 Hz)
-    if (p == QLatin1String("RADIO CAL") && m_hub->snapshot()->connected) m_cmd->requestDataStream(3, 4);
+    if (p == "RADIO CAL"_L1 && m_hub->snapshot()->connected) m_cmd->requestDataStream(3, 4);
 }
 
 QVariant SetupController::param(const QString &name) const
@@ -55,7 +57,7 @@ QVariant SetupController::param(const QString &name) const
 
 void SetupController::setStatus(const QString &page, const QString &text, bool ok)
 {
-    m_status[page] = QVariantMap{{QStringLiteral("text"), text}, {QStringLiteral("ok"), ok}};
+    m_status[page] = QVariantMap{{u"text"_s, text}, {u"ok"_s, ok}};
     emit statusChanged();
 }
 
@@ -65,7 +67,7 @@ void SetupController::readParams(const QStringList &names, const QString &page)
     for (const QString &n : names)
         if (!unique.contains(n)) unique << n;
     if (unique.isEmpty()) return;
-    setStatus(page, QStringLiteral("Reading %1 parameters...").arg(unique.size()), false);
+    setStatus(page, u"Reading %1 parameters..."_s.arg(unique.size()), false);
     m_params->enqueueFetch(unique);
     // Answers arrive asynchronously (one at a time, retried): report when the queue drains
     auto conn = std::make_shared<QMetaObject::Connection>();
@@ -75,8 +77,8 @@ void SetupController::readParams(const QStringList &names, const QString &page)
         int missing = 0;
         for (const QString &n : unique)
             if (!m_params->find(n)) ++missing;
-        if (missing) setStatus(page, QStringLiteral("%1/%2 read — %3 unsupported on this firmware").arg(unique.size() - missing).arg(unique.size()).arg(missing), false);
-        else setStatus(page, QStringLiteral("%1 parameters read").arg(unique.size()), true);
+        if (missing) setStatus(page, u"%1/%2 read — %3 unsupported on this firmware"_s.arg(unique.size() - missing).arg(unique.size()).arg(missing), false);
+        else setStatus(page, u"%1 parameters read"_s.arg(unique.size()), true);
     });
 }
 
@@ -89,12 +91,12 @@ void SetupController::writeParams(const QVariantMap &values, const QString &page
         if (ok && std::isfinite(v)) list.append({it.key(), v});
     }
     if (list.isEmpty()) {
-        DialogHub::toast(QStringLiteral("Nothing to write"));
+        DialogHub::toast(u"Nothing to write"_s);
         return;
     }
-    setStatus(page, QStringLiteral("Writing %1 parameters...").arg(list.size()), false);
+    setStatus(page, u"Writing %1 parameters..."_s.arg(list.size()), false);
     m_params->writeMany(list, [this, page, doneText](int written, int total) {
-        setStatus(page, QStringLiteral("%1 parameters written").arg(written) + (written < total ? QStringLiteral(", %1 failed").arg(total - written) : QString()),
+        setStatus(page, u"%1 parameters written"_s.arg(written) + (written < total ? u", %1 failed"_s.arg(total - written) : QString()),
                   written == total);
         DialogHub::toast(doneText.arg(written));
     });
@@ -114,13 +116,13 @@ QVariantList SetupController::flightModeOptions() const
     QVariantList out;
     if (s->vehicleType > 0) {
         for (const auto &[num, name] : modes::available(s->vehicleType, s->connectionType))
-            out << QVariantMap{{QStringLiteral("value"), QString::number(num)}, {QStringLiteral("label"), name}};
+            out << QVariantMap{{u"value"_s, QString::number(num)}, {u"label"_s, name}};
         if (!out.isEmpty()) return out;
     }
     static const QList<QPair<int, const char *>> copter{{0, "STABILIZE"}, {2, "ALT_HOLD"}, {5, "LOITER"}, {3, "AUTO"}, {4, "GUIDED"},
                                                         {6, "RTL"},       {9, "LAND"},     {1, "ACRO"},   {16, "POSHOLD"}, {7, "CIRCLE"}};
     for (const auto &[num, name] : copter)
-        out << QVariantMap{{QStringLiteral("value"), QString::number(num)}, {QStringLiteral("label"), QString::fromLatin1(name)}};
+        out << QVariantMap{{u"value"_s, QString::number(num)}, {u"label"_s, QString::fromLatin1(name)}};
     return out;
 }
 
@@ -143,9 +145,9 @@ void SetupController::tick()
             m_rcMax[std::size_t(i)] = std::max(m_rcMax[std::size_t(i)], v);
         }
     }
-    if (m_page != QLatin1String("RADIO CAL") && m_page != QLatin1String("VIBRATIONS") && m_page != QLatin1String("SERVO / RELAY")) return;
-    m_vib = QVariantMap{{QStringLiteral("x"), s->vibX}, {QStringLiteral("y"), s->vibY}, {QStringLiteral("z"), s->vibZ},
-                        {QStringLiteral("clip0"), s->vibClip0}, {QStringLiteral("clip1"), s->vibClip1}, {QStringLiteral("clip2"), s->vibClip2}};
+    if (m_page != "RADIO CAL"_L1 && m_page != "VIBRATIONS"_L1 && m_page != "SERVO / RELAY"_L1) return;
+    m_vib = QVariantMap{{u"x"_s, s->vibX}, {u"y"_s, s->vibY}, {u"z"_s, s->vibZ},
+                        {u"clip0"_s, s->vibClip0}, {u"clip1"_s, s->vibClip1}, {u"clip2"_s, s->vibClip2}};
     m_vibHistory.clear();
     for (const VibrationSample &v : s->vibHistory) m_vibHistory << QVariant(QVariantList{std::abs(v.x), std::abs(v.y), std::abs(v.z)});
     m_servos.clear();
@@ -157,7 +159,7 @@ QVariantList SetupController::rc() const
 {
     QVariantList out;
     for (std::size_t i = 0; i < 16; ++i)
-        out << QVariantMap{{QStringLiteral("value"), m_rcValue[i]}, {QStringLiteral("min"), m_rcMin[i]}, {QStringLiteral("max"), m_rcMax[i]}};
+        out << QVariantMap{{u"value"_s, m_rcValue[i]}, {u"min"_s, m_rcMin[i]}, {u"max"_s, m_rcMax[i]}};
     return out;
 }
 
@@ -167,12 +169,12 @@ void SetupController::rcCalToggle()
     if (m_rcCalibrating) {
         m_rcMin.fill(2000);
         m_rcMax.fill(1000);
-        m_rcStatus = QStringLiteral("Calibrating... move all sticks to extremes");
+        m_rcStatus = u"Calibrating... move all sticks to extremes"_s;
     } else {
         // Capture trim at centre
         const auto s = m_hub->snapshot();
         for (std::size_t i = 0; i < 16; ++i) m_rcTrim[i] = s->rcChannels[i];
-        m_rcStatus = QStringLiteral("Calibration stopped. Trim captured.");
+        m_rcStatus = u"Calibration stopped. Trim captured."_s;
     }
     emit rcCalChanged();
     emit liveChanged();
@@ -181,24 +183,24 @@ void SetupController::rcCalToggle()
 void SetupController::rcCalSave()
 {
     if (m_rcCalibrating) {
-        DialogHub::toast(QStringLiteral("Stop calibration first"));
+        DialogHub::toast(u"Stop calibration first"_s);
         return;
     }
     QVariantMap values;
     for (int i = 0; i < 16; ++i) {
         const auto k = std::size_t(i);
         if (m_rcMin[k] < m_rcMax[k]) {
-            LOG_I("rccal") << QStringLiteral("saving CH%1: MIN=%2 MAX=%3 TRIM=%4").arg(i + 1).arg(m_rcMin[k]).arg(m_rcMax[k]).arg(m_rcTrim[k]);
-            values[QStringLiteral("RC%1_MIN").arg(i + 1)] = m_rcMin[k];
-            values[QStringLiteral("RC%1_MAX").arg(i + 1)] = m_rcMax[k];
-            values[QStringLiteral("RC%1_TRIM").arg(i + 1)] = m_rcTrim[k];
+            LOG_I("rccal") << u"saving CH%1: MIN=%2 MAX=%3 TRIM=%4"_s.arg(i + 1).arg(m_rcMin[k]).arg(m_rcMax[k]).arg(m_rcTrim[k]);
+            values[u"RC%1_MIN"_s.arg(i + 1)] = m_rcMin[k];
+            values[u"RC%1_MAX"_s.arg(i + 1)] = m_rcMax[k];
+            values[u"RC%1_TRIM"_s.arg(i + 1)] = m_rcTrim[k];
         }
     }
     if (values.isEmpty()) {
-        DialogHub::toast(QStringLiteral("No channels calibrated. Run calibration first (START → move sticks → STOP)."));
+        DialogHub::toast(u"No channels calibrated. Run calibration first (START → move sticks → STOP)."_s);
         return;
     }
-    writeParams(values, QStringLiteral("RADIO CAL"), QStringLiteral("Saved %1 RC calibration parameters"));
+    writeParams(values, u"RADIO CAL"_s, u"Saved %1 RC calibration parameters"_s);
 }
 
 void SetupController::rcCalReset()

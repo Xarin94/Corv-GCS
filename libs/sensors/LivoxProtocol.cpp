@@ -5,6 +5,8 @@
 #include <QtEndian>
 #include <array>
 
+using namespace Qt::StringLiterals;
+
 namespace corv::livox {
 
 namespace {
@@ -100,7 +102,7 @@ QByteArray hostIpValue(const QString &ip, quint16 hostPort, quint16 lidarPort)
 {
     QByteArray v(8, '\0');
     auto *b = reinterpret_cast<std::uint8_t *>(v.data());
-    const QStringList parts = ip.split(QLatin1Char('.'));
+    const QStringList parts = ip.split('.'_L1);
     for (int i = 0; i < 4; ++i) b[i] = std::uint8_t(parts.value(i).toInt() & 0xFF);
     qToLittleEndian<std::uint16_t>(hostPort, b + 4);
     qToLittleEndian<std::uint16_t>(lidarPort, b + 6);
@@ -110,10 +112,10 @@ QByteArray hostIpValue(const QString &ip, quint16 hostPort, quint16 lidarPort)
 QString deviceName(int devType)
 {
     switch (devType) {
-    case 9: return QStringLiteral("Mid-360");
-    case 35: return QStringLiteral("Mid-360S");
-    case 15: return QStringLiteral("HAP");
-    case 40: return QStringLiteral("Avia2");
+    case 9: return u"Mid-360"_s;
+    case 35: return u"Mid-360S"_s;
+    case 15: return u"HAP"_s;
+    case 40: return u"Avia2"_s;
     }
     return {};
 }

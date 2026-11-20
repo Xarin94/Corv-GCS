@@ -5,6 +5,8 @@
 #include <cmath>
 #include <set>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -101,12 +103,12 @@ std::optional<RelativeNav::Vel> RelativeNav::pickVelocity(int vehicleType, std::
         return Vel{speed * std::cos(*hdg), speed * std::sin(*hdg), vd, QString::fromLatin1(src)};
     };
     const QString &s = m_settings.velSource;
-    if (s == QLatin1String("air")) return fresh(m_vfr, now) ? along(m_vfr->airspeed, "air") : std::nullopt;
-    if (s == QLatin1String("ground")) return fresh(m_vfr, now) ? along(m_vfr->groundspeed, "ground") : std::nullopt;
-    if (s == QLatin1String("ekf"))
-        return fresh(m_ekf, now) ? std::optional<Vel>(Vel{m_ekf->vn, m_ekf->ve, m_ekf->vd, QStringLiteral("ekf")}) : std::nullopt;
+    if (s == "air"_L1) return fresh(m_vfr, now) ? along(m_vfr->airspeed, "air") : std::nullopt;
+    if (s == "ground"_L1) return fresh(m_vfr, now) ? along(m_vfr->groundspeed, "ground") : std::nullopt;
+    if (s == "ekf"_L1)
+        return fresh(m_ekf, now) ? std::optional<Vel>(Vel{m_ekf->vn, m_ekf->ve, m_ekf->vd, u"ekf"_s}) : std::nullopt;
     if (kFixedWing.count(vehicleType) && fresh(m_vfr, now) && m_vfr->airspeed > 3) return along(m_vfr->airspeed, "air");
-    if (fresh(m_ekf, now)) return Vel{m_ekf->vn, m_ekf->ve, m_ekf->vd, QStringLiteral("ekf")};
+    if (fresh(m_ekf, now)) return Vel{m_ekf->vn, m_ekf->ve, m_ekf->vd, u"ekf"_s};
     return fresh(m_vfr, now) ? along(m_vfr->groundspeed, "ground") : std::nullopt;
 }
 
@@ -138,7 +140,7 @@ double RelativeNav::relativeHeight(int vehicleType, std::int64_t now) const
     if (fresh(m_local, now)) return -m_local->z;
     if (fresh(m_fix, now)) return m_fix->relAlt;
     if (vehicleType == kSubmarine && m_pWater) {
-        const double density = m_settings.water == QLatin1String("salt") ? 1025.0 : 997.0;
+        const double density = m_settings.water == "salt"_L1 ? 1025.0 : 997.0;
         return -((*m_pWater - *m_pWater0) * 100.0) / (density * 9.80665);
     }
     if (m_pAir && *m_pAir > 0 && m_pAir0 && *m_pAir0 > 0) return 44330.0 * (1 - std::pow(*m_pAir / *m_pAir0, 1 / 5.255));
@@ -177,7 +179,7 @@ void RelativeNav::apply(VehicleState &s, std::int64_t now) const
 QString RelativeNav::source(std::int64_t now) const
 {
     if (!m_settings.relative) return {};
-    return fresh(m_local, now) ? QStringLiteral("local") : QStringLiteral("dead-reckoning");
+    return fresh(m_local, now) ? u"local"_s : u"dead-reckoning"_s;
 }
 
 } // namespace corv

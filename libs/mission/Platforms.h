@@ -36,7 +36,6 @@ struct Platform {
     QHash<QString, QHash<QString, QString>> unsupported;   // kind → key → reason
 };
 
-const QStringList &platformOrder();
 const Platform &platform(const QString &id);
 QString activePlatformId();
 /// Switch stack; false when the id is unknown or already active.

@@ -7,6 +7,8 @@
 #include <QJsonObject>
 #include <QTcpSocket>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -48,24 +50,24 @@ QByteArray DebugServer::handle(const QByteArray &line)
 {
     QJsonParseError pe;
     const QJsonDocument doc = QJsonDocument::fromJson(line, &pe);
-    QJsonObject resp{{QStringLiteral("jsonrpc"), QStringLiteral("2.0")}};
+    QJsonObject resp{{u"jsonrpc"_s, u"2.0"_s}};
     if (pe.error != QJsonParseError::NoError || !doc.isObject()) {
-        resp.insert(QStringLiteral("id"), QJsonValue());
-        resp.insert(QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), -32700}, {QStringLiteral("message"), QStringLiteral("parse error")}});
+        resp.insert(u"id"_s, QJsonValue());
+        resp.insert(u"error"_s, QJsonObject{{u"code"_s, -32700}, {u"message"_s, u"parse error"_s}});
         return QJsonDocument(resp).toJson(QJsonDocument::Compact);
     }
     const QJsonObject req = doc.object();
-    resp.insert(QStringLiteral("id"), req.value(QStringLiteral("id")));
-    const QString method = req.value(QStringLiteral("method")).toString();
+    resp.insert(u"id"_s, req.value(u"id"_s));
+    const QString method = req.value(u"method"_s).toString();
     QString error;
-    const QJsonValue result = m_driver.runJson(method, req.value(QStringLiteral("params")), &error);
+    const QJsonValue result = m_driver.runJson(method, req.value(u"params"_s), &error);
     if (!error.isEmpty()) {
-        const int code = error.startsWith(QLatin1String("unknown method")) ? -32601 : -32000;
-        resp.insert(QStringLiteral("error"), QJsonObject{{QStringLiteral("code"), code}, {QStringLiteral("message"), error}});
+        const int code = error.startsWith("unknown method"_L1) ? -32601 : -32000;
+        resp.insert(u"error"_s, QJsonObject{{u"code"_s, code}, {u"message"_s, error}});
     } else {
-        resp.insert(QStringLiteral("result"), result);
+        resp.insert(u"result"_s, result);
     }
-    LOG_D("app") << "debug server:" << method << (error.isEmpty() ? QStringLiteral("ok") : error);
+    LOG_D("app") << "debug server:" << method << (error.isEmpty() ? u"ok"_s : error);
     return QJsonDocument(resp).toJson(QJsonDocument::Compact);
 }
 

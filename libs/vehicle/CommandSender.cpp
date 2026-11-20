@@ -14,6 +14,8 @@
 #include <cstring>
 #include <memory>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -107,7 +109,7 @@ void CommandSender::setFlightModeNum(int modeNum)
 void CommandSender::takeoff(double altitude, Done done)
 {
     // ArduCopter needs GUIDED for the takeoff command, then armed
-    setFlightMode(QStringLiteral("GUIDED"));
+    setFlightMode(u"GUIDED"_s);
     QPointer<CommandSender> self(this);
     QTimer::singleShot(500, this, [self, altitude, done] {
         if (!self) return;
@@ -126,7 +128,7 @@ void CommandSender::takeoff(double altitude, Done done)
 }
 
 void CommandSender::land() { commandLong(MAV_CMD_NAV_LAND); }
-void CommandSender::returnToLaunch() { setFlightMode(QStringLiteral("RTL")); }
+void CommandSender::returnToLaunch() { setFlightMode(u"RTL"_s); }
 void CommandSender::setMissionSpeed(double speed, int speedType) { commandLong(MAV_CMD_DO_CHANGE_SPEED, float(speedType), float(speed), -1); }
 
 void CommandSender::setHome(std::optional<double> lat, std::optional<double> lon, std::optional<double> alt, AckDone done)
@@ -165,17 +167,7 @@ void CommandSender::setHome(std::optional<double> lat, std::optional<double> lon
 void CommandSender::requestHomePosition() { commandLong(MAV_CMD_REQUEST_MESSAGE, MAVLINK_MSG_ID_HOME_POSITION); }
 void CommandSender::rebootAutopilot() { commandLong(MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN, 1); }
 
-void CommandSender::setGuidedTarget(double lat, double lng, double alt)
-{
-    mavlink_message_t m;
-    mavlink_msg_set_position_target_global_int_pack(
-        mav::kGcsSystemId, mav::kGcsComponentId, &m, 0, uint8_t(targetSystem()), uint8_t(targetComponent()),
-        MAV_FRAME_GLOBAL_RELATIVE_ALT_INT, 0b0000111111111000, int32_t(std::llround(lat * 1e7)),
-        int32_t(std::llround(lng * 1e7)), float(alt), 0, 0, 0, 0, 0, 0, 0, 0);
-    sendMsg(m);
-}
 
-void CommandSender::changeAltitude(double alt) { commandLong(MAV_CMD_DO_CHANGE_ALTITUDE, float(alt), MAV_FRAME_GLOBAL_RELATIVE_ALT); }
 
 void CommandSender::sendRcChannelsOverride(const std::array<uint16_t, 18> &in)
 {
@@ -277,7 +269,7 @@ void CommandSender::setParameter(const QString &id, float value, int type, std::
             finish(false, 0);
             return;
         }
-        LOG_W("param") << QStringLiteral("no ACK for %1 (attempt %2/3)").arg(id).arg(st->attempt);
+        LOG_W("param") << u"no ACK for %1 (attempt %2/3)"_s.arg(id).arg(st->attempt);
         sendOnce();
     });
     st->timer.start();
@@ -339,7 +331,7 @@ void CommandSender::fetchParameter(const QString &id, int timeoutMs, int retries
 void CommandSender::uploadMission(const QList<MissionItem> &items, Done done)
 {
     if (items.isEmpty()) {
-        if (done) done(false, QStringLiteral("No mission items to upload"));
+        if (done) done(false, u"No mission items to upload"_s);
         return;
     }
     LOG_I("mission") << "upload of" << items.size() << "items to" << targetSystem() << "/" << targetComponent();
@@ -391,17 +383,17 @@ void CommandSender::uploadMission(const QList<MissionItem> &items, Done done)
         mavlink_mission_ack_t a;
         mavlink_msg_mission_ack_decode(&mm.msg, &a);
         if (a.type == MAV_MISSION_ACCEPTED) {
-            LOG_I("mission") << QStringLiteral("upload accepted: %1 items in %2 ms").arg(n).arg(QDateTime::currentMSecsSinceEpoch() - st->t0);
-            finish(true, QStringLiteral("%1 items").arg(n));
+            LOG_I("mission") << u"upload accepted: %1 items in %2 ms"_s.arg(n).arg(QDateTime::currentMSecsSinceEpoch() - st->t0);
+            finish(true, u"%1 items"_s.arg(n));
         } else {
-            LOG_E("mission") << QStringLiteral("upload rejected: MISSION_ACK type %1 after item %2").arg(a.type).arg(st->lastSeq);
-            finish(false, QStringLiteral("Mission ACK error: type=%1").arg(a.type));
+            LOG_E("mission") << u"upload rejected: MISSION_ACK type %1 after item %2"_s.arg(a.type).arg(st->lastSeq);
+            finish(false, u"Mission ACK error: type=%1"_s.arg(a.type));
         }
     });
     st->timer.setSingleShot(true);
     connect(&st->timer, &QTimer::timeout, this, [st, finish, n = items.size()] {
-        LOG_E("mission") << QStringLiteral("upload timeout after 15 s: last item requested %1 of %2").arg(st->lastSeq).arg(n);
-        finish(false, QStringLiteral("Mission upload timeout"));
+        LOG_E("mission") << u"upload timeout after 15 s: last item requested %1 of %2"_s.arg(st->lastSeq).arg(n);
+        finish(false, u"Mission upload timeout"_s);
     });
     st->timer.start(15000);
     mavlink_message_t m;
@@ -433,8 +425,8 @@ void CommandSender::downloadMission(std::function<void(int, int)> progress,
     };
     auto fail = [st, cleanup, finished](const QString &msg) {
         if (st->finished) return;
-        LOG_E("mission") << QStringLiteral("download failed: %1 (%2/%3 items)").arg(msg).arg(st->items.size())
-                                .arg(st->total < 0 ? QStringLiteral("?") : QString::number(st->total));
+        LOG_E("mission") << u"download failed: %1 (%2/%3 items)"_s.arg(msg).arg(st->items.size())
+                                .arg(st->total < 0 ? u"?"_s : QString::number(st->total));
         cleanup();
         if (finished) finished(false, msg, {});
     };
@@ -504,7 +496,7 @@ void CommandSender::downloadMission(std::function<void(int, int)> progress,
         onItem(r.seq, it);
     });
     st->timer.setSingleShot(true);
-    connect(&st->timer, &QTimer::timeout, this, [fail] { fail(QStringLiteral("Vehicle did not answer")); });
+    connect(&st->timer, &QTimer::timeout, this, [fail] { fail(u"Vehicle did not answer"_s); });
     st->timer.start(4000);
     mavlink_message_t m;
     mavlink_msg_mission_request_list_pack(mav::kGcsSystemId, mav::kGcsComponentId, &m, sys, comp, MAV_MISSION_TYPE_MISSION);

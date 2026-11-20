@@ -7,6 +7,8 @@
 #include "vehicle/CommandSender.h"
 #include "vehicle/VehicleHub.h"
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -37,8 +39,7 @@ ConnectionManager::ConnectionManager(LinkManager *link, VehicleHub *hub, Message
     connect(m_link, &LinkManager::connected, this, [this](const QString &type) {
         LOG_I("conn") << "connect" << type << "done";
         // MSP speaks no MAVLink to the vehicle: no streams to ask for
-        if (!type.startsWith(QLatin1String("msp"))) requestStreamsWhenLinked();
-        emit vehicleConnected(type);
+        if (!type.startsWith("msp"_L1)) requestStreamsWhenLinked();
     });
     connect(m_link, &LinkManager::connectFailed, this, [this](const QString &type, const QString &error) {
         LOG_E("conn") << "connect" << type << "failed:" << error;
@@ -46,11 +47,10 @@ ConnectionManager::ConnectionManager(LinkManager *link, VehicleHub *hub, Message
         emit connectFailed(type, error);
     });
     connect(m_link, &LinkManager::connectionState, this, [this](const QString &st) {
-        if (st != QLatin1String("DISCONNECTED")) return;
+        if (st != "DISCONNECTED"_L1) return;
         m_streamPoll.stop();
         stopHomePolling();
         m_type.clear();
-        emit disconnected();
     });
 
     // Home after arming: the autopilot sets a new one, ask until it comes
@@ -63,28 +63,28 @@ void ConnectionManager::connectLink(const QString &type, const QVariantMap &o)
 {
     QStringList shown;
     for (auto it = o.cbegin(); it != o.cend(); ++it)
-        if (!it.key().contains(QLatin1String("key"), Qt::CaseInsensitive) && !it.key().contains(QLatin1String("pass"), Qt::CaseInsensitive))
-            shown << it.key() + QLatin1Char('=') + it.value().toString();
-    LOG_I("conn") << "connect" << type << shown.join(QLatin1Char(' '));
+        if (!it.key().contains("key"_L1, Qt::CaseInsensitive) && !it.key().contains("pass"_L1, Qt::CaseInsensitive))
+            shown << it.key() + '='_L1 + it.value().toString();
+    LOG_I("conn") << "connect" << type << shown.join(' '_L1);
     m_type = type;
     m_hub->awaitSceneOriginFix();
     if (type == QLatin1String(LinkManager::kMavlinkSerial))
-        m_link->connectSerial(o.value(QStringLiteral("port")).toString(), o.value(QStringLiteral("baudRate"), 57600).toInt());
+        m_link->connectSerial(o.value(u"port"_s).toString(), o.value(u"baudRate"_s, 57600).toInt());
     else if (type == QLatin1String(LinkManager::kMavlinkUdp))
-        m_link->connectUdp(o.value(QStringLiteral("host"), QStringLiteral("127.0.0.1")).toString(), o.value(QStringLiteral("port"), 14550).toInt());
+        m_link->connectUdp(o.value(u"host"_s, u"127.0.0.1"_s).toString(), o.value(u"port"_s, 14550).toInt());
     else if (type == QLatin1String(LinkManager::kMavlinkTcp))
-        m_link->connectTcp(o.value(QStringLiteral("host"), QStringLiteral("127.0.0.1")).toString(), o.value(QStringLiteral("port"), 5760).toInt());
+        m_link->connectTcp(o.value(u"host"_s, u"127.0.0.1"_s).toString(), o.value(u"port"_s, 5760).toInt());
     else if (type == QLatin1String(LinkManager::kMavlinkLte))
         m_link->connectLte(o);
     else if (type == QLatin1String(LinkManager::kMspSerial))
-        m_link->connectMspSerial(o.value(QStringLiteral("port")).toString(), o.value(QStringLiteral("baudRate"), 115200).toInt(),
-                                 o.value(QStringLiteral("profile"), QStringLiteral("normal")).toString());
+        m_link->connectMspSerial(o.value(u"port"_s).toString(), o.value(u"baudRate"_s, 115200).toInt(),
+                                 o.value(u"profile"_s, u"normal"_s).toString());
     else if (type == QLatin1String(LinkManager::kMspTcp))
-        m_link->connectMspTcp(o.value(QStringLiteral("host"), QStringLiteral("127.0.0.1")).toString(), o.value(QStringLiteral("port"), 5760).toInt(),
-                              o.value(QStringLiteral("profile"), QStringLiteral("normal")).toString());
+        m_link->connectMspTcp(o.value(u"host"_s, u"127.0.0.1"_s).toString(), o.value(u"port"_s, 5760).toInt(),
+                              o.value(u"profile"_s, u"normal"_s).toString());
     else {
         LOG_E("conn") << "unknown connection type" << type;
-        emit connectFailed(type, QStringLiteral("Unknown connection type: %1").arg(type));
+        emit connectFailed(type, u"Unknown connection type: %1"_s.arg(type));
     }
 }
 
@@ -92,14 +92,6 @@ void ConnectionManager::disconnectLink()
 {
     LOG_I("conn") << "disconnect" << m_type;
     m_link->disconnectLink();
-}
-
-bool ConnectionManager::isHeartbeatAlive() const
-{
-    const auto s = m_hub->snapshot();
-    if (!s->connected) return false;
-    if (s->connectionType.startsWith(QLatin1String("msp"))) return wallMs() - s->lastHeartbeatTime < 5000;
-    return wallMs() - s->lastHeartbeatTime < 3000;
 }
 
 void ConnectionManager::requestStreamsWhenLinked()
@@ -118,7 +110,7 @@ void ConnectionManager::stopHomePolling() { m_homePoll.stop(); }
 void ConnectionManager::onHeartbeat()
 {
     const auto s = m_hub->snapshot();
-    if (s->connectionType.startsWith(QLatin1String("msp"))) {
+    if (s->connectionType.startsWith("msp"_L1)) {
         stopHomePolling();
         return;
     }

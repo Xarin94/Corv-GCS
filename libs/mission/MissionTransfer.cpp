@@ -4,6 +4,8 @@
 #include <QRegularExpression>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv::mission {
 
 namespace {
@@ -15,9 +17,9 @@ QJsonObject o(std::initializer_list<QPair<QString, QJsonValue>> kv) { QJsonObjec
 QJsonObject itemsToRoute(const QList<RawItem> &itemsIn, const QString &name, bool fromVehicle)
 {
     QJsonObject route = createRoute();
-    route.insert(QStringLiteral("name"), name.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(name));
+    route.insert(u"name"_s, name.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(name));
     QJsonObject P = defaultRouteParams();
-    if (itemsIn.isEmpty()) { route.insert(QStringLiteral("params"), P); return route; }
+    if (itemsIn.isEmpty()) { route.insert(u"params"_s, P); return route; }
 
     QList<RawItem> list;
     for (RawItem it : itemsIn) {
@@ -30,7 +32,7 @@ QJsonObject itemsToRoute(const QList<RawItem> &itemsIn, const QString &name, boo
     if (list[0].isHome || (fromVehicle && list[0].command == 16)) {
         const RawItem &h = list[0];
         if (std::isfinite(h.lat) && std::isfinite(h.lng) && (h.lat || h.lng))
-            P.insert(QStringLiteral("home"), o({{QStringLiteral("lat"), h.lat}, {QStringLiteral("lng"), h.lng}}));
+            P.insert(u"home"_s, o({{u"lat"_s, h.lat}, {u"lng"_s, h.lng}}));
         if (std::isfinite(h.alt)) homeZ = h.alt;
         list.removeFirst();
     }
@@ -45,12 +47,12 @@ QJsonObject itemsToRoute(const QList<RawItem> &itemsIn, const QString &name, boo
             if (it.frame == 3) ++rel;
             if (it.frame == 10) terrainFrame = true;
         }
-        P.insert(QStringLiteral("altMode"), rel >= total / 2.0 ? QStringLiteral("rel") : terrainFrame ? QStringLiteral("agl") : QStringLiteral("amsl"));
+        P.insert(u"altMode"_s, rel >= total / 2.0 ? u"rel"_s : terrainFrame ? u"agl"_s : u"amsl"_s);
     } else {
-        P.insert(QStringLiteral("altMode"), QStringLiteral("agl"));   // saved files carry AGL in `alt`
+        P.insert(u"altMode"_s, u"agl"_s);   // saved files carry AGL in `alt`
     }
-    P.insert(QStringLiteral("takeoff"), false);
-    P.insert(QStringLiteral("endAction"), QStringLiteral("none"));
+    P.insert(u"takeoff"_s, false);
+    P.insert(u"endAction"_s, u"none"_s);
 
     QJsonArray segs;
     int last = -1;                      // last segment that can carry actions
@@ -58,15 +60,15 @@ QJsonObject itemsToRoute(const QList<RawItem> &itemsIn, const QString &name, boo
     auto attach = [&](const QJsonObject &action) {
         if (last < 0) {
             // Actions before the first navigation point: kept on a zero-length waypoint
-            const QJsonObject home = P.value(QStringLiteral("home")).toObject();
-            const LL at = home.isEmpty() ? LL{itemsIn[0].lat, itemsIn[0].lng} : LL{num(home.value(QStringLiteral("lat"))), num(home.value(QStringLiteral("lng")))};
-            segs.append(createSegment(QStringLiteral("waypoint"), {at}));
+            const QJsonObject home = P.value(u"home"_s).toObject();
+            const LL at = home.isEmpty() ? LL{itemsIn[0].lat, itemsIn[0].lng} : LL{num(home.value(u"lat"_s)), num(home.value(u"lng"_s))};
+            segs.append(createSegment(u"waypoint"_s, {at}));
             last = int(segs.size()) - 1;
         }
         QJsonObject s = segs[last].toObject();
-        QJsonArray acts = s.value(QStringLiteral("actions")).toArray();
+        QJsonArray acts = s.value(u"actions"_s).toArray();
         acts.append(action);
-        s.insert(QStringLiteral("actions"), acts);
+        s.insert(u"actions"_s, acts);
         segs[last] = s;
     };
     auto altOf = [](const RawItem &it) { return std::isfinite(it.alt) ? QJsonValue(it.alt) : QJsonValue(QJsonValue::Null); };
@@ -77,32 +79,32 @@ QJsonObject itemsToRoute(const QList<RawItem> &itemsIn, const QString &name, boo
         const LL at{it.lat, it.lng};
         switch (it.command) {
         case 16: case 82:
-            segs.append(createSegment(QStringLiteral("waypoint"), {at},
-                                      o({{QStringLiteral("alt"), altOf(it)},
-                                         {QStringLiteral("turn"), it.command == 82 ? QStringLiteral("spline") : QStringLiteral("route")},
-                                         {QStringLiteral("delay"), it.param1}, {QStringLiteral("acceptRadius"), it.param2}})));
+            segs.append(createSegment(u"waypoint"_s, {at},
+                                      o({{u"alt"_s, altOf(it)},
+                                         {u"turn"_s, it.command == 82 ? u"spline"_s : u"route"_s},
+                                         {u"delay"_s, it.param1}, {u"acceptRadius"_s, it.param2}})));
             last = int(segs.size()) - 1;
             break;
         case 17: case 18: case 19: case 31: {
             const double pr = it.param3 ? it.param3 : it.param2;
             const double rr = std::abs(pr ? pr : 50);
-            segs.append(createSegment(QStringLiteral("circle"), {at},
-                                      o({{QStringLiteral("alt"), altOf(it)}, {QStringLiteral("radius"), rr},
-                                         {QStringLiteral("turns"), it.command == 18 ? std::max(1.0, it.param1 ? it.param1 : 1) : 1.0},
-                                         {QStringLiteral("direction"), pr < 0 ? QStringLiteral("ccw") : QStringLiteral("cw")}})));
+            segs.append(createSegment(u"circle"_s, {at},
+                                      o({{u"alt"_s, altOf(it)}, {u"radius"_s, rr},
+                                         {u"turns"_s, it.command == 18 ? std::max(1.0, it.param1 ? it.param1 : 1) : 1.0},
+                                         {u"direction"_s, pr < 0 ? u"ccw"_s : u"cw"_s}})));
             last = int(segs.size()) - 1;
             break;
         }
         case 22: case 84: {
-            P.insert(QStringLiteral("takeoff"), true);
+            P.insert(u"takeoff"_s, true);
             // Take-off height is always above the take-off point; an absolute frame carries home MSL
             const double rel = (it.frame == 0 && homeZ) ? it.alt - *homeZ : it.alt;
-            if (rel > 0) P.insert(QStringLiteral("takeoffAlt"), r1(rel));
+            if (rel > 0) P.insert(u"takeoffAlt"_s, r1(rel));
             break;
         }
         case 20:
-            if (isLast) P.insert(QStringLiteral("endAction"), QStringLiteral("rtl"));
-            else attach(createAction(QStringLiteral("raw"), o({{QStringLiteral("command"), 20}})));
+            if (isLast) P.insert(u"endAction"_s, u"rtl"_s);
+            else attach(createAction(u"raw"_s, o({{u"command"_s, 20}})));
             break;
         case 21: case 85: {
             bool samePlace = false;
@@ -110,77 +112,77 @@ QJsonObject itemsToRoute(const QList<RawItem> &itemsIn, const QString &name, boo
                 const QJsonObject ls = segs[last].toObject();
                 const QList<LL> lp = pointsOf(ls);
                 samePlace = !lp.isEmpty() && std::abs(lp[0].lat - it.lat) < 1e-6 && std::abs(lp[0].lng - it.lng) < 1e-6
-                            && ls.value(QStringLiteral("type")).toString() != QLatin1String("landing");
+                            && ls.value(u"type"_s).toString() != "landing"_L1;
             }
             if (isLast && samePlace) {
-                P.insert(QStringLiteral("endAction"), QStringLiteral("land"));
+                P.insert(u"endAction"_s, u"land"_s);
             } else {
-                segs.append(createSegment(QStringLiteral("landing"), {at},
-                                          o({{QStringLiteral("vtol"), it.command == 85}, {QStringLiteral("abortAlt"), it.param1}})));
+                segs.append(createSegment(u"landing"_s, {at},
+                                          o({{u"vtol"_s, it.command == 85}, {u"abortAlt"_s, it.param1}})));
                 last = int(segs.size()) - 1;
             }
             break;
         }
         case 201: case 195:
-            segs.append(createSegment(QStringLiteral("poi"), {at}, o({{QStringLiteral("mode"), QStringLiteral("set")}, {QStringLiteral("alt"), std::isfinite(it.alt) ? it.alt : 0}})));
+            segs.append(createSegment(u"poi"_s, {at}, o({{u"mode"_s, u"set"_s}, {u"alt"_s, std::isfinite(it.alt) ? it.alt : 0}})));
             break;
         case 197: {
             LL where = at;
             if (!it.lat && !it.lng) {
                 if (last >= 0 && !pointsOf(segs[last].toObject()).isEmpty()) where = pointsOf(segs[last].toObject())[0];
                 else {
-                    const QJsonObject home = P.value(QStringLiteral("home")).toObject();
-                    where = home.isEmpty() ? LL{0, 0} : LL{num(home.value(QStringLiteral("lat"))), num(home.value(QStringLiteral("lng")))};
+                    const QJsonObject home = P.value(u"home"_s).toObject();
+                    where = home.isEmpty() ? LL{0, 0} : LL{num(home.value(u"lat"_s)), num(home.value(u"lng"_s))};
                 }
             }
-            segs.append(createSegment(QStringLiteral("poi"), {where}, o({{QStringLiteral("mode"), QStringLiteral("clear")}})));
+            segs.append(createSegment(u"poi"_s, {where}, o({{u"mode"_s, u"clear"_s}})));
             break;
         }
         case 178:
             if (!defaultSpeedSet && last < 0) {
-                if (it.param2) P.insert(QStringLiteral("defaultSpeed"), it.param2);
+                if (it.param2) P.insert(u"defaultSpeed"_s, it.param2);
                 defaultSpeedSet = true;
-            } else if (last >= 0 && !num(segs[last].toObject().value(QStringLiteral("params")).toObject().value(QStringLiteral("speed")))) {
+            } else if (last >= 0 && !num(segs[last].toObject().value(u"params"_s).toObject().value(u"speed"_s))) {
                 QJsonObject s = segs[last].toObject();
-                QJsonObject sp = s.value(QStringLiteral("params")).toObject();
-                sp.insert(QStringLiteral("speed"), it.param2);
-                s.insert(QStringLiteral("params"), sp);
+                QJsonObject sp = s.value(u"params"_s).toObject();
+                sp.insert(u"speed"_s, it.param2);
+                s.insert(u"params"_s, sp);
                 segs[last] = s;
             } else {
-                attach(createAction(QStringLiteral("speed"), o({{QStringLiteral("speed"), it.param2}})));
+                attach(createAction(u"speed"_s, o({{u"speed"_s, it.param2}})));
             }
             break;
-        case 206: attach(createAction(QStringLiteral("trigger_dist"), o({{QStringLiteral("distance"), it.param1}}))); break;
-        case 203: attach(createAction(QStringLiteral("shot"))); break;
-        case 205: attach(createAction(QStringLiteral("gimbal"), o({{QStringLiteral("pitch"), it.param1}, {QStringLiteral("yaw"), it.param3}}))); break;
-        case 115: attach(createAction(QStringLiteral("yaw"), o({{QStringLiteral("heading"), it.param1}}))); break;
-        case 93: case 112: attach(createAction(QStringLiteral("wait"), o({{QStringLiteral("seconds"), it.param1}}))); break;
-        case 183: attach(createAction(QStringLiteral("servo"), o({{QStringLiteral("channel"), it.param1}, {QStringLiteral("pwm"), it.param2}}))); break;
-        case 181: attach(createAction(QStringLiteral("relay"), o({{QStringLiteral("relay"), it.param1}, {QStringLiteral("state"), it.param2 ? 1 : 0}}))); break;
+        case 206: attach(createAction(u"trigger_dist"_s, o({{u"distance"_s, it.param1}}))); break;
+        case 203: attach(createAction(u"shot"_s)); break;
+        case 205: attach(createAction(u"gimbal"_s, o({{u"pitch"_s, it.param1}, {u"yaw"_s, it.param3}}))); break;
+        case 115: attach(createAction(u"yaw"_s, o({{u"heading"_s, it.param1}}))); break;
+        case 93: case 112: attach(createAction(u"wait"_s, o({{u"seconds"_s, it.param1}}))); break;
+        case 183: attach(createAction(u"servo"_s, o({{u"channel"_s, it.param1}, {u"pwm"_s, it.param2}}))); break;
+        case 181: attach(createAction(u"relay"_s, o({{u"relay"_s, it.param1}, {u"state"_s, it.param2 ? 1 : 0}}))); break;
         default:
-            attach(createAction(QStringLiteral("raw"), o({{QStringLiteral("command"), it.command}, {QStringLiteral("param1"), it.param1},
-                                                          {QStringLiteral("param2"), it.param2}, {QStringLiteral("param3"), it.param3},
-                                                          {QStringLiteral("param4"), it.param4}})));
+            attach(createAction(u"raw"_s, o({{u"command"_s, it.command}, {u"param1"_s, it.param1},
+                                                          {u"param2"_s, it.param2}, {u"param3"_s, it.param3},
+                                                          {u"param4"_s, it.param4}})));
         }
     }
 
     // A speed change that only ever sits on the first segment is really the route speed
     if (!defaultSpeedSet && !segs.isEmpty()) {
-        const double first = num(segs[0].toObject().value(QStringLiteral("params")).toObject().value(QStringLiteral("speed")));
+        const double first = num(segs[0].toObject().value(u"params"_s).toObject().value(u"speed"_s));
         bool others = false;
         for (qsizetype i = 1; i < segs.size(); ++i)
-            if (num(segs[i].toObject().value(QStringLiteral("params")).toObject().value(QStringLiteral("speed")))) others = true;
+            if (num(segs[i].toObject().value(u"params"_s).toObject().value(u"speed"_s))) others = true;
         if (first > 0 && !others) {
-            P.insert(QStringLiteral("defaultSpeed"), first);
+            P.insert(u"defaultSpeed"_s, first);
             QJsonObject s = segs[0].toObject();
-            QJsonObject sp = s.value(QStringLiteral("params")).toObject();
-            sp.insert(QStringLiteral("speed"), 0);
-            s.insert(QStringLiteral("params"), sp);
+            QJsonObject sp = s.value(u"params"_s).toObject();
+            sp.insert(u"speed"_s, 0);
+            s.insert(u"params"_s, sp);
             segs[0] = s;
         }
     }
-    route.insert(QStringLiteral("params"), P);
-    route.insert(QStringLiteral("segments"), segs);
+    route.insert(u"params"_s, P);
+    route.insert(u"segments"_s, segs);
     return route;
 }
 
@@ -205,25 +207,25 @@ QList<RawItem> uploadItems(const QList<CompiledItem> &items)
 
 QString toWpl(const QList<RawItem> &items)
 {
-    QStringList lines{QStringLiteral("QGC WPL 110")};
+    QStringList lines{u"QGC WPL 110"_s};
     auto g = [](double v) { return QString::number(v, 'g', 10); };
     for (const RawItem &it : items) {
-        lines << QStringList{QString::number(it.seq), it.seq == 0 ? QStringLiteral("1") : QStringLiteral("0"), QString::number(it.frame),
+        lines << QStringList{QString::number(it.seq), it.seq == 0 ? u"1"_s : u"0"_s, QString::number(it.frame),
                              QString::number(it.command), g(it.param1), g(it.param2), g(it.param3), g(it.param4),
-                             QString::number(it.lat, 'f', 8), QString::number(it.lng, 'f', 8), QString::number(it.alt, 'f', 2), QStringLiteral("1")}
-                     .join(QLatin1Char('\t'));
+                             QString::number(it.lat, 'f', 8), QString::number(it.lng, 'f', 8), QString::number(it.alt, 'f', 2), u"1"_s}
+                     .join('\t'_L1);
     }
-    return lines.join(QLatin1Char('\n')) + QLatin1Char('\n');
+    return lines.join('\n'_L1) + '\n'_L1;
 }
 
 bool parseWpl(const QString &text, QList<RawItem> &out, QString *error)
 {
-    const QStringList lines = text.split(QRegularExpression(QStringLiteral("\r?\n")));
-    if (lines.isEmpty() || !lines[0].startsWith(QStringLiteral("QGC WPL"), Qt::CaseInsensitive)) {
-        if (error) *error = QStringLiteral("Not a QGC WPL file");
+    const QStringList lines = text.split(QRegularExpression(u"\r?\n"_s));
+    if (lines.isEmpty() || !lines[0].startsWith(u"QGC WPL"_s, Qt::CaseInsensitive)) {
+        if (error) *error = u"Not a QGC WPL file"_s;
         return false;
     }
-    static const QRegularExpression ws(QStringLiteral("\\s+"));
+    static const QRegularExpression ws(u"\\s+"_s);
     for (qsizetype i = 1; i < lines.size(); ++i) {
         const QStringList f = lines[i].trimmed().split(ws, Qt::SkipEmptyParts);
         if (f.size() < 12) continue;
@@ -242,11 +244,11 @@ QJsonArray serializeItems(const QList<CompiledItem> &items)
 {
     QJsonArray a;
     for (const CompiledItem &it : items) {
-        QJsonObject j{{QStringLiteral("seq"), it.seq}, {QStringLiteral("command"), it.command}, {QStringLiteral("lat"), it.lat},
-                      {QStringLiteral("lng"), it.lng}, {QStringLiteral("alt"), it.alt}, {QStringLiteral("altMsl"), it.altMsl},
-                      {QStringLiteral("frame"), it.frame}, {QStringLiteral("param1"), it.param1}, {QStringLiteral("param2"), it.param2},
-                      {QStringLiteral("param3"), it.param3}, {QStringLiteral("param4"), it.param4}};
-        if (it.isHome) j.insert(QStringLiteral("isHome"), true);
+        QJsonObject j{{u"seq"_s, it.seq}, {u"command"_s, it.command}, {u"lat"_s, it.lat},
+                      {u"lng"_s, it.lng}, {u"alt"_s, it.alt}, {u"altMsl"_s, it.altMsl},
+                      {u"frame"_s, it.frame}, {u"param1"_s, it.param1}, {u"param2"_s, it.param2},
+                      {u"param3"_s, it.param3}, {u"param4"_s, it.param4}};
+        if (it.isHome) j.insert(u"isHome"_s, true);
         a.append(j);
     }
     return a;
@@ -258,17 +260,17 @@ QList<RawItem> itemsFromJson(const QJsonArray &a)
     for (const QJsonValue &v : a) {
         const QJsonObject j = v.toObject();
         RawItem it;
-        it.seq = j.value(QStringLiteral("seq")).toInt();
-        it.command = int(num(j.value(QStringLiteral("command")), 16));
-        it.frame = int(num(j.value(QStringLiteral("frame")), 3));
-        it.lat = num(j.value(QStringLiteral("lat")));
-        it.lng = num(j.value(j.contains(QStringLiteral("lng")) ? QStringLiteral("lng") : QStringLiteral("lon")));
-        it.alt = num(j.value(QStringLiteral("alt")), NAN);
-        it.param1 = num(j.value(QStringLiteral("param1")));
-        it.param2 = num(j.value(QStringLiteral("param2")));
-        it.param3 = num(j.value(QStringLiteral("param3")));
-        it.param4 = num(j.value(QStringLiteral("param4")));
-        it.isHome = j.value(QStringLiteral("isHome")).toBool();
+        it.seq = j.value(u"seq"_s).toInt();
+        it.command = int(num(j.value(u"command"_s), 16));
+        it.frame = int(num(j.value(u"frame"_s), 3));
+        it.lat = num(j.value(u"lat"_s));
+        it.lng = num(j.value(j.contains(u"lng"_s) ? u"lng"_s : u"lon"_s));
+        it.alt = num(j.value(u"alt"_s), NAN);
+        it.param1 = num(j.value(u"param1"_s));
+        it.param2 = num(j.value(u"param2"_s));
+        it.param3 = num(j.value(u"param3"_s));
+        it.param4 = num(j.value(u"param4"_s));
+        it.isHome = j.value(u"isHome"_s).toBool();
         out.append(it);
     }
     return out;

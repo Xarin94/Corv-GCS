@@ -29,7 +29,9 @@
 namespace corv {
 
 class CommandSender;
+class LinkManager;
 class VehicleHub;
+struct VehicleState;
 
 /// The segment cards: one row per segment, kept across edits so a field being typed in keeps its focus.
 class SegmentListModel : public QAbstractListModel
@@ -65,7 +67,6 @@ class PlanController : public QObject
     Q_PROPERTY(QString uploadText READ uploadText NOTIFY buttonsChanged)
     Q_PROPERTY(QString readText READ readText NOTIFY buttonsChanged)
     Q_PROPERTY(QString saveText READ saveText NOTIFY buttonsChanged)
-    Q_PROPERTY(bool transferBusy READ transferBusy NOTIFY buttonsChanged)
     // Segment list and inspector
     Q_PROPERTY(QObject *segmentModel READ segmentModel CONSTANT)
     Q_PROPERTY(int segmentCount READ segmentCount NOTIFY routeChanged)
@@ -105,7 +106,6 @@ class PlanController : public QObject
     Q_PROPERTY(QString platformId READ platformId WRITE setPlatformId NOTIFY platformChanged)
     Q_PROPERTY(QString platformHint READ platformHint NOTIFY platformChanged)
     Q_PROPERTY(QString platformLink READ platformLink NOTIFY platformChanged)
-    Q_PROPERTY(bool missionsSupported READ missionsSupported NOTIFY platformChanged)
     // Library
     Q_PROPERTY(QVariantList libraryMissions READ libraryMissions NOTIFY libraryChanged)
     Q_PROPERTY(QVariantList libraryLogs READ libraryLogs NOTIFY libraryChanged)
@@ -129,7 +129,6 @@ public:
     QString uploadText() const { return m_uploadText; }
     QString readText() const { return m_readText; }
     QString saveText() const { return m_saveText; }
-    bool transferBusy() const { return m_transferBusy; }
 
     QObject *segmentModel() { return &m_segModel; }
     int segmentCount() const;
@@ -174,7 +173,6 @@ public:
     void setPlatformId(const QString &id);
     QString platformHint() const;
     QString platformLink() const;
-    bool missionsSupported() const;
 
     QVariantList libraryMissions() const { return m_libMissions; }
     QVariantList libraryLogs() const { return m_libLogs; }
@@ -188,8 +186,6 @@ public:
     Q_INVOKABLE void escape();
     Q_INVOKABLE void keyTool(const QString &key);
     Q_INVOKABLE void selectSegment(const QString &id, bool pan = false);
-    /// A click on a figure or base point: select it and bring its card into view.
-    Q_INVOKABLE void selectFromMap(const QString &id);
     Q_INVOKABLE void toggleSegment(const QString &id, bool pan = false);
     Q_INVOKABLE void deleteSegment(const QString &id);
     Q_INVOKABLE void deleteSelected();
@@ -205,13 +201,11 @@ public:
     Q_INVOKABLE void save();
     Q_INVOKABLE void saveAsNew();
     Q_INVOKABLE void openLibrary();
-    Q_INVOKABLE void refreshLibrary();
     Q_INVOKABLE void libraryAction(const QString &act, const QString &id);
     Q_INVOKABLE void revealDataFolder();
     Q_INVOKABLE void menuAction(const QString &act);
     Q_INVOKABLE void importFile(const QUrl &url);
     Q_INVOKABLE void exportFile(const QUrl &url);
-    Q_INVOKABLE QString exportName() const;
     Q_INVOKABLE void setHomeVehicle();
     Q_INVOKABLE void resetHome();
     Q_INVOKABLE void placeOperator();
@@ -224,11 +218,16 @@ public:
 
     // ── PlanMapItem / ProfileItem ──
     const QJsonObject &route() const { return m_route; }
+    QJsonObject segment(const QString &id) const;
+    /// A click on a figure or base point: select it and bring its card into view.
+    void selectFromMap(const QString &id);
     const mission::CompiledRoute &compiled() const { return m_compiled; }
     int compileRevision() const { return m_compileRev; }
     struct Draft { QString type; QList<mission::LL> points; };
     const std::optional<Draft> &draft() const { return m_draft; }
     std::optional<mission::LL> takeoffPoint(QString *kind = nullptr) const;
+    /// The operator where the plan puts it; operatorPoint() falls back to the take-off point.
+    std::optional<mission::LL> placedOperator() const;
     std::optional<mission::LL> operatorPoint() const;
     const std::optional<mission::GroundStation> &groundStation() const { return m_gs; }
     const std::optional<mission::LinkAnalysis> &linkAnalysis() const { return m_analysis; }
@@ -288,59 +287,90 @@ signals:
     void saveFileRequested(const QString &suggestedName);
 
 private:
+    using WhyFn = std::function<QString(const QJsonObject &field, const QString &option)>;
+    using MspProgress = std::function<void(const QString &phase, int done, int total)>;
+    using MspDone = std::function<void(bool ok, const QString &error, const QVariantMap &result)>;
+
     // Document
     QJsonArray segs() const;
     void setSegs(const QJsonArray &a);
     int segIndex(const QString &id) const;
-    QJsonObject segment(const QString &id) const;
     void putSegment(const QJsonObject &seg);
     QJsonObject params() const;
     void setParams(const QJsonObject &p);
     void replaceRoute(const QJsonObject &r);
+    /// A new document (new, imported, read, loaded): history and selection start over.
+    void loadRoute(const QJsonObject &route, const QString &id = {}, const QString &name = {}, int fitMs = -1);
     void addSegment(const QJsonObject &seg, const QString &label);
+    void setPlacement(const QString &key, std::optional<mission::LL> pos, const QString &label);
+    void clearRoute();
+    void invertRoute();
+    void flattenRoute();
+    QString exportName() const;
+
+    // Vehicle
+    std::shared_ptr<const VehicleState> snapshot() const;
+    int vehicleType() const;
+    bool vehicleConnected() const;
+    std::optional<mission::LL> vehicleFix() const;
+    void poll();
 
     // History
+    struct Step { QJsonObject doc; QString label; };
     bool commit(const QString &label);
     void resetHistory();
-    void applyHistory(bool ok);
+    void stepHistory(QList<Step> &from, QList<Step> &to);
+    void applyHistory();
 
     // Compile
     void scheduleCompile(int delayMs = 250);
     void runCompile();
     void publishMission3D();
-    // INAV missions over MSP
-    QString inavLinkProblem() const;
-    void uploadInav();
-    void doUploadInav();
-    void doReadInav();
     bool ensureRouteTerrain();
     void refreshCard();
+    QVariantList routeChips() const;
+    QVariantList cardIssues(bool hasSegments) const;
     void refreshList();
     void rebuildInspector();
     void refreshInspectorDetail();
     QString segmentSummary(const QJsonObject &seg) const;
-    QVariantList fieldsFor(const QJsonArray &fields, const QJsonObject &values, const std::function<QString(const QJsonObject &, const QString &)> &why) const;
+    QVariantList fieldsFor(const QJsonArray &fields, const QJsonObject &values, const WhyFn &why) const;
+    void setSegmentParam(QJsonObject seg, const QString &key, const QJsonValue &v, bool reshapes);
+    void setActionField(QJsonObject seg, int idx, QJsonObject action, const QString &key, const QJsonValue &v);
+    void setRouteParam(bool route, const QString &key, const QJsonValue &v, bool reshapes);
+    void setProfileField(const QString &scope, const QString &key, const QJsonValue &v);
 
     // Link
     void scheduleLink(int delayMs = 150);
     void runLink();
-    QVariantList platformIssues() const;
+    void updateCoverage(const QJsonObject &radio, const mission::TerrainFn &terrain);
+    QList<mission::Issue> platformIssues() const;
 
     // Upload / download
+    bool beginTransfer(QString &button, const QString &text);
+    void flashButton(QString &which, const QString &text, int ms);
+    void readFailed(const QString &why, int ms);
+    void readDone(const QJsonObject &route, int count);
     void doUpload();
     void doRead();
-    void flashButton(QString &which, const QString &text, int ms);
+    // INAV missions over MSP
+    QString inavLinkProblem() const;
+    LinkManager *mspTransfer(const QString &op, QString &button, const QString &text, const MspProgress &progress, const MspDone &done);
+    void doUploadInav();
+    void doReadInav();
 
     // Library
+    void refreshLibrary();
     void saveCurrent(bool forceNew);
     void writeMission(const QString &id, const QString &name);
     void loadMission(const QString &id);
 
     // Dialogs
     void confirm(const QString &message, std::function<void()> yes);
+    /// confirm() only when there is a route to lose.
+    void confirmReplace(const QString &message, std::function<void()> go);
     void prompt(const QString &message, const QString &value, std::function<void(const QString &)> done);
     void setHint(const QString &text, bool flash = false);
-    void syncName();
 
     VehicleHub *m_hub;
     CommandSender *m_cmd;
@@ -365,7 +395,6 @@ private:
     QStringList m_inspDerived;
 
     // History
-    struct Step { QJsonObject doc; QString label; };
     QJsonObject m_baseline;
     QList<Step> m_undo, m_redo;
 
@@ -398,7 +427,6 @@ private:
     QHash<int, std::function<void(bool, const QString &)>> m_pending;
     int m_inavLimit = 0;
     std::optional<mission::LL> m_centeredAt;
-    bool m_centeredLive = false;
 };
 
 } // namespace corv

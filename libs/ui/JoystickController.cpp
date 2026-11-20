@@ -17,12 +17,14 @@
 #include <cmath>
 #include <memory>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 using namespace joystick;
 
 namespace {
-const QString kConfigKey = QStringLiteral("datad-joystick-config");
+const QString kConfigKey = u"datad-joystick-config"_s;
 const char *const kDirections[4] = {"up", "down", "left", "right"};
 constexpr qint64 kStaleMs = 500;      // no device data for this long: channels released
 constexpr int kPollMs = 10;           // 100 Hz, fast enough for RC control
@@ -73,8 +75,8 @@ void JoystickController::scan()
 {
     QVariantList list;
     for (const Gamepad::Device &d : m_pad.devices())
-        list << QVariantMap{{QStringLiteral("id"), int(d.id)},
-                            {QStringLiteral("label"), QStringLiteral("[%1] %2 (%3A/%4B)").arg(d.id).arg(d.name).arg(d.axes).arg(d.buttons)}};
+        list << QVariantMap{{u"id"_s, int(d.id)},
+                            {u"label"_s, u"[%1] %2 (%3A/%4B)"_s.arg(d.id).arg(d.name).arg(d.axes).arg(d.buttons)}};
     if (list != m_deviceList) {
         m_deviceList = list;
         emit devicesChanged();
@@ -100,7 +102,7 @@ void JoystickController::select(int id)
     if (id < 0) {
         // No device: everything off
         m_servoButtons = false;
-        m_servoStatus = QStringLiteral("Disabled");
+        m_servoStatus = u"Disabled"_s;
         setEnabled(false);
         m_pad.close();
         m_padName.clear();
@@ -170,7 +172,7 @@ void JoystickController::applyParameters()
     const int session = ++m_paramSession;
     m_saved.clear();
     const auto s = m_hub->snapshot();
-    if (!s->connected || s->connectionType.startsWith(QLatin1String("msp"))) {
+    if (!s->connected || s->connectionType.startsWith("msp"_L1)) {
         m_sendTimer.start(int(std::lround(1000.0 / m_sendRate)));
         return;
     }
@@ -179,14 +181,14 @@ void JoystickController::applyParameters()
         std::function<std::optional<float>(float)> target;
     };
     auto steps = std::make_shared<std::vector<Step>>(std::vector<Step>{
-        {QStringLiteral("SYSID_MYGCS"), [](float) { return std::optional<float>(255); }},
-        {QStringLiteral("RC_OVERRIDE_TIME"), [](float) { return std::optional<float>(3); }},
-        {QStringLiteral("RC_OPTIONS"),
+        {u"SYSID_MYGCS"_s, [](float) { return std::optional<float>(255); }},
+        {u"RC_OVERRIDE_TIME"_s, [](float) { return std::optional<float>(3); }},
+        {u"RC_OPTIONS"_s,
          [](float v) {
              const int cur = int(v), cleared = cur & ~2;
              return cleared != cur ? std::optional<float>(float(cleared)) : std::nullopt;
          }},
-        {QStringLiteral("FS_THR_ENABLE"), [](float) { return std::optional<float>(0); }},
+        {u"FS_THR_ENABLE"_s, [](float) { return std::optional<float>(0); }},
     });
     // The chain holds itself weakly; the request in flight keeps it alive
     auto next = std::make_shared<std::function<void(std::size_t)>>();
@@ -270,7 +272,7 @@ void JoystickController::send()
     }
     // No device data for 500 ms: release to the receiver and wait, still enabled
     if (m_suspended || wallMs() - m_lastData > kStaleMs) {
-        if (!m_suspended) suspend(QStringLiteral("no gamepad data"));
+        if (!m_suspended) suspend(u"no gamepad data"_s);
         return;
     }
     if (!m_rcActive) {
@@ -290,7 +292,7 @@ void JoystickController::poll()
         m_pollTimer.stop();
         resetButtons();
         std::fill(m_raw.begin(), m_raw.end(), std::nullopt);
-        if (m_enabled && !m_suspended) suspend(QStringLiteral("gamepad lost"));
+        if (m_enabled && !m_suspended) suspend(u"gamepad lost"_s);
         emit stateChanged();
         emit liveChanged();
         return;
@@ -346,14 +348,14 @@ void JoystickController::pollButtons(const std::vector<double> &buttons)
     // A press is an edge on the same vehicle: a button held across a reconnection or a
     // configuration change never becomes a new servo command
     const auto s = m_hub->snapshot();
-    const QString target = s->connected ? QStringLiteral("%1:%2:%3").arg(s->connectionType).arg(s->systemId).arg(s->componentId) : QString();
+    const QString target = s->connected ? u"%1:%2:%3"_s.arg(s->connectionType).arg(s->systemId).arg(s->componentId) : QString();
     if (m_prevButtons && !target.isEmpty() && target == m_buttonTarget && m_servoButtons) {
         for (const ServoConfig &cfg : m_servoMap) {
             const int b = cfg.button;
             if (!held(b) || b >= int(m_prevButtons->size()) || (*m_prevButtons)[std::size_t(b)]) continue;
             const int pwm = servoPwm(cfg);
             m_cmd->sendServoTest(cfg.servo, pwm);
-            m_servoStatus = QStringLiteral("Sent S%1: %2% (%3 us)").arg(cfg.servo).arg(cfg.percent).arg(pwm);
+            m_servoStatus = u"Sent S%1: %2% (%3 us)"_s.arg(cfg.servo).arg(cfg.percent).arg(pwm);
             emit stateChanged();
         }
     }
@@ -367,10 +369,10 @@ void JoystickController::setInput(int index, const QVariantMap &patch)
 {
     if (index < 0 || index >= int(m_axes.size())) return;
     QJsonObject o = toJson(m_axes[std::size_t(index)]);
-    if (patch.contains(QStringLiteral("source"))) {
-        const QString src = patch.value(QStringLiteral("source")).toString();
-        o.insert(QStringLiteral("sourceType"), src.section(QLatin1Char(':'), 0, 0));
-        o.insert(QStringLiteral("sourceIndex"), src.section(QLatin1Char(':'), 1).toInt());
+    if (patch.contains(u"source"_s)) {
+        const QString src = patch.value(u"source"_s).toString();
+        o.insert(u"sourceType"_s, src.section(':'_L1, 0, 0));
+        o.insert(u"sourceIndex"_s, src.section(':'_L1, 1).toInt());
     }
     for (const char *k : {"channel", "inverted", "deadzone", "expo"}) {
         const QString key = QLatin1String(k);
@@ -408,7 +410,7 @@ void JoystickController::setServoButtons(bool on)
 {
     // Armed deliberately each session, never saved
     m_servoButtons = on;
-    m_servoStatus = on ? QStringLiteral("Ready - release held buttons before commanding") : QStringLiteral("Disabled");
+    m_servoStatus = on ? u"Ready - release held buttons before commanding"_s : u"Disabled"_s;
     resetButtons();
     emit stateChanged();
 }
@@ -417,17 +419,17 @@ void JoystickController::load()
 {
     const QJsonObject c = loadJson(kConfigKey);
     if (c.isEmpty()) return;
-    m_padName = c.value(QStringLiteral("gamepadId")).toString();
-    if (c.value(QStringLiteral("sendRateHz")).isDouble()) m_sendRate = std::clamp(c.value(QStringLiteral("sendRateHz")).toInt(), 1, 50);
-    const QJsonArray axes = c.value(QStringLiteral("axisMap")).toArray();
+    m_padName = c.value(u"gamepadId"_s).toString();
+    if (c.value(u"sendRateHz"_s).isDouble()) m_sendRate = std::clamp(c.value(u"sendRateHz"_s).toInt(), 1, 50);
+    const QJsonArray axes = c.value(u"axisMap"_s).toArray();
     if (!axes.isEmpty()) {
         m_axes.clear();
         const int n = std::max(kMinInputs, std::min(64, int(axes.size())));
         for (int i = 0; i < n; ++i) m_axes.push_back(i < axes.size() && !axes.at(i).isNull() ? axisFromJson(axes.at(i), i) : defaultAxis(i));
     }
-    const QJsonArray servos = c.value(QStringLiteral("servoMap")).toArray();
+    const QJsonArray servos = c.value(u"servoMap"_s).toArray();
     for (int i = 0; i < 2; ++i) m_servoMap[std::size_t(i)] = servoFromJson(servos.at(i), i);
-    const QJsonObject view = c.value(QStringLiteral("viewMap")).toObject();
+    const QJsonObject view = c.value(u"viewMap"_s).toObject();
     for (int d = 0; d < 4; ++d) {
         const QJsonValue v = view.value(QLatin1String(kDirections[d]));
         m_viewMap[std::size_t(d)] = v.isDouble() && v.toInt() >= 0 && v.toInt() < 256 ? v.toInt() : -1;
@@ -441,63 +443,63 @@ void JoystickController::save()
     for (const ServoConfig &s : m_servoMap) servos.append(toJson(s));
     QJsonObject view;
     for (int d = 0; d < 4; ++d) view.insert(QLatin1String(kDirections[d]), m_viewMap[std::size_t(d)]);
-    Settings::instance().setJson(kConfigKey, QJsonObject{{QStringLiteral("gamepadIndex"), m_pad.isOpen() ? QJsonValue(int(m_pad.device().id)) : QJsonValue()},
-                                                         {QStringLiteral("gamepadId"), m_padName},
-                                                         {QStringLiteral("sendRateHz"), m_sendRate},
-                                                         {QStringLiteral("axisMap"), axes},
-                                                         {QStringLiteral("servoMap"), servos},
-                                                         {QStringLiteral("viewMap"), view}});
+    Settings::instance().setJson(kConfigKey, QJsonObject{{u"gamepadIndex"_s, m_pad.isOpen() ? QJsonValue(int(m_pad.device().id)) : QJsonValue()},
+                                                         {u"gamepadId"_s, m_padName},
+                                                         {u"sendRateHz"_s, m_sendRate},
+                                                         {u"axisMap"_s, axes},
+                                                         {u"servoMap"_s, servos},
+                                                         {u"viewMap"_s, view}});
 }
 
 // ── What the page shows ──────────────────────────────────────────────────────
 
 QString JoystickController::status() const
 {
-    if (!Gamepad::available()) return QStringLiteral("Not available in this build (no SDL3)");
+    if (!Gamepad::available()) return u"Not available in this build (no SDL3)"_s;
     if (!m_enabled)
-        return m_pad.isOpen() ? QStringLiteral("RC disabled - input preview / FPV available") : QStringLiteral("Disabled - No gamepad (press SCAN)");
+        return m_pad.isOpen() ? u"RC disabled - input preview / FPV available"_s : u"Disabled - No gamepad (press SCAN)"_s;
     if (m_suspended || !m_pad.isOpen())
-        return !m_pad.isOpen() ? QStringLiteral("SUSPENDED - gamepad unplugged (channels released)")
-                               : QStringLiteral("SUSPENDED - no gamepad data (channels released)");
-    if (m_rcActive) return QStringLiteral("SENDING (%1Hz)").arg(m_sendRate);
-    if (m_hub->snapshot()->connected) return QStringLiteral("Starting (%1Hz)").arg(m_sendRate);
-    return QStringLiteral("Active (%1Hz) - Waiting connection").arg(m_sendRate);
+        return !m_pad.isOpen() ? u"SUSPENDED - gamepad unplugged (channels released)"_s
+                               : u"SUSPENDED - no gamepad data (channels released)"_s;
+    if (m_rcActive) return u"SENDING (%1Hz)"_s.arg(m_sendRate);
+    if (m_hub->snapshot()->connected) return u"Starting (%1Hz)"_s.arg(m_sendRate);
+    return u"Active (%1Hz) - Waiting connection"_s.arg(m_sendRate);
 }
 
 QString JoystickController::statusKind() const
 {
     if (!m_enabled) return {};
-    if (m_suspended || !m_pad.isOpen()) return QStringLiteral("warning");
-    if (m_rcActive) return QStringLiteral("active");
-    return m_hub->snapshot()->connected ? QStringLiteral("warning") : QString();
+    if (m_suspended || !m_pad.isOpen()) return u"warning"_s;
+    if (m_rcActive) return u"active"_s;
+    return m_hub->snapshot()->connected ? u"warning"_s : QString();
 }
 
 QVariantList JoystickController::inputs() const
 {
     QVariantList out;
     for (const AxisConfig &a : m_axes)
-        out << QVariantMap{{QStringLiteral("source"), sourceKey(a)}, {QStringLiteral("channel"), a.channel}, {QStringLiteral("inverted"), a.inverted},
-                           {QStringLiteral("deadzone"), a.deadzone}, {QStringLiteral("expo"), a.expo}};
+        out << QVariantMap{{u"source"_s, sourceKey(a)}, {u"channel"_s, a.channel}, {u"inverted"_s, a.inverted},
+                           {u"deadzone"_s, a.deadzone}, {u"expo"_s, a.expo}};
     return out;
 }
 
 QVariantList JoystickController::sourceOptions() const
 {
     const int axes = m_pad.isOpen() ? m_pad.device().axes : 0, buttons = m_pad.isOpen() ? m_pad.device().buttons : 0;
-    QVariantList out{QVariantMap{{QStringLiteral("value"), QStringLiteral("none:0")}, {QStringLiteral("label"), QStringLiteral("Unmapped")}}};
+    QVariantList out{QVariantMap{{u"value"_s, u"none:0"_s}, {u"label"_s, u"Unmapped"_s}}};
     for (int i = 0; i < axes; ++i)
-        out << QVariantMap{{QStringLiteral("value"), QStringLiteral("axis:%1").arg(i)}, {QStringLiteral("label"), QStringLiteral("Axis %1").arg(i)}};
+        out << QVariantMap{{u"value"_s, u"axis:%1"_s.arg(i)}, {u"label"_s, u"Axis %1"_s.arg(i)}};
     for (int i = 0; i < buttons; ++i)
-        out << QVariantMap{{QStringLiteral("value"), QStringLiteral("button:%1").arg(i)}, {QStringLiteral("label"), QStringLiteral("Button %1").arg(i)}};
+        out << QVariantMap{{u"value"_s, u"button:%1"_s.arg(i)}, {u"label"_s, u"Button %1"_s.arg(i)}};
     // Sources a row uses that this device does not have
     QStringList extra;
     for (const AxisConfig &a : m_axes) {
         const bool missing = (a.source == AxisConfig::Source::Axis && a.sourceIndex >= axes) || (a.source == AxisConfig::Source::Button && a.sourceIndex >= buttons);
         if (!missing || extra.contains(sourceKey(a))) continue;
         extra << sourceKey(a);
-        out << QVariantMap{{QStringLiteral("value"), sourceKey(a)},
-                           {QStringLiteral("label"), QStringLiteral("%1 %2 (unavailable)")
-                                                         .arg(a.source == AxisConfig::Source::Axis ? QStringLiteral("Axis") : QStringLiteral("Button"))
+        out << QVariantMap{{u"value"_s, sourceKey(a)},
+                           {u"label"_s, u"%1 %2 (unavailable)"_s
+                                                         .arg(a.source == AxisConfig::Source::Axis ? u"Axis"_s : u"Button"_s)
                                                          .arg(a.sourceIndex)}};
     }
     return out;
@@ -506,9 +508,9 @@ QVariantList JoystickController::sourceOptions() const
 QVariantList JoystickController::buttonOptions() const
 {
     const int buttons = m_pad.isOpen() ? m_pad.device().buttons : 0;
-    QVariantList out{QVariantMap{{QStringLiteral("value"), QStringLiteral("-1")}, {QStringLiteral("label"), QStringLiteral("Unmapped")}}};
+    QVariantList out{QVariantMap{{u"value"_s, u"-1"_s}, {u"label"_s, u"Unmapped"_s}}};
     for (int i = 0; i < buttons; ++i)
-        out << QVariantMap{{QStringLiteral("value"), QString::number(i)}, {QStringLiteral("label"), QStringLiteral("Button %1").arg(i)}};
+        out << QVariantMap{{u"value"_s, QString::number(i)}, {u"label"_s, u"Button %1"_s.arg(i)}};
     QList<int> used;
     for (const ServoConfig &s : m_servoMap) used << s.button;
     for (int b : m_viewMap) used << b;
@@ -516,7 +518,7 @@ QVariantList JoystickController::buttonOptions() const
     used.erase(std::unique(used.begin(), used.end()), used.end());
     for (int b : used)
         if (b >= buttons)
-            out << QVariantMap{{QStringLiteral("value"), QString::number(b)}, {QStringLiteral("label"), QStringLiteral("Button %1 (unavailable)").arg(b)}};
+            out << QVariantMap{{u"value"_s, QString::number(b)}, {u"label"_s, u"Button %1 (unavailable)"_s.arg(b)}};
     return out;
 }
 
@@ -524,7 +526,7 @@ QVariantList JoystickController::servos() const
 {
     QVariantList out;
     for (const ServoConfig &s : m_servoMap)
-        out << QVariantMap{{QStringLiteral("button"), s.button}, {QStringLiteral("servo"), s.servo}, {QStringLiteral("percent"), s.percent}};
+        out << QVariantMap{{u"button"_s, s.button}, {u"servo"_s, s.servo}, {u"percent"_s, s.percent}};
     return out;
 }
 
@@ -551,10 +553,10 @@ QVariantList JoystickController::channels() const
 
 QString JoystickController::pressed() const
 {
-    if (m_pressed.empty()) return QStringLiteral("—");
+    if (m_pressed.empty()) return u"—"_s;
     QStringList s;
     for (int b : m_pressed) s << QString::number(b);
-    return s.join(QStringLiteral(", "));
+    return s.join(u", "_s);
 }
 
 } // namespace corv

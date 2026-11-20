@@ -27,32 +27,34 @@
 #include <QTimer>
 #include <cstdio>
 
+using namespace Qt::StringLiterals;
+
 using namespace corv;
 
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
-    QCoreApplication::setApplicationName(QStringLiteral("corv-link-cli"));
+    QCoreApplication::setApplicationName(u"corv-link-cli"_s);
     QCommandLineParser p;
-    p.setApplicationDescription(QStringLiteral("CORV GCS link and vehicle state, no interface"));
+    p.setApplicationDescription(u"CORV GCS link and vehicle state, no interface"_s);
     p.addHelpOption();
-    p.addPositionalArgument(QStringLiteral("type"), QStringLiteral("tcp | udp | serial | msp | msptcp | lte | ports"));
-    p.addPositionalArgument(QStringLiteral("address"), QStringLiteral("host or serial port"));
-    p.addPositionalArgument(QStringLiteral("port"), QStringLiteral("TCP/UDP port or baud rate"));
-    QCommandLineOption seconds(QStringLiteral("seconds"), QStringLiteral("Stop after N seconds"), QStringLiteral("N"), QStringLiteral("0"));
-    QCommandLineOption arm(QStringLiteral("arm"), QStringLiteral("Arm once the vehicle is linked"));
-    QCommandLineOption mode(QStringLiteral("mode"), QStringLiteral("Set this flight mode once linked"), QStringLiteral("NAME"));
-    QCommandLineOption takeoff(QStringLiteral("takeoff"), QStringLiteral("GUIDED, arm and take off to ALT m"), QStringLiteral("ALT"));
-    QCommandLineOption module(QStringLiteral("module"), QStringLiteral("lte: module (vehicle) ID"), QStringLiteral("ID"));
-    QCommandLineOption key(QStringLiteral("key"), QStringLiteral("lte: 256-bit module key, 64 hex characters"), QStringLiteral("HEX"));
-    QCommandLineOption cert(QStringLiteral("cert"), QStringLiteral("lte: relay certificate SHA-256 to pin"), QStringLiteral("SHA256"));
-    QCommandLineOption slow(QStringLiteral("slow"), QStringLiteral("msp: the slow poll profile (long-range radio)"));
+    p.addPositionalArgument(u"type"_s, u"tcp | udp | serial | msp | msptcp | lte | ports"_s);
+    p.addPositionalArgument(u"address"_s, u"host or serial port"_s);
+    p.addPositionalArgument(u"port"_s, u"TCP/UDP port or baud rate"_s);
+    QCommandLineOption seconds(u"seconds"_s, u"Stop after N seconds"_s, u"N"_s, u"0"_s);
+    QCommandLineOption arm(u"arm"_s, u"Arm once the vehicle is linked"_s);
+    QCommandLineOption mode(u"mode"_s, u"Set this flight mode once linked"_s, u"NAME"_s);
+    QCommandLineOption takeoff(u"takeoff"_s, u"GUIDED, arm and take off to ALT m"_s, u"ALT"_s);
+    QCommandLineOption module(u"module"_s, u"lte: module (vehicle) ID"_s, u"ID"_s);
+    QCommandLineOption key(u"key"_s, u"lte: 256-bit module key, 64 hex characters"_s, u"HEX"_s);
+    QCommandLineOption cert(u"cert"_s, u"lte: relay certificate SHA-256 to pin"_s, u"SHA256"_s);
+    QCommandLineOption slow(u"slow"_s, u"msp: the slow poll profile (long-range radio)"_s);
     p.addOptions({seconds, arm, mode, takeoff, module, key, cert, slow});
     p.process(app);
 
     const QStringList args = p.positionalArguments();
     QTextStream out(stdout);
-    if (args.value(0) == QLatin1String("ports")) {
+    if (args.value(0) == "ports"_L1) {
         for (const auto &i : SerialTransport::listPorts())
             out << i.path << "  " << i.friendlyName << "  " << i.vendorId << ':' << i.productId << Qt::endl;
         return 0;
@@ -64,7 +66,7 @@ int main(int argc, char **argv)
 
     MessageBus bus;
     QThread linkThread;
-    linkThread.setObjectName(QStringLiteral("link"));
+    linkThread.setObjectName(u"link"_s);
     auto *link = new LinkManager(&bus);
     auto *hub = new VehicleHub(link);
     link->moveToThread(&linkThread);
@@ -87,37 +89,37 @@ int main(int argc, char **argv)
 
     const QString type = args[0];
     QVariantMap o;
-    if (type == QLatin1String("tcp") || type == QLatin1String("udp")) {
-        o[QStringLiteral("host")] = args[1];
-        o[QStringLiteral("port")] = args[2].toInt();
-        conn.connectLink(type == QLatin1String("tcp") ? QLatin1String(LinkManager::kMavlinkTcp) : QLatin1String(LinkManager::kMavlinkUdp), o);
-    } else if (type == QLatin1String("serial")) {
-        o[QStringLiteral("port")] = args[1];
-        o[QStringLiteral("baudRate")] = args[2].toInt();
+    if (type == "tcp"_L1 || type == "udp"_L1) {
+        o[u"host"_s] = args[1];
+        o[u"port"_s] = args[2].toInt();
+        conn.connectLink(type == "tcp"_L1 ? QLatin1String(LinkManager::kMavlinkTcp) : QLatin1String(LinkManager::kMavlinkUdp), o);
+    } else if (type == "serial"_L1) {
+        o[u"port"_s] = args[1];
+        o[u"baudRate"_s] = args[2].toInt();
         conn.connectLink(QLatin1String(LinkManager::kMavlinkSerial), o);
-    } else if (type == QLatin1String("msp") || type == QLatin1String("msptcp")) {
-        o[QStringLiteral("profile")] = p.isSet(slow) ? QStringLiteral("slow") : QStringLiteral("normal");
-        if (type == QLatin1String("msp")) {
-            o[QStringLiteral("port")] = args[1];
-            o[QStringLiteral("baudRate")] = args[2].toInt();
+    } else if (type == "msp"_L1 || type == "msptcp"_L1) {
+        o[u"profile"_s] = p.isSet(slow) ? u"slow"_s : u"normal"_s;
+        if (type == "msp"_L1) {
+            o[u"port"_s] = args[1];
+            o[u"baudRate"_s] = args[2].toInt();
             conn.connectLink(QLatin1String(LinkManager::kMspSerial), o);
         } else {
-            o[QStringLiteral("host")] = args[1];
-            o[QStringLiteral("port")] = args[2].toInt();
+            o[u"host"_s] = args[1];
+            o[u"port"_s] = args[2].toInt();
             conn.connectLink(QLatin1String(LinkManager::kMspTcp), o);
         }
-    } else if (type == QLatin1String("lte")) {
-        o[QStringLiteral("host")] = args[1];
-        o[QStringLiteral("port")] = args[2].toInt();
-        o[QStringLiteral("moduleId")] = p.value(module);
-        o[QStringLiteral("keyHex")] = p.value(key);
-        o[QStringLiteral("certSha256")] = p.value(cert);
+    } else if (type == "lte"_L1) {
+        o[u"host"_s] = args[1];
+        o[u"port"_s] = args[2].toInt();
+        o[u"moduleId"_s] = p.value(module);
+        o[u"keyHex"_s] = p.value(key);
+        o[u"certSha256"_s] = p.value(cert);
         QObject::connect(link, &LinkManager::lteStatus, &app, [&out](const QVariantMap &st) {
             static QString last;
-            const QString line = QStringLiteral("LTE %1 air=%2 records in %3 out %4 authFail %5 replay %6")
-                                     .arg(st.value(QStringLiteral("state")).toString(), st.value(QStringLiteral("airOnline")).toBool() ? QStringLiteral("online") : QStringLiteral("offline"))
-                                     .arg(st.value(QStringLiteral("recordsIn")).toLongLong()).arg(st.value(QStringLiteral("recordsOut")).toLongLong())
-                                     .arg(st.value(QStringLiteral("authFail")).toLongLong()).arg(st.value(QStringLiteral("replay")).toLongLong());
+            const QString line = u"LTE %1 air=%2 records in %3 out %4 authFail %5 replay %6"_s
+                                     .arg(st.value(u"state"_s).toString(), st.value(u"airOnline"_s).toBool() ? u"online"_s : u"offline"_s)
+                                     .arg(st.value(u"recordsIn"_s).toLongLong()).arg(st.value(u"recordsOut"_s).toLongLong())
+                                     .arg(st.value(u"authFail"_s).toLongLong()).arg(st.value(u"replay"_s).toLongLong());
             if (line != last) out << line << Qt::endl;
             last = line;
         });
@@ -132,10 +134,10 @@ int main(int argc, char **argv)
     tick.setInterval(1000);
     QObject::connect(&tick, &QTimer::timeout, &app, [&] {
         const auto s = hub->snapshot();
-        out << QStringLiteral("%1 %2 %3 hb=%4 | %5 %6 | %7, %8 alt %9 m | att %10/%11/%12 deg | gs %13 as %14 vs %15 | bat %16 V %17% | gps %18 sats %19 | link %20 kbps")
-                   .arg(s->connected ? QStringLiteral("LINK") : QStringLiteral("----"), s->connectionType, s->linkType)
+        out << u"%1 %2 %3 hb=%4 | %5 %6 | %7, %8 alt %9 m | att %10/%11/%12 deg | gs %13 as %14 vs %15 | bat %16 V %17% | gps %18 sats %19 | link %20 kbps"_s
+                   .arg(s->connected ? u"LINK"_s : u"----"_s, s->connectionType, s->linkType)
                    .arg(s->heartbeatCount)
-                   .arg(modes::vehicleTypeName(s->vehicleType), s->armed ? QStringLiteral("ARMED ") + s->flightMode : s->flightMode)
+                   .arg(modes::vehicleTypeName(s->vehicleType), s->armed ? u"ARMED "_s + s->flightMode : s->flightMode)
                    .arg(s->lat, 0, 'f', 6).arg(s->lon, 0, 'f', 6).arg(s->rawAlt, 0, 'f', 1)
                    .arg(s->roll * kRad, 0, 'f', 1).arg(s->pitch * kRad, 0, 'f', 1).arg(s->yaw * kRad, 0, 'f', 1)
                    .arg(s->gs, 0, 'f', 1).arg(s->as, 0, 'f', 1).arg(s->vs, 0, 'f', 1)
@@ -149,7 +151,7 @@ int main(int argc, char **argv)
             if (p.isSet(mode)) cmd.setFlightMode(p.value(mode));
             const bool wantsArm = p.isSet(arm) || p.isSet(takeoff);
             if (wantsArm && !s->armed) {
-                if (p.isSet(takeoff)) cmd.setFlightMode(QStringLiteral("GUIDED"));
+                if (p.isSet(takeoff)) cmd.setFlightMode(u"GUIDED"_s);
                 cmd.armVehicle();
             } else {
                 acted = true;

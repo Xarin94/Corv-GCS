@@ -37,29 +37,6 @@ double flatDistance(double lat1, double lon1, double lat2, double lon2);
 /// Great-circle distance on a 6371 km sphere (mission-store summaries, link budgets).
 double haversine(double lat1, double lon1, double lat2, double lon2);
 
-struct TileXY {
-    int x = 0;
-    int y = 0;
-    int z = 0;
-};
-
-struct TileBounds {
-    double latTop = 0;
-    double latBottom = 0;
-    double lonLeft = 0;
-    double lonRight = 0;
-};
-
-TileXY latLonToTile(double lat, double lon, int zoom);
-TileBounds tileToBounds(int x, int y, int z);
-
-struct Rgb {
-    float r = 0, g = 0, b = 0;
-};
-
-/// Terrain height palette of getHeightColor(): green below 700 m, then sand, orange, red, purple, blue.
-Rgb heightColor(double height);
-
 inline double wrapPi(double a) { return std::atan2(std::sin(a), std::cos(a)); }
 inline double wrapDeg180(double a) { return std::fmod(std::fmod(a + 540.0, 360.0) + 360.0, 360.0) - 180.0; }
 

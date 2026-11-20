@@ -32,7 +32,6 @@ public:
     /// HOME_POSITION from the vehicle: the origin goes to that home.
     void home(double lat, double lon);
     /// False from a stream opening until its first valid position.
-    bool streamHasFix() const { return !m_awaitingFix; }
 
     std::function<void(LatLon)> onMoved;
 

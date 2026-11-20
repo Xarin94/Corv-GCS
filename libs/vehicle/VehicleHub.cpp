@@ -7,6 +7,8 @@
 #include <QThread>
 #include <QTimer>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 VehicleHub::VehicleHub(LinkManager *link, QObject *parent) : QObject(parent), m_link(link)
@@ -21,7 +23,6 @@ VehicleHub::VehicleHub(LinkManager *link, QObject *parent) : QObject(parent), m_
     m_mapper.origin().onMoved = [this](LatLon o) {
         m_state.sceneOrigin = o;
         m_state.sceneOriginEpoch = m_mapper.origin().epoch();
-        emit sceneOriginChanged(o.lat, o.lon, m_state.sceneOriginEpoch);
     };
 
     if (link) {
@@ -29,17 +30,17 @@ VehicleHub::VehicleHub(LinkManager *link, QObject *parent) : QObject(parent), m_
         connect(link, &LinkManager::message, this, &VehicleHub::onMessage, Qt::DirectConnection);
         connect(link, &LinkManager::connected, this, [this](const QString &type) {
             m_state.connected = true;
-            m_state.mode = QStringLiteral("LIVE");
+            m_state.mode = u"LIVE"_s;
             m_state.connectionType = type;
             publish();
             emit connectionChanged(true, type);
         }, Qt::DirectConnection);
         connect(link, &LinkManager::connectionState, this, [this](const QString &st) {
-            if (st != QLatin1String("DISCONNECTED")) return;
+            if (st != "DISCONNECTED"_L1) return;
             // Every DISCONNECTED clears the connection (the Electron renderer kept connected = true)
             const bool was = m_state.connected;
             m_state.connected = false;
-            m_state.connectionType = QStringLiteral("none");
+            m_state.connectionType = u"none"_s;
             m_state.linkType.clear();
             m_state.linkKbps = 0;
             publish();
@@ -80,7 +81,7 @@ void VehicleHub::publish()
 void VehicleHub::onMessage(const MavMessage &m)
 {
     // A replay frame only counts while the mode is REPLAY; live frames while a log is loaded are ignored
-    if (m.replay != (m_state.mode == QLatin1String("REPLAY"))) return;
+    if (m.replay != (m_state.mode == "REPLAY"_L1)) return;
     m_mapper.apply(m, m_state);
     m_mapper.finish(m_state, m.arrivalMs);
     publish();
@@ -134,14 +135,6 @@ void VehicleHub::resetRelativeNav()
     });
 }
 
-void VehicleHub::setSubSurfaceAlt(std::optional<double> alt)
-{
-    post([this, alt] {
-        m_state.subSurfaceAlt = alt;
-        publish();
-    });
-}
-
 void VehicleHub::resetTelemetry()
 {
     post([this] {
@@ -160,17 +153,6 @@ void VehicleHub::setSceneOrigin(double lat, double lon)
     post([this, lat, lon] {
         m_mapper.origin().set(lat, lon);
         publish();
-    });
-}
-
-void VehicleHub::setConnected(bool connected, const QString &type)
-{
-    post([this, connected, type] {
-        m_state.connected = connected;
-        m_state.connectionType = connected ? type : QStringLiteral("none");
-        if (connected) m_state.mode = QStringLiteral("LIVE");
-        publish();
-        emit connectionChanged(connected, type);
     });
 }
 

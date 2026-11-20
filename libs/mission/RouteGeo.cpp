@@ -4,6 +4,8 @@
 #include <cmath>
 #include <limits>
 
+using namespace Qt::StringLiterals;
+
 namespace corv::mission {
 
 namespace {
@@ -59,9 +61,9 @@ double pathLength(const QList<LL> &points)
 
 Fov cameraFov(const QJsonObject &cam)
 {
-    const double f = std::max(0.1, num(cam.value(QStringLiteral("focal")), 4.2) ? num(cam.value(QStringLiteral("focal")), 4.2) : 4.2);
-    const double w = std::max(0.1, num(cam.value(QStringLiteral("sensorW")), 6.17) ? num(cam.value(QStringLiteral("sensorW")), 6.17) : 6.17);
-    const double h = std::max(0.1, num(cam.value(QStringLiteral("sensorH")), 4.63) ? num(cam.value(QStringLiteral("sensorH")), 4.63) : 4.63);
+    const double f = std::max(0.1, num(cam.value(u"focal"_s), 4.2) ? num(cam.value(u"focal"_s), 4.2) : 4.2);
+    const double w = std::max(0.1, num(cam.value(u"sensorW"_s), 6.17) ? num(cam.value(u"sensorW"_s), 6.17) : 6.17);
+    const double h = std::max(0.1, num(cam.value(u"sensorH"_s), 4.63) ? num(cam.value(u"sensorH"_s), 4.63) : 4.63);
     return {2 * std::atan(w / (2 * f)) / kD2R, 2 * std::atan(h / (2 * f)) / kD2R};
 }
 
@@ -82,28 +84,28 @@ Swath sensorSwath(double apertureDeg, double range, double distance)
 
 SurveyGeometry surveyGeometry(const QJsonObject &seg, double alt, const QJsonObject &cam)
 {
-    const QJsonObject p = seg.value(QStringLiteral("params")).toObject();
-    const QString mode = p.value(QStringLiteral("spacingMode")).toString();
+    const QJsonObject p = seg.value(u"params"_s).toObject();
+    const QString mode = p.value(u"spacingMode"_s).toString();
     SurveyGeometry g;
-    if (mode == QLatin1String("sensor")) {
+    if (mode == "sensor"_L1) {
         // A sonar or a LiDAR: lanes from its swath on the surface it maps
-        const double sd = num(p.value(QStringLiteral("sensorDistance")));
+        const double sd = num(p.value(u"sensorDistance"_s));
         const double distance = sd > 0 ? sd : std::max(1.0, alt);
-        const double ap = num(p.value(QStringLiteral("sensorAperture")));
-        const double rg = num(p.value(QStringLiteral("sensorRange")));
+        const double ap = num(p.value(u"sensorAperture"_s));
+        const double rg = num(p.value(u"sensorRange"_s));
         g.sensor = sensorSwath(ap ? ap : 90, rg ? rg : 90, distance);
         g.hasSensor = true;
         g.sensorDistance = distance;
-        g.sideDistance = std::max(1.0, g.sensor.swath * (1 - num(p.value(QStringLiteral("sideOverlap"))) / 100));
+        g.sideDistance = std::max(1.0, g.sensor.swath * (1 - num(p.value(u"sideOverlap"_s)) / 100));
         g.footprint = {g.sensor.swath, 0};
         return g;
     }
     g.footprint = cameraFootprint(std::max(1.0, alt), cam);
-    const double side = num(p.value(QStringLiteral("sideDistance")));
-    g.sideDistance = mode == QLatin1String("manual") ? std::max(1.0, side ? side : 30)
-                                                     : std::max(1.0, g.footprint.width * (1 - num(p.value(QStringLiteral("sideOverlap"))) / 100));
-    g.triggerDistance = std::max(0.5, g.footprint.height * (1 - num(p.value(QStringLiteral("forwardOverlap"))) / 100));
-    const double imgW = num(cam.value(QStringLiteral("imgW")));
+    const double side = num(p.value(u"sideDistance"_s));
+    g.sideDistance = mode == "manual"_L1 ? std::max(1.0, side ? side : 30)
+                                                     : std::max(1.0, g.footprint.width * (1 - num(p.value(u"sideOverlap"_s)) / 100));
+    g.triggerDistance = std::max(0.5, g.footprint.height * (1 - num(p.value(u"forwardOverlap"_s)) / 100));
+    const double imgW = num(cam.value(u"imgW"_s));
     if (imgW > 0) g.gsd = g.footprint.width / imgW * 100;
     return g;
 }

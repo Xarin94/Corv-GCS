@@ -11,6 +11,8 @@
 #include <QtConcurrent>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -105,7 +107,7 @@ void HgtDownloader::start(int latBase, int lonBase)
     const int k = key(latBase, lonBase);
     m_active.insert(k);
     const QString name = HgtTile::name(latBase, lonBase);
-    const QUrl url(QStringLiteral("https://elevation-tiles-prod.s3.amazonaws.com/skadi/%1/%2.hgt.gz").arg(name.left(3), name));
+    const QUrl url(u"https://elevation-tiles-prod.s3.amazonaws.com/skadi/%1/%2.hgt.gz"_s.arg(name.left(3), name));
     QNetworkRequest req(url);
     // A generic client name: nothing about the user goes to the server
     req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("CORV-GCS/" CORV_VERSION));
@@ -133,7 +135,7 @@ void HgtDownloader::start(int latBase, int lonBase)
                 LOG_W("terrain") << name << ".hgt unexpected size:" << hgt.size();
                 return Error;
             }
-            QSaveFile f(DataRoot::terrainDir() + QLatin1Char('/') + name + QStringLiteral(".hgt"));
+            QSaveFile f(DataRoot::terrainDir() + '/'_L1 + name + u".hgt"_s);
             if (!f.open(QIODevice::WriteOnly) || f.write(hgt) != hgt.size() || !f.commit()) {
                 LOG_W("terrain") << name << ".hgt downloaded but could not be saved:" << f.errorString();
                 return Error;

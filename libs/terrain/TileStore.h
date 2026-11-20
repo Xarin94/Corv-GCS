@@ -42,7 +42,6 @@ public:
     /// GUI thread: the tile failed to download in this session (it is not asked again).
     bool hasFailed(const QString &provider, int z, int x, int y) const { return m_failed.contains(key(provider, z, x, y)); }
 
-    bool networkEnabled() const { return m_network; }
     void setNetworkEnabled(bool on) { m_network = on; }
 
     // Bulk download for a flight without network (SYS CONFIG → OFFLINE DATA DOWNLOAD)

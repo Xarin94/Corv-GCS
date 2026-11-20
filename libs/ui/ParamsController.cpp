@@ -13,6 +13,8 @@
 #include <QPointer>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 ParamsController *ParamsController::s_instance = nullptr;
@@ -29,17 +31,17 @@ QString numberText(double v)
 QString rangeText(const ParamInfo &m)
 {
     if (!m.hasRange) return {};
-    QString t = numberText(m.low) + QStringLiteral(" – ") + numberText(m.high);
-    if (!m.units.isEmpty()) t += QLatin1Char(' ') + m.units;
+    QString t = numberText(m.low) + u" – "_s + numberText(m.high);
+    if (!m.units.isEmpty()) t += ' '_L1 + m.units;
     return t;
 }
 
 QString kindOf(const ParamInfo *m)
 {
-    if (!m) return QStringLiteral("number");
-    if (m->isBitmask()) return QStringLiteral("bitmask");
-    if (m->hasValues()) return QStringLiteral("values");
-    return QStringLiteral("number");
+    if (!m) return u"number"_s;
+    if (m->isBitmask()) return u"bitmask"_s;
+    if (m->hasValues()) return u"values"_s;
+    return u"number"_s;
 }
 
 /// What the value means: the listed label, the bits set, else the documented range.
@@ -50,7 +52,7 @@ QString meaningOf(const ParamInfo *m, bool haveValue, double v)
     if (m->hasValues()) {
         if (!haveValue) return {};
         const QString l = m->valueLabel(v);
-        return l.isEmpty() ? QStringLiteral("(not a listed value)") : l;
+        return l.isEmpty() ? u"(not a listed value)"_s : l;
     }
     return rangeText(*m);
 }
@@ -106,9 +108,9 @@ QVariant ParamTableModel::data(const QModelIndex &index, int role) const
         QVariantList opts;
         if (!m || m->isBitmask() || !m->hasValues()) return opts;
         if (have && m->valueLabel(v).isEmpty())
-            opts << QVariantMap{{QStringLiteral("value"), numberText(v)}, {QStringLiteral("label"), numberText(v) + QStringLiteral(": (not listed)")}};
+            opts << QVariantMap{{u"value"_s, numberText(v)}, {u"label"_s, numberText(v) + u": (not listed)"_s}};
         for (const auto &[value, label] : m->values)
-            opts << QVariantMap{{QStringLiteral("value"), numberText(value)}, {QStringLiteral("label"), numberText(value) + QStringLiteral(": ") + label}};
+            opts << QVariantMap{{u"value"_s, numberText(value)}, {u"label"_s, numberText(value) + u": "_s + label}};
         return opts;
     }
     case OutOfRangeRole: return m && have && m->outOfRange(v);
@@ -185,13 +187,6 @@ bool ParamTableModel::setEdit(const QString &name, const QString &text)
     }
     if (row >= 0) emit dataChanged(index(int(row)), index(int(row)));
     return m_edits.contains(name);
-}
-
-void ParamTableModel::clearEdits()
-{
-    m_edits.clear();
-    m_editText.clear();
-    if (!m_rows.isEmpty()) emit dataChanged(index(0), index(int(m_rows.size()) - 1));
 }
 
 // ── Catalog ──────────────────────────────────────────────────────────────────
@@ -282,13 +277,13 @@ ParamsController::ParamsController(ParamStore *store, VehicleHub *hub, QObject *
         }
     });
     m_linkPoll.start();
-    m_metaClass = QStringLiteral("Plane");
+    m_metaClass = u"Plane"_s;
     m_table.setVehicleClass(m_metaClass);
     m_catalogNames = ParamCatalog::instance().catalog(vehicleClass(), m_store->names());
     rebuildCatalog();
 }
 
-QString ParamsController::vehicleClass() const { return m_hub ? modes::vehicleTypeName(m_hub->snapshot()->vehicleType) : QStringLiteral("Plane"); }
+QString ParamsController::vehicleClass() const { return m_hub ? modes::vehicleTypeName(m_hub->snapshot()->vehicleType) : u"Plane"_s; }
 
 bool ParamsController::linkReady() const { return m_hub && m_hub->snapshot()->connected; }
 bool ParamsController::reading() const { return m_store->reading(); }
@@ -340,7 +335,7 @@ void ParamsController::rebuildCatalog()
     emit catalogChanged();
 }
 
-QString ParamsController::catalogCount() const { return QStringLiteral("%1/%2").arg(m_catalog.visible().size()).arg(m_catalogNames.size()); }
+QString ParamsController::catalogCount() const { return u"%1/%2"_s.arg(m_catalog.visible().size()).arg(m_catalogNames.size()); }
 
 void ParamsController::pageShown()
 {
@@ -355,51 +350,51 @@ QString ParamsController::metaSource() const
 {
     ParamMeta &meta = ParamMeta::instance();
     const int n = meta.count(m_metaClass);
-    if (n == 0) return QStringLiteral("No parameter descriptions");
-    return QStringLiteral("%1 descriptions · %2 · %3").arg(n).arg(ParamMeta::firmwareOf(m_metaClass), meta.source(m_metaClass));
+    if (n == 0) return u"No parameter descriptions"_s;
+    return u"%1 descriptions · %2 · %3"_s.arg(n).arg(ParamMeta::firmwareOf(m_metaClass), meta.source(m_metaClass));
 }
 
 QVariantMap ParamsController::meta(const QString &name) const
 {
     QVariantMap out;
-    out.insert(QStringLiteral("name"), name);
+    out.insert(u"name"_s, name);
     const ParamInfo *m = ParamMeta::instance().find(name, m_metaClass);
     const ParamValue *p = m_store->find(name);
     const QHash<QString, double> edits = m_table.edits();
     const bool edited = edits.contains(name);
     const bool have = edited || p;
     const double cur = edited ? edits.value(name) : (p ? p->value : 0.0);
-    out.insert(QStringLiteral("known"), m != nullptr);
-    out.insert(QStringLiteral("loaded"), p != nullptr);
-    out.insert(QStringLiteral("value"), p ? ParamCatalog::formatValue(p->value, p->type) : QString());
-    out.insert(QStringLiteral("current"), have ? numberText(cur) : QString());
-    out.insert(QStringLiteral("currentNumber"), cur);
-    out.insert(QStringLiteral("edited"), edited);
-    out.insert(QStringLiteral("kind"), kindOf(m));
-    out.insert(QStringLiteral("meaning"), meaningOf(m, have, cur));
+    out.insert(u"known"_s, m != nullptr);
+    out.insert(u"loaded"_s, p != nullptr);
+    out.insert(u"value"_s, p ? ParamCatalog::formatValue(p->value, p->type) : QString());
+    out.insert(u"current"_s, have ? numberText(cur) : QString());
+    out.insert(u"currentNumber"_s, cur);
+    out.insert(u"edited"_s, edited);
+    out.insert(u"kind"_s, kindOf(m));
+    out.insert(u"meaning"_s, meaningOf(m, have, cur));
     if (!m) {
-        out.insert(QStringLiteral("description"), ParamCatalog::description(name));
+        out.insert(u"description"_s, ParamCatalog::description(name));
         return out;
     }
-    out.insert(QStringLiteral("title"), m->displayName);
-    out.insert(QStringLiteral("description"), m->description);
-    out.insert(QStringLiteral("units"), m->units);
-    out.insert(QStringLiteral("user"), m->user);
-    out.insert(QStringLiteral("hasRange"), m->hasRange);
-    out.insert(QStringLiteral("low"), m->low);
-    out.insert(QStringLiteral("high"), m->high);
-    out.insert(QStringLiteral("range"), rangeText(*m));
-    out.insert(QStringLiteral("increment"), m->increment > 0 ? numberText(m->increment) : QString());
-    out.insert(QStringLiteral("reboot"), m->rebootRequired);
-    out.insert(QStringLiteral("readOnly"), m->readOnly);
-    out.insert(QStringLiteral("outOfRange"), have && m->outOfRange(cur));
+    out.insert(u"title"_s, m->displayName);
+    out.insert(u"description"_s, m->description);
+    out.insert(u"units"_s, m->units);
+    out.insert(u"user"_s, m->user);
+    out.insert(u"hasRange"_s, m->hasRange);
+    out.insert(u"low"_s, m->low);
+    out.insert(u"high"_s, m->high);
+    out.insert(u"range"_s, rangeText(*m));
+    out.insert(u"increment"_s, m->increment > 0 ? numberText(m->increment) : QString());
+    out.insert(u"reboot"_s, m->rebootRequired);
+    out.insert(u"readOnly"_s, m->readOnly);
+    out.insert(u"outOfRange"_s, have && m->outOfRange(cur));
     QVariantList values, bits;
     for (const auto &[value, label] : m->values)
-        values << QVariantMap{{QStringLiteral("value"), numberText(value)}, {QStringLiteral("label"), label}};
+        values << QVariantMap{{u"value"_s, numberText(value)}, {u"label"_s, label}};
     for (const auto &[bit, label] : m->bits)
-        bits << QVariantMap{{QStringLiteral("bit"), bit}, {QStringLiteral("label"), label}};
-    out.insert(QStringLiteral("values"), values);
-    out.insert(QStringLiteral("bits"), bits);
+        bits << QVariantMap{{u"bit"_s, bit}, {u"label"_s, label}};
+    out.insert(u"values"_s, values);
+    out.insert(u"bits"_s, bits);
     return out;
 }
 
@@ -413,14 +408,14 @@ void ParamsController::updateMeta()
 {
     if (m_metaBusy) return;
     const QString fw = ParamMeta::firmwareOf(m_metaClass);
-    const QUrl url(QStringLiteral("https://autotest.ardupilot.org/Parameters/%1/apm.pdef.json").arg(fw));
+    const QUrl url(u"https://autotest.ardupilot.org/Parameters/%1/apm.pdef.json"_s.arg(fw));
     if (!m_net) m_net = new QNetworkAccessManager(this);
     QNetworkRequest req(url);
     req.setTransferTimeout(60000);
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     m_metaBusy = true;
     emit metaChanged();
-    DialogHub::toast(QStringLiteral("Downloading the %1 parameter descriptions…").arg(fw));
+    DialogHub::toast(u"Downloading the %1 parameter descriptions…"_s.arg(fw));
     LOG_I("params") << "metadata download" << url.toString();
     QNetworkReply *reply = m_net->get(req);
     const QString cls = m_metaClass;
@@ -429,16 +424,16 @@ void ParamsController::updateMeta()
         m_metaBusy = false;
         if (reply->error() != QNetworkReply::NoError) {
             LOG_W("params") << "metadata download failed:" << reply->errorString();
-            DialogHub::toast(QStringLiteral("Download failed: ") + reply->errorString());
+            DialogHub::toast(u"Download failed: "_s + reply->errorString());
             emit metaChanged();
             return;
         }
         int n = 0;
         QString err;
         if (!ParamMeta::instance().installDownloaded(cls, reply->readAll(), &n, &err)) {
-            DialogHub::toast(QStringLiteral("Parameter descriptions not usable: ") + err);
+            DialogHub::toast(u"Parameter descriptions not usable: "_s + err);
         } else {
-            DialogHub::toast(QStringLiteral("%1 parameter descriptions updated (%2)").arg(fw).arg(n));
+            DialogHub::toast(u"%1 parameter descriptions updated (%2)"_s.arg(fw).arg(n));
             m_table.refresh();
             m_table.touchAll();
         }
@@ -453,13 +448,13 @@ void ParamsController::resetMeta()
     m_table.touchAll();
     ++m_metaRev;
     emit metaChanged();
-    DialogHub::toast(QStringLiteral("Using the parameter descriptions bundled with the GCS"));
+    DialogHub::toast(u"Using the parameter descriptions bundled with the GCS"_s);
 }
 
 void ParamsController::readAll()
 {
     if (!linkReady()) {
-        DialogHub::toast(QStringLiteral("Not connected"));
+        DialogHub::toast(u"Not connected"_s);
         return;
     }
     m_store->readAll();
@@ -471,14 +466,14 @@ void ParamsController::writeChanged()
 {
     const QHash<QString, double> edits = m_table.edits();
     if (edits.isEmpty()) {
-        DialogHub::toast(QStringLiteral("No parameters changed. Edit values first."));
+        DialogHub::toast(u"No parameters changed. Edit values first."_s);
         return;
     }
     QList<QPair<QString, double>> list;
     for (auto it = edits.cbegin(); it != edits.cend(); ++it) list.append({it.key(), it.value()});
     std::sort(list.begin(), list.end());
     m_store->writeMany(list, [this](int written, int total) {
-        DialogHub::toast(QStringLiteral("Written %1/%2 parameters").arg(written).arg(total));
+        DialogHub::toast(u"Written %1/%2 parameters"_s.arg(written).arg(total));
         m_table.refresh();
         emit listChanged();
     });
@@ -496,12 +491,12 @@ bool ParamsController::setEdit(const QString &name, const QString &text)
 void ParamsController::saveFile(const QUrl &file)
 {
     if (m_store->received() == 0) {
-        DialogHub::toast(QStringLiteral("No parameters loaded. Read parameters first."));
+        DialogHub::toast(u"No parameters loaded. Read parameters first."_s);
         return;
     }
     QString err;
-    if (m_store->saveFile(file.toLocalFile(), &err)) DialogHub::toast(QStringLiteral("Saved %1 parameters").arg(m_store->received()));
-    else DialogHub::toast(QStringLiteral("Error: ") + err);
+    if (m_store->saveFile(file.toLocalFile(), &err)) DialogHub::toast(u"Saved %1 parameters"_s.arg(m_store->received()));
+    else DialogHub::toast(u"Error: "_s + err);
 }
 
 void ParamsController::loadFile(const QUrl &file)
@@ -509,8 +504,8 @@ void ParamsController::loadFile(const QUrl &file)
     const QString path = file.toLocalFile();
     const QString name = file.fileName();
     m_store->loadFile(path, [name](int written, int, const QString &error) {
-        if (!error.isEmpty()) DialogHub::toast(QStringLiteral("Error: ") + error);
-        else DialogHub::toast(QStringLiteral("Loaded %1 parameters from %2").arg(written).arg(name));
+        if (!error.isEmpty()) DialogHub::toast(u"Error: "_s + error);
+        else DialogHub::toast(u"Loaded %1 parameters from %2"_s.arg(written).arg(name));
     });
 }
 
@@ -527,7 +522,7 @@ void ParamsController::fetchListed()
     const QStringList names = m_catalog.visible();
     if (names.isEmpty()) return;
     if (names.size() > kBulkConfirm) {
-        DialogHub::confirm(QStringLiteral("Read %1 parameters one by one? On a slow link this takes about %2 s.")
+        DialogHub::confirm(u"Read %1 parameters one by one? On a slow link this takes about %2 s."_s
                                .arg(names.size())
                                .arg(int(std::ceil(names.size() * 0.6))),
                            [this, names](bool ok) {
@@ -542,7 +537,7 @@ void ParamsController::fetchFavorites()
 {
     const QStringList favs = ParamCatalog::instance().favorites();
     if (favs.isEmpty()) {
-        DialogHub::toast(QStringLiteral("No starred parameters yet — click the ☆ next to a name to star it."));
+        DialogHub::toast(u"No starred parameters yet — click the ☆ next to a name to star it."_s);
         return;
     }
     m_store->enqueueFetch(favs);

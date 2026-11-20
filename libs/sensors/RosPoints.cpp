@@ -10,6 +10,8 @@
 #include <cmath>
 #include <vector>
 
+using namespace Qt::StringLiterals;
+
 namespace corv::rospts {
 
 namespace {
@@ -17,8 +19,8 @@ constexpr double kMPerDeg = 111320;
 constexpr double kProjectStepS = 0.02;
 
 // REP-105 world-fixed frames
-const QRegularExpression kWorldFrame(QStringLiteral("(^|/)(map|odom|world|earth|local_origin)(_ned|_enu)?$"), QRegularExpression::CaseInsensitiveOption);
-const QRegularExpression kNedFrame(QStringLiteral("_ned$"), QRegularExpression::CaseInsensitiveOption);
+const QRegularExpression kWorldFrame(u"(^|/)(map|odom|world|earth|local_origin)(_ned|_enu)?$"_s, QRegularExpression::CaseInsensitiveOption);
+const QRegularExpression kNedFrame(u"_ned$"_s, QRegularExpression::CaseInsensitiveOption);
 
 QCborValue field(const QCborMap &m, const char *name) { return m.value(QLatin1String(name)); }
 
@@ -126,19 +128,19 @@ double num(const QCborValue &v)
 QString kindOf(const QString &type)
 {
     QString t = type;
-    t.replace(QLatin1String("/msg/"), QLatin1String("/"));
-    if (t == QLatin1String("sensor_msgs/PointCloud2")) return QStringLiteral("cloud");
-    if (t == QLatin1String("sensor_msgs/LaserScan")) return QStringLiteral("scan");
-    if (t == QLatin1String("sensor_msgs/Range")) return QStringLiteral("range");
+    t.replace("/msg/"_L1, "/"_L1);
+    if (t == "sensor_msgs/PointCloud2"_L1) return u"cloud"_s;
+    if (t == "sensor_msgs/LaserScan"_L1) return u"scan"_s;
+    if (t == "sensor_msgs/Range"_L1) return u"range"_s;
     return {};
 }
 
 QString frameOf(const QString &frameId, const QString &forced)
 {
     const bool ned = kNedFrame.match(frameId).hasMatch();
-    if (forced == QLatin1String("world")) return ned ? QStringLiteral("world-ned") : QStringLiteral("world-enu");
-    if (forced == QLatin1String("sensor")) return QStringLiteral("sensor");
-    return kWorldFrame.match(frameId).hasMatch() ? (ned ? QStringLiteral("world-ned") : QStringLiteral("world-enu")) : QStringLiteral("sensor");
+    if (forced == "world"_L1) return ned ? u"world-ned"_s : u"world-enu"_s;
+    if (forced == "sensor"_L1) return u"sensor"_s;
+    return kWorldFrame.match(frameId).hasMatch() ? (ned ? u"world-ned"_s : u"world-enu"_s) : u"sensor"_s;
 }
 
 Decoded decodePoints(const QString &kind, const QCborMap &msg, float *out, int outCap, int max, double rMin, double rMax, float *times)
@@ -158,7 +160,7 @@ Decoded decodePoints(const QString &kind, const QCborMap &msg, float *out, int o
         ++d.count;
     };
 
-    if (kind == QLatin1String("range")) {
+    if (kind == "range"_L1) {
         const double r = num(field(msg, "range"));
         const double lo = num(field(msg, "min_range")), hi = num(field(msg, "max_range"));
         if (std::isfinite(r) && r >= (lo > 0 ? lo : 0) && r <= (hi > 0 ? hi : std::numeric_limits<double>::infinity())) keep(r, 0, 0, 0);
@@ -166,7 +168,7 @@ Decoded decodePoints(const QString &kind, const QCborMap &msg, float *out, int o
         return d;
     }
 
-    if (kind == QLatin1String("scan")) {
+    if (kind == "scan"_L1) {
         bool ok = false;
         const std::vector<double> ranges = floatsOf(field(msg, "ranges"), &ok);
         if (!ok) return d;
@@ -190,7 +192,7 @@ Decoded decodePoints(const QString &kind, const QCborMap &msg, float *out, int o
         return d;
     }
 
-    if (kind == QLatin1String("cloud")) {
+    if (kind == "cloud"_L1) {
         const QByteArray bytes = bytesOf(field(msg, "data"));
         const double width = num(field(msg, "width")), height = num(field(msg, "height"));
         const int total = std::isfinite(width) && std::isfinite(height) ? int(width * height) : 0;
@@ -202,11 +204,11 @@ Decoded decodePoints(const QString &kind, const QCborMap &msg, float *out, int o
         } fx, fy, fz;
         for (const QCborValue &fv : field(msg, "fields").toArray()) {
             const QCborMap f = fv.toMap();
-            const QString name = f.value(QLatin1String("name")).toString();
-            F *dst = name == QLatin1String("x") ? &fx : name == QLatin1String("y") ? &fy : name == QLatin1String("z") ? &fz : nullptr;
+            const QString name = f.value("name"_L1).toString();
+            F *dst = name == "x"_L1 ? &fx : name == "y"_L1 ? &fy : name == "z"_L1 ? &fz : nullptr;
             if (!dst) continue;
-            dst->offset = int(num(f.value(QLatin1String("offset"))));
-            dst->datatype = int(num(f.value(QLatin1String("datatype"))));
+            dst->offset = int(num(f.value("offset"_L1)));
+            dst->datatype = int(num(f.value("datatype"_L1)));
         }
         auto valid = [](const F &f) { return f.offset >= 0 && f.datatype >= 1 && f.datatype <= 8; };
         if (!valid(fx) || !valid(fy) || !valid(fz)) return d;

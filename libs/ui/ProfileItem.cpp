@@ -13,6 +13,8 @@
 #include <cmath>
 #include <limits>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 using namespace mission;
@@ -21,10 +23,11 @@ namespace {
 
 const QColor kDim(0x6e, 0x7f, 0x8d);
 const QColor kMuted(0x88, 0x99, 0x99);
+constexpr double kBandH = 6;   // the radio link band under the header
 
 QFont mono(double px, int weight = QFont::Normal)
 {
-    QFont f(QStringLiteral("Roboto Mono"));
+    QFont f(u"Roboto Mono"_s);
     f.setPixelSize(int(std::round(px)));
     f.setWeight(QFont::Weight(weight));
     return f;
@@ -32,22 +35,10 @@ QFont mono(double px, int weight = QFont::Normal)
 
 QFont ui(double px, int weight = QFont::Bold)
 {
-    QFont f(QStringLiteral("Rajdhani"));
+    QFont f(u"Rajdhani"_s);
     f.setPixelSize(int(std::round(px)));
     f.setWeight(QFont::Weight(weight));
     return f;
-}
-
-QString fmtDist(double m)
-{
-    return m >= 1000 ? QStringLiteral("%1 km").arg(m / 1000, 0, 'f', m >= 10000 ? 0 : 1) : QStringLiteral("%1 m").arg(qRound64(m));
-}
-
-QString fmtTime(double s)
-{
-    if (!s) return QStringLiteral("--");
-    const qint64 m = qRound64(s / 60);
-    return m >= 60 ? QStringLiteral("%1h %2m").arg(m / 60).arg(m % 60, 2, 10, QLatin1Char('0')) : QStringLiteral("%1 min").arg(m);
 }
 
 double niceStep(double range, double count)
@@ -136,6 +127,8 @@ bool ProfileItem::layout(Layout &L) const
     L.range = (L.hi - L.lo) != 0 ? L.hi - L.lo : 100;
     L.plotW = L.w - L.padL - L.padR;
     L.plotH = L.h - L.padT - L.padB;
+    L.zoom = m_zoom;
+    L.scroll = m_scroll;
     return true;
 }
 
@@ -238,7 +231,7 @@ void ProfileItem::updateHover()
     // Radio link at the hovered point: numbers in the tooltip, the cut in the inset, the ray on the map
     std::optional<Link> cls;
     if (L.linkOn) {
-        const QJsonObject radio = m_plan->route().value(QStringLiteral("params")).toObject().value(QStringLiteral("radio")).toObject();
+        const QJsonObject radio = m_plan->route().value(u"params"_s).toObject().value(u"radio"_s).toObject();
         m_hoverLink = evaluateLink(radio, *m_plan->groundStation(), lat, lng, alt, m_plan->terrainFn(), 30, 600, true);
         cls = m_hoverLink->clazz;
     }
@@ -246,25 +239,25 @@ void ProfileItem::updateHover()
 
     // Tooltip
     QString segText;
-    const QJsonArray segs = m_plan->route().value(QStringLiteral("segments")).toArray();
+    const QJsonArray segs = m_plan->route().value(u"segments"_s).toArray();
     for (qsizetype k = 0; k < segs.size(); ++k) {
         const QJsonObject s = segs[k].toObject();
-        if (s.value(QStringLiteral("id")).toString() == m_hoverSeg)
-            segText = QStringLiteral(" · %1 %2").arg(k + 1).arg(segmentDef(s.value(QStringLiteral("type")).toString()).value(QStringLiteral("label")).toString());
+        if (s.value(u"id"_s).toString() == m_hoverSeg)
+            segText = u" · %1 %2"_s.arg(k + 1).arg(segmentDef(s.value(u"type"_s).toString()).value(u"label"_s).toString());
     }
-    QString tip = QStringLiteral("<b>%1</b>%2<br>AMSL <b>%3 m</b>").arg(fmtDist(d), segText).arg(qRound64(alt));
-    if (g) tip += QStringLiteral(" · AGL <b>%1 m</b> · terrain %2 m").arg(qRound64(alt - *g)).arg(qRound64(*g));
+    QString tip = u"<b>%1</b>%2<br>AMSL <b>%3 m</b>"_s.arg(fmtDist(d), segText).arg(qRound64(alt));
+    if (g) tip += u" · AGL <b>%1 m</b> · terrain %2 m"_s.arg(qRound64(alt - *g)).arg(qRound64(*g));
     if (m_hoverLink) {
         const LinkStyle &st = linkStyle(m_hoverLink->clazz);
         if (m_hoverLink->clazz == Link::Unknown) {
-            tip += QStringLiteral("<br><font color=\"%1\">link: no terrain data</font>").arg(st.color.name());
+            tip += u"<br><font color=\"%1\">link: no terrain data</font>"_s.arg(st.color.name());
         } else {
-            tip += QStringLiteral("<br><font color=\"%1\">%2</font> · %3 dBm · margin <b>%4 dB</b> · %5 from GS%6")
+            tip += u"<br><font color=\"%1\">%2</font> · %3 dBm · margin <b>%4 dB</b> · %5 from GS%6"_s
                        .arg(st.color.name(), st.shortName)
                        .arg(m_hoverLink->rssi, 0, 'f', 0)
                        .arg(m_hoverLink->margin, 0, 'f', 0)
                        .arg(fmtDist(m_hoverLink->dist))
-                       .arg(m_hoverLink->loss > 0 ? QStringLiteral(" · terrain −%1 dB").arg(m_hoverLink->loss, 0, 'f', 0) : QString());
+                       .arg(m_hoverLink->loss > 0 ? u" · terrain −%1 dB"_s.arg(m_hoverLink->loss, 0, 'f', 0) : QString());
         }
     }
     const double tipW = m_hoverLink ? 300 : 190;
@@ -283,221 +276,227 @@ void ProfileItem::paint(QPainter *p)
     const double w = width(), h = height();
     p->fillRect(QRectF(0, 0, w, h), QColor(5, 12, 20, 242));
     if (!m_plan) return;
-    const QList<NavPoint> &nav = m_plan->compiled().navPath;
-    const QJsonObject P = m_plan->route().value(QStringLiteral("params")).toObject();
-    if (nav.size() < 2 || m_samples.empty()) {
+    Layout L;
+    if (!layout(L) || m_samples.empty()) {
         p->setPen(kDim);
         p->setFont(mono(11));
-        text(p, w / 2, h / 2, QStringLiteral("Elevation profile — draw at least one segment"), Qt::AlignHCenter);
+        text(p, w / 2, h / 2, u"Elevation profile — draw at least one segment"_s, Qt::AlignHCenter);
         return;
     }
-    Layout L;
-    layout(L);
-    auto X = [&](double d) { return L.X(d, m_zoom, m_scroll); };
-    auto Y = [&](double a) { return L.Y(a); };
     const QString sel = m_plan->selectedId();
+    const double altStep = niceStep(L.range, 4);
+    const double distStep = niceStep(L.total / m_zoom, std::max(4.0, std::floor(L.plotW / 90)));
 
     p->save();
     p->setClipRect(QRectF(L.padL, 0, L.plotW, h));
+    drawGrid(p, L, altStep, distStep);
+    if (L.linkOn && m_plan->linkAnalysis()) drawLinkBand(p, L);
+    drawTerrain(p, L);
+    drawRoute(p, L, sel);
+    drawPoints(p, L, sel);
+    if (m_hoverDist) {
+        const double x = std::round(L.X(*m_hoverDist)) + 0.5;
+        p->setPen(QPen(QColor(0, 210, 255, 204), 1));
+        p->drawLine(QPointF(x, L.padT), QPointF(x, L.padT + L.plotH));
+        p->setPen(Qt::NoPen);
+        p->setBrush(QColor(0x00, 0xd2, 0xff));
+        p->drawEllipse(QPointF(x, L.Y(m_hoverAlt)), 4, 4);
+    }
+    p->restore();
 
-    // Grid
-    const double altStep = niceStep(L.range, 4);
+    // Line-of-sight cut: the hovered point, else the worst point of the route
+    if (L.linkOn) {
+        const auto &worst = m_plan->worstEval();
+        const LinkEval *ev = m_hoverLink ? &*m_hoverLink : worst ? &*worst : nullptr;
+        const QString title = m_hoverLink ? u"GS → cursor"_s
+                            : (worst && m_plan->linkAnalysis() && m_plan->linkAnalysis()->worst)
+                                ? u"GS → worst point, %1"_s.arg(fmtDist(m_plan->linkAnalysis()->worst->dist)) : QString();
+        drawInset(p, QRectF(w - L.insetW - 8, 0, L.insetW + 8, h), ev, title);
+        p->setPen(kDim);
+        p->setFont(mono(8));
+        text(p, L.padL - 6, L.bandY() + kBandH - 1, u"LINK"_s, Qt::AlignRight);
+    }
+    drawAxes(p, L, altStep, distStep);
+}
+
+void ProfileItem::drawGrid(QPainter *p, const Layout &L, double altStep, double distStep) const
+{
     p->setPen(QPen(QColor(255, 255, 255, 15), 1));
     for (double a = std::ceil(L.lo / altStep) * altStep; a <= L.hi; a += altStep) {
-        const double y = std::round(Y(a)) + 0.5;
+        const double y = std::round(L.Y(a)) + 0.5;
         p->drawLine(QPointF(L.padL, y), QPointF(L.padL + L.plotW, y));
     }
-    const double distStep = niceStep(L.total / m_zoom, std::max(4.0, std::floor(L.plotW / 90)));
     p->setPen(QPen(QColor(255, 255, 255, 10), 1));
     for (double d = 0; d <= L.total; d += distStep) {
-        const double x = std::round(X(d)) + 0.5;
-        if (x < L.padL || x > L.padL + L.plotW) continue;
-        p->drawLine(QPointF(x, L.padT), QPointF(x, L.padT + L.plotH));
+        const double x = std::round(L.X(d)) + 0.5;
+        if (L.inPlot(x)) p->drawLine(QPointF(x, L.padT), QPointF(x, L.padT + L.plotH));
     }
+}
 
+void ProfileItem::drawLinkBand(QPainter *p, const Layout &L) const
+{
     // Radio link class along the route, as a band under the header
-    const double bandY = L.padT - 11, bandH = 6;
-    if (L.linkOn && m_plan->linkAnalysis()) {
-        const auto &s = m_plan->linkAnalysis()->samples;
-        const double xMin = L.padL, xMax = L.padL + L.plotW;
-        for (qsizetype i = 1; i < s.size(); ++i) {
-            double x1 = X(s[i - 1].dist), x2 = X(s[i].dist);
-            if (x2 < xMin || x1 > xMax) continue;
-            x1 = std::max(xMin, x1);
-            x2 = std::min(xMax, x2);
-            const Link cls = s[i - 1].clazz;
-            if (cls == Link::None) {
-                p->fillRect(QRectF(x1, bandY, std::max(1.0, x2 - x1), bandH), QColor(154, 164, 176, 64));
-                for (double x = std::ceil(x1 / 4) * 4; x < x2; x += 4) p->fillRect(QRectF(x, bandY + bandH / 2 - 0.5, 1.5, 1), QColor(0x9a, 0xa4, 0xb0));
-                continue;
-            }
-            if (cls == Link::Unknown) { p->fillRect(QRectF(x1, bandY, std::max(1.0, x2 - x1), bandH), QColor(74, 85, 96, 89)); continue; }
+    const auto &s = m_plan->linkAnalysis()->samples;
+    const double xMin = L.padL, xMax = L.padL + L.plotW, bandY = L.bandY();
+    for (qsizetype i = 1; i < s.size(); ++i) {
+        double x1 = L.X(s[i - 1].dist), x2 = L.X(s[i].dist);
+        if (x2 < xMin || x1 > xMax) continue;
+        x1 = std::max(xMin, x1);
+        x2 = std::min(xMax, x2);
+        const Link cls = s[i - 1].clazz;
+        if (cls == Link::None) {
+            p->fillRect(QRectF(x1, bandY, std::max(1.0, x2 - x1), kBandH), QColor(154, 164, 176, 64));
+            for (double x = std::ceil(x1 / 4) * 4; x < x2; x += 4) p->fillRect(QRectF(x, bandY + kBandH / 2 - 0.5, 1.5, 1), QColor(0x9a, 0xa4, 0xb0));
+        } else if (cls == Link::Unknown) {
+            p->fillRect(QRectF(x1, bandY, std::max(1.0, x2 - x1), kBandH), QColor(74, 85, 96, 89));
+        } else {
             QColor c = linkStyle(cls).color;
             c.setAlphaF(cls == Link::Good ? 0.55 : 0.85);
-            p->fillRect(QRectF(x1, bandY, std::max(1.0, x2 - x1 + 0.5), bandH), c);
+            p->fillRect(QRectF(x1, bandY, std::max(1.0, x2 - x1 + 0.5), kBandH), c);
         }
     }
+}
 
-    // Terrain
+void ProfileItem::drawTerrain(QPainter *p, const Layout &L) const
+{
     std::vector<const Sample *> tPts;
     for (const Sample &s : m_samples) if (s.elev) tPts.push_back(&s);
-    if (!tPts.empty()) {
-        QPainterPath fill;
-        fill.moveTo(X(tPts.front()->dist), Y(L.lo));
-        for (const Sample *s : tPts) fill.lineTo(X(s->dist), Y(*s->elev));
-        fill.lineTo(X(tPts.back()->dist), Y(L.lo));
-        fill.closeSubpath();
-        QLinearGradient g(0, Y(L.hi), 0, Y(L.lo));
-        g.setColorAt(0, QColor(96, 128, 72, 140));
-        g.setColorAt(1, QColor(40, 56, 32, 64));
-        p->setPen(Qt::NoPen);
-        p->setBrush(g);
-        p->drawPath(fill);
-        QPainterPath line;
-        line.moveTo(X(tPts.front()->dist), Y(*tPts.front()->elev));
-        for (const Sample *s : tPts) line.lineTo(X(s->dist), Y(*s->elev));
-        p->setBrush(Qt::NoBrush);
-        p->setPen(QPen(QColor(140, 190, 110, 178), 1.2));
-        p->drawPath(line);
+    if (tPts.empty()) return;
+    auto polyline = [&](double above) {
+        QPainterPath path;
+        path.moveTo(L.X(tPts.front()->dist), L.Y(*tPts.front()->elev + above));
+        for (const Sample *s : tPts) path.lineTo(L.X(s->dist), L.Y(*s->elev + above));
+        return path;
+    };
+    QPainterPath fill;
+    fill.moveTo(L.X(tPts.front()->dist), L.Y(L.lo));
+    for (const Sample *s : tPts) fill.lineTo(L.X(s->dist), L.Y(*s->elev));
+    fill.lineTo(L.X(tPts.back()->dist), L.Y(L.lo));
+    fill.closeSubpath();
+    QLinearGradient g(0, L.Y(L.hi), 0, L.Y(L.lo));
+    g.setColorAt(0, QColor(96, 128, 72, 140));
+    g.setColorAt(1, QColor(40, 56, 32, 64));
+    p->setPen(Qt::NoPen);
+    p->setBrush(g);
+    p->drawPath(fill);
+    p->setBrush(Qt::NoBrush);
+    p->setPen(QPen(QColor(140, 190, 110, 178), 1.2));
+    p->drawPath(polyline(0));
 
-        // Minimum-clearance floor and the stretches that dip under it
-        const double minC = num(P.value(QStringLiteral("minClearance")));
-        if (minC > 0) {
-            QPainterPath floor;
-            floor.moveTo(X(tPts.front()->dist), Y(*tPts.front()->elev + minC));
-            for (const Sample *s : tPts) floor.lineTo(X(s->dist), Y(*s->elev + minC));
-            QPen dp(QColor(255, 170, 0, 89), 1);
-            dp.setDashPattern({3, 4});
-            p->setPen(dp);
-            p->drawPath(floor);
-        }
-        std::optional<std::pair<double, double>> run;
-        auto flush = [&] {
-            if (run) p->fillRect(QRectF(X(run->first), L.padT, std::max(1.0, X(run->second) - X(run->first)), L.plotH), QColor(255, 60, 60, 71));
-            run.reset();
-        };
-        for (const Sample *s : tPts) {
-            const bool bad = !s->vertical && s->route - *s->elev < minC && s->dist > 0 && s->dist < L.total;
-            if (bad) { if (!run) run = std::make_pair(s->dist, s->dist); else run->second = s->dist; }
-            else flush();
-        }
-        flush();
+    // Minimum-clearance floor and the stretches that dip under it
+    const double minC = num(m_plan->route().value(u"params"_s).toObject().value(u"minClearance"_s));
+    if (minC > 0) {
+        QPen dp(QColor(255, 170, 0, 89), 1);
+        dp.setDashPattern({3, 4});
+        p->setPen(dp);
+        p->drawPath(polyline(minC));
     }
+    std::optional<std::pair<double, double>> run;
+    auto flush = [&] {
+        if (run) p->fillRect(QRectF(L.X(run->first), L.padT, std::max(1.0, L.X(run->second) - L.X(run->first)), L.plotH), QColor(255, 60, 60, 71));
+        run.reset();
+    };
+    for (const Sample *s : tPts) {
+        if (s->vertical || s->route - *s->elev >= minC || s->dist <= 0 || s->dist >= L.total) flush();
+        else if (!run) run = std::make_pair(s->dist, s->dist);
+        else run->second = s->dist;
+    }
+    flush();
+}
 
+void ProfileItem::drawRoute(QPainter *p, const Layout &L, const QString &sel) const
+{
+    const QList<NavPoint> &nav = m_plan->compiled().navPath;
     // Waypoint verticals, base points only
     p->setPen(QPen(QColor(255, 255, 255, 26), 1));
     for (const NavPoint &n : nav) {
         if (n.derived || n.isHome) continue;
-        const double x = std::round(X(n.dist)) + 0.5;
+        const double x = std::round(L.X(n.dist)) + 0.5;
         p->drawLine(QPointF(x, L.padT), QPointF(x, L.padT + L.plotH));
     }
-
     // Route line, the selected segment brighter
-    {
-        QPainterPath route;
-        route.moveTo(X(nav[0].dist), Y(nav[0].altMsl));
-        for (qsizetype i = 1; i < nav.size(); ++i) route.lineTo(X(nav[i].dist), Y(nav[i].altMsl));
-        p->setPen(QPen(QColor(0x44, 0xff, 0x44), 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        p->drawPath(route);
-        if (!sel.isEmpty()) {
-            QPainterPath part;
-            bool started = false;
-            for (qsizetype i = 0; i < nav.size(); ++i) {
-                if (nav[i].segId == sel) {
-                    if (!started && i > 0) { part.moveTo(X(nav[i - 1].dist), Y(nav[i - 1].altMsl)); started = true; }
-                    if (!started) { part.moveTo(X(nav[i].dist), Y(nav[i].altMsl)); started = true; }
-                    else part.lineTo(X(nav[i].dist), Y(nav[i].altMsl));
-                } else {
-                    started = false;
-                }
-            }
-            p->setPen(QPen(Qt::white, 3, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-            p->drawPath(part);
+    auto at = [&](qsizetype i) { return QPointF(L.X(nav[i].dist), L.Y(nav[i].altMsl)); };
+    QPainterPath route;
+    route.moveTo(at(0));
+    for (qsizetype i = 1; i < nav.size(); ++i) route.lineTo(at(i));
+    p->setPen(QPen(QColor(0x44, 0xff, 0x44), 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p->drawPath(route);
+    if (sel.isEmpty()) return;
+    QPainterPath part;
+    bool started = false;
+    for (qsizetype i = 0; i < nav.size(); ++i) {
+        if (nav[i].segId != sel) {
+            started = false;
+        } else if (started) {
+            part.lineTo(at(i));
+        } else {
+            part.moveTo(at(i > 0 ? i - 1 : i));
+            if (i > 0) part.lineTo(at(i));
+            started = true;
         }
     }
+    p->setPen(QPen(Qt::white, 3, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p->drawPath(part);
+}
 
-    // Points
-    const QJsonArray segs = m_plan->route().value(QStringLiteral("segments")).toArray();
+void ProfileItem::drawPoints(QPainter *p, const Layout &L, const QString &sel) const
+{
+    const QList<NavPoint> &nav = m_plan->compiled().navPath;
+    const QJsonArray segs = m_plan->route().value(u"segments"_s).toArray();
     QHash<QString, int> idxOf;
     QHash<QString, QString> colorOf;
     for (qsizetype k = 0; k < segs.size(); ++k) {
         const QJsonObject s = segs[k].toObject();
-        idxOf.insert(s.value(QStringLiteral("id")).toString(), int(k));
-        colorOf.insert(s.value(QStringLiteral("id")).toString(), segmentDef(s.value(QStringLiteral("type")).toString()).value(QStringLiteral("color")).toString());
+        idxOf.insert(s.value(u"id"_s).toString(), int(k));
+        colorOf.insert(s.value(u"id"_s).toString(), segmentDef(s.value(u"type"_s).toString()).value(u"color"_s).toString());
     }
     for (const NavPoint &n : nav) {
-        const double x = X(n.dist), y = Y(n.altMsl);
-        if (x < L.padL - 10 || x > L.padL + L.plotW + 10) continue;
-        const QColor c = n.isHome ? QColor(0xff, 0x88, 0x00) : QColor(colorOf.value(n.segId, QStringLiteral("#44ff44")));
-        p->setBrush(c);
+        const double x = L.X(n.dist), y = L.Y(n.altMsl);
+        if (!L.inPlot(x, 10)) continue;
+        p->setBrush(n.isHome ? QColor(0xff, 0x88, 0x00) : QColor(colorOf.value(n.segId, u"#44ff44"_s)));
         p->setPen(n.derived ? QPen(Qt::NoPen) : QPen(Qt::white, 1.2));
         p->drawEllipse(QPointF(x, y), n.derived ? 2 : 4, n.derived ? 2 : 4);
     }
-    // Segment labels once, at the first point of each
+    // Segment numbers once, at the first point of each, never overlapping
     p->setFont(mono(9, QFont::Bold));
     QSet<QString> seen;
     double lastLabelX = -1e9;
     for (const NavPoint &n : nav) {
         if (n.segId.isEmpty() || n.derived || seen.contains(n.segId)) continue;
         seen.insert(n.segId);
-        const double x = X(n.dist);
-        if (x < L.padL || x > L.padL + L.plotW) continue;
-        if (x - lastLabelX < 16 && n.segId != sel) continue;   // no overlapping numbers
+        const double x = L.X(n.dist);
+        if (!L.inPlot(x) || (x - lastLabelX < 16 && n.segId != sel)) continue;
         lastLabelX = x;
         p->setPen(n.segId == sel ? QColor(Qt::white) : QColor(0xcf, 0xd8, 0xdd));
-        text(p, x, Y(n.altMsl) - 8, QString::number(idxOf.value(n.segId) + 1), Qt::AlignHCenter);
+        text(p, x, L.Y(n.altMsl) - 8, QString::number(idxOf.value(n.segId) + 1), Qt::AlignHCenter);
     }
     if (nav[0].isHome) {
         p->setPen(QColor(0xff, 0x88, 0x00));
-        text(p, X(0), Y(nav[0].altMsl) - 8, QStringLiteral("H"), Qt::AlignHCenter);
+        text(p, L.X(0), L.Y(nav[0].altMsl) - 8, u"H"_s, Qt::AlignHCenter);
     }
+}
 
-    // Hover cursor
-    if (m_hoverDist) {
-        const double x = std::round(X(*m_hoverDist)) + 0.5;
-        p->setPen(QPen(QColor(0, 210, 255, 204), 1));
-        p->drawLine(QPointF(x, L.padT), QPointF(x, L.padT + L.plotH));
-        p->setPen(Qt::NoPen);
-        p->setBrush(QColor(0x00, 0xd2, 0xff));
-        p->drawEllipse(QPointF(x, Y(m_hoverAlt)), 4, 4);
-    }
-    p->restore();
-
-    // Line-of-sight cut: the hovered point, else the worst point of the route
-    if (L.linkOn) {
-        const LinkEval *ev = m_hoverLink ? &*m_hoverLink : m_plan->worstEval() ? &*m_plan->worstEval() : nullptr;
-        const QString title = m_hoverLink ? QStringLiteral("GS → cursor")
-                            : (m_plan->worstEval() && m_plan->linkAnalysis() && m_plan->linkAnalysis()->worst)
-                                ? QStringLiteral("GS → worst point, %1").arg(fmtDist(m_plan->linkAnalysis()->worst->dist)) : QString();
-        drawInset(p, QRectF(w - L.insetW - 8, 0, L.insetW + 8, h), ev, title);
-        p->setPen(kDim);
-        p->setFont(mono(8));
-        text(p, L.padL - 6, bandY + bandH - 1, QStringLiteral("LINK"), Qt::AlignRight);
-    }
-
-    // Axes
+void ProfileItem::drawAxes(QPainter *p, const Layout &L, double altStep, double distStep) const
+{
     p->setPen(kDim);
     p->setFont(mono(9));
-    for (double a = std::ceil(L.lo / altStep) * altStep; a <= L.hi; a += altStep) text(p, L.padL - 6, Y(a) + 3, QString::number(qRound64(a)), Qt::AlignRight);
-    for (double d = 0; d <= L.total; d += distStep) {
-        const double x = X(d);
-        if (x < L.padL || x > L.padL + L.plotW) continue;
-        text(p, x, h - 8, fmtDist(d), Qt::AlignHCenter);
-    }
-    // Header
+    for (double a = std::ceil(L.lo / altStep) * altStep; a <= L.hi; a += altStep) text(p, L.padL - 6, L.Y(a) + 3, QString::number(qRound64(a)), Qt::AlignRight);
+    for (double d = 0; d <= L.total; d += distStep)
+        if (const double x = L.X(d); L.inPlot(x)) text(p, x, L.h - 8, fmtDist(d), Qt::AlignHCenter);
+    // Header: title and the route figures
     p->setPen(QColor(0x00, 0xd2, 0xff));
     p->setFont(ui(10));
-    text(p, L.padL, 15, QStringLiteral("ELEVATION PROFILE"), Qt::AlignLeft);
+    text(p, L.padL, 15, u"ELEVATION PROFILE"_s, Qt::AlignLeft);
     const RouteStats &st = m_plan->compiled().stats;
-    QStringList parts{fmtDist(st.lengthM), fmtTime(st.durationS), QStringLiteral("%1 WP").arg(st.waypoints)};
-    if (st.minAgl && st.maxAgl) parts << QStringLiteral("AGL %1–%2 m").arg(qRound64(*st.minAgl)).arg(qRound64(*st.maxAgl));
-    if (st.maxAmsl) parts << QStringLiteral("AMSL max %1 m").arg(qRound64(*st.maxAmsl));
-    const QString mode = P.value(QStringLiteral("altMode")).toString();
-    parts << (mode == QLatin1String("amsl") ? QStringLiteral("AMSL mode") : mode == QLatin1String("rel") ? QStringLiteral("REL mode") : QStringLiteral("AGL mode"));
+    QStringList parts{fmtDist(st.lengthM), fmtTime(st.durationS), u"%1 WP"_s.arg(st.waypoints)};
+    if (st.minAgl && st.maxAgl) parts << u"AGL %1–%2 m"_s.arg(qRound64(*st.minAgl)).arg(qRound64(*st.maxAgl));
+    if (st.maxAmsl) parts << u"AMSL max %1 m"_s.arg(qRound64(*st.maxAmsl));
+    const QString mode = m_plan->route().value(u"params"_s).toObject().value(u"altMode"_s).toString();
+    parts << (mode == "amsl"_L1 ? u"AMSL mode"_s : mode == "rel"_L1 ? u"REL mode"_s : u"AGL mode"_s);
     p->setPen(kMuted);
     p->setFont(mono(9));
-    text(p, L.padL + 130, 15, parts.join(QStringLiteral("   ·   ")), Qt::AlignLeft);
-    if (m_zoom > 1.05) text(p, w - L.padR, 15, QStringLiteral("%1×").arg(m_zoom, 0, 'f', 1), Qt::AlignRight);
+    text(p, L.padL + 130, 15, parts.join(u"   ·   "_s), Qt::AlignLeft);
+    if (m_zoom > 1.05) text(p, L.w - L.padR, 15, u"%1×"_s.arg(m_zoom, 0, 'f', 1), Qt::AlignRight);
 }
 
 void ProfileItem::drawInset(QPainter *p, const QRectF &rect, const LinkEval *ev, const QString &title) const
@@ -510,7 +509,7 @@ void ProfileItem::drawInset(QPainter *p, const QRectF &rect, const LinkEval *ev,
     p->drawLine(QPointF(rx + 0.5, ry), QPointF(rx + 0.5, ry + h));
     p->setPen(QColor(0x00, 0xd2, 0xff));
     p->setFont(ui(10));
-    text(p, rx + 10, ry + 15, QStringLiteral("LINK PROFILE"), Qt::AlignLeft);
+    text(p, rx + 10, ry + 15, u"LINK PROFILE"_s, Qt::AlignLeft);
     if (!title.isEmpty()) {
         p->setPen(kMuted);
         p->setFont(mono(9));
@@ -521,8 +520,8 @@ void ProfileItem::drawInset(QPainter *p, const QRectF &rect, const LinkEval *ev,
     if (!ev || !ev->profile || !(ev->profile->D > 0) || ev->clazz == Link::Unknown) {
         p->setPen(kDim);
         p->setFont(mono(9.5));
-        text(p, rx + w / 2, ry + h / 2 + 3, ev && ev->clazz == Link::Unknown ? QStringLiteral("no elevation data along the path")
-                                                                            : QStringLiteral("hover the profile to see the line of sight"),
+        text(p, rx + w / 2, ry + h / 2 + 3, ev && ev->clazz == Link::Unknown ? u"no elevation data along the path"_s
+                                                                            : u"hover the profile to see the line of sight"_s,
              Qt::AlignHCenter);
         p->restore();
         return;
@@ -627,23 +626,23 @@ void ProfileItem::drawInset(QPainter *p, const QRectF &rect, const LinkEval *ev,
         p->drawPath(tri);
         p->setPen(ev->obstructed ? QColor(0xff, 0x60, 0x60) : QColor(0xff, 0xc0, 0x40));
         p->setFont(mono(8.5, QFont::Bold));
-        text(p, std::min(rx + w - 26, std::max(rx + 26, wx)), wy - 12, QStringLiteral("−%1 dB").arg(ev->loss, 0, 'f', 1), Qt::AlignHCenter);
+        text(p, std::min(rx + w - 26, std::max(rx + 26, wx)), wy - 12, u"−%1 dB"_s.arg(ev->loss, 0, 'f', 1), Qt::AlignHCenter);
     }
 
     // Axis text and numbers
     p->setPen(kDim);
     p->setFont(mono(8.5));
-    text(p, X(0) + 4, ry + padT + ph + 10, QStringLiteral("GS"), Qt::AlignLeft);
+    text(p, X(0) + 4, ry + padT + ph + 10, u"GS"_s, Qt::AlignLeft);
     text(p, X(D), ry + padT + ph + 10, fmtDist(D), Qt::AlignRight);
     p->setPen(QColor(0x55, 0x55, 0x66));
-    text(p, rx + padL, Y(lo) - 2, QStringLiteral("%1 m").arg(qRound64(lo)), Qt::AlignLeft);
-    const QString status = ev->obstructed ? QStringLiteral("NLOS · diffraction") : ev->fresnelClear ? QStringLiteral("LOS · Fresnel clear") : QStringLiteral("LOS · Fresnel intruded");
+    text(p, rx + padL, Y(lo) - 2, u"%1 m"_s.arg(qRound64(lo)), Qt::AlignLeft);
+    const QString status = ev->obstructed ? u"NLOS · diffraction"_s : ev->fresnelClear ? u"LOS · Fresnel clear"_s : u"LOS · Fresnel intruded"_s;
     p->setFont(mono(9));
     p->setPen(st.color);
     text(p, rx + padL, ry + h - 6, st.shortName, Qt::AlignLeft);
     p->setPen(QColor(0xcf, 0xd8, 0xdd));
     text(p, rx + padL + 62, ry + h - 6,
-         QStringLiteral("%1 dBm · margin %2%3 dB · %4").arg(ev->rssi, 0, 'f', 0).arg(ev->margin >= 0 ? QStringLiteral("+") : QString()).arg(ev->margin, 0, 'f', 0).arg(status),
+         u"%1 dBm · margin %2%3 dB · %4"_s.arg(ev->rssi, 0, 'f', 0).arg(ev->margin >= 0 ? u"+"_s : QString()).arg(ev->margin, 0, 'f', 0).arg(status),
          Qt::AlignLeft);
     p->restore();
 }

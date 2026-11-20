@@ -76,9 +76,7 @@ public:
             m_channels[c].push(c < values.size() ? values[c] : 0.0);
     }
 
-    const RingBuffer<double> &timestamps() const { return m_time; }
     const RingBuffer<double> &channel(std::size_t c) const { return m_channels[c]; }
-    std::size_t channelCount() const { return m_channels.size(); }
     std::size_t size() const { return m_time.size(); }
 
     /// Index range [first, last) of samples with startTime <= t <= endTime.

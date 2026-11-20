@@ -12,7 +12,9 @@
 #include "mission/RouteModel.h"
 
 #include <QImage>
+#include <QJsonArray>
 #include <QPointF>
+#include <QPolygonF>
 #include <QQuickPaintedItem>
 #include <QVariantList>
 #include <memory>
@@ -40,8 +42,6 @@ public:
     Q_INVOKABLE void fitRoute();
 
     void paint(QPainter *p) override;
-
-public:
     QString zoneTip() const { return m_zoneTip; }
 
 signals:
@@ -67,12 +67,34 @@ private:
     QPointF origin() const;
     QPointF toScreen(double lat, double lng) const { return project(lat, lng) - origin(); }
     QPointF toScreen(const mission::LL &p) const { return toScreen(p.lat, p.lng); }
+    QPolygonF toScreen(const QList<mission::LL> &pts) const;
     mission::LL toLL(QPointF s) const { return unproject(s + origin()); }
+    QRectF visibleArea() const { return boundingRect().adjusted(-10, -10, 10, 10); }
     void zoomAt(int z, QPointF anchor);
     void setView(double lat, double lng, int zoom);
+    /// The H marker: the take-off point, else the compiled home.
+    std::optional<mission::LL> homePoint(bool *custom = nullptr) const;
+    /// `select` with the select tool, the crosshair with a drawing tool.
+    Qt::CursorShape toolCursor(Qt::CursorShape select) const;
 
+    // Layers, in paint order
     void drawTiles(QPainter *p, const QString &provider, int maxNative);
     void drawCoverage(QPainter *p);
+    void drawLinkHalo(QPainter *p);
+    void drawFigure(QPainter *p, const QJsonObject &seg, bool isSel);
+    void drawPath(QPainter *p, const QString &sel);
+    void drawCalculatedPoints(QPainter *p, const QJsonArray &segs);
+    void drawDraftLines(QPainter *p);
+    void drawPhotos(QPainter *p);
+    void drawBasePoints(QPainter *p, const QJsonObject &seg, bool isSel);
+    void drawMarkers(QPainter *p);
+    void drawHoveredShot(QPainter *p);
+    void drawLabels(QPainter *p, const QJsonArray &segs, const QString &sel);
+    void drawTurnArrows(QPainter *p, const QJsonObject &seg, const mission::LL &centre, const QColor &color);
+    void drawPathArrows(QPainter *p, const QString &sel);
+    void drawHandles(QPainter *p, const QJsonObject &seg);
+    void drawDraftVertices(QPainter *p);
+    void drawProfileCursor(QPainter *p);
 
     // Hit testing (GUI thread)
     struct Hit {
@@ -81,6 +103,9 @@ private:
         int index = -1;
     };
     Hit hitTest(QPointF s, bool forContext) const;
+    Hit hitHandles(QPointF s, const QJsonObject &seg, const QString &id) const;
+    bool onFigure(QPointF s, const QJsonObject &seg) const;
+    void openContextMenu(QPointF pos);
 
     PlanController *m_plan = nullptr;
     mission::LL m_center{47.2603, 11.3439};

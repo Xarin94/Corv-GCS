@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 FftController *FftController::s_instance = nullptr;
@@ -28,14 +30,7 @@ const QColor kGrid(255, 255, 255, 18), kAxis(255, 255, 255, 56);
 const QColor kLineColor(0x39, 0x87, 0xe5), kPeakColor(0xc9, 0x85, 0x00);
 constexpr double kWfDbLo = -100, kWfDbHi = 0;   // fixed colour scale of the waterfall
 
-QString fmtDb(double v) { return (v < 0 ? QStringLiteral("−") : QString()) + QString::number(std::abs(v), 'f', 0); }
-QString fmtDf(double v) { return (v >= 10 ? QString::number(v, 'f', 1) : v >= 1 ? QString::number(v, 'f', 2) : QString::number(v, 'f', 3)) + QStringLiteral(" Hz"); }
-QString fmtDur(double ms)
-{
-    return ms >= 10000 ? QString::number(ms / 1000, 'f', 0) + QStringLiteral(" s")
-         : ms >= 1000 ? QString::number(ms / 1000, 'f', 1) + QStringLiteral(" s")
-                      : QString::number(std::lround(ms)) + QStringLiteral(" ms");
-}
+QString fmtDb(double v) { return (v < 0 ? u"−"_s : QString()) + QString::number(std::abs(v), 'f', 0); }
 
 // Perceptual dark-to-bright map (inferno-like): low levels sink into the black
 const std::array<std::array<std::uint8_t, 3>, 256> &lut()
@@ -87,8 +82,8 @@ std::vector<double> freqTicks(const FreqAxis &a, double minPx)
 }
 QString fmtHz(double f, bool unit)
 {
-    const QString v = f >= 1000 ? QString::number(f / 1000, 'g', 3) + QStringLiteral("k") : QString::number(f, 'g', f >= 1 ? 4 : 2);
-    return unit ? v + QStringLiteral(" Hz") : v;
+    const QString v = f >= 1000 ? QString::number(f / 1000, 'g', 3) + u"k"_s : QString::number(f, 'g', f >= 1 ? 4 : 2);
+    return unit ? v + u" Hz"_s : v;
 }
 
 /// Per pixel row (or column) along the axis: the bins it covers, or the
@@ -107,13 +102,13 @@ std::vector<std::pair<int, int>> binRanges(const FreqAxis &a, const SpectrumGrid
 
 QFont tickFont()
 {
-    QFont f(QStringLiteral("Roboto Mono"));
+    QFont f(u"Roboto Mono"_s);
     f.setPixelSize(10);
     return f;
 }
 QFont labelFont()
 {
-    QFont f(QStringLiteral("Rajdhani"));
+    QFont f(u"Rajdhani"_s);
     f.setPixelSize(11);
     f.setWeight(QFont::DemiBold);
     return f;
@@ -123,7 +118,7 @@ void noData(QPainter *p, double x, double y, const QString &hint)
 {
     p->setPen(kInkMuted);
     p->setFont(labelFont());
-    p->drawText(QRectF(x - 200, y - 15, 400, 16), Qt::AlignCenter, QStringLiteral("NO DATA"));
+    p->drawText(QRectF(x - 200, y - 15, 400, 16), Qt::AlignCenter, u"NO DATA"_s);
     p->setFont(tickFont());
     p->drawText(QRectF(x - 200, y + 1, 400, 16), Qt::AlignCenter, hint);
 }
@@ -147,8 +142,8 @@ constexpr double kWfL = 40, kWfR = 8, kWfT = 6, kWfB = 14;
 FftController::FftController(MessageBus *bus, QObject *parent) : QObject(parent)
 {
     s_instance = this;
-    m_enabled = Settings::instance().value(QLatin1String(kEnabledKey)).toString() == QLatin1String("1");
-    m_sensor = Settings::instance().value(QLatin1String(kSensorKey)).toString() == QLatin1String("accel") ? 1 : 0;
+    m_enabled = Settings::instance().value(QLatin1String(kEnabledKey)).toString() == "1"_L1;
+    m_sensor = Settings::instance().value(QLatin1String(kSensorKey)).toString() == "accel"_L1 ? 1 : 0;
     bus->subscribe(MAVLINK_MSG_ID_DEBUG_FLOAT_ARRAY, this, [this](const MavMessage &mm) {
         mavlink_debug_float_array_t d;
         mavlink_msg_debug_float_array_decode(&mm.msg, &d);
@@ -171,7 +166,7 @@ void FftController::setEnabled(bool on)
 {
     if (on == m_enabled) return;
     m_enabled = on;
-    Settings::instance().setValue(QLatin1String(kEnabledKey), on ? QStringLiteral("1") : QStringLiteral("0"));
+    Settings::instance().setValue(QLatin1String(kEnabledKey), on ? u"1"_s : u"0"_s);
     if (m_enabled && m_shown) m_draw.start();
     else m_draw.stop();
     updateText();
@@ -189,7 +184,7 @@ void FftController::setShown(bool on)
 
 void FftController::setSensor(const QString &s)
 {
-    const int i = s == QLatin1String("accel") ? 1 : 0;
+    const int i = s == "accel"_L1 ? 1 : 0;
     if (i == m_sensor) return;
     m_sensor = i;
     Settings::instance().setValue(QLatin1String(kSensorKey), sensor());
@@ -198,7 +193,7 @@ void FftController::setSensor(const QString &s)
     emit redraw();
 }
 
-QString FftController::unit() const { return m_sensor == 0 ? QStringLiteral("dB re 1 (rad/s)²/Hz") : QStringLiteral("dB re 1 (m/s²)²/Hz"); }
+QString FftController::unit() const { return m_sensor == 0 ? u"dB re 1 (rad/s)²/Hz"_s : u"dB re 1 (m/s²)²/Hz"_s; }
 
 void FftController::selectStream(const QString &key) { emit streamSelected(m_sensor, key); }
 
@@ -213,7 +208,7 @@ void FftController::onLogSpectrum(const LogSpectrumMsg &m)
 
 void FftController::replayState(const QString &state, const QString &format)
 {
-    const bool on = state == QLatin1String("LOADED") || state == QLatin1String("PLAYING") || state == QLatin1String("PAUSED");
+    const bool on = state == "LOADED"_L1 || state == "PLAYING"_L1 || state == "PAUSED"_L1;
     if (on && !m_monitor.replaying()) m_monitor.replayLoaded(format, monoMs());
     else if (!on && m_monitor.replaying()) m_monitor.replayUnloaded();
     updateText();
@@ -234,31 +229,31 @@ void FftController::updateText()
     const auto src = m_monitor.source(m_sensor);
     m_sourceText = src.text;
     QVariantList streams;
-    if (src.kind == QLatin1String("log"))
-        for (const auto &s : src.streams) streams << QVariantMap{{QStringLiteral("value"), s.key}, {QStringLiteral("label"), s.label}};
+    if (src.kind == "log"_L1)
+        for (const auto &s : src.streams) streams << QVariantMap{{u"value"_s, s.key}, {u"label"_s, s.label}};
     m_streams = streams;
     m_stream = src.stream;
 
     const double now = this->now();
     QVariantList peaks;
     for (int s = 0; s < 2; ++s) {
-        QVariantMap row{{QStringLiteral("label"), s == 0 ? QStringLiteral("GYRO") : QStringLiteral("ACC")}};
+        QVariantMap row{{u"label"_s, s == 0 ? u"GYRO"_s : u"ACC"_s}};
         const auto d = m_monitor.get(s).dominant(now);
         if (!d) {
-            row[QStringLiteral("none")] = QStringLiteral("NO DATA · %1").arg(m_monitor.source(s).hint);
+            row[u"none"_s] = u"NO DATA · %1"_s.arg(m_monitor.source(s).hint);
         } else if (d->peaks.empty()) {
-            row[QStringLiteral("main")] = QStringLiteral("%1 Hz %2 dB").arg(d->max.f, 0, 'f', 1).arg(fmtDb(d->max.db));
-            row[QStringLiteral("more")] = QStringLiteral("no line over the noise · floor %1 dB").arg(fmtDb(d->floor));
-            row[QStringLiteral("moreDim")] = true;
+            row[u"main"_s] = u"%1 Hz %2 dB"_s.arg(d->max.f, 0, 'f', 1).arg(fmtDb(d->max.db));
+            row[u"more"_s] = u"no line over the noise · floor %1 dB"_s.arg(fmtDb(d->floor));
+            row[u"moreDim"_s] = true;
         } else {
             const auto &p = d->peaks.front();
-            row[QStringLiteral("main")] = QStringLiteral("<font color=\"#fab219\"><b>%1 Hz</b></font> %2 dB · +%3 dB over the floor")
+            row[u"main"_s] = u"<font color=\"#fab219\"><b>%1 Hz</b></font> %2 dB · +%3 dB over the floor"_s
                                               .arg(p.f, 0, 'f', 1).arg(fmtDb(p.db)).arg(p.prom, 0, 'f', 0);
             QStringList more;
             for (std::size_t i = 1; i < d->peaks.size(); ++i)
-                more << QStringLiteral("%1 Hz %2 dB").arg(d->peaks[i].f, 0, 'f', 1).arg(fmtDb(d->peaks[i].db));
-            more << QStringLiteral("floor %1 dB").arg(fmtDb(d->floor));
-            row[QStringLiteral("more")] = more.join(QStringLiteral(" · "));
+                more << u"%1 Hz %2 dB"_s.arg(d->peaks[i].f, 0, 'f', 1).arg(fmtDb(d->peaks[i].db));
+            more << u"floor %1 dB"_s.arg(fmtDb(d->floor));
+            row[u"more"_s] = more.join(u" · "_s);
         }
         peaks << row;
     }
@@ -272,23 +267,23 @@ void FftController::updateLogStatus()
     const LogSpectrumInfo *log = m_monitor.log();
     QString s;
     if (!log) {
-        s = m_monitor.replaying() ? QStringLiteral("a .tlog: the vehicle's own spectrum") : QStringLiteral("no .bin loaded");
+        s = m_monitor.replaying() ? u"a .tlog: the vehicle's own spectrum"_s : u"no .bin loaded"_s;
     } else {
         QStringList lines;
         for (int k = 0; k < 2; ++k) {
             const auto &l = log->sensors[std::size_t(k)];
-            const QString name = k == 0 ? QStringLiteral("GYRO") : QStringLiteral("ACC");
+            const QString name = k == 0 ? u"GYRO"_s : u"ACC"_s;
             if (l.stream.isEmpty()) {
-                lines << name + QStringLiteral(": no samples");
+                lines << name + u": no samples"_s;
                 continue;
             }
-            const QString cut = l.limited ? QStringLiteral(" (cut to %1 pt%2 by the %3-sample runs)").arg(l.N).arg(l.avg > 1 ? QStringLiteral(" × %1").arg(l.avg) : QString()).arg(l.longest)
+            const QString cut = l.limited ? u" (cut to %1 pt%2 by the %3-sample runs)"_s.arg(l.N).arg(l.avg > 1 ? u" × %1"_s.arg(l.avg) : QString()).arg(l.longest)
                                           : QString();
-            lines << QStringLiteral("%1: %2 → %3, %4 per spectrum%5").arg(name, l.label.toHtmlEscaped(), fmtDf(l.df), fmtDur(l.windowMs), cut);
+            lines << u"%1: %2 → %3, %4 per spectrum%5"_s.arg(name, l.label.toHtmlEscaped(), fmtDf(l.df), fmtDur(l.windowMs), cut);
         }
         if (!log->dropped.isEmpty())
-            lines << QStringLiteral("<font color=\"#ff7070\">left out, in fragments: %1</font>").arg(log->dropped.join(QStringLiteral(", ")).toHtmlEscaped());
-        s = lines.join(QStringLiteral("<br>"));
+            lines << u"<font color=\"#ff7070\">left out, in fragments: %1</font>"_s.arg(log->dropped.join(u", "_s).toHtmlEscaped());
+        s = lines.join(u"<br>"_s);
     }
     if (s != m_logStatus) {
         m_logStatus = s;
@@ -349,7 +344,7 @@ void SpectrumView::refresh()
     if (!c || !isVisible()) return;
     const SensorSpectra &s = c->monitor().get(c->sensorIndex());
     const double perf = monoMs();
-    if (m_mode == QLatin1String("live")) {
+    if (m_mode == "live"_L1) {
         // The newest spectrum: on new data, a resize or a pointer move, and once a second for the staleness note
         if (!(s.version() != m_lastVersion || m_dirty || perf - m_lastPaint >= 1000)) return;
         m_lastVersion = s.version();
@@ -360,7 +355,7 @@ void SpectrumView::refresh()
         }
     } else {
         const QString r = waterfallReadout(s, c->now());
-        const QString range = s.rows().empty() ? QStringLiteral("—") : QStringLiteral("%1 … %2 dB").arg(kWfDbLo).arg(kWfDbHi);
+        const QString range = s.rows().empty() ? u"—"_s : u"%1 … %2 dB"_s.arg(kWfDbLo).arg(kWfDbHi);
         if (r != m_readout || range != m_range) {
             m_readout = r;
             m_range = range;
@@ -385,12 +380,12 @@ QString SpectrumView::liveReadout(const SensorSpectra &s) const
         const int i = ax.bin(m_hover.x(), g);
         f = g.binFreq(i);
         db = (*latest->db)[std::size_t(i)];
-        label = QStringLiteral("AT");
+        label = u"AT"_s;
     } else {
         std::tie(f, db) = peakOf(*latest->db, g);
-        label = QStringLiteral("PEAK");
+        label = u"PEAK"_s;
     }
-    return QStringLiteral("%1 %2 Hz · %3 dB").arg(label, QString::number(f, 'f', f < 10 ? 1 : 0), QString::number(db, 'f', 1));
+    return u"%1 %2 Hz · %3 dB"_s.arg(label, QString::number(f, 'f', f < 10 ? 1 : 0), QString::number(db, 'f', 1));
 }
 
 QString SpectrumView::waterfallReadout(const SensorSpectra &s, double now) const
@@ -406,7 +401,7 @@ QString SpectrumView::waterfallReadout(const SensorSpectra &s, double now) const
     for (auto it = rows.rbegin(); it != rows.rend() && it->t >= now - age; ++it)
         if (it->t <= now) row = &*it;
     if (!row || row->t - (now - age) > s.holdMs()) return {};
-    return QStringLiteral("%1 Hz · −%2 s · %3 dB").arg(g.binFreq(i), 0, 'f', 1).arg(age / 1000, 0, 'f', 0).arg((*row->db)[std::size_t(i)], 0, 'f', 1);
+    return u"%1 Hz · −%2 s · %3 dB"_s.arg(g.binFreq(i), 0, 'f', 1).arg(age / 1000, 0, 'f', 0).arg((*row->db)[std::size_t(i)], 0, 'f', 1);
 }
 
 void SpectrumView::paint(QPainter *p)
@@ -415,7 +410,7 @@ void SpectrumView::paint(QPainter *p)
     if (!c) return;
     p->setRenderHint(QPainter::Antialiasing, true);
     const SensorSpectra &s = c->monitor().get(c->sensorIndex());
-    if (m_mode == QLatin1String("live")) paintLive(p, s, c->now());
+    if (m_mode == "live"_L1) paintLive(p, s, c->now());
     else paintWaterfall(p, s, c->now());
 }
 
@@ -519,7 +514,7 @@ void SpectrumView::paintLive(QPainter *p, const SensorSpectra &s, double now)
     if (!c->monitor().live(c->sensorIndex(), now)) {
         p->setPen(kInkMuted);
         p->setFont(labelFont());
-        p->drawText(QRectF(kLiveL, kLiveT + 2, pw - 2, 14), Qt::AlignRight | Qt::AlignTop, QStringLiteral("NO NEW DATA"));
+        p->drawText(QRectF(kLiveL, kLiveT + 2, pw - 2, 14), Qt::AlignRight | Qt::AlignTop, u"NO NEW DATA"_s);
     }
     // Pointer: the level of the bin under it
     if (m_hover.x() >= kLiveL && m_hover.x() <= kLiveL + pw) {
@@ -548,9 +543,9 @@ void SpectrumView::paintWaterfall(QPainter *p, const SensorSpectra &s, double no
         if (k && y > kWfT + ph - 4) continue;
         p->drawText(QRectF(0, y - 7, kWfL - 4, 14), Qt::AlignRight | Qt::AlignVCenter, fmtHz(ticks[k], k == 0));
     }
-    p->drawText(QRectF(kWfL, h - 14, 60, 13), Qt::AlignLeft | Qt::AlignBottom, QStringLiteral("−60 s"));
-    p->drawText(QRectF(kWfL + pw / 2 - 30, h - 14, 60, 13), Qt::AlignHCenter | Qt::AlignBottom, QStringLiteral("−30 s"));
-    p->drawText(QRectF(kWfL + pw - 60, h - 14, 60, 13), Qt::AlignRight | Qt::AlignBottom, QStringLiteral("now"));
+    p->drawText(QRectF(kWfL, h - 14, 60, 13), Qt::AlignLeft | Qt::AlignBottom, u"−60 s"_s);
+    p->drawText(QRectF(kWfL + pw / 2 - 30, h - 14, 60, 13), Qt::AlignHCenter | Qt::AlignBottom, u"−30 s"_s);
+    p->drawText(QRectF(kWfL + pw - 60, h - 14, 60, 13), Qt::AlignRight | Qt::AlignBottom, u"now"_s);
     p->setPen(QPen(kAxis, 1));
     p->setBrush(Qt::NoBrush);
     p->drawRect(QRectF(kWfL - 0.5, kWfT - 0.5, pw + 1, ph + 1));

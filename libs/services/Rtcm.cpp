@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv::rtcm {
 
 QList<Frame> Parser::parse(const QByteArray &data)
@@ -40,30 +42,30 @@ QList<Frame> Parser::parse(const QByteArray &data)
 QString typeName(int type)
 {
     static const QHash<int, QString> names = {
-        {1001, QStringLiteral("GPS L1 Obs")},
-        {1002, QStringLiteral("GPS L1 Ext Obs")},
-        {1003, QStringLiteral("GPS L1/L2 Obs")},
-        {1004, QStringLiteral("GPS L1/L2 Ext Obs")},
-        {1005, QStringLiteral("Base Position")},
-        {1006, QStringLiteral("Base Position + Height")},
-        {1007, QStringLiteral("Antenna Descriptor")},
-        {1008, QStringLiteral("Antenna Serial")},
-        {1009, QStringLiteral("GLONASS L1 Obs")},
-        {1010, QStringLiteral("GLONASS L1 Ext Obs")},
-        {1011, QStringLiteral("GLONASS L1/L2 Obs")},
-        {1012, QStringLiteral("GLONASS L1/L2 Ext Obs")},
-        {1033, QStringLiteral("Receiver/Antenna Info")},
-        {1074, QStringLiteral("GPS MSM4")},
-        {1077, QStringLiteral("GPS MSM7")},
-        {1084, QStringLiteral("GLONASS MSM4")},
-        {1087, QStringLiteral("GLONASS MSM7")},
-        {1094, QStringLiteral("Galileo MSM4")},
-        {1097, QStringLiteral("Galileo MSM7")},
-        {1124, QStringLiteral("BeiDou MSM4")},
-        {1127, QStringLiteral("BeiDou MSM7")},
-        {1230, QStringLiteral("GLONASS Code-Phase Bias")},
-        {4072, QStringLiteral("u-blox Proprietary")}};
-    return names.value(type, QStringLiteral("Type %1").arg(type));
+        {1001, u"GPS L1 Obs"_s},
+        {1002, u"GPS L1 Ext Obs"_s},
+        {1003, u"GPS L1/L2 Obs"_s},
+        {1004, u"GPS L1/L2 Ext Obs"_s},
+        {1005, u"Base Position"_s},
+        {1006, u"Base Position + Height"_s},
+        {1007, u"Antenna Descriptor"_s},
+        {1008, u"Antenna Serial"_s},
+        {1009, u"GLONASS L1 Obs"_s},
+        {1010, u"GLONASS L1 Ext Obs"_s},
+        {1011, u"GLONASS L1/L2 Obs"_s},
+        {1012, u"GLONASS L1/L2 Ext Obs"_s},
+        {1033, u"Receiver/Antenna Info"_s},
+        {1074, u"GPS MSM4"_s},
+        {1077, u"GPS MSM7"_s},
+        {1084, u"GLONASS MSM4"_s},
+        {1087, u"GLONASS MSM7"_s},
+        {1094, u"Galileo MSM4"_s},
+        {1097, u"Galileo MSM7"_s},
+        {1124, u"BeiDou MSM4"_s},
+        {1127, u"BeiDou MSM7"_s},
+        {1230, u"GLONASS Code-Phase Bias"_s},
+        {4072, u"u-blox Proprietary"_s}};
+    return names.value(type, u"Type %1"_s.arg(type));
 }
 
 QList<std::pair<uint8_t, QByteArray>> fragments(const QByteArray &frame, std::uint64_t frameCount)
@@ -86,34 +88,34 @@ QList<std::pair<uint8_t, QByteArray>> fragments(const QByteArray &frame, std::ui
 QByteArray buildGga(double lat, double lon, double alt, const QDateTime &utc)
 {
     const QTime t = utc.toUTC().time();
-    const QString time = QStringLiteral("%1%2%3.00").arg(t.hour(), 2, 10, QLatin1Char('0')).arg(t.minute(), 2, 10, QLatin1Char('0'))
-                             .arg(t.second(), 2, 10, QLatin1Char('0'));
+    const QString time = u"%1%2%3.00"_s.arg(t.hour(), 2, 10, '0'_L1).arg(t.minute(), 2, 10, '0'_L1)
+                             .arg(t.second(), 2, 10, '0'_L1);
     const double latAbs = std::abs(lat), lonAbs = std::abs(lon);
     const int latDeg = int(std::floor(latAbs)), lonDeg = int(std::floor(lonAbs));
-    const QString latStr = QStringLiteral("%1%2").arg(latDeg, 2, 10, QLatin1Char('0')).arg((latAbs - latDeg) * 60, 10, 'f', 7, QLatin1Char('0'));
-    const QString lonStr = QStringLiteral("%1%2").arg(lonDeg, 3, 10, QLatin1Char('0')).arg((lonAbs - lonDeg) * 60, 10, 'f', 7, QLatin1Char('0'));
-    const QString body = QStringLiteral("GPGGA,%1,%2,%3,%4,%5,1,10,1.0,%6,M,0.0,M,,")
-                             .arg(time, latStr, lat >= 0 ? QStringLiteral("N") : QStringLiteral("S"), lonStr,
-                                  lon >= 0 ? QStringLiteral("E") : QStringLiteral("W"))
+    const QString latStr = u"%1%2"_s.arg(latDeg, 2, 10, '0'_L1).arg((latAbs - latDeg) * 60, 10, 'f', 7, '0'_L1);
+    const QString lonStr = u"%1%2"_s.arg(lonDeg, 3, 10, '0'_L1).arg((lonAbs - lonDeg) * 60, 10, 'f', 7, '0'_L1);
+    const QString body = u"GPGGA,%1,%2,%3,%4,%5,1,10,1.0,%6,M,0.0,M,,"_s
+                             .arg(time, latStr, lat >= 0 ? u"N"_s : u"S"_s, lonStr,
+                                  lon >= 0 ? u"E"_s : u"W"_s)
                              .arg(alt, 0, 'f', 1);
     uint8_t cs = 0;
     for (QChar c : body) cs ^= uint8_t(c.unicode());
-    return QStringLiteral("$%1*%2\r\n").arg(body, QStringLiteral("%1").arg(cs, 2, 16, QLatin1Char('0')).toUpper()).toLatin1();
+    return u"$%1*%2\r\n"_s.arg(body, u"%1"_s.arg(cs, 2, 16, '0'_L1).toUpper()).toLatin1();
 }
 
 bool parseSourcetable(const QByteArray &reply, QList<Mount> *out, QString *error)
 {
     const QString text = QString::fromUtf8(reply);
-    const QString statusLine = text.section(QStringLiteral("\r\n"), 0, 0).trimmed();
-    if (!statusLine.contains(QLatin1String("200")) && !text.contains(QLatin1String("STR;"))) {
-        if (error) *error = QStringLiteral("Sourcetable request failed: %1").arg(statusLine.isEmpty() ? QStringLiteral("no response") : statusLine);
+    const QString statusLine = text.section(u"\r\n"_s, 0, 0).trimmed();
+    if (!statusLine.contains("200"_L1) && !text.contains("STR;"_L1)) {
+        if (error) *error = u"Sourcetable request failed: %1"_s.arg(statusLine.isEmpty() ? u"no response"_s : statusLine);
         return false;
     }
     out->clear();
-    static const QRegularExpression nl(QStringLiteral("\r?\n"));
+    static const QRegularExpression nl(u"\r?\n"_s);
     for (const QString &line : text.split(nl)) {
-        if (!line.startsWith(QLatin1String("STR;"))) continue;
-        const QStringList f = line.split(QLatin1Char(';'));
+        if (!line.startsWith("STR;"_L1)) continue;
+        const QStringList f = line.split(';'_L1);
         const auto at = [&](int i) { return i < f.size() ? f[i] : QString(); };
         Mount m;
         m.mountpoint = at(1);

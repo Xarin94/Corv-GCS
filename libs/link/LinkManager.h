@@ -80,7 +80,6 @@ signals:
     /// Every message, on the link thread (VehicleHub listens with a direct connection).
     void message(const corv::MavMessage &m);
     void rawFrame(const QByteArray &frame);                // received MAVLink bytes (telemetry forward)
-    void tlogChanged(const QString &path);                 // empty when recording stopped
     /// Cellular link status (LteTransport::status), once a second and on state changes
     void lteStatus(const QVariantMap &status);
     /// Something wrong with what arrives (no bytes, bytes but no frame): for the HUD.

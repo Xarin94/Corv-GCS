@@ -10,6 +10,8 @@
 #include <QPainterPath>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 VehicleHub *MapItem::s_hub = nullptr;
@@ -25,6 +27,7 @@ void MapItem::setFrozenTrail(std::vector<LatLon> points)
 namespace {
 constexpr int kTile = 256;
 constexpr std::size_t kTrailMax = 3000;
+const QString kProvider = u"satellite"_s;
 } // namespace
 
 MapItem::MapItem(QQuickItem *parent) : QQuickPaintedItem(parent)
@@ -36,7 +39,7 @@ MapItem::MapItem(QQuickItem *parent) : QQuickPaintedItem(parent)
     connect(&m_timer, &PacedTimer::timeout, this, &MapItem::sample);
     m_timer.start();
     connect(&TileStore::instance(), &TileStore::tileReady, this, [this](const QString &p, int z) {
-        if (p == m_provider && z == m_zoom) update();
+        if (p == kProvider && z == m_zoom) update();
     });
 }
 
@@ -45,7 +48,6 @@ void MapItem::setZoom(int z)
     z = std::clamp(z, 2, 19);
     if (z == m_zoom) return;
     m_zoom = z;
-    emit viewChanged();
     update();
 }
 
@@ -53,15 +55,6 @@ void MapItem::setFollow(bool f)
 {
     if (f == m_follow) return;
     m_follow = f;
-    emit viewChanged();
-    update();
-}
-
-void MapItem::setProvider(const QString &p)
-{
-    if (p == m_provider) return;
-    m_provider = p;
-    emit viewChanged();
     update();
 }
 
@@ -102,32 +95,8 @@ void MapItem::sample()
 
 void MapItem::paint(QPainter *p)
 {
-    const QPointF c = project(m_center.lat, m_center.lon);
-    const QPointF origin = c - QPointF(width() / 2, height() / 2);
-    const int maxIndex = (1 << m_zoom) - 1;
-
-    // Tiles at 0.6 opacity over black, as the satellite layer of MapEngine.js;
-    // a missing one borrows its parent at one zoom less, scaled
-    p->setOpacity(0.6);
-    const int tx0 = int(std::floor(origin.x() / kTile)), ty0 = int(std::floor(origin.y() / kTile));
-    const int tx1 = int(std::floor((origin.x() + width()) / kTile)), ty1 = int(std::floor((origin.y() + height()) / kTile));
-    for (int ty = ty0; ty <= ty1; ++ty) {
-        if (ty < 0 || ty > maxIndex) continue;
-        for (int tx = tx0; tx <= tx1; ++tx) {
-            const int x = ((tx % (maxIndex + 1)) + maxIndex + 1) % (maxIndex + 1);
-            const QRectF dst(tx * kTile - origin.x(), ty * kTile - origin.y(), kTile, kTile);
-            QImage img = TileStore::instance().tile(m_provider, m_zoom, x, ty);
-            if (!img.isNull()) {
-                p->drawImage(dst, img);
-                continue;
-            }
-            const QImage parent = TileStore::instance().tile(m_provider, m_zoom - 1, x / 2, ty / 2);
-            if (!parent.isNull())
-                p->drawImage(dst, parent, QRectF((x % 2) * 128, (ty % 2) * 128, 128, 128));
-        }
-    }
-
-    p->setOpacity(1.0);
+    const QPointF origin = project(m_center.lat, m_center.lon) - QPointF(width() / 2, height() / 2);
+    drawTiles(p, origin);
     if (!s_hub) return;
     const auto s = s_hub->snapshot();
     auto toScreen = [&](double lat, double lon) { return project(lat, lon) - origin; };
@@ -137,39 +106,7 @@ void MapItem::paint(QPainter *p)
         const LatLon nw = unproject(origin), se = unproject(origin + QPointF(width(), height()));
         geozone::paintZones(p, *zones, {nw.lon, se.lat, se.lon, nw.lat}, toScreen);
     }
-
-    // LTE cell sites (CellTowerLayer.js), over the tiles and under the track: the other
-    // sites as dots (brighter on the serving network), the serving one as a ring in the
-    // colour of the link quality with a dashed line from the vehicle to it
-    if (const CellOverlayPtr cells = cellOverlay::get(); cells && cells->live && !s->relativeMode) {
-        for (std::size_t i = 0; i < cells->sites.size(); ++i) {
-            if (int(i) == cells->serving) continue;
-            const CellSite &site = cells->sites[i];
-            const bool own = site.mcc == cells->ownMcc && site.mnc == cells->ownMnc;
-            QColor stroke = own ? QColor(0xe8e8e8) : QColor(0x7a8ca0), fill = own ? QColor(0xffffff) : QColor(0x7a8ca0);
-            stroke.setAlphaF(0.9f);
-            fill.setAlphaF(own ? 0.8f : 0.5f);
-            p->setPen(QPen(stroke, 1));
-            p->setBrush(fill);
-            const double r = own ? 3 : 2.5;
-            p->drawEllipse(toScreen(site.lat, site.lon), r, r);
-        }
-        if (cells->serving >= 0 && cells->serving < int(cells->sites.size())) {
-            const CellSite &site = cells->sites[std::size_t(cells->serving)];
-            const QPointF mast = toScreen(site.lat, site.lon);
-            if (s->lat != 0 || s->lon != 0) {
-                QPen dash(cells->linkColor, 2);
-                dash.setDashPattern({4, 3});   // 8 px on, 6 off
-                p->setPen(dash);
-                p->drawLine(toScreen(s->lat, s->lon), mast);
-            }
-            QColor fill = cells->linkColor;
-            fill.setAlphaF(0.35f);
-            p->setPen(QPen(cells->linkColor, 2));
-            p->setBrush(fill);
-            p->drawEllipse(mast, 7, 7);
-        }
-    }
+    drawCells(p, *s, toScreen);
 
     // Trail: red polyline
     if (m_trail.size() > 1) {
@@ -180,7 +117,6 @@ void MapItem::paint(QPainter *p)
         p->setBrush(Qt::NoBrush);
         p->drawPath(path);
     }
-
     // Home
     if (s->homeLat && s->homeLon) {
         const QPointF h = toScreen(*s->homeLat, *s->homeLon);
@@ -192,19 +128,83 @@ void MapItem::paint(QPainter *p)
         f.setPixelSize(9);
         f.setBold(true);
         p->setFont(f);
-        p->drawText(QRectF(h.x() - 6, h.y() - 6, 12, 12), Qt::AlignCenter, QStringLiteral("H"));
+        p->drawText(QRectF(h.x() - 6, h.y() - 6, 12, 12), Qt::AlignCenter, u"H"_s);
     }
-
     // ADS-B traffic
     for (const TrafficEntry &t : s->traffic) {
-        const QPointF q = toScreen(t.lat, t.lon);
         p->setPen(Qt::NoPen);
         p->setBrush(QColor(255, 170, 0));
-        p->drawEllipse(q, 4, 4);
+        p->drawEllipse(toScreen(t.lat, t.lon), 4, 4);
     }
+    drawVehicle(p, toScreen(s->lat, s->lon), s->yaw);
 
-    // Vehicle: the white aircraft of MapEngine.js (40 px, 24-unit SVG path, white glow)
-    const QPointF v = toScreen(s->lat, s->lon);
+    // Attribution and zoom
+    p->setPen(QColor(255, 255, 255, 170));
+    QFont f = p->font();
+    f.setPixelSize(10);
+    p->setFont(f);
+    p->drawText(QRectF(4, height() - 16, width() - 8, 14), Qt::AlignRight | Qt::AlignVCenter,
+                u"z%1%2"_s.arg(m_zoom).arg(m_follow ? QString() : u"  (double-click: follow)"_s));
+}
+
+void MapItem::drawTiles(QPainter *p, QPointF origin)
+{
+    // Tiles at 0.6 opacity over black, as the satellite layer of MapEngine.js;
+    // a missing one borrows its parent at one zoom less, scaled
+    const int maxIndex = (1 << m_zoom) - 1;
+    p->setOpacity(0.6);
+    const int tx0 = int(std::floor(origin.x() / kTile)), ty0 = int(std::floor(origin.y() / kTile));
+    const int tx1 = int(std::floor((origin.x() + width()) / kTile)), ty1 = int(std::floor((origin.y() + height()) / kTile));
+    for (int ty = std::max(ty0, 0); ty <= std::min(ty1, maxIndex); ++ty) {
+        for (int tx = tx0; tx <= tx1; ++tx) {
+            const int x = ((tx % (maxIndex + 1)) + maxIndex + 1) % (maxIndex + 1);
+            const QRectF dst(tx * kTile - origin.x(), ty * kTile - origin.y(), kTile, kTile);
+            if (const QImage img = TileStore::instance().tile(kProvider, m_zoom, x, ty); !img.isNull()) p->drawImage(dst, img);
+            else if (const QImage parent = TileStore::instance().tile(kProvider, m_zoom - 1, x / 2, ty / 2); !parent.isNull())
+                p->drawImage(dst, parent, QRectF((x % 2) * 128, (ty % 2) * 128, 128, 128));
+        }
+    }
+    p->setOpacity(1.0);
+}
+
+void MapItem::drawCells(QPainter *p, const VehicleState &s, const std::function<QPointF(double, double)> &toScreen)
+{
+    // LTE cell sites (CellTowerLayer.js), over the tiles and under the track: the other
+    // sites as dots (brighter on the serving network), the serving one as a ring in the
+    // colour of the link quality with a dashed line from the vehicle to it
+    const CellOverlayPtr cells = cellOverlay::get();
+    if (!cells || !cells->live || s.relativeMode) return;
+    for (std::size_t i = 0; i < cells->sites.size(); ++i) {
+        if (int(i) == cells->serving) continue;
+        const CellSite &site = cells->sites[i];
+        const bool own = site.mcc == cells->ownMcc && site.mnc == cells->ownMnc;
+        QColor stroke = own ? QColor(0xe8e8e8) : QColor(0x7a8ca0), fill = own ? QColor(0xffffff) : QColor(0x7a8ca0);
+        stroke.setAlphaF(0.9f);
+        fill.setAlphaF(own ? 0.8f : 0.5f);
+        p->setPen(QPen(stroke, 1));
+        p->setBrush(fill);
+        const double r = own ? 3 : 2.5;
+        p->drawEllipse(toScreen(site.lat, site.lon), r, r);
+    }
+    if (cells->serving < 0 || cells->serving >= int(cells->sites.size())) return;
+    const CellSite &site = cells->sites[std::size_t(cells->serving)];
+    const QPointF mast = toScreen(site.lat, site.lon);
+    if (s.lat != 0 || s.lon != 0) {
+        QPen dash(cells->linkColor, 2);
+        dash.setDashPattern({4, 3});   // 8 px on, 6 off
+        p->setPen(dash);
+        p->drawLine(toScreen(s.lat, s.lon), mast);
+    }
+    QColor fill = cells->linkColor;
+    fill.setAlphaF(0.35f);
+    p->setPen(QPen(cells->linkColor, 2));
+    p->setBrush(fill);
+    p->drawEllipse(mast, 7, 7);
+}
+
+void MapItem::drawVehicle(QPainter *p, QPointF at, double yaw)
+{
+    // The white aircraft of MapEngine.js (40 px, 24-unit SVG path, white glow)
     static const QPainterPath plane = [] {
         QPainterPath q;
         q.moveTo(21, 16); q.lineTo(21, 14); q.lineTo(13, 9); q.lineTo(13, 3.5);
@@ -215,27 +215,19 @@ void MapItem::paint(QPainter *p)
         return q;
     }();
     p->save();
-    p->translate(v);
-    p->rotate(s->yaw * kRad);
+    p->translate(at);
+    p->rotate(yaw * kRad);
     p->scale(40.0 / 24.0, 40.0 / 24.0);
     p->translate(-11.5, -12);
+    p->setBrush(Qt::NoBrush);
     for (int i = 3; i >= 1; --i) {
         p->setPen(QPen(QColor(255, 255, 255, 40), i * 1.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        p->setBrush(Qt::NoBrush);
         p->drawPath(plane);
     }
     p->setPen(Qt::NoPen);
     p->setBrush(Qt::white);
     p->drawPath(plane);
     p->restore();
-
-    // Attribution and zoom
-    p->setPen(QColor(255, 255, 255, 170));
-    QFont f = p->font();
-    f.setPixelSize(10);
-    p->setFont(f);
-    p->drawText(QRectF(4, height() - 16, width() - 8, 14), Qt::AlignRight | Qt::AlignVCenter,
-                QStringLiteral("z%1%2").arg(m_zoom).arg(m_follow ? QString() : QStringLiteral("  (double-click: follow)")));
 }
 
 void MapItem::wheelEvent(QWheelEvent *e)

@@ -9,11 +9,13 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
-const QString kLearnedKey = QStringLiteral("corv.params.learnedNames");
-const QString kFavKey = QStringLiteral("corv.params.favorites");
+const QString kLearnedKey = u"corv.params.learnedNames"_s;
+const QString kFavKey = u"corv.params.favorites"_s;
 
 /// The value as Electron left it (a JSON string of an array) or as this version writes it.
 QSet<QString> loadSet(const QString &key)
@@ -42,9 +44,9 @@ const QSet<QString> &builtinSet(const char *const *list)
 
 const char *const *vehicleList(const QString &vehicleClass)
 {
-    if (vehicleClass == QLatin1String("Copter")) return paramdata::kCopter;
-    if (vehicleClass == QLatin1String("Rover")) return paramdata::kRover;
-    if (vehicleClass == QLatin1String("Sub")) return paramdata::kSub;
+    if (vehicleClass == "Copter"_L1) return paramdata::kCopter;
+    if (vehicleClass == "Rover"_L1) return paramdata::kRover;
+    if (vehicleClass == "Sub"_L1) return paramdata::kSub;
     return paramdata::kPlane;
 }
 
@@ -91,12 +93,6 @@ int ParamCatalog::learn(const QStringList &names)
     return added;
 }
 
-void ParamCatalog::clearLearned()
-{
-    m_learned.clear();
-    save(kLearnedKey, m_learned);
-}
-
 bool ParamCatalog::toggleFavorite(const QString &name)
 {
     if (!m_favorites.remove(name)) m_favorites.insert(name);
@@ -122,16 +118,9 @@ QStringList ParamCatalog::catalog(const QString &vehicleClass, const QStringList
     return l;
 }
 
-bool ParamCatalog::isBuiltin(const QString &name) const
-{
-    for (const char *const *list : {paramdata::kCommon, paramdata::kPlane, paramdata::kCopter, paramdata::kRover, paramdata::kSub})
-        if (builtinSet(list).contains(name)) return true;
-    return false;
-}
-
 QString ParamCatalog::groupOf(const QString &name)
 {
-    const int i = name.indexOf(QLatin1Char('_'));
+    const int i = name.indexOf('_'_L1);
     const QString head = i > 0 ? name.left(i) : name;
     QString stripped = head;
     while (!stripped.isEmpty() && stripped.back().isDigit()) stripped.chop(1);
@@ -152,19 +141,19 @@ QString ParamCatalog::description(const QString &name)
     const auto &desc = table(paramdata::kDescriptions);
     if (auto it = desc.constFind(name); it != desc.cend()) return *it;
     // Indexed parameters: SERVO5_FUNCTION reads like SERVO1_FUNCTION (first digit run -> n)
-    static const QRegularExpression digits(QStringLiteral("\\d+"));
+    static const QRegularExpression digits(u"\\d+"_s);
     const auto first = digits.match(name);
     if (first.hasMatch()) {
         QString base = name;
-        base.replace(first.capturedStart(), first.capturedLength(), QStringLiteral("n"));
+        base.replace(first.capturedStart(), first.capturedLength(), u"n"_s);
         for (auto it = desc.cbegin(); it != desc.cend(); ++it) {
             QString k = it.key();
             const auto m = digits.match(k);
-            if (m.hasMatch()) k.replace(m.capturedStart(), m.capturedLength(), QStringLiteral("n"));
+            if (m.hasMatch()) k.replace(m.capturedStart(), m.capturedLength(), u"n"_s);
             if (k == base) return it.value();
         }
     }
-    return table(paramdata::kGroupHints).value(name.section(QLatin1Char('_'), 0, 0));
+    return table(paramdata::kGroupHints).value(name.section('_'_L1, 0, 0));
 }
 
 QString ParamCatalog::formatValue(double value, int mavType)
@@ -173,16 +162,16 @@ QString ParamCatalog::formatValue(double value, int mavType)
     if (mavType >= 1 && mavType <= 6) return QString::number(std::llround(value));
     if (std::abs(value - std::round(value)) < 1e-4) return QString::number(std::llround(value));
     QString s = QString::number(value, 'f', 6);
-    while (s.endsWith(QLatin1Char('0'))) s.chop(1);
-    if (s.endsWith(QLatin1Char('.'))) s.chop(1);
-    return s.isEmpty() ? QStringLiteral("0") : s;
+    while (s.endsWith('0'_L1)) s.chop(1);
+    if (s.endsWith('.'_L1)) s.chop(1);
+    return s.isEmpty() ? u"0"_s : s;
 }
 
 QString ParamCatalog::sanitize(const QString &raw)
 {
     QString out;
     for (QChar c : raw.toUpper())
-        if ((c >= QLatin1Char('A') && c <= QLatin1Char('Z')) || c.isDigit() || c == QLatin1Char('_')) out += c;
+        if ((c >= 'A'_L1 && c <= 'Z'_L1) || c.isDigit() || c == '_'_L1) out += c;
     return out.left(16);
 }
 

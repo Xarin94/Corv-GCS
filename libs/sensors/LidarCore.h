@@ -118,7 +118,6 @@ public:
     void clear();
     QVariantMap saveMap();
     /// The renderer started over while the link was up: the origin and the whole map again.
-    QVariantMap resync();
     /// Every IPv4 interface of this machine: [{name, address}]. Any thread.
     static QVariantList listInterfaces();
     static QString lidarDir();

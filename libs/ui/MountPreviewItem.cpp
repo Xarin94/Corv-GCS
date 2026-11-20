@@ -8,6 +8,8 @@
 #include <functional>
 #include <vector>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -100,7 +102,7 @@ void MountPreviewItem::paint(QPainter *g)
         g->setPen(pen);
         g->drawLine(P(a), P(b));
     };
-    QFont labelFont(QStringLiteral("sans-serif"));
+    QFont labelFont(u"sans-serif"_s);
     labelFont.setPixelSize(10);
     labelFont.setWeight(QFont::DemiBold);
     auto label = [&](const V3 &p, const QString &text, const QColor &color, double dx = 4, double dy = -4) {
@@ -125,7 +127,7 @@ void MountPreviewItem::paint(QPainter *g)
     // The vehicle: one thin triangle, nose forward, with a small fin
     poly({{0.62, 0, 0}, {-0.5, 0.3, 0}, {-0.5, -0.3, 0}}, QColor(200, 206, 214, 140), ink, 1.2);
     poly({{-0.5, 0, 0}, {-0.24, 0, 0}, {-0.5, 0, 0.24}}, QColor(200, 206, 214, 204), ink, 1.2);
-    label({0.62, 0, 0}, QStringLiteral("FWD"), ink, 6, 4);
+    label({0.62, 0, 0}, u"FWD"_s, ink, 6, 4);
     g->setPen(Qt::NoPen);
     g->setBrush(ink);
     g->drawEllipse(P({0, 0, 0}), 2.2, 2.2);
@@ -136,7 +138,7 @@ void MountPreviewItem::paint(QPainter *g)
     auto at = [&](const V3 &d, double r) { return V3{S[0] + d[0] * r, S[1] + d[1] * r, S[2] + d[2] * r}; };
 
     // The zone, far faces first
-    const QString type = m_zone.value(QStringLiteral("type")).toString();
+    const QString type = m_zone.value(u"type"_s).toString();
     if (!type.isEmpty()) {
         struct Face {
             std::vector<V3> pts;
@@ -156,9 +158,9 @@ void MountPreviewItem::paint(QPainter *g)
         };
         auto tri = [&](const V3 &a, const V3 &b, const V3 &c, double alpha) { faces.push_back({{a, b, c}, alpha, depth(centre({a, b, c}))}); };
         auto dirAt = [&](double az, double el) { return sensorToView(R, std::cos(el) * std::cos(az), std::cos(el) * std::sin(az), std::sin(el)); };
-        if (type == QLatin1String("band")) {
+        if (type == "band"_L1) {
             const int n = 48;
-            const double e0 = num(m_zone.value(QStringLiteral("elMin"))) * kDeg, e1 = num(m_zone.value(QStringLiteral("elMax"))) * kDeg;
+            const double e0 = num(m_zone.value(u"elMin"_s)) * kDeg, e1 = num(m_zone.value(u"elMax"_s)) * kDeg;
             std::vector<V3> lo, hi;
             for (int k = 0; k <= n; ++k) {
                 const double a = k / double(n) * 2 * kPi;
@@ -168,9 +170,9 @@ void MountPreviewItem::paint(QPainter *g)
             for (int k = 0; k < n; ++k) quad(lo[std::size_t(k)], lo[std::size_t(k + 1)], hi[std::size_t(k + 1)], hi[std::size_t(k)], 0.13);
             outline.push_back(lo);
             outline.push_back(hi);
-        } else if (type == QLatin1String("cone")) {
+        } else if (type == "cone"_L1) {
             const int n = 36;
-            const double h = std::max(1.0, num(m_zone.value(QStringLiteral("half")))) * kDeg;
+            const double h = std::max(1.0, num(m_zone.value(u"half"_s))) * kDeg;
             std::vector<V3> rim;
             for (int k = 0; k <= n; ++k) {
                 const double a = k / double(n) * 2 * kPi;
@@ -179,19 +181,19 @@ void MountPreviewItem::paint(QPainter *g)
             for (int k = 0; k < n; ++k) tri(S, rim[std::size_t(k)], rim[std::size_t(k + 1)], 0.13);
             outline.push_back(rim);
             for (int k : {0, 9, 18, 27}) outline.push_back({S, rim[std::size_t(k)]});
-        } else if (type == QLatin1String("fan")) {
+        } else if (type == "fan"_L1) {
             const int n = 40;
-            const double a0 = num(m_zone.value(QStringLiteral("min"))) * kDeg, a1 = num(m_zone.value(QStringLiteral("max"))) * kDeg;
+            const double a0 = num(m_zone.value(u"min"_s)) * kDeg, a1 = num(m_zone.value(u"max"_s)) * kDeg;
             std::vector<V3> arc;
             for (int k = 0; k <= n; ++k) arc.push_back(at(dirAt(a0 + (a1 - a0) * k / n, 0), kZoneR));
             for (int k = 0; k < n; ++k) tri(S, arc[std::size_t(k)], arc[std::size_t(k + 1)], 0.16);
             outline.push_back(arc);
             outline.push_back({S, arc.front()});
             outline.push_back({S, arc.back()});
-        } else if (type == QLatin1String("dirs")) {
-            const int az = std::max(1, int(num(m_zone.value(QStringLiteral("az")), 36))), el = std::max(1, int(num(m_zone.value(QStringLiteral("el")), 18)));
+        } else if (type == "dirs"_L1) {
+            const int az = std::max(1, int(num(m_zone.value(u"az"_s), 36))), el = std::max(1, int(num(m_zone.value(u"el"_s), 18)));
             const double da = 2 * kPi / az, de = kPi / el;
-            for (const QVariant &bv : m_zone.value(QStringLiteral("bins")).toList()) {
+            for (const QVariant &bv : m_zone.value(u"bins"_s).toList()) {
                 const int b = bv.toInt(), i = b % az, j = b / az;
                 const double a0 = -kPi + i * da, e0 = -kPi / 2 + j * de;
                 quad(at(dirAt(a0, e0), kZoneR), at(dirAt(a0 + da, e0), kZoneR), at(dirAt(a0 + da, e0 + de), kZoneR), at(dirAt(a0, e0 + de), kZoneR), 0.3);
@@ -216,9 +218,9 @@ void MountPreviewItem::paint(QPainter *g)
         QColor color;
         V3 d;
     };
-    std::vector<Axis> axes{{QStringLiteral("X"), kColX, sensorToView(R, 1, 0, 0)},
-                           {QStringLiteral("Y"), kColY, sensorToView(R, 0, 1, 0)},
-                           {QStringLiteral("Z"), kColZ, sensorToView(R, 0, 0, 1)}};
+    std::vector<Axis> axes{{u"X"_s, kColX, sensorToView(R, 1, 0, 0)},
+                           {u"Y"_s, kColY, sensorToView(R, 0, 1, 0)},
+                           {u"Z"_s, kColZ, sensorToView(R, 0, 0, 1)}};
     std::sort(axes.begin(), axes.end(), [&](const Axis &p, const Axis &q) { return depth(p.d) > depth(q.d); });
     for (const Axis &a : axes) {
         const V3 tip = at(a.d, kAxisL);
@@ -233,12 +235,12 @@ void MountPreviewItem::paint(QPainter *g)
     g->drawEllipse(P(S), 3, 3);
 
     // Captions
-    QFont capFont(QStringLiteral("sans-serif"));
+    QFont capFont(u"sans-serif"_s);
     capFont.setPixelSize(10);
     g->setFont(capFont);
     g->setOpacity(0.8);
     g->setPen(ink);
-    g->drawText(QPointF(6, 13), QStringLiteral("sensor X Y Z (REP-103) · zone not to scale"));
+    g->drawText(QPointF(6, 13), u"sensor X Y Z (REP-103) · zone not to scale"_s);
     if (!m_caption.isEmpty()) g->drawText(QPointF(6, H - 7), m_caption);
     g->setOpacity(1);
 }

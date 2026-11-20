@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <map>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -31,7 +33,7 @@ LogReplay::LogReplay(LinkManager *link, VehicleHub *hub, QObject *parent)
         m.msg = msg;
         m.arrivalMs = wallMs();
         m.replay = true;
-        m.synthetic = m_format == QLatin1String("bin");
+        m.synthetic = m_format == "bin"_L1;
         if (m_link) m_link->injectReplay(m);
     });
     m_spectrum = std::make_unique<LogSpectrum>([this](const LogSpectrumMsg &m) { emit spectrum(m); });
@@ -47,7 +49,7 @@ LogReplay::~LogReplay() = default;
 
 const std::uint8_t *LogReplay::data() const
 {
-    return m_format == QLatin1String("bin") ? reinterpret_cast<const std::uint8_t *>(m_log.frames.constData()) : m_map;
+    return m_format == "bin"_L1 ? reinterpret_cast<const std::uint8_t *>(m_log.frames.constData()) : m_map;
 }
 
 void LogReplay::emitAt(std::size_t i)
@@ -76,7 +78,7 @@ void LogReplay::onTick()
     if (m_cursor >= m_log.index.size()) {
         // End of the file: pause on the last frame
         internalPause();
-        sendState(QStringLiteral("PAUSED"));
+        sendState(u"PAUSED"_s);
     }
 }
 
@@ -88,7 +90,7 @@ void LogReplay::sendUiTick()
 
 void LogReplay::sendState(const QString &state)
 {
-    if (state != QLatin1String("UNLOADED"))
+    if (state != "UNLOADED"_L1)
         LOG_I("replay") << state << "at" << QString::number(currentLogMs() / 1000, 'f', 1) << "s";
     emit stateChanged(state, m_fileName, m_format, m_log.totalMs, int(m_log.index.size()));
 }
@@ -154,7 +156,7 @@ void LogReplay::seek(double targetMs)
     emit resetState();
     m_parser->reset();
     replayStickyUpTo(m_cursor);
-    if (m_format == QLatin1String("bin")) m_spectrum->restart();
+    if (m_format == "bin"_L1) m_spectrum->restart();
     if (wasPlaying) internalPlay();
     else sendUiTick();
 }
@@ -172,8 +174,8 @@ void LogReplay::unload()
     m_file.close();
     m_initialPos.reset();
     m_link->setReplayActive(false);
-    m_hub->setMode(QStringLiteral("LIVE"));
-    sendState(QStringLiteral("UNLOADED"));
+    m_hub->setMode(u"LIVE"_s);
+    sendState(u"UNLOADED"_s);
     m_fileName.clear();
     m_format.clear();
     emit tick(0, 0, false);
@@ -185,8 +187,8 @@ void LogReplay::load(const QString &path)
     if (m_loaded) unload();
     const QFileInfo fi(path);
     const QString ext = fi.suffix().toLower();
-    if (ext != QLatin1String("tlog") && ext != QLatin1String("bin")) {
-        emit loadFailed(QStringLiteral("Unsupported extension: .%1").arg(ext));
+    if (ext != "tlog"_L1 && ext != "bin"_L1) {
+        emit loadFailed(u"Unsupported extension: .%1"_s.arg(ext));
         return;
     }
     m_file.setFileName(path);
@@ -198,12 +200,12 @@ void LogReplay::load(const QString &path)
     uchar *map = size > 0 ? m_file.map(0, size) : nullptr;
     if (!map) {
         m_file.close();
-        emit loadFailed(size > 0 ? QStringLiteral("cannot map the file") : QStringLiteral("empty file"));
+        emit loadFailed(size > 0 ? u"cannot map the file"_s : u"empty file"_s);
         return;
     }
     QElapsedTimer clock;
     clock.start();
-    if (ext == QLatin1String("tlog")) {
+    if (ext == "tlog"_L1) {
         m_log = indexTlog(map, size);
         m_map = map;
     } else {
@@ -220,11 +222,11 @@ void LogReplay::load(const QString &path)
     m_loaded = true;
     LOG_I("replay") << "loaded" << m_fileName << "(" << m_format << "," << m_log.index.size() << "msgs,"
                     << QString::number(m_log.totalMs / 1000.0, 'f', 0) << "s of flight) in" << clock.elapsed() << "ms"
-                    << (m_log.gapsCompressed ? QStringLiteral(", %1 gaps compressed").arg(m_log.gapsCompressed) : QString());
+                    << (m_log.gapsCompressed ? u", %1 gaps compressed"_s.arg(m_log.gapsCompressed) : QString());
 
     m_link->setReplayActive(true);
     // REPLAY: VehicleHub takes only replay frames, and the demo flight stops
-    m_hub->setMode(QStringLiteral("REPLAY"));
+    m_hub->setMode(u"REPLAY"_s);
     m_hub->resetTelemetry();
     m_initialPos = m_log.gpsTrack.empty() ? std::nullopt : std::optional<TrackPoint>(m_log.gpsTrack.front());
     // A log is a data stream too: the scene starts at its first fix
@@ -232,19 +234,19 @@ void LogReplay::load(const QString &path)
     seedPosition();
     m_parser->reset();
     emit resetState();
-    sendState(QStringLiteral("LOADED"));
+    sendState(u"LOADED"_s);
     sendUiTick();
     emit loaded(TrackList(m_log.gpsTrack.begin(), m_log.gpsTrack.end()));
 
     // A .bin with IMU samples: the GCS computes the spectra. A .tlog carries the
     // vehicle's own (DEBUG_FLOAT_ARRAY), replayed like any message.
-    if (m_format == QLatin1String("bin")) {
+    if (m_format == "bin"_L1) {
         m_spectrum->load(m_log.imu, [this] { return currentLogMs(); });
         m_spectrumPump.start();
         QStringList names;
         for (const auto &list : m_log.imu.sensors)
-            for (const auto &s : list) names << QStringLiteral("%1 %2 Hz").arg(s->key).arg(std::lround(s->fs));
-        LOG_I("replay") << "IMU samples for the spectrum:" << (names.isEmpty() ? QStringLiteral("none") : names.join(QLatin1String(", ")));
+            for (const auto &s : list) names << u"%1 %2 Hz"_s.arg(s->key).arg(std::lround(s->fs));
+        LOG_I("replay") << "IMU samples for the spectrum:" << (names.isEmpty() ? u"none"_s : names.join(", "_L1));
     } else {
         m_spectrum->unload();
     }
@@ -254,14 +256,14 @@ void LogReplay::play()
 {
     if (!m_loaded) return;
     internalPlay();
-    sendState(QStringLiteral("PLAYING"));
+    sendState(u"PLAYING"_s);
 }
 
 void LogReplay::pause()
 {
     if (!m_loaded) return;
     internalPause();
-    sendState(QStringLiteral("PAUSED"));
+    sendState(u"PAUSED"_s);
 }
 
 void LogReplay::setSpectrumConfig(int n, int avg, int stepMs)

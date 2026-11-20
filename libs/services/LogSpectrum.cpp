@@ -5,6 +5,8 @@
 #include <cmath>
 #include <unordered_map>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 // ── Settings ─────────────────────────────────────────────────────────────
@@ -159,10 +161,10 @@ StreamPtr resampledStream(const std::vector<double> &T, const std::vector<float>
 
 void describe(ImuStream &st, const QString &key, int sensor, const QString &kind, int imu, bool filtered)
 {
-    const QString what = kind == QLatin1String("loop") ? QStringLiteral("loop rate")
-                         : (kind == QLatin1String("batch") ? QStringLiteral("batch") : QStringLiteral("raw")) + (filtered ? QStringLiteral(" filtered") : QString());
+    const QString what = kind == "loop"_L1 ? u"loop rate"_s
+                         : (kind == "batch"_L1 ? u"batch"_s : u"raw"_s) + (filtered ? u" filtered"_s : QString());
     const QString rate = st.fs >= 100 ? QString::number(std::lround(st.fs)) : QString::number(st.fs, 'f', 1);
-    st.label = QStringLiteral("IMU%1 · %2 · %3 Hz").arg(imu + 1).arg(kind == QLatin1String("raw") && filtered ? QStringLiteral("filtered") : what, rate);
+    st.label = u"IMU%1 · %2 · %3 Hz"_s.arg(imu + 1).arg(kind == "raw"_L1 && filtered ? u"filtered"_s : what, rate);
     st.key = key;
     st.sensor = sensor;
     st.kind = kind;
@@ -179,7 +181,7 @@ bool ImuCollector::wants(const QByteArray &name)
 
 ImuCollector::Cont &ImuCollector::cont(const QString &msg, int sensor, int inst)
 {
-    const QString key = QStringLiteral("%1:%2:%3").arg(msg).arg(sensor).arg(inst);
+    const QString key = u"%1:%2:%3"_s.arg(msg).arg(sensor).arg(inst);
     auto &slot = m_cont[key];
     if (!slot) {
         slot = std::make_unique<Cont>();
@@ -213,7 +215,7 @@ void ImuCollector::take(const df::Format &fmt, const std::uint8_t *p)
         const double t = df::u64(p + (su >= 0 ? su : ts));
         const bool gyr = fmt.name == "GYR";
         Cont *&fast = m_fast[gyr ? 0 : 1][std::size_t(inst)];
-        if (!fast) fast = &cont(fmt.name == "GYR" ? QStringLiteral("GYR") : QStringLiteral("ACC"), gyr ? 0 : 1, inst);
+        if (!fast) fast = &cont(fmt.name == "GYR" ? u"GYR"_s : u"ACC"_s, gyr ? 0 : 1, inst);
         fast->s.push(t, rf(p + fx), rf(p + fy), rf(p + fz));
     } else if (fmt.name == "IMU") {
         const int ts = o[0], ins = o[1], gx = o[2], gy = o[3], gz = o[4], ax = o[5], ay = o[6], az = o[7];
@@ -221,9 +223,9 @@ void ImuCollector::take(const df::Format &fmt, const std::uint8_t *p)
         const int inst = ins >= 0 ? p[ins] : 0;
         const double t = df::u64(p + ts);
         Cont *&g = m_fast[2][std::size_t(inst)];
-        if (!g) g = &cont(QStringLiteral("IMU"), 0, inst);
+        if (!g) g = &cont(u"IMU"_s, 0, inst);
         Cont *&a = m_fastImuAcc[std::size_t(inst)];
-        if (!a) a = &cont(QStringLiteral("IMU"), 1, inst);
+        if (!a) a = &cont(u"IMU"_s, 1, inst);
         g->s.push(t, rf(p + gx), rf(p + gy), rf(p + gz));
         a->s.push(t, rf(p + ax), rf(p + ay), rf(p + az));
     } else if (fmt.name == "ISBH") {
@@ -237,7 +239,7 @@ void ImuCollector::take(const df::Format &fmt, const std::uint8_t *p)
         if ((sensorType != kIsbAccel && sensorType != kIsbGyro) || !(fs > 0) || !m) return;
         const int inst = ins >= 0 ? p[ins] : 0;
         Open b;
-        b.key = QStringLiteral("ISB:%1:%2").arg(sensorType).arg(inst);
+        b.key = u"ISB:%1:%2"_s.arg(sensorType).arg(inst);
         b.sensor = sensorType == kIsbGyro ? 0 : 1;
         b.inst = inst;
         b.n = qFromLittleEndian<std::uint16_t>(p + n);
@@ -301,35 +303,35 @@ ImuStreams ImuCollector::finish(double minUs, const QHash<QString, double> &para
     closeBatch();
     const auto count = [&](const QString &prefix) {
         int found = 0, nonzero = 0;
-        for (const QString &k : {prefix + QStringLiteral("_ID"), prefix + QStringLiteral("2_ID"), prefix + QStringLiteral("3_ID")}) {
+        for (const QString &k : {prefix + u"_ID"_s, prefix + u"2_ID"_s, prefix + u"3_ID"_s}) {
             if (!params.contains(k)) continue;
             ++found;
             if (params.value(k) != 0) ++nonzero;
         }
         return found ? nonzero : 0;
     };
-    const int nGyro = count(QStringLiteral("INS_GYR")), nAcc = count(QStringLiteral("INS_ACC"));
-    const int rawOpt = int(params.value(QStringLiteral("INS_RAW_LOG_OPT"), 0)), batOpt = int(params.value(QStringLiteral("INS_LOG_BAT_OPT"), 0));
+    const int nGyro = count(u"INS_GYR"_s), nAcc = count(u"INS_ACC"_s);
+    const int rawOpt = int(params.value(u"INS_RAW_LOG_OPT"_s, 0)), batOpt = int(params.value(u"INS_LOG_BAT_OPT"_s, 0));
     ImuStreams out;
     std::array<std::vector<StreamPtr>, 2> lists;
 
     for (Cont *c : m_contOrder) {
-        StreamPtr st = c->msg == QLatin1String("IMU") ? resampledStream(c->s.t, c->s.x, c->s.y, c->s.z, minUs)
+        StreamPtr st = c->msg == "IMU"_L1 ? resampledStream(c->s.t, c->s.x, c->s.y, c->s.z, minUs)
                                                       : continuousStream(c->s.t, c->s.x, c->s.y, c->s.z, minUs);
         if (!st) {
             // e.g. an 8 kHz gyro the logger could only keep in bursts
-            const QString name = QStringLiteral("%1 %2").arg(c->msg).arg(c->inst);
+            const QString name = u"%1 %2"_s.arg(c->msg).arg(c->inst);
             if (int(c->s.t.size()) >= kMinRun && !out.dropped.contains(name)) out.dropped << name;
             continue;
         }
         int imu = c->inst;
         bool filtered;
         QString kind;
-        if (c->msg == QLatin1String("IMU")) {
-            kind = QStringLiteral("loop");
+        if (c->msg == "IMU"_L1) {
+            kind = u"loop"_s;
             filtered = true;
         } else {
-            kind = QStringLiteral("raw");
+            kind = u"raw"_s;
             const int nSensors = c->sensor == 0 ? nGyro : nAcc;
             if (nSensors && c->inst >= nSensors) {
                 imu = c->inst - nSensors;
@@ -338,7 +340,7 @@ ImuStreams ImuCollector::finish(double minUs, const QHash<QString, double> &para
                 filtered = c->sensor == 0 && (rawOpt & 4) && !(rawOpt & 8);
             }
         }
-        describe(*st, QStringLiteral("%1:%2").arg(c->msg).arg(c->inst), c->sensor, kind, imu, filtered);
+        describe(*st, u"%1:%2"_s.arg(c->msg).arg(c->inst), c->sensor, kind, imu, filtered);
         lists[std::size_t(c->sensor)].push_back(st);
     }
     for (const QString &key : m_batchOrder) {
@@ -367,10 +369,10 @@ ImuStreams ImuCollector::finish(double minUs, const QHash<QString, double> &para
             imu = b.inst - nSensors;
             filtered = true;
         }
-        describe(*st, key, b.sensor, QStringLiteral("batch"), imu, filtered);
+        describe(*st, key, b.sensor, u"batch"_s, imu, filtered);
         lists[std::size_t(b.sensor)].push_back(st);
     }
-    const auto rank = [](const QString &k) { return k == QLatin1String("raw") ? 0 : k == QLatin1String("batch") ? 1 : 2; };
+    const auto rank = [](const QString &k) { return k == "raw"_L1 ? 0 : k == "batch"_L1 ? 1 : 2; };
     for (int s = 0; s < 2; ++s) {
         auto &l = lists[std::size_t(s)];
         std::stable_sort(l.begin(), l.end(), [&](const StreamPtr &a, const StreamPtr &b) {
@@ -569,7 +571,7 @@ LogFftConfig LogSpectrum::setConfig(const LogFftConfig &c)
 void LogSpectrum::selectStream(int sensor, const QString &key)
 {
     if (sensor != 0 && sensor != 1) return;
-    m_choice[std::size_t(sensor)] = key.isEmpty() ? QStringLiteral("auto") : key;
+    m_choice[std::size_t(sensor)] = key.isEmpty() ? u"auto"_s : key;
     if (m_loaded) restart();
 }
 
@@ -578,7 +580,7 @@ void LogSpectrum::load(const ImuStreams &streams, Now nowMs)
     m_streams = streams;
     m_loaded = true;
     m_now = std::move(nowMs);
-    m_choice = {QStringLiteral("auto"), QStringLiteral("auto")};
+    m_choice = {u"auto"_s, u"auto"_s};
     restart();
 }
 

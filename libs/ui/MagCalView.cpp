@@ -16,6 +16,8 @@
 #include <optional>
 #include <vector>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -255,7 +257,7 @@ void MagCalView::paint(QPainter *p)
     for (const Axis &a : axes) {
         const auto at = cam.project(toScene(a.dir * 1.45f * 1.12f));
         if (!at) continue;
-        QFont f(QStringLiteral("Rajdhani"));
+        QFont f(u"Rajdhani"_s);
         f.setBold(true);
         f.setPixelSize(std::clamp(int(std::lround(0.103 * cam.focal / at->second)), 8, 30));
         p->setFont(f);

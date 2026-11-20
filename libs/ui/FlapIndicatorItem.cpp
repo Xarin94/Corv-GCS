@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 using namespace hudpaint;
@@ -46,7 +48,7 @@ double camber(double x)
 QString percentText(double v)
 {
     const long n = std::lround(v);
-    return (n < 0 ? QStringLiteral("−") : QString()) + QString::number(std::abs(n)) + QStringLiteral("%");
+    return (n < 0 ? u"−"_s : QString()) + QString::number(std::abs(n)) + u"%"_s;
 }
 
 } // namespace
@@ -204,7 +206,7 @@ void FlapIndicatorItem::draw(QPainter *p, double w, double h, bool shadow)
     p->setFont(valFont);
     p->setPen(ink(color, shadow));
     p->drawText(QRectF(le, hy + 0.075 * c + lw, xh * c, vfm.height()), Qt::AlignHCenter | Qt::AlignTop,
-                live ? percentText(m_percent) : QStringLiteral("---"));
+                live ? percentText(m_percent) : u"---"_s);
 }
 
 } // namespace corv

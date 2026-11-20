@@ -46,7 +46,6 @@ public:
     /// The text typed in a row: true when it parses and differs from the vehicle's value.
     bool setEdit(const QString &name, const QString &text);
     QHash<QString, double> edits() const { return m_edits; }
-    void clearEdits();
 
 private:
     /// The value shown: the one typed, else the vehicle's.

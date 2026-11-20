@@ -7,18 +7,14 @@
 
 #include <QHash>
 
-namespace corv::mav {
+using namespace Qt::StringLiterals;
 
-int crcExtra(uint32_t msgid)
-{
-    const mavlink_msg_entry_t *e = mavlink_get_msg_entry(msgid);
-    return e ? int(e->crc_extra) : -1;
-}
+namespace corv::mav {
 
 QString messageName(uint32_t msgid)
 {
     const mavlink_message_info_t *info = mavlink_get_message_info_by_id(msgid);
-    return info ? QString::fromLatin1(info->name) : QStringLiteral("MSG_%1").arg(msgid);
+    return info ? QString::fromLatin1(info->name) : u"MSG_%1"_s.arg(msgid);
 }
 
 QString commandName(uint32_t cmd)
@@ -32,15 +28,15 @@ QString commandName(uint32_t cmd)
         {42425, "DO_ACCEPT_MAG_CAL"}, {42426, "DO_CANCEL_MAG_CAL"}, {42429, "ACCELCAL_VEHICLE_POS"},
     };
     const auto it = names.constFind(cmd);
-    return it != names.constEnd() ? QStringLiteral("MAV_CMD_%1(%2)").arg(QLatin1String(*it)).arg(cmd)
-                                  : QStringLiteral("CMD_%1").arg(cmd);
+    return it != names.constEnd() ? u"MAV_CMD_%1(%2)"_s.arg(QLatin1String(*it)).arg(cmd)
+                                  : u"CMD_%1"_s.arg(cmd);
 }
 
 QString resultName(uint8_t r)
 {
     static const char *names[] = {"ACCEPTED", "TEMPORARILY_REJECTED", "DENIED", "UNSUPPORTED",
                                   "FAILED", "IN_PROGRESS", "CANCELLED"};
-    return r < 7 ? QString::fromLatin1(names[r]) : QStringLiteral("RESULT_%1").arg(r);
+    return r < 7 ? QString::fromLatin1(names[r]) : u"RESULT_%1"_s.arg(r);
 }
 
 bool finalizeForSend(mavlink_message_t &msg, uint8_t seq)
@@ -53,16 +49,6 @@ bool finalizeForSend(mavlink_message_t &msg, uint8_t seq)
     st.current_tx_seq = seq;
     mavlink_finalize_message_buffer(&msg, kGcsSystemId, kGcsComponentId, &st, e->min_msg_len, e->max_msg_len, e->crc_extra);
     return true;
-}
-
-uint16_t x25(const uint8_t *data, std::size_t len, uint16_t crc)
-{
-    for (std::size_t i = 0; i < len; ++i) {
-        uint8_t tmp = uint8_t(data[i] ^ uint8_t(crc & 0xFF));
-        tmp = uint8_t(tmp ^ uint8_t(tmp << 4));
-        crc = uint16_t((crc >> 8) ^ (uint16_t(tmp) << 8) ^ (uint16_t(tmp) << 3) ^ (tmp >> 4));
-    }
-    return crc;
 }
 
 QString fieldString(const char *chars, int maxLen)

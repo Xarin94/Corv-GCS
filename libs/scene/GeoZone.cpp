@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -42,8 +44,8 @@ void computeBbox(GeoZone &z)
 
 QString stripHtml(QString s)
 {
-    static const QRegularExpression tags(QStringLiteral("<[^>]*>")), spaces(QStringLiteral("\\s+"));
-    s.replace(tags, QStringLiteral(" ")).replace(QStringLiteral("&nbsp;"), QStringLiteral(" ")).replace(spaces, QStringLiteral(" "));
+    static const QRegularExpression tags(u"<[^>]*>"_s), spaces(u"\\s+"_s);
+    s.replace(tags, u" "_s).replace(u"&nbsp;"_s, u" "_s).replace(spaces, u" "_s);
     return s.trimmed().left(300);
 }
 
@@ -57,9 +59,9 @@ bool expired(const QJsonValue &applicability)
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     for (const QJsonValue &v : list) {
         const QJsonObject a = v.toObject();
-        if (a.value(QStringLiteral("permanent")).toString().toUpper() == QLatin1String("YES")) return false;
-        QString endText = a.value(QStringLiteral("endDateTime")).toString();
-        if (endText.isEmpty()) endText = a.value(QStringLiteral("endDate")).toString();
+        if (a.value(u"permanent"_s).toString().toUpper() == "YES"_L1) return false;
+        QString endText = a.value(u"endDateTime"_s).toString();
+        if (endText.isEmpty()) endText = a.value(u"endDate"_s).toString();
         const QDateTime end = QDateTime::fromString(endText, Qt::ISODate);
         if (!end.isValid() || end.toMSecsSinceEpoch() >= now) return false;
     }
@@ -71,29 +73,29 @@ QString str(const QJsonObject &o, const char *k) { return o.value(QLatin1String(
 
 QJsonObject GeoZone::toJson() const
 {
-    return QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("src"), src}, {QStringLiteral("name"), name},
-                       {QStringLiteral("kind"), kind}, {QStringLiteral("floor"), floor},
-                       {QStringLiteral("floorRef"), floorAgl ? QStringLiteral("AGL") : QStringLiteral("MSL")},
-                       {QStringLiteral("top"), top ? QJsonValue(*top) : QJsonValue(QJsonValue::Null)},
-                       {QStringLiteral("topRef"), topAgl ? QStringLiteral("AGL") : QStringLiteral("MSL")},
-                       {QStringLiteral("polys"), polysToJson(polys)},
-                       {QStringLiteral("bbox"), QJsonArray{bbox[0], bbox[1], bbox[2], bbox[3]}},
-                       {QStringLiteral("info"), info}};
+    return QJsonObject{{u"id"_s, id}, {u"src"_s, src}, {u"name"_s, name},
+                       {u"kind"_s, kind}, {u"floor"_s, floor},
+                       {u"floorRef"_s, floorAgl ? u"AGL"_s : u"MSL"_s},
+                       {u"top"_s, top ? QJsonValue(*top) : QJsonValue(QJsonValue::Null)},
+                       {u"topRef"_s, topAgl ? u"AGL"_s : u"MSL"_s},
+                       {u"polys"_s, polysToJson(polys)},
+                       {u"bbox"_s, QJsonArray{bbox[0], bbox[1], bbox[2], bbox[3]}},
+                       {u"info"_s, info}};
 }
 
 std::optional<GeoZone> GeoZone::fromJson(const QJsonObject &o)
 {
     GeoZone z;
-    z.id = o.value(QStringLiteral("id")).toString();
-    z.src = o.value(QStringLiteral("src")).toString();
-    z.name = o.value(QStringLiteral("name")).toString();
-    z.kind = o.value(QStringLiteral("kind")).toString();
-    z.floor = o.value(QStringLiteral("floor")).toDouble();
-    z.floorAgl = o.value(QStringLiteral("floorRef")).toString() != QLatin1String("MSL");
-    if (o.value(QStringLiteral("top")).isDouble()) z.top = o.value(QStringLiteral("top")).toDouble();
-    z.topAgl = o.value(QStringLiteral("topRef")).toString() != QLatin1String("MSL");
-    z.info = o.value(QStringLiteral("info")).toString();
-    for (const QJsonValue &p : o.value(QStringLiteral("polys")).toArray()) {
+    z.id = o.value(u"id"_s).toString();
+    z.src = o.value(u"src"_s).toString();
+    z.name = o.value(u"name"_s).toString();
+    z.kind = o.value(u"kind"_s).toString();
+    z.floor = o.value(u"floor"_s).toDouble();
+    z.floorAgl = o.value(u"floorRef"_s).toString() != "MSL"_L1;
+    if (o.value(u"top"_s).isDouble()) z.top = o.value(u"top"_s).toDouble();
+    z.topAgl = o.value(u"topRef"_s).toString() != "MSL"_L1;
+    z.info = o.value(u"info"_s).toString();
+    for (const QJsonValue &p : o.value(u"polys"_s).toArray()) {
         GeoZone::Polygon rings;
         for (const QJsonValue &r : p.toArray()) {
             GeoZone::Ring ring;
@@ -105,7 +107,7 @@ std::optional<GeoZone> GeoZone::fromJson(const QJsonObject &o)
         if (!rings.empty()) z.polys.push_back(std::move(rings));
     }
     if (z.id.isEmpty() || z.kind.isEmpty() || z.polys.empty()) return std::nullopt;
-    const QJsonArray b = o.value(QStringLiteral("bbox")).toArray();
+    const QJsonArray b = o.value(u"bbox"_s).toArray();
     if (b.size() == 4) for (int i = 0; i < 4; ++i) z.bbox[i] = b[i].toDouble();
     else computeBbox(z);
     return z;
@@ -165,10 +167,10 @@ GeoZone::Ring simplifyRing(const QJsonArray &coords, double tol)
 std::vector<GeoZone::Polygon> geojsonPolys(const QJsonObject &geometry)
 {
     std::vector<GeoZone::Polygon> polys;
-    const QString type = geometry.value(QStringLiteral("type")).toString();
+    const QString type = geometry.value(u"type"_s).toString();
     QJsonArray list;
-    if (type == QLatin1String("Polygon")) list.append(geometry.value(QStringLiteral("coordinates")));
-    else if (type == QLatin1String("MultiPolygon")) list = geometry.value(QStringLiteral("coordinates")).toArray();
+    if (type == "Polygon"_L1) list.append(geometry.value(u"coordinates"_s));
+    else if (type == "MultiPolygon"_L1) list = geometry.value(u"coordinates"_s).toArray();
     for (const QJsonValue &rings : list) {
         GeoZone::Polygon flat;
         for (const QJsonValue &ring : rings.toArray()) {
@@ -199,22 +201,22 @@ std::optional<double> toMetres(const QJsonValue &value, const QString &uom)
     const double v = value.isDouble() ? value.toDouble() : value.toVariant().toString().toDouble(&ok);
     if (!value.isDouble() && !ok) return std::nullopt;
     if (!std::isfinite(v)) return std::nullopt;
-    return (uom.isEmpty() ? QStringLiteral("M") : uom).startsWith(QLatin1Char('f'), Qt::CaseInsensitive) ? v * kFt : v;
+    return (uom.isEmpty() ? u"M"_s : uom).startsWith('f'_L1, Qt::CaseInsensitive) ? v * kFt : v;
 }
 
 bool isAgl(const QString &ref)
 {
-    static const QRegularExpression re(QStringLiteral("^(AGL|SFC|GND)"), QRegularExpression::CaseInsensitiveOption);
-    return re.match(ref.isEmpty() ? QStringLiteral("AGL") : ref).hasMatch();
+    static const QRegularExpression re(u"^(AGL|SFC|GND)"_s, QRegularExpression::CaseInsensitiveOption);
+    return re.match(ref.isEmpty() ? u"AGL"_s : ref).hasMatch();
 }
 
 QString restrictionKind(const QString &r)
 {
     const QString v = r.toUpper();
-    if (v == QLatin1String("PROHIBITED") || v == QLatin1String("REQ_AUTHORISATION") || v == QLatin1String("REQ_AUTHORIZATION"))
-        return QStringLiteral("prohibited");
-    if (v == QLatin1String("NO_RESTRICTION")) return {};
-    return QStringLiteral("conditional");
+    if (v == "PROHIBITED"_L1 || v == "REQ_AUTHORISATION"_L1 || v == "REQ_AUTHORIZATION"_L1)
+        return u"prohibited"_s;
+    if (v == "NO_RESTRICTION"_L1) return {};
+    return u"conditional"_s;
 }
 
 std::optional<GeoZone> makeZone(const QString &src, const QString &key, const QString &name, const QString &kind, double floor,
@@ -224,7 +226,7 @@ std::optional<GeoZone> makeZone(const QString &src, const QString &key, const QS
     if (kind.isEmpty() || polys.empty()) return std::nullopt;
     if (top && *top >= kUnlimitedM) top.reset();
     GeoZone z;
-    z.id = src + QLatin1Char(':') + key;
+    z.id = src + ':'_L1 + key;
     z.src = src;
     z.name = (name.trimmed().isEmpty() ? key : name).trimmed().left(120);
     z.kind = kind;
@@ -242,60 +244,60 @@ GeoZoneList parseEdZones(const QJsonValue &json, const QString &src)
 {
     QJsonArray features;
     if (json.isArray()) features = json.toArray();
-    else features = json.toObject().value(QStringLiteral("features")).toArray();
+    else features = json.toObject().value(u"features"_s).toArray();
     GeoZoneList zones;
     int n = 0;
     for (const QJsonValue &fv : features) {
         ++n;
         const QJsonObject f = fv.toObject();
         if (f.isEmpty()) continue;
-        if (f.value(QStringLiteral("geometry")).isArray()) {
+        if (f.value(u"geometry"_s).isArray()) {
             // ED-269: one volume per geometry element
-            if (expired(f.value(QStringLiteral("applicability")))) continue;
+            if (expired(f.value(u"applicability"_s))) continue;
             const QString kind = restrictionKind(str(f, "restriction"));
             QString base = str(f, "identifier");
             if (base.isEmpty()) base = str(f, "name");
-            if (base.isEmpty()) base = QStringLiteral("z%1").arg(n);
-            const QJsonArray geoms = f.value(QStringLiteral("geometry")).toArray();
+            if (base.isEmpty()) base = u"z%1"_s.arg(n);
+            const QJsonArray geoms = f.value(u"geometry"_s).toArray();
             QString info = str(f, "message");
-            if (info.isEmpty() && f.value(QStringLiteral("restrictionConditions")).isArray()) {
+            if (info.isEmpty() && f.value(u"restrictionConditions"_s).isArray()) {
                 QStringList parts;
-                for (const QJsonValue &c : f.value(QStringLiteral("restrictionConditions")).toArray()) parts << c.toVariant().toString();
-                info = parts.join(QLatin1Char(' '));
+                for (const QJsonValue &c : f.value(u"restrictionConditions"_s).toArray()) parts << c.toVariant().toString();
+                info = parts.join(' '_L1);
             }
             for (int i = 0; i < geoms.size(); ++i) {
                 const QJsonObject g = geoms[i].toObject();
-                const QJsonObject hp = g.value(QStringLiteral("horizontalProjection")).toObject();
+                const QJsonObject hp = g.value(u"horizontalProjection"_s).toObject();
                 std::vector<GeoZone::Polygon> polys;
-                if (hp.value(QStringLiteral("type")).toString() == QLatin1String("Circle") && hp.value(QStringLiteral("center")).isArray()) {
-                    const QJsonArray c = hp.value(QStringLiteral("center")).toArray();
-                    polys = circlePoly(c[0].toDouble(), c[1].toDouble(), hp.value(QStringLiteral("radius")).toDouble());
+                if (hp.value(u"type"_s).toString() == "Circle"_L1 && hp.value(u"center"_s).isArray()) {
+                    const QJsonArray c = hp.value(u"center"_s).toArray();
+                    polys = circlePoly(c[0].toDouble(), c[1].toDouble(), hp.value(u"radius"_s).toDouble());
                 } else {
                     polys = geojsonPolys(hp);
                 }
                 const QString uom = str(g, "uomDimensions");
                 QString name = str(f, "name");
                 if (name.isEmpty()) name = str(f, "identifier");
-                auto z = makeZone(src, geoms.size() > 1 ? QStringLiteral("%1#%2").arg(base).arg(i) : base, name, kind,
-                                  toMetres(g.value(QStringLiteral("lowerLimit")), uom).value_or(0), isAgl(str(g, "lowerVerticalReference")),
-                                  toMetres(g.value(QStringLiteral("upperLimit")), uom), isAgl(str(g, "upperVerticalReference")),
+                auto z = makeZone(src, geoms.size() > 1 ? u"%1#%2"_s.arg(base).arg(i) : base, name, kind,
+                                  toMetres(g.value(u"lowerLimit"_s), uom).value_or(0), isAgl(str(g, "lowerVerticalReference")),
+                                  toMetres(g.value(u"upperLimit"_s), uom), isAgl(str(g, "upperVerticalReference")),
                                   std::move(polys), info);
                 if (z) zones.push_back(std::move(*z));
             }
         } else {
             // ED-318 / GeoJSON
-            const QJsonObject p = f.value(QStringLiteral("properties")).toObject();
-            if (expired(p.contains(QStringLiteral("limitedApplicability")) ? p.value(QStringLiteral("limitedApplicability"))
-                                                                         : p.value(QStringLiteral("applicability"))))
+            const QJsonObject p = f.value(u"properties"_s).toObject();
+            if (expired(p.contains(u"limitedApplicability"_s) ? p.value(u"limitedApplicability"_s)
+                                                                         : p.value(u"applicability"_s)))
                 continue;
-            const QJsonObject v = p.value(QStringLiteral("verticalLayer")).isObject() ? p.value(QStringLiteral("verticalLayer")).toObject() : p;
+            const QJsonObject v = p.value(u"verticalLayer"_s).isObject() ? p.value(u"verticalLayer"_s).toObject() : p;
             QString uom = str(v, "uom");
             if (uom.isEmpty()) uom = str(v, "uomDimensions");
-            if (uom.isEmpty()) uom = QStringLiteral("M");
+            if (uom.isEmpty()) uom = u"M"_s;
             auto pick = [&](const char *a, const char *b) { return v.contains(QLatin1String(a)) ? v.value(QLatin1String(a)) : v.value(QLatin1String(b)); };
             QString key = str(p, "identifier");
-            if (key.isEmpty()) key = f.value(QStringLiteral("id")).toVariant().toString();
-            if (key.isEmpty()) key = QStringLiteral("z%1").arg(n);
+            if (key.isEmpty()) key = f.value(u"id"_s).toVariant().toString();
+            if (key.isEmpty()) key = u"z%1"_s.arg(n);
             QString name = str(p, "name");
             if (name.isEmpty()) name = str(p, "identifier");
             QString restriction = str(p, "restriction");
@@ -305,7 +307,7 @@ GeoZoneList parseEdZones(const QJsonValue &json, const QString &src)
             auto z = makeZone(src, key, name, restrictionKind(restriction), toMetres(pick("lower", "lowerLimit"), uom).value_or(0),
                               isAgl(pick("lowerReference", "lowerVerticalReference").toString()),
                               toMetres(pick("upper", "upperLimit"), uom), isAgl(pick("upperReference", "upperVerticalReference").toString()),
-                              geojsonPolys(f.value(QStringLiteral("geometry")).toObject()), info);
+                              geojsonPolys(f.value(u"geometry"_s).toObject()), info);
             if (z) zones.push_back(std::move(*z));
         }
     }
@@ -331,24 +333,24 @@ const GeoZone::Ring &europe()
 }
 bool inBox(const double b[4], double lon, double lat) { return lon >= b[0] && lon <= b[2] && lat >= b[1] && lat <= b[3]; }
 constexpr double kHysteresisM = 1;
-QString shortName(const GeoZone &z) { return z.name.size() > 18 ? z.name.left(17) + QStringLiteral("…") : z.name; }
-QString fmtM(double m) { return QStringLiteral("%1 m").arg(qRound(m)); }
+QString shortName(const GeoZone &z) { return z.name.size() > 18 ? z.name.left(17) + u"…"_s : z.name; }
+QString fmtM(double m) { return u"%1 m"_s.arg(qRound(m)); }
 } // namespace
 
 QString regionAt(double lat, double lon)
 {
     static const double us[4][4] = {{-125, 24.4, -66.8, 49.4}, {-170, 51, -129, 71.5}, {-161, 18.8, -154.7, 22.3}, {-67.4, 17.8, -65.2, 18.6}};
     for (const auto &b : us)
-        if (inBox(b, lon, lat)) return QStringLiteral("US");
+        if (inBox(b, lon, lat)) return u"US"_s;
     static const double canaries[4] = {-18.5, 27.5, -13.3, 29.5};
-    if (inBox(canaries, lon, lat) || pointInRing(europe(), lon, lat)) return QStringLiteral("EU");
+    if (inBox(canaries, lon, lat) || pointInRing(europe(), lon, lat)) return u"EU"_s;
     return {};
 }
 
 std::optional<Limit> generalLimit(const QString &region)
 {
-    if (region == QLatin1String("EU")) return Limit{120, QStringLiteral("120 m"), QStringLiteral("EU open category (Reg. 2019/947): 120 m above the ground")};
-    if (region == QLatin1String("US")) return Limit{400 * kFt, QStringLiteral("400 ft"), QStringLiteral("FAA Part 107 / recreational: 400 ft above the ground")};
+    if (region == "EU"_L1) return Limit{120, u"120 m"_s, u"EU open category (Reg. 2019/947): 120 m above the ground"_s};
+    if (region == "US"_L1) return Limit{400 * kFt, u"400 ft"_s, u"FAA Part 107 / recreational: 400 ft above the ground"_s};
     return std::nullopt;
 }
 
@@ -413,16 +415,16 @@ Evaluation evaluate(const GeoZoneList &zones, double lat, double lon, std::optio
         }
     }
     const bool overLimit = r.limit && agl && *agl > r.limit->metres + kHysteresisM;
-    if (noFly) r.alerts.push_back({QStringLiteral("noFly"), QStringLiteral("warn"), QStringLiteral("zone"), QStringLiteral("NO-FLY"), shortName(*noFly), {}, noFly, 0});
+    if (noFly) r.alerts.push_back({u"noFly"_s, u"warn"_s, u"zone"_s, u"NO-FLY"_s, shortName(*noFly), {}, noFly, 0});
     if (ceilZone)
-        r.alerts.push_back({QStringLiteral("ceiling"), ceilZone->prohibited() ? QStringLiteral("warn") : QStringLiteral("caut"), QStringLiteral("ceiling"),
-                            QStringLiteral("MAX ") + fmtM(ceilFloor), shortName(*ceilZone), {}, ceilZone, ceilFloor});
+        r.alerts.push_back({u"ceiling"_s, ceilZone->prohibited() ? u"warn"_s : u"caut"_s, u"ceiling"_s,
+                            u"MAX "_s + fmtM(ceilFloor), shortName(*ceilZone), {}, ceilZone, ceilFloor});
     if (overLimit)
-        r.alerts.push_back({QStringLiteral("altLimit"), QStringLiteral("warn"), QStringLiteral("ceiling"), QStringLiteral("MAX ") + r.limit->label,
-                            QStringLiteral("ALT LIMIT"), r.limit->rule, nullptr, r.limit->metres});
-    if (cond) r.alerts.push_back({QStringLiteral("cond"), QStringLiteral("caut"), QStringLiteral("zone"), QStringLiteral("ZONE"), shortName(*cond), {}, cond, 0});
+        r.alerts.push_back({u"altLimit"_s, u"warn"_s, u"ceiling"_s, u"MAX "_s + r.limit->label,
+                            u"ALT LIMIT"_s, r.limit->rule, nullptr, r.limit->metres});
+    if (cond) r.alerts.push_back({u"cond"_s, u"caut"_s, u"zone"_s, u"ZONE"_s, shortName(*cond), {}, cond, 0});
     if (maxZone && !ceilZone && (!r.limit || maxFloor < r.limit->metres))
-        r.alerts.push_back({QStringLiteral("maxHere"), QStringLiteral("caut"), QStringLiteral("ceiling"), QStringLiteral("MAX ") + fmtM(maxFloor),
+        r.alerts.push_back({u"maxHere"_s, u"caut"_s, u"ceiling"_s, u"MAX "_s + fmtM(maxFloor),
                             shortName(*maxZone), {}, maxZone, maxFloor});
     r.overHeight = overLimit || (ceilZone && ceilZone->prohibited());
     return r;
@@ -443,11 +445,11 @@ std::optional<ArmAlert> armingAlert(const std::vector<const GeoZone *> &here, st
             ceilFloor = *floor;
         }
     }
-    if (noFly) return ArmAlert{QStringLiteral("warn"), QStringLiteral("ARMED IN A NO-FLY ZONE"), noFly->name + QStringLiteral(" — no flight without authorisation"), noFly};
-    if (cond) return ArmAlert{QStringLiteral("caut"), QStringLiteral("ARMED IN A RESTRICTED ZONE"), cond->name + QStringLiteral(" — conditions apply"), cond};
+    if (noFly) return ArmAlert{u"warn"_s, u"ARMED IN A NO-FLY ZONE"_s, noFly->name + u" — no flight without authorisation"_s, noFly};
+    if (cond) return ArmAlert{u"caut"_s, u"ARMED IN A RESTRICTED ZONE"_s, cond->name + u" — conditions apply"_s, cond};
     if (ceil)
-        return ArmAlert{QStringLiteral("caut"), QStringLiteral("ARMED UNDER A %1 CEILING").arg(fmtM(ceilFloor)),
-                        QStringLiteral("%1 — max %2 above the ground").arg(ceil->name, fmtM(ceilFloor)), ceil};
+        return ArmAlert{u"caut"_s, u"ARMED UNDER A %1 CEILING"_s.arg(fmtM(ceilFloor)),
+                        u"%1 — max %2 above the ground"_s.arg(ceil->name, fmtM(ceilFloor)), ceil};
     return std::nullopt;
 }
 
@@ -474,11 +476,11 @@ QColor ceilingColor(double m)
 
 QString sourceName(const QString &src)
 {
-    static const QHash<QString, QString> names = {{QStringLiteral("faa"), QStringLiteral("FAA")}, {QStringLiteral("dipul"), QStringLiteral("DFS DIPUL")},
-                                                  {QStringLiteral("ign"), QStringLiteral("IGN / DGAC")}, {QStringLiteral("enaire"), QStringLiteral("ENAIRE")},
-                                                  {QStringLiteral("bazl"), QStringLiteral("FOCA / BAZL")}};
+    static const QHash<QString, QString> names = {{u"faa"_s, u"FAA"_s}, {u"dipul"_s, u"DFS DIPUL"_s},
+                                                  {u"ign"_s, u"IGN / DGAC"_s}, {u"enaire"_s, u"ENAIRE"_s},
+                                                  {u"bazl"_s, u"FOCA / BAZL"_s}};
     if (names.contains(src)) return names.value(src);
-    if (src.startsWith(QLatin1String("import-"))) return QStringLiteral("imported ") + src.mid(7);
+    if (src.startsWith("import-"_L1)) return u"imported "_s + src.mid(7);
     return src;
 }
 

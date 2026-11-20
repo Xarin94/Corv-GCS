@@ -15,6 +15,8 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -71,11 +73,11 @@ void AdsbClient::poll()
 
     const auto s = m_hub->snapshot();
     QUrlQuery q;
-    q.addQueryItem(QStringLiteral("lamin"), QString::number(s->lat - kMarginDeg, 'g', 12));
-    q.addQueryItem(QStringLiteral("lomin"), QString::number(s->lon - kMarginDeg, 'g', 12));
-    q.addQueryItem(QStringLiteral("lamax"), QString::number(s->lat + kMarginDeg, 'g', 12));
-    q.addQueryItem(QStringLiteral("lomax"), QString::number(s->lon + kMarginDeg, 'g', 12));
-    QUrl url(QStringLiteral("https://opensky-network.org/api/states/all"));
+    q.addQueryItem(u"lamin"_s, QString::number(s->lat - kMarginDeg, 'g', 12));
+    q.addQueryItem(u"lomin"_s, QString::number(s->lon - kMarginDeg, 'g', 12));
+    q.addQueryItem(u"lamax"_s, QString::number(s->lat + kMarginDeg, 'g', 12));
+    q.addQueryItem(u"lomax"_s, QString::number(s->lon + kMarginDeg, 'g', 12));
+    QUrl url(u"https://opensky-network.org/api/states/all"_s);
     url.setQuery(q);
     QNetworkRequest req(url);
     req.setTransferTimeout(kTimeoutMs);
@@ -89,14 +91,14 @@ QList<TrafficEntry> AdsbClient::parseStates(const QByteArray &json, std::int64_t
     QJsonParseError pe;
     const QJsonDocument doc = QJsonDocument::fromJson(json, &pe);
     if (pe.error != QJsonParseError::NoError || !doc.isObject()) {
-        if (error) *error = QStringLiteral("Invalid JSON from OpenSky");
+        if (error) *error = u"Invalid JSON from OpenSky"_s;
         return out;
     }
     // OpenSky state vector columns:
     // 0=icao24, 1=callsign, 2=origin_country, 3=time_position, 5=longitude,
     // 6=latitude, 7=baro_altitude, 8=on_ground, 9=velocity, 10=true_track,
     // 11=vertical_rate, 13=geo_altitude
-    const QJsonArray states = doc.object().value(QStringLiteral("states")).toArray();
+    const QJsonArray states = doc.object().value(u"states"_s).toArray();
     for (const QJsonValue &v : states) {
         const QJsonArray a = v.toArray();
         if (a.size() < 12 || !a.at(5).isDouble() || !a.at(6).isDouble()) continue;
@@ -127,20 +129,20 @@ void AdsbClient::onReply(QNetworkReply *reply)
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     QList<TrafficEntry> fetched;
     if (reply->error() == QNetworkReply::OperationCanceledError || reply->error() == QNetworkReply::TimeoutError)
-        error = QStringLiteral("OpenSky timeout");
+        error = u"OpenSky timeout"_s;
     else if (reply->error() != QNetworkReply::NoError && status == 0)
         error = reply->errorString();
     else if (status != 200)
-        error = QStringLiteral("OpenSky HTTP %1").arg(status);
+        error = u"OpenSky HTTP %1"_s.arg(status);
     else
         fetched = parseStates(reply->readAll(), m_lastFetch, &error);
 
     if (!error.isEmpty()) {
         // Silently retried at the next interval; logged at most once a minute
-        const int skipped = DebugLog::throttle(QStringLiteral("adsb-fetch"), 60000);
+        const int skipped = DebugLog::throttle(u"adsb-fetch"_s, 60000);
         if (skipped >= 0)
             LOG_W("adsb") << "OpenSky fetch failed:" << error
-                          << (skipped ? QStringLiteral("(+%1 more failures)").arg(skipped) : QString());
+                          << (skipped ? u"(+%1 more failures)"_s.arg(skipped) : QString());
         return;
     }
     if (!m_enabled) return;   // switched off while the request was in flight: drop it

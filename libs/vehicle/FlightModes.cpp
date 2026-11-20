@@ -3,6 +3,8 @@
 #include <QHash>
 #include <map>
 
+using namespace Qt::StringLiterals;
+
 namespace corv::modes {
 
 namespace {
@@ -45,7 +47,7 @@ bool isSubType(int t) { return t == 12; }
 
 Table tableFor(int vehicleType, const QString &connectionType)
 {
-    if (connectionType.startsWith(QLatin1String("msp"))) return Table::Inav;
+    if (connectionType.startsWith("msp"_L1)) return Table::Inav;
     if (isPlaneType(vehicleType)) return Table::Plane;
     if (isRoverType(vehicleType)) return Table::Rover;
     if (isSubType(vehicleType)) return Table::Sub;
@@ -56,7 +58,7 @@ QString name(std::uint32_t customMode, int vehicleType, const QString &connectio
 {
     const ModeMap &m = mapOf(tableFor(vehicleType, connectionType));
     const auto it = m.find(int(customMode));
-    return it != m.end() ? QString::fromLatin1(it->second) : QStringLiteral("MODE_%1").arg(customMode);
+    return it != m.end() ? QString::fromLatin1(it->second) : u"MODE_%1"_s.arg(customMode);
 }
 
 int number(const QString &n, int vehicleType, const QString &connectionType)
@@ -75,36 +77,36 @@ QList<QPair<int, QString>> available(int vehicleType, const QString &connectionT
 
 QString vehicleTypeName(int t)
 {
-    if (isPlaneType(t)) return QStringLiteral("Plane");
-    if (isRoverType(t)) return QStringLiteral("Rover");
-    if (isSubType(t)) return QStringLiteral("Sub");
-    return QStringLiteral("Copter");
+    if (isPlaneType(t)) return u"Plane"_s;
+    if (isRoverType(t)) return u"Rover"_s;
+    if (isSubType(t)) return u"Sub"_s;
+    return u"Copter"_s;
 }
 
 QString gpsFixName(int f)
 {
     static const char *names[] = {"No GPS", "No Fix", "2D Fix", "3D Fix", "DGPS", "RTK Float", "RTK Fixed"};
-    return f >= 0 && f < 7 ? QString::fromLatin1(names[f]) : QStringLiteral("Fix %1").arg(f);
+    return f >= 0 && f < 7 ? QString::fromLatin1(names[f]) : u"Fix %1"_s.arg(f);
 }
 
 QString modeClass(const QString &n)
 {
     // MODE_CATEGORIES of CommandBarController.js; anything else has no colour class
     static const QHash<QString, QString> cat = {
-        {QStringLiteral("STABILIZE"), QStringLiteral("manual")}, {QStringLiteral("ACRO"), QStringLiteral("manual")},
-        {QStringLiteral("MANUAL"), QStringLiteral("manual")}, {QStringLiteral("TRAINING"), QStringLiteral("manual")},
-        {QStringLiteral("ALT_HOLD"), QStringLiteral("assisted")}, {QStringLiteral("POSHOLD"), QStringLiteral("assisted")},
-        {QStringLiteral("LOITER"), QStringLiteral("assisted")}, {QStringLiteral("FBWA"), QStringLiteral("assisted")},
-        {QStringLiteral("FBWB"), QStringLiteral("assisted")}, {QStringLiteral("CIRCLE"), QStringLiteral("assisted")},
-        {QStringLiteral("GUIDED"), QStringLiteral("assisted")}, {QStringLiteral("SPORT"), QStringLiteral("assisted")},
-        {QStringLiteral("FLOWHOLD"), QStringLiteral("assisted")}, {QStringLiteral("FOLLOW"), QStringLiteral("assisted")},
-        {QStringLiteral("ZIGZAG"), QStringLiteral("assisted")},
-        {QStringLiteral("AUTO"), QStringLiteral("auto")}, {QStringLiteral("AUTOTUNE"), QStringLiteral("auto")},
-        {QStringLiteral("BRAKE"), QStringLiteral("auto")},
-        {QStringLiteral("RTL"), QStringLiteral("emergency")}, {QStringLiteral("LAND"), QStringLiteral("emergency")},
-        {QStringLiteral("QRTL"), QStringLiteral("emergency")}, {QStringLiteral("QLAND"), QStringLiteral("emergency")},
-        {QStringLiteral("SMART_RTL"), QStringLiteral("emergency")}, {QStringLiteral("AUTO_RTL"), QStringLiteral("emergency")},
-        {QStringLiteral("SURFACE"), QStringLiteral("emergency")}};
+        {u"STABILIZE"_s, u"manual"_s}, {u"ACRO"_s, u"manual"_s},
+        {u"MANUAL"_s, u"manual"_s}, {u"TRAINING"_s, u"manual"_s},
+        {u"ALT_HOLD"_s, u"assisted"_s}, {u"POSHOLD"_s, u"assisted"_s},
+        {u"LOITER"_s, u"assisted"_s}, {u"FBWA"_s, u"assisted"_s},
+        {u"FBWB"_s, u"assisted"_s}, {u"CIRCLE"_s, u"assisted"_s},
+        {u"GUIDED"_s, u"assisted"_s}, {u"SPORT"_s, u"assisted"_s},
+        {u"FLOWHOLD"_s, u"assisted"_s}, {u"FOLLOW"_s, u"assisted"_s},
+        {u"ZIGZAG"_s, u"assisted"_s},
+        {u"AUTO"_s, u"auto"_s}, {u"AUTOTUNE"_s, u"auto"_s},
+        {u"BRAKE"_s, u"auto"_s},
+        {u"RTL"_s, u"emergency"_s}, {u"LAND"_s, u"emergency"_s},
+        {u"QRTL"_s, u"emergency"_s}, {u"QLAND"_s, u"emergency"_s},
+        {u"SMART_RTL"_s, u"emergency"_s}, {u"AUTO_RTL"_s, u"emergency"_s},
+        {u"SURFACE"_s, u"emergency"_s}};
     return cat.value(n);
 }
 

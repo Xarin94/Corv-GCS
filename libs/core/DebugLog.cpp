@@ -18,6 +18,8 @@
 #include <deque>
 #include <map>
 
+using namespace Qt::StringLiterals;
+
 namespace corv {
 
 namespace {
@@ -66,17 +68,17 @@ State &S()
     return s;
 }
 
-QString pad(qint64 n, int w = 2) { return QString::number(n).rightJustified(w, QLatin1Char('0')); }
+QString pad(qint64 n, int w = 2) { return QString::number(n).rightJustified(w, '0'_L1); }
 
 QString clockStr(qint64 t)
 {
     const QDateTime d = QDateTime::fromMSecsSinceEpoch(t);
-    return d.toString(QStringLiteral("HH:mm:ss.zzz"));
+    return d.toString(u"HH:mm:ss.zzz"_s);
 }
 
 QString stampStr(qint64 t)
 {
-    return QDateTime::fromMSecsSinceEpoch(t).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz"));
+    return QDateTime::fromMSecsSinceEpoch(t).toString(u"yyyy-MM-dd HH:mm:ss.zzz"_s);
 }
 
 QString mb(qint64 b) { return QString::number(b / 1048576.0, 'f', 1); }
@@ -84,15 +86,15 @@ QString mb(qint64 b) { return QString::number(b / 1048576.0, 'f', 1); }
 QString fmtDuration(qint64 ms)
 {
     const qint64 s = ms / 1000, h = s / 3600, m = (s % 3600) / 60;
-    return h ? QStringLiteral("%1h%2m").arg(h).arg(pad(m)) : QStringLiteral("%1m%2s").arg(m).arg(pad(s % 60));
+    return h ? u"%1h%2m"_s.arg(h).arg(pad(m)) : u"%1m%2s"_s.arg(m).arg(pad(s % 60));
 }
 
 QString render(const Entry &e)
 {
     QString msg = e.msg;
-    msg.replace(QLatin1Char('\n'), QStringLiteral("\n                    "));
-    QString s = QStringLiteral("%1 %2 %3 %4").arg(clockStr(e.t), QString(QLatin1Char(e.lvl)), e.src.leftJustified(4), msg);
-    if (e.n > 1) s += QStringLiteral("  [x%1, last %2]").arg(e.n).arg(clockStr(e.tLast));
+    msg.replace('\n'_L1, u"\n                    "_s);
+    QString s = u"%1 %2 %3 %4"_s.arg(clockStr(e.t), QString(QLatin1Char(e.lvl)), e.src.leftJustified(4), msg);
+    if (e.n > 1) s += u"  [x%1, last %2]"_s.arg(e.n).arg(clockStr(e.tLast));
     return s;
 }
 
@@ -123,29 +125,29 @@ QString buildTextLocked()
     trimLocked(now);
     const qint64 oldest = s.entries.empty() ? now : s.entries.front().t;
     QStringList out;
-    out << QStringLiteral("==== CORV GCS debug log ====");
-    out << QStringLiteral("Written     %1  (session started %2, up %3)")
+    out << u"==== CORV GCS debug log ===="_s;
+    out << u"Written     %1  (session started %2, up %3)"_s
                .arg(stampStr(now), stampStr(s.sessionStart), fmtDuration(now - s.sessionStart));
-    QString covers = QStringLiteral("Covers      last %1 min: %2 lines from %3, %4 MB")
+    QString covers = u"Covers      last %1 min: %2 lines from %3, %4 MB"_s
                          .arg(kWindowMs / 60000).arg(s.entries.size()).arg(clockStr(oldest), mb(s.bytes));
-    if (s.trimmedBySize) covers += QStringLiteral("; %1 lines cut early by the %2 MB cap").arg(s.trimmedBySize).arg(mb(kMaxBytes));
-    if (s.droppedTotal) covers += QStringLiteral("; %1 dropped by the flood guard").arg(s.droppedTotal);
+    if (s.trimmedBySize) covers += u"; %1 lines cut early by the %2 MB cap"_s.arg(s.trimmedBySize).arg(mb(kMaxBytes));
+    if (s.droppedTotal) covers += u"; %1 dropped by the flood guard"_s.arg(s.droppedTotal);
     out << covers;
     for (const QString &k : s.headerOrder) {
         QString v = s.header[k];
-        v.replace(QLatin1Char('\n'), QStringLiteral("\n            "));
-        out << k.leftJustified(11) + QLatin1Char(' ') + v;
+        v.replace('\n'_L1, u"\n            "_s);
+        out << k.leftJustified(11) + ' '_L1 + v;
     }
     if (!s.oldIssues.empty()) {
         out << QString();
-        out << QStringLiteral("---- Errors and warnings older than the window (last %1) ----").arg(kOldIssues);
+        out << u"---- Errors and warnings older than the window (last %1) ----"_s.arg(kOldIssues);
         for (const QString &l : s.oldIssues) out << l;
     }
     out << QString();
-    out << QStringLiteral("---- Log (oldest first; E error, W warning, I info, D debug; main = app, qt = Qt) ----");
+    out << u"---- Log (oldest first; E error, W warning, I info, D debug; main = app, qt = Qt) ----"_s;
     for (const Entry &e : s.entries) out << render(e);
     out << QString();
-    return out.join(QLatin1Char('\n'));
+    return out.join('\n'_L1);
 }
 
 void writeFile(const QString &path, const QString &text)
@@ -170,7 +172,7 @@ void flushAsync()
         s.dirty = false;
         s.writing = true;
         text = buildTextLocked();
-        path = s.dir + QLatin1Char('/') + QLatin1String(kFileName);
+        path = s.dir + '/'_L1 + QLatin1String(kFileName);
     }
     QThreadPool::globalInstance()->start([text, path] {
         writeFile(path, text);
@@ -190,7 +192,7 @@ void messageHandler(QtMsgType type, const QMessageLogContext &ctx, const QString
     case QtFatalMsg: lvl = DebugLog::Error; break;
     }
     const bool fromQt = ctx.category && qstrncmp(ctx.category, "qt.", 3) == 0;
-    DebugLog::write(lvl, fromQt ? QStringLiteral("qt") : QStringLiteral("main"), msg);
+    DebugLog::write(lvl, fromQt ? u"qt"_s : u"main"_s, msg);
     if (type == QtFatalMsg) DebugLog::flushSync();
 }
 
@@ -203,8 +205,8 @@ void DebugLog::init()
         QMutexLocker lock(&s.lock);
         if (s.started) return;
         s.dir = DataRoot::debugDir();
-        const QString file = s.dir + QLatin1Char('/') + QLatin1String(kFileName);
-        const QString prev = s.dir + QLatin1Char('/') + QLatin1String(kPrevName);
+        const QString file = s.dir + '/'_L1 + QLatin1String(kFileName);
+        const QString prev = s.dir + '/'_L1 + QLatin1String(kPrevName);
         if (QFile::exists(file)) {
             QFile::remove(prev);
             QFile::rename(file, prev);
@@ -213,13 +215,13 @@ void DebugLog::init()
         s.dirty = true;
     }
     s.previous = qInstallMessageHandler(messageHandler);
-    setHeader(QStringLiteral("App"), QStringLiteral("%1 %2 (Qt %3, %4)")
+    setHeader(u"App"_s, u"%1 %2 (Qt %3, %4)"_s
                                          .arg(QStringLiteral(CORV_APP_NAME), QStringLiteral(CORV_VERSION),
                                               QString::fromLatin1(qVersion()), QSysInfo::buildAbi()));
-    setHeader(QStringLiteral("System"), QStringLiteral("%1, %2 cores")
+    setHeader(u"System"_s, u"%1, %2 cores"_s
                                             .arg(QSysInfo::prettyProductName())
                                             .arg(QThread::idealThreadCount()));
-    setHeader(QStringLiteral("Data root"), DataRoot::root() + (DataRoot::isFallback() ? QStringLiteral(" (per-user fallback)") : QString()));
+    setHeader(u"Data root"_s, DataRoot::root() + (DataRoot::isFallback() ? u" (per-user fallback)"_s : QString()));
     s.timer = new QTimer(QCoreApplication::instance());
     s.timer->setInterval(kFlushMs);
     QObject::connect(s.timer, &QTimer::timeout, [] { flushAsync(); });
@@ -236,14 +238,14 @@ void DebugLog::write(Level lvl, const QString &src, const QString &msgIn)
 {
     // Console copy, as the Electron main process printed its console
     {
-        const QByteArray line = (QString(QLatin1Char(char(lvl))) + QLatin1Char(' ') + msgIn).toLocal8Bit();
+        const QByteArray line = (QString(QLatin1Char(char(lvl))) + ' '_L1 + msgIn).toLocal8Bit();
         std::fprintf(stderr, "%s\n", line.constData());
     }
     State &s = S();
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     QString msg = msgIn;
     const int cap = lvl == Error ? kMaxErrMsg : kMaxMsg;
-    if (msg.size() > cap) msg = msg.left(cap) + QStringLiteral(" …[+%1 chars]").arg(msgIn.size() - cap);
+    if (msg.size() > cap) msg = msg.left(cap) + u" …[+%1 chars]"_s.arg(msgIn.size() - cap);
 
     bool soon = false;
     {
@@ -263,8 +265,8 @@ void DebugLog::write(Level lvl, const QString &src, const QString &msgIn)
                 Entry e;
                 e.t = e.tLast = now;
                 e.lvl = 'W';
-                e.src = QStringLiteral("log");
-                e.msg = QStringLiteral("[log] %1 lines dropped in one second (flood guard, %2/s)").arg(s.floodDropped).arg(kMaxLinesPerSec);
+                e.src = u"log"_s;
+                e.msg = u"[log] %1 lines dropped in one second (flood guard, %2/s)"_s.arg(s.floodDropped).arg(kMaxLinesPerSec);
                 e.bytes = e.msg.size() + 24;
                 s.bytes += e.bytes;
                 s.entries.push_back(e);
@@ -328,7 +330,7 @@ int DebugLog::throttle(const QString &key, int ms)
 
 QString DebugLog::filePath()
 {
-    return DataRoot::debugDir() + QLatin1Char('/') + QLatin1String(kFileName);
+    return DataRoot::debugDir() + '/'_L1 + QLatin1String(kFileName);
 }
 
 void DebugLog::flushSync()
@@ -339,16 +341,10 @@ void DebugLog::flushSync()
         QMutexLocker lock(&s.lock);
         if (!s.started) return;
         text = buildTextLocked();
-        path = s.dir + QLatin1Char('/') + QLatin1String(kFileName);
+        path = s.dir + '/'_L1 + QLatin1String(kFileName);
         s.dirty = false;
     }
     writeFile(path, text);
-}
-
-QString DebugLog::buildText()
-{
-    QMutexLocker lock(&S().lock);
-    return buildTextLocked();
 }
 
 } // namespace corv
