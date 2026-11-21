@@ -9,9 +9,9 @@ Qt 6.12 LTS, LGPLv3 modules only, Apache-2.0.
 
 2.x is not an update of the Electron version: a breaking change throughout,
 under the same name. On Windows it installs next to 1.x, in its own folder and
-with its own uninstaller; the "CORV GCS" shortcuts start 2.x (2.0.0-2.0.2
-installed as "CORV GCS 2": installing over them keeps their folder and renames
-the entries). Missions, logs, terrain and LTE cells keep the 1.x
+with its own uninstaller; the "CORV GCS" shortcuts start 2.x (the first 2.0.x
+installers called it "CORV GCS 2": installing over such a copy keeps its folder
+and renames the entries). Missions, logs, terrain and LTE cells keep the 1.x
 formats (see Data below), but the settings start again (`settings.json`
 instead of the browser storage) and the map tiles are downloaded again. The Electron
 sources stay in the history of this repository (tag `v1.8.8`), and the 1.x

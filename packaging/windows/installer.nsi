@@ -1,5 +1,5 @@
 ; CORV GCS - Windows installer (NSIS 3, Unicode). Built by tools\package-windows.ps1:
-;   makensis /DVERSION=2.0.3 /DSTAGE=<staged folder> /DOUTFILE=<setup.exe> /DFILES=<files.nsh> installer.nsi
+;   makensis /DVERSION=2.0.2 /DSTAGE=<staged folder> /DOUTFILE=<setup.exe> /DFILES=<files.nsh> installer.nsi
 ;
 ; Per-user like the Electron installer (no administrator rights), with the
 ; choice of the folder. 1.x (Electron) is CORV GCS too, but in Programs\CORV GCS,
@@ -8,8 +8,8 @@
 ; "CORV GCS" shortcuts start 2.x. The data folder next to the executable
 ; (missions, logs, terrain, settings) is left alone on uninstall.
 ;
-; 2.0.0-2.0.2 installed as "CORV GCS 2" (Programs\CORV GCS 2). Over such an
-; installation it stays in that folder, where its data are, and the old uninstall
+; The first 2.0.x installers called it "CORV GCS 2" (Programs\CORV GCS 2). Over
+; such an installation it stays in that folder, where its data are, and the old uninstall
 ; entry and shortcuts give way to the "CORV GCS" ones.
 ;
 ; /UPDATE (the GCS's one-click update): silent, into the folder of the
@@ -36,7 +36,7 @@ RequestExecutionLevel user
 !define EXE "corv-gcs.exe"
 !define REGKEY "Software\${COMPANY}\${APPNAME}"
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
-; The name of 2.0.0-2.0.2
+; The name in the first 2.0.x installers
 !define OLDNAME "CORV GCS 2"
 !define OLDREGKEY "Software\${COMPANY}\${OLDNAME}"
 !define OLDUNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${OLDNAME}"
