@@ -17,8 +17,11 @@ Download from the [Releases](https://github.com/Xarin94/Corv-GCS/releases/latest
 | Linux (x64) | `CORV-GCS-<version>-x86_64.AppImage` | Portable: `chmod +x` and run; Ubuntu 22.04 or a newer distribution |
 | macOS (Apple silicon and Intel) | `CORV-GCS-<version>-macos-universal.dmg` | Drag *CORV GCS* to Applications |
 
-CORV GCS 2 installs next to 1.x: on Windows as *CORV GCS 2*, with its own shortcuts and
-uninstaller, so the two can stay side by side. Its settings start from the defaults.
+Version 2.x installs next to 1.x, so the two can stay side by side: on Windows in its own
+folder (`%LOCALAPPDATA%\Programs\CORV Systems\CORV GCS`) with its own uninstaller, and the
+*CORV GCS* shortcuts start 2.x. Its settings start from the defaults. Over 2.0.0–2.0.2, which
+installed as *CORV GCS 2*, the installer keeps that folder and its data and renames the
+shortcuts and the entry in the installed apps.
 
 The macOS app is not notarized by Apple, so macOS refuses to open it the first time: open it from
 **System Settings → Privacy & Security → Open Anyway**, or clear the download flag once after

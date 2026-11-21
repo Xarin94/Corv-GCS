@@ -1,15 +1,17 @@
-# CORV GCS 2.0 (Qt / C++)
+# CORV GCS (Qt / C++)
 
-Native rewrite of the Electron CORV GCS (1.8.8), following the implementation
+CORV GCS from version 2.0 on: a native rewrite of the Electron CORV GCS (1.8.8), following the implementation
 guide "CORV GCS su Qt/C++: descrizione di implementazione" (a copy, with the
 implementation status per phase, is in [docs/IMPLEMENTATION.md](docs/IMPLEMENTATION.md)).
 Qt 6.12 LTS, LGPLv3 modules only, Apache-2.0.
 
 ## From CORV GCS 1.x
 
-2.0 is a new program, not an update of the Electron version: a breaking change
-throughout. On Windows it installs as "CORV GCS 2", next to 1.x, with its own
-shortcuts and uninstaller. Missions, logs, terrain and LTE cells keep the 1.x
+2.x is not an update of the Electron version: a breaking change throughout,
+under the same name. On Windows it installs next to 1.x, in its own folder and
+with its own uninstaller; the "CORV GCS" shortcuts start 2.x (2.0.0-2.0.2
+installed as "CORV GCS 2": installing over them keeps their folder and renames
+the entries). Missions, logs, terrain and LTE cells keep the 1.x
 formats (see Data below), but the settings start again (`settings.json`
 instead of the browser storage) and the map tiles are downloaded again. The Electron
 sources stay in the history of this repository (tag `v1.8.8`), and the 1.x
@@ -71,9 +73,10 @@ has no joystick. `tools\package-windows.ps1` fetches both when missing.
 Installer: `powershell -ExecutionPolicy Bypass -File tools\package-windows.ps1 [-Zip]`
 builds, stages (windeployqt, VC++ runtime app-local, libcrypto, notices) and makes
 `dist\CORV-GCS-<version>-setup-x64.exe` with NSIS: per-user install in
-`%LOCALAPPDATA%\Programs\CORV GCS 2` (folder selectable), Start menu and desktop
+`%LOCALAPPDATA%\Programs\CORV Systems\CORV GCS` (folder selectable), Start menu and desktop
 shortcuts, uninstaller that keeps the `data` folder. It sits next to, not over,
-CORV GCS 1.x. Missing NSIS / OpenSSL are fetched into `build\tools` (NSIS 3.11
+CORV GCS 1.x (`%LOCALAPPDATA%\Programs\CORV GCS`, which the 1.x uninstaller deletes
+whole). Missing NSIS / OpenSSL are fetched into `build\tools` (NSIS 3.11
 portable, OpenSSL 3.5 for MSVC) unless `-NoDownload`.
 
 Link checks without the interface: `corv-link-cli serial COM5 57600`,

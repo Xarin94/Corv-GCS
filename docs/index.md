@@ -12,7 +12,7 @@ it is doing, plans its missions and sends them to the autopilot. It works with A
 (Plane, Copter, Rover, Sub, Heli, VTOL), with INAV and Betaflight controllers over MSP, and draws
 everything on a **real 3D model of the terrain**. It runs on Windows, Linux and macOS.
 
-**CORV GCS 2** (2.0.1 and later) is a native rewrite of the 1.x application with the same screens
+From version 2.0.1 on, CORV GCS is a native rewrite of the 1.x application with the same screens
 and functions; it [updates itself](getting-started.md#updates) from the releases of this
 repository. This guide was written for 1.x and is being brought up to date: where 2.0 differs it
 says so.

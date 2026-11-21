@@ -82,7 +82,7 @@ if (-not (Test-Path $exe)) { throw "$exe not found: build first" }
 
 # ── Stage ──
 $dist = Join-Path $root "dist"
-$stage = Join-Path $dist "stage\CORV GCS 2"
+$stage = Join-Path $dist "stage\CORV GCS"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item $exe $stage

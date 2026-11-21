@@ -243,7 +243,7 @@ accelerometer, three axes summed), so the same line reads the same live and from
 | Field | Default | |
 |-------|---------|---|
 | **LANGUAGE** | English | English or 中文 (Simplified Chinese), for the whole interface. |
-| **DEVTOOLS** → **OPEN DEVTOOLS** | | 1.x only: CORV GCS 2 has no developer tools, the debug log below has the same record. |
+| **DEVTOOLS** → **OPEN DEVTOOLS** | | 1.x only: 2.x has no developer tools, the debug log below has the same record. |
 | **DEBUG LOG (LAST 5 MIN)** → **SAVE COPY…** | | Saves one file with the last 5 minutes of this session and of the previous one (connections, errors, autopilot messages, commands sent): **send it to support** when reporting a problem. The path saved to is shown underneath. |
 | **SHOW FILE** | | Shows the live debug log file in the file manager (`data/debug/corv-gcs-debug.log`, rewritten every few seconds). |
 

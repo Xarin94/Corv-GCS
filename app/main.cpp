@@ -1,4 +1,4 @@
-// CORV GCS 2.0 - Qt Quick application entry point.
+// CORV GCS - Qt Quick application entry point.
 //
 //   corv-gcs [--connect tcp:HOST:PORT | udp:HOST:PORT | serial:PORT:BAUD]
 //

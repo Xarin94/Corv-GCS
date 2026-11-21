@@ -427,7 +427,7 @@ absolute mode only (a relative frame has no place on the map).
 
 ## 9. Testing without a vehicle
 
-The rosbridge simulator and the test scripts of 1.x (Node.js) are not part of CORV GCS 2. Any
+The rosbridge simulator and the test scripts of 1.x (Node.js) are not part of CORV GCS 2.x. Any
 rosbridge server works: run the ROS side on a computer, or a recorded bag with `ros2 bag play`,
 and connect SETUP → ROS to it.
 
