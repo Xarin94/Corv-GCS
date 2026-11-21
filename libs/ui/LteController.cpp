@@ -28,9 +28,9 @@
 #include <dpapi.h>
 #elif defined(Q_OS_LINUX)
 #include <dlfcn.h>
+#endif
 
 using namespace Qt::StringLiterals;
-#endif
 
 namespace corv {
 

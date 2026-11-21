@@ -3,9 +3,12 @@
 # from Visual Studio. OpenSSL (libcrypto, for the cellular link) from OPENSSL_DIR,
 # else from build\tools\openssl-*\x64 (tools\package-windows.ps1 fetches it),
 # else from a system install; without it the build has no cellular link.
-#   powershell -ExecutionPolicy Bypass -File tools\build.ps1 [-Preset windows-release] [-Test] [-Run]
+# -VersionLabel vX.Y.Z builds a release: the version the program reports and the
+# update check compares; without it the build reports <project version>-dev.
+#   powershell -ExecutionPolicy Bypass -File tools\build.ps1 [-Preset windows-release] [-VersionLabel vX.Y.Z] [-Test] [-Run]
 param(
     [string]$Preset = "windows-release",
+    [string]$VersionLabel = "",
     [switch]$Test,
     [switch]$Run
 )
@@ -50,7 +53,8 @@ if ($sdl) {
 
 Push-Location $root
 try {
-    cmake --preset $Preset -DCMAKE_PREFIX_PATH="$qt" @sslArgs
+    # Always passed, so a dev build after a release build drops the cached label
+    cmake --preset $Preset -DCMAKE_PREFIX_PATH="$qt" "-DCORV_VERSION_LABEL=$VersionLabel" @sslArgs
     if ($LASTEXITCODE) { throw "configure failed" }
     cmake --build --preset $Preset
     if ($LASTEXITCODE) { throw "build failed" }

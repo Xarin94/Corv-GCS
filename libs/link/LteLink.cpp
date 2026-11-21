@@ -15,9 +15,9 @@
 
 #ifdef CORV_HAVE_OPENSSL
 #include <openssl/evp.h>
+#endif
 
 using namespace Qt::StringLiterals;
-#endif
 
 namespace corv::lte {
 

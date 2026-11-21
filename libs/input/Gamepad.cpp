@@ -6,9 +6,9 @@
 
 #ifdef CORV_HAVE_SDL3
 #include <SDL3/SDL.h>
+#endif
 
 using namespace Qt::StringLiterals;
-#endif
 
 namespace corv {
 

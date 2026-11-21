@@ -2,7 +2,7 @@
 # windeployqt, the Visual C++ runtime next to the executable (app-local, so the
 # per-user installer needs no administrator rights) and OpenSSL's libcrypto,
 # then NSIS makes dist\CORV-GCS-<version>-setup-x64.exe.
-#   powershell -ExecutionPolicy Bypass -File tools\package-windows.ps1 [-SkipBuild] [-Zip] [-NoDownload]
+#   powershell -ExecutionPolicy Bypass -File tools\package-windows.ps1 -VersionLabel vX.Y.Z [-SkipBuild] [-Zip] [-NoDownload]
 #
 # NSIS: makensis on PATH, the NSIS install, or build\tools\nsis-*; OpenSSL:
 # OPENSSL_DIR, build\tools\openssl-*\x64 or a system install. What is missing
@@ -10,6 +10,7 @@
 # MSVC from FireDaemon) unless -NoDownload.
 param(
     [string]$Preset = "windows-release",
+    [string]$VersionLabel = "",
     [switch]$SkipBuild,
     [switch]$Zip,
     [switch]$NoDownload
@@ -72,7 +73,7 @@ if ($sdl) { $env:SDL3_DIR = $sdl; Write-Host "SDL3: $sdl" }
 
 # ── Build ──
 if (-not $SkipBuild) {
-    & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "build.ps1") -Preset $Preset
+    & powershell -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "build.ps1") -Preset $Preset -VersionLabel $VersionLabel
     if ($LASTEXITCODE) { throw "build failed" }
 }
 $out = Join-Path $root "build\$Preset"
@@ -87,6 +88,18 @@ New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item $exe $stage
 $cli = Join-Path $out "corv-link-cli.exe"
 if (Test-Path $cli) { Copy-Item $cli $stage }
+
+# windeployqt takes the Direct3D shader compilers (d3dcompiler_47, dxcompiler,
+# dxil) from the Windows SDK that WindowsSdkDir/WindowsSDKVersion name, which only
+# a developer shell sets (CI has one): outside it, point them at the newest SDK
+if (-not $env:WindowsSdkDir) {
+    $kits = "${env:ProgramFiles(x86)}\Windows Kits\10\"
+    $sdkBin = Get-ChildItem (Join-Path $kits "bin") -Directory -Filter "10.*" -ErrorAction SilentlyContinue |
+              Where-Object { Test-Path (Join-Path $_.FullName "x64\dxcompiler.dll") } |
+              Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+    if ($sdkBin) { $env:WindowsSdkDir = $kits; $env:WindowsSDKVersion = "$($sdkBin.Name)\" }
+    else { Write-Warning "Windows SDK not found: the package has no Direct3D shader compilers" }
+}
 
 $windeployqt = Join-Path $qt "bin\windeployqt.exe"
 $deployArgs = @("--qmldir", (Join-Path $root "libs\ui\qml"), "--release", "--no-compiler-runtime", "--no-translations", "--no-opengl-sw")
