@@ -138,13 +138,14 @@ std::vector<uint8_t> halve(const uint8_t *rgba, int w, int h, int &outW, int &ou
 std::vector<QByteArray> mipChain(const uint8_t *rgba, int w, int h, bool compressed)
 {
     std::vector<QByteArray> levels;
-    std::vector<uint8_t> cur(rgba, rgba + std::size_t(w) * h * 4);
-    for (;;) {
-        if (compressed) levels.push_back(compress(cur.data(), w, h, w * 4));
-        else levels.emplace_back(reinterpret_cast<const char *>(cur.data()), qsizetype(cur.size()));
+    std::vector<uint8_t> cur;   // the halved levels
+    for (const uint8_t *px = rgba;;) {
+        if (compressed) levels.push_back(compress(px, w, h, w * 4));
+        else levels.emplace_back(reinterpret_cast<const char *>(px), qsizetype(w) * h * 4);
         if (w == 1 && h == 1) break;
         int nw = 0, nh = 0;
-        cur = halve(cur.data(), w, h, nw, nh);
+        cur = halve(px, w, h, nw, nh);
+        px = cur.data();
         w = nw;
         h = nh;
     }

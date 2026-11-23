@@ -7,8 +7,12 @@
 //
 // Painting reads PlanController while the GUI thread is blocked in the sync
 // step; every edit goes back through the controller on the GUI thread.
+//
+// A finger does what the left button does (the handles are easier to hit), a
+// long press opens the context menu, two fingers zoom and move the map.
 #pragma once
 
+#include "gpu/TouchGesture.h"
 #include "mission/RouteModel.h"
 
 #include <QImage>
@@ -25,20 +29,21 @@ namespace corv {
 namespace mission { struct Coverage; }
 class PlanController;
 
-class PlanMapItem : public QQuickPaintedItem
+class PlanMapItem : public QQuickPaintedItem, private TouchGesture::Client
 {
     Q_OBJECT
     QML_ELEMENT
-    Q_PROPERTY(int zoom READ zoom NOTIFY viewChanged)
+    Q_PROPERTY(double zoom READ zoom NOTIFY viewChanged)
     /// The UAS zone under the mouse, for a tooltip (empty: none).
     Q_PROPERTY(QString zoneTip READ zoneTip NOTIFY zoneTipChanged)
 
 public:
     explicit PlanMapItem(QQuickItem *parent = nullptr);
 
-    int zoom() const { return m_zoom; }
-    Q_INVOKABLE void zoomIn() { zoomAt(m_zoom + 1, {width() / 2, height() / 2}); }
-    Q_INVOKABLE void zoomOut() { zoomAt(m_zoom - 1, {width() / 2, height() / 2}); }
+    double zoom() const { return m_zoom; }
+    /// The next whole zoom level in or out, about the centre.
+    Q_INVOKABLE void zoomIn();
+    Q_INVOKABLE void zoomOut();
     Q_INVOKABLE void fitRoute();
 
     void paint(QPainter *p) override;
@@ -60,8 +65,26 @@ protected:
     void hoverMoveEvent(QHoverEvent *e) override;
     void hoverLeaveEvent(QHoverEvent *e) override;
     void wheelEvent(QWheelEvent *e) override;
+    void touchEvent(QTouchEvent *e) override { m_touch.event(e); }
+    void touchUngrabEvent() override { m_touch.cancel(); }
+    bool event(QEvent *e) override;
 
 private:
+    void touchDragBegin(QPointF press) override;
+    void touchDrag(QPointF p) override;
+    void touchDragEnd(QPointF p) override;
+    void touchTap(QPointF p) override;
+    void touchDoubleTap(QPointF p) override;
+    void touchLongPress(QPointF p) override;
+    void touchCancel() override;
+    void pinch(QPointF centre, QPointF moved, double scale) override;
+    void pinchEnd() override;
+
+    // The left button or a finger
+    void pointerPress(QPointF pos);
+    void pointerMove(QPointF pos);
+    void pointerRelease(QPointF pos);
+
     QPointF project(double lat, double lng) const;          // world px at m_zoom
     mission::LL unproject(QPointF w) const;
     QPointF origin() const;
@@ -70,8 +93,8 @@ private:
     QPolygonF toScreen(const QList<mission::LL> &pts) const;
     mission::LL toLL(QPointF s) const { return unproject(s + origin()); }
     QRectF visibleArea() const { return boundingRect().adjusted(-10, -10, 10, 10); }
-    void zoomAt(int z, QPointF anchor);
-    void setView(double lat, double lng, int zoom);
+    void zoomAt(double z, QPointF anchor);
+    void setView(double lat, double lng, double zoom);
     /// The H marker: the take-off point, else the compiled home.
     std::optional<mission::LL> homePoint(bool *custom = nullptr) const;
     /// `select` with the select tool, the crosshair with a drawing tool.
@@ -109,8 +132,10 @@ private:
 
     PlanController *m_plan = nullptr;
     mission::LL m_center{47.2603, 11.3439};
-    int m_zoom = 13;
+    double m_zoom = 13;
     bool m_initialised = false;
+    TouchGesture m_touch{this};
+    double m_slack = 0;        // px added to what a press hits: a finger is wider than a cursor
 
     // Gestures
     enum class Drag { None, Pan, Vertex, Centre, Radius, Home, Operator };

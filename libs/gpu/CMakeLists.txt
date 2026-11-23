@@ -9,6 +9,8 @@ qt_add_qml_module(corv_gpu
         PointCloudRenderer.h PointCloudRenderer.cpp
         RosSurfaceRenderer.h RosSurfaceRenderer.cpp
         FrameTicker.h FrameTicker.cpp
+        FrameStats.h FrameStats.cpp
+        TouchGesture.h TouchGesture.cpp
         SceneItem.h SceneItem.cpp
 )
 target_include_directories(corv_gpu PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)

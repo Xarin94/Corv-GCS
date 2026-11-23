@@ -20,7 +20,7 @@ Keys act on the page in view and never while you are typing in a field.
 
 | Mouse | |
 |-------|---|
-| Drag / wheel on the 3D view | Orbit and zoom the chase view (3P), 50 m to 2.5 km |
+| Drag / wheel on the 3D view | Orbit and zoom the chase view (3P), 50 m to 2.5 km; on a touch screen one finger orbits, a pinch zooms |
 | Hover the mini-map | Enlarge it |
 | Click the mini-map | Swap it with the 3D view; click the 3D view to swap back |
 | Click an annunciator | Silence it until the next connection |
@@ -55,6 +55,7 @@ Keys act on the page in view and never while you are typing in a field.
 | Drag a segment card by its title | Change the flight order |
 | Hover a red photo dot | Show the photo's ground footprint |
 | Hover the elevation profile | Show that point on the map |
+| Touch screen | One finger does what the left button does, a long press opens the context menu, two fingers zoom and move the map |
 
 ## Other pages
 

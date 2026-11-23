@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 # The one place the version lives: window title, debug log header and installer read it from here.
-project(CorvGcs VERSION 2.0.2 LANGUAGES CXX)
+project(CorvGcs VERSION 2.0.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -42,6 +42,9 @@ message(STATUS "CORV GCS ${CORV_VERSION_FULL}, updates from ${CORV_UPDATE_REPO}"
 if(MSVC)
     add_compile_options(/W3 /permissive- /Zc:__cplusplus /utf-8)
     add_compile_definitions(_USE_MATH_DEFINES NOMINMAX WIN32_LEAN_AND_MEAN)
+    # The packages are RelWithDebInfo, which CMake links incrementally: a patched
+    # executable crashed at start (a test of 2.0.3) until it was linked anew
+    add_link_options($<$<CONFIG:RelWithDebInfo>:/INCREMENTAL:NO>)
 endif()
 
 include(cmake/CorvShaders.cmake)

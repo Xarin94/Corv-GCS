@@ -3,6 +3,7 @@
 // position box, the EKF STATUS / FFT tabs on the left edge and the GCS
 // OPTIONS tab with its sidebar on the right edge.
 import QtQuick
+import QtQuick.Controls.Basic
 import Corv.Ui
 import Corv.Gpu
 
@@ -191,7 +192,7 @@ Item {
             // The arrow keys turn the view where it is the main one
             lookKeys: !view.swapped
             onClicked: if (view.swapped) view.swapped = false
-            HoverHandler { id: sceneHover }
+            HoverHandler { id: sceneHover; acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.Stylus }
             // The switches of the header as they were left (view-state): satellite or
             // schematic, sunlight, 1st / 3rd person, horizon lock, trajectory, theme
             property bool restored: false
@@ -221,8 +222,66 @@ Item {
             width: view.swapped ? flight.width : miniFrame.width - 2
             height: view.swapped ? flight.height : miniFrame.height - 2
             z: view.swapped ? 0 : 6
+            objectName: "miniMap"
+            // In the corner the map stays on the vehicle; as the main view it can be moved
+            panEnabled: view.swapped
             onClicked: if (!view.swapped) view.swapped = true
-            HoverHandler { id: mapHover; cursorShape: view.swapped ? Qt.ArrowCursor : Qt.PointingHandCursor }
+            // (a finger is no hover: the panel would grow under it)
+            HoverHandler {
+                id: mapHover
+                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.Stylus
+                cursorShape: view.swapped ? Qt.ArrowCursor : Qt.PointingHandCursor
+            }
+        }
+        // + / - / centre of the 2D map: beside the corner panel while the map is the main
+        // view, small inside it under the mouse
+        Column {
+            id: mapZoom
+            objectName: "mapZoom"
+            readonly property real side: view.swapped ? 36 : 22
+            visible: view.swapped || mapHover.hovered
+            x: view.swapped ? miniFrame.x + miniFrame.width + Theme.gutter : miniFrame.x + miniFrame.width - side - 6
+            y: view.swapped ? miniFrame.y + miniFrame.height - height : miniFrame.y + 6
+            z: 8
+            spacing: 2
+            Repeater {
+                model: ["+", "−", "◎"]
+                delegate: Rectangle {
+                    id: mz
+                    required property string modelData
+                    required property int index
+                    readonly property bool usable: index < 2 || !miniMap.follow
+                    visible: index < 2 || view.swapped
+                    width: mapZoom.side
+                    height: mapZoom.side
+                    radius: 4
+                    opacity: usable ? 1 : 0.4
+                    color: mzHover.hovered && usable ? Qt.rgba(0, 0, 0, 0.95) : Qt.rgba(0, 0, 0, 0.75)
+                    border.color: mzHover.hovered && usable ? Theme.accentCyan : Theme.borderAccentMid
+                    border.width: Theme.hairline
+                    Text {
+                        anchors.centerIn: parent
+                        text: mz.modelData
+                        color: mzHover.hovered && mz.usable ? Theme.accentCyan : Theme.textMain
+                        font.family: mz.index < 2 ? "Lucida Console" : Theme.fontUi
+                        font.pixelSize: mapZoom.side * 0.55
+                        font.bold: true
+                    }
+                    HoverHandler { id: mzHover; cursorShape: Qt.PointingHandCursor }
+                    // The press stays here: under it the map would move or come to the front
+                    TapHandler {
+                        gesturePolicy: TapHandler.ReleaseWithinBounds
+                        onTapped: {
+                            if (mz.index === 0) miniMap.zoomIn()
+                            else if (mz.index === 1) miniMap.zoomOut()
+                            else miniMap.recentre()
+                        }
+                    }
+                    ToolTip.visible: mzHover.hovered && mz.index === 2
+                    ToolTip.text: "Centre on the vehicle"
+                    ToolTip.delay: 500
+                }
+            }
         }
         Rectangle {
             // The corner panel's border, over whichever view is in it

@@ -60,7 +60,7 @@ screen only, never while typing in a field.
 left/right turn it up to 110°; releasing them returns the view to the nose. The HUD stays fixed to
 the nose like a glass, so while you look aside it slides off.
 
-**Chase view (3P)**: drag with the mouse to orbit the aircraft, scroll to zoom (50 m to 2.5 km). The
+**Chase view (3P)**: drag with the mouse or a finger to orbit the aircraft, scroll or pinch to zoom (50 m to 2.5 km). The
 camera stays at least 30 m above the terrain under it, except over water, where it can follow a ROV
 under the surface. Far out, a ring marks the aircraft.
 
@@ -389,6 +389,11 @@ Bottom left: the vehicle, its track, home, the mission, ADS-B traffic, the targe
 [restricted zones](#restricted-zones) on satellite imagery. It grows when the mouse is over it. **Click it** to swap it with the 3D view (the map
 becomes the main view); **click the 3D view** (now small) to swap back. In the relative navigation
 mode the map is empty (no real position to show).
+
+**Zoom**: wheel, touchpad, a two-finger pinch, or the **+** and **−** buttons (inside the small map
+under the mouse, beside the corner panel while the map is the main view). In the corner the map always
+stays centred on the vehicle. As the main view a drag — mouse or one finger — moves it away; **◎**, a
+double click or a double tap centres it on the vehicle again, and so does swapping back.
 
 ### LTE cells
 

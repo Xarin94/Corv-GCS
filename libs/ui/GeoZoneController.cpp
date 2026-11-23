@@ -253,8 +253,7 @@ void GeoZoneController::evaluate()
         return;
     }
     const double alt = s->rawAlt + s->offsetAlt;
-    std::optional<double> terrain = s->terrainHeight;
-    if (!terrain) terrain = HgtStore::instance().elevation(lat, lon);
+    const std::optional<double> terrain = HgtStore::instance().elevation(lat, lon);
     std::optional<double> agl;
     if (terrain) agl = alt - *terrain;
     else if (s->homeAlt) agl = alt - *s->homeAlt;

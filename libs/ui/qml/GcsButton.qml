@@ -53,7 +53,8 @@ Rectangle {
         font.letterSpacing: b.spacing
     }
     HoverHandler { id: hover; cursorShape: b.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
-    TapHandler { enabled: b.enabled; onTapped: b.clicked() }
+    // The press stays here: with the default policy a map under the button got it too
+    TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; enabled: b.enabled; onTapped: b.clicked() }
     ToolTip.visible: tip.length > 0 && hover.hovered
     ToolTip.text: tip
     ToolTip.delay: 600

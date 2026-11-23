@@ -18,6 +18,7 @@
 #include "link/SerialTransport.h"
 #include "gpu/SceneItem.h"
 #include "terrain/Hgt.h"
+#include "terrain/HgtDownloader.h"
 #include "services/LogReplay.h"
 #include "ui/AnnunciatorController.h"
 #include "ui/GeoZoneController.h"
@@ -36,10 +37,12 @@
 #include "vehicle/CommandSender.h"
 #include "vehicle/ConnectionManager.h"
 #include "vehicle/ParamStore.h"
+#include "vehicle/TerrainFeeder.h"
 #include "vehicle/VehicleHub.h"
 
 #include <QJsonObject>
 #include <QTime>
+#include <cmath>
 
 using namespace Qt::StringLiterals;
 
@@ -52,6 +55,7 @@ GcsController::GcsController(QObject *parent) : QObject(parent), m_bus(std::make
     s_instance = this;
     startLink();
     createViewModels();
+    createTerrainFeed();
     wireViewModels();
     wireLink();
 }
@@ -135,6 +139,44 @@ void GcsController::createViewModels()
     m_replay = new ReplayController(m_replayEngine, m_fft, this);
     // The update check at start and the one-click install (QML singleton Updates)
     m_updates = new UpdateController(m_hub, this);
+}
+
+void GcsController::createTerrainFeed()
+{
+    // The vehicle's own terrain database (TERRAIN_ENABLE): its requests are answered from the SRTM tiles
+    auto height = [](double lat, double lon, double &metres) {
+        HgtStore &store = HgtStore::instance();
+        const int la = int(std::floor(lat)), lo = int(std::floor(lon));
+        if (const auto tile = store.get(la, lo)) {
+            const auto h = tile->elevation(lat, lon);
+            if (!h) return TerrainFeeder::Lookup::Missing;   // a void
+            metres = *h;
+            return TerrainFeeder::Lookup::Found;
+        }
+        if (!store.missing(la, lo)) return TerrainFeeder::Lookup::Pending;   // being read
+        HgtDownloader::instance().ensure(la, lo);
+        return HgtDownloader::instance().busy(la, lo) ? TerrainFeeder::Lookup::Pending : TerrainFeeder::Lookup::Missing;
+    };
+    m_terrainFeed = new TerrainFeeder(m_bus.get(), height, [link = m_link](const mavlink_message_t &m) { link->send(m); }, this);
+    m_terrainFeed->setMuted(gcsMuted());
+    connect(this, &GcsController::gcsMutedChanged, m_terrainFeed, [this] { m_terrainFeed->setMuted(gcsMuted()); });
+    connect(m_link, &LinkManager::connected, m_terrainFeed, &TerrainFeeder::reset);
+    connect(m_terrainFeed, &TerrainFeeder::hudMessage, this, &GcsController::hudMessage);
+    auto show = [this] {
+        const TerrainFeeder::Stats &s = m_terrainFeed->stats();
+        QString t = u"No request from the vehicle"_s;
+        if (s.sent || s.missing || s.queued || s.pending > 0 || s.loaded > 0) {
+            t = u"%1 blocks sent"_s.arg(s.sent);
+            if (s.missing) t += u" · %1 without elevation data"_s.arg(s.missing);
+            if (s.pending >= 0) t += u" · vehicle: %1 pending, %2 loaded"_s.arg(s.pending).arg(s.loaded);
+        }
+        if (t == m_terrainText) return;
+        m_terrainText = t;
+        DebugLog::setHeader(u"Terrain feed"_s, t);
+        emit terrainFeedChanged();
+    };
+    connect(m_terrainFeed, &TerrainFeeder::statsChanged, this, show);
+    show();
 }
 
 void GcsController::wireViewModels()
@@ -281,13 +323,43 @@ QString GcsController::setting(const QString &key, const QString &fallback) cons
 }
 
 void GcsController::setSetting(const QString &key, const QString &value) { Settings::instance().setValue(key, value); }
-void GcsController::setHomeHere() { m_cmd->setHome(std::nullopt, std::nullopt, std::nullopt); }
-void GcsController::rebootAutopilot() { m_cmd->rebootAutopilot(); }
+
+void GcsController::setHomeHere()
+{
+    DialogHub::confirm(u"Set HOME to the vehicle's current position?"_s, [this](bool ok) {
+        if (ok) m_cmd->setHome(std::nullopt, std::nullopt, std::nullopt);
+    });
+}
+
+void GcsController::rebootAutopilot()
+{
+    if (m_hub->snapshot()->armed) {
+        DialogHub::toast(u"The vehicle is armed: no reboot"_s);
+        return;
+    }
+    DialogHub::confirm(u"Reboot the autopilot? The link drops and comes back when it has restarted."_s, [this](bool ok) {
+        if (ok && !m_hub->snapshot()->armed) m_cmd->rebootAutopilot();
+    });
+}
+
 void GcsController::setMissionSpeed(double speed) { m_cmd->setMissionSpeed(speed); }
 void GcsController::arm(bool force) { m_cmd->armVehicle(force); }
 void GcsController::disarm(bool force) { m_cmd->disarmVehicle(force); }
 void GcsController::setMode(const QString &mode) { m_cmd->setFlightMode(mode); }
 void GcsController::takeoff(double altitude) { m_cmd->takeoff(altitude); }
+
+void GcsController::askTakeoff()
+{
+    DialogHub::prompt(u"Take-off height above ground (m). The vehicle goes to GUIDED, arms and climbs at once."_s, u"10"_s,
+                      [this](bool ok, const QString &text) {
+                          if (!ok) return;
+                          bool number = false;
+                          const double alt = QString(text).trimmed().replace(','_L1, '.'_L1).toDouble(&number);
+                          if (number && alt > 0 && alt <= 1000) takeoff(alt);
+                          else DialogHub::toast(u"Take-off height not valid: "_s + text);
+                      });
+}
+
 void GcsController::land() { m_cmd->land(); }
 void GcsController::returnToLaunch() { m_cmd->returnToLaunch(); }
 

@@ -24,7 +24,7 @@
 // A job asks TileStore for its tiles (memory, then the SQLite store, then the
 // network), waits for them (a tile that fails, or 10 s, ends the wait: a
 // missing tile takes the quarter of its parent tile when that is in memory,
-// grey otherwise), then composes on the thread pool: the tile mosaic is
+// grey otherwise), then composes on a low-priority pool: the tile mosaic is
 // resampled from Web Mercator to the chunk's lat/lon rectangle at a square
 // power-of-two size, the mip chain is built and BC1-compressed. Two jobs
 // compose at a time. The result goes to the renderer through TerrainChanges;
@@ -35,11 +35,10 @@
 #include "scene/TerrainData.h"
 
 #include <QElapsedTimer>
-#include <QFutureSynchronizer>
 #include <QHash>
 #include <QImage>
 #include <QObject>
-#include <QSet>
+#include <QThreadPool>
 #include <memory>
 #include <unordered_map>
 
@@ -117,7 +116,7 @@ private:
     QElapsedTimer m_sinceRefresh;
     QElapsedTimer m_clock;
     QElapsedTimer m_logClock;
-    QFutureSynchronizer<void> m_futures;
+    QThreadPool m_pool;
 };
 
 } // namespace corv

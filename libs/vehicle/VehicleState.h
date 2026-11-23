@@ -73,7 +73,6 @@ struct VehicleState {
     double lat = kDefaultOrigin.lat, lon = kDefaultOrigin.lon;
     double rawAlt = 0, offsetAlt = 0;
     std::optional<double> subSurfaceAlt;
-    std::optional<double> terrainHeight;
 
     // Speeds
     double as = 0, gs = 0, vs = 0;
@@ -162,8 +161,8 @@ struct VehicleState {
     // Last COMMAND_ACK
     int lastAckCommand = -1, lastAckResult = -1;
 
-    // Terrain feed
-    int terrainPending = 0, terrainLoaded = 0, terrainFeedSent = 0, terrainFeedErrors = 0;
+    // The vehicle's terrain database (TERRAIN_REPORT)
+    int terrainPending = 0, terrainLoaded = 0;
 
     // ADS-B
     bool adsbEnabled = true;

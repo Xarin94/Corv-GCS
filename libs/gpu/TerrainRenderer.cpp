@@ -13,12 +13,13 @@ using namespace Qt::StringLiterals;
 namespace corv {
 
 namespace {
-constexpr int kInitialLayers = 256;
+constexpr int kInitialLayers = 512;   // 15 MB of heights: the default radius without growing
 constexpr int kSteps[4] = {1, 2, 4, 8};
 constexpr float kLodTargetPixels = 6;
 constexpr float kSrtm1SpacingM = 30.9f;
 constexpr std::size_t kMaxUploadsPerFrame = 24;
-constexpr qsizetype kImageBytesPerFrame = 6 * 1024 * 1024;
+constexpr qsizetype kImageBytesPerFrame = 2 * 1024 * 1024;
+constexpr std::size_t kMaxQueuedImages = 4;   // taken from the manager and not on the GPU yet
 
 QShader loadShader(const QString &name)
 {
@@ -98,15 +99,19 @@ void retireAll(Map &m)
     m.clear();
 }
 
-/// Layers a satellite array starts with: about 64 MB of level 0 at most.
-int initialSatLayers(int size)
+/// Layers of a satellite page: about 20 MB (BC1) or 40 MB (RGBA8) at most.
+int pageLayers(int size, bool bc1)
 {
-    if (size >= 4096) return 4;
-    if (size >= 2048) return 8;
-    if (size >= 1024) return 16;
+    if (size >= 4096) return bc1 ? 2 : 1;
+    if (size >= 2048) return bc1 ? 8 : 2;
+    if (size >= 1024) return bc1 ? 16 : 8;
     if (size >= 512) return 32;
     return 64;
 }
+
+/// Bytes of a row of a mip level (a row of blocks for BC1).
+qsizetype rowBytes(int w, bool bc1) { return bc1 ? qsizetype((w + 3) / 4) * 8 : qsizetype(w) * 4; }
+int rowCount(int h, bool bc1) { return bc1 ? (h + 3) / 4 : h; }
 } // namespace
 
 TerrainRenderer::TerrainRenderer(QRhi *rhi) : m_rhi(rhi)
@@ -152,12 +157,14 @@ TerrainRenderer::TerrainRenderer(QRhi *rhi) : m_rhi(rhi)
     m_detailSampler.reset(m_rhi->newSampler(QRhiSampler::Linear, QRhiSampler::Linear, QRhiSampler::Linear,
                                             QRhiSampler::Repeat, QRhiSampler::Repeat));
     m_detailSampler->create();
-    m_zeroTile = QByteArray(SatelliteDetail::kTile * SatelliteDetail::kTile * 4, '\0');
+    m_zeroTile.reset(m_rhi->newTexture(QRhiTexture::RGBA8, QSize(SatelliteDetail::kTile, SatelliteDetail::kTile), 1, QRhiTexture::UsedAsTransferSource));
+    m_zeroTile->create();
+    m_layoutSrb = makeSrb(m_noDetail.get(), m_noSat.get());
 }
 
 void TerrainRenderer::applyDetail(const std::vector<DetailOp> &ops, QRhiResourceUpdateBatch *u)
 {
-    if (ops.empty()) return;
+    if (ops.empty() && !(m_mipsDirty[0] || m_mipsDirty[1] || m_mipsDirty[2] || m_mipsDirty[3])) return;
     constexpr int L = SatelliteDetail::kLevels, T = SatelliteDetail::kTile, N = SatelliteDetail::kTiles;
     // A texture given back in this batch takes no upload before it: nothing may be pending on it
     int lastRelease[L];
@@ -165,14 +172,20 @@ void TerrainRenderer::applyDetail(const std::vector<DetailOp> &ops, QRhiResource
     for (int i = 0; i < int(ops.size()); ++i)
         if (ops[std::size_t(i)].kind == DetailOp::Release) lastRelease[ops[std::size_t(i)].level] = i;
 
+    if (!m_zeroReady) {
+        const QByteArray zero(T * T * 4, '\0');
+        u->uploadTexture(m_zeroTile.get(), QRhiTextureUploadDescription(QRhiTextureUploadEntry(0, 0, QRhiTextureSubresourceUploadDescription(zero))));
+        m_zeroReady = true;
+    }
+
     bool bindingsChanged = false;
-    bool mips[L] = {};
-    QList<QRhiTextureUploadEntry> entries[L];
-    auto zero = [&](int slot) {
-        QRhiTextureSubresourceUploadDescription d(m_zeroTile.constData(), quint32(m_zeroTile.size()));
-        d.setSourceSize(QSize(T, T));
+    bool *mips = m_mipsDirty;
+    // A cleared slot is a copy on the GPU: the zeroes of a whole level are 16 MB to upload
+    auto clearSlot = [&](QRhiTexture *tex, int slot) {
+        QRhiTextureCopyDescription d;
+        d.setPixelSize(QSize(T, T));
         d.setDestinationTopLeft(QPoint((slot % N) * T, (slot / N) * T));
-        return QRhiTextureUploadEntry(0, 0, d);
+        u->copyTexture(tex, m_zeroTile.get(), d);
     };
     for (int i = 0; i < int(ops.size()); ++i) {
         const DetailOp &op = ops[std::size_t(i)];
@@ -189,7 +202,6 @@ void TerrainRenderer::applyDetail(const std::vector<DetailOp> &ops, QRhiResource
             break;
         case DetailOp::Release:
             if (tex) {
-                entries[op.level].clear();
                 mips[op.level] = false;
                 retire(tex);
                 bindingsChanged = true;
@@ -197,14 +209,13 @@ void TerrainRenderer::applyDetail(const std::vector<DetailOp> &ops, QRhiResource
             break;
         case DetailOp::Clear:
             if (tex && i > lastRelease[op.level]) {
-                entries[op.level].clear();   // whatever came before is cleared anyway
-                for (int slot = 0; slot < N * N; ++slot) entries[op.level].append(zero(slot));
+                for (int slot = 0; slot < N * N; ++slot) clearSlot(tex.get(), slot);
                 mips[op.level] = true;
             }
             break;
         case DetailOp::ClearSlot:
             if (tex && i > lastRelease[op.level]) {
-                entries[op.level].append(zero(op.slot));
+                clearSlot(tex.get(), op.slot);
                 mips[op.level] = true;
             }
             break;
@@ -212,30 +223,25 @@ void TerrainRenderer::applyDetail(const std::vector<DetailOp> &ops, QRhiResource
             if (tex && i > lastRelease[op.level] && op.image.size() == QSize(T, T)) {
                 QRhiTextureSubresourceUploadDescription d(op.image);
                 d.setDestinationTopLeft(QPoint((op.slot % N) * T, (op.slot / N) * T));
-                entries[op.level].append(QRhiTextureUploadEntry(0, 0, d));
+                u->uploadTexture(tex.get(), QRhiTextureUploadDescription(QRhiTextureUploadEntry(0, 0, d)));
                 mips[op.level] = true;
             }
             break;
         }
     }
-    for (int l = 0; l < L; ++l) {
+    // One mipmap rebuild a frame (22 MB of texture each), the levels in turn
+    for (int k = 0; k < L; ++k) {
+        const int l = (m_nextMips + k) % L;
+        if (!mips[l]) continue;
+        mips[l] = false;
         if (!m_detail[l]) continue;
-        if (!entries[l].isEmpty()) {
-            QRhiTextureUploadDescription desc;
-            desc.setEntries(entries[l].cbegin(), entries[l].cend());
-            u->uploadTexture(m_detail[l].get(), desc);
-        }
-        // One mipmap rebuild per level and frame
-        if (mips[l]) u->generateMips(m_detail[l].get());
+        u->generateMips(m_detail[l].get());
+        m_nextMips = (l + 1) % L;
+        break;
     }
-    if (bindingsChanged) {
-        // The binding sets name the textures: made again, and the pipelines with them
-        for (auto &[size, g] : m_grids) {
-            retireAll(g.srbs);
-            g.srbs.clear();
-            retire(g.pipeline);
-        }
-    }
+    // The binding sets name the textures: made again (the pipelines know only their layout)
+    if (bindingsChanged)
+        for (auto &[size, g] : m_grids) retireAll(g.srbs);
 }
 
 void TerrainRenderer::setGeoZones(const std::shared_ptr<const GeoZoneRaster> &raster, QRhiResourceUpdateBatch *u)
@@ -269,7 +275,7 @@ TerrainRenderer::Grid *TerrainRenderer::gridFor(int size, QRhiResourceUpdateBatc
     Grid &g = m_grids[size];
     g.size = size;
     g.capacity = kInitialLayers;
-    g.heights.reset(m_rhi->newTextureArray(m_heightFormat, g.capacity, QSize(size, size)));
+    g.heights.reset(m_rhi->newTextureArray(m_heightFormat, g.capacity, QSize(size, size), 1, QRhiTexture::UsedAsTransferSource));
     g.heights->create();
     for (int i = g.capacity - 1; i >= 0; --i) g.freeLayers.push_back(i);
 
@@ -315,81 +321,160 @@ void TerrainRenderer::releaseChunk(Chunk &c)
     c.layer = -1;
 }
 
-void TerrainRenderer::releaseImage(ChunkSat &s)
+void TerrainRenderer::growHeights(Grid &g, QRhiResourceUpdateBatch *u)
+{
+    // Twice the layers: the old ones are copied over on the GPU
+    const int oldCapacity = g.capacity;
+    g.capacity *= 2;
+    std::unique_ptr<QRhiTexture> old = std::move(g.heights);
+    g.heights.reset(m_rhi->newTextureArray(m_heightFormat, g.capacity, QSize(g.size, g.size), 1, QRhiTexture::UsedAsTransferSource));
+    g.heights->create();
+    for (const auto &[key, c] : m_chunks) {
+        if (c.grid != g.size || c.layer < 0) continue;
+        QRhiTextureCopyDescription d;
+        d.setSourceLayer(c.layer);
+        d.setDestinationLayer(c.layer);
+        u->copyTexture(g.heights.get(), old.get(), d);
+    }
+    retire(old);
+    retireAll(g.srbs);
+    for (int i = g.capacity - 1; i >= oldCapacity; --i) g.freeLayers.push_back(i);
+    LOG_I("gpu") << "terrain grid" << g.size << "grown to" << g.capacity << "layers";
+}
+
+bool TerrainRenderer::allocateLayer(ChunkSat &s)
+{
+    const int size = s.image->size;
+    const bool bc1 = s.image->bc1;
+    auto take = [&s](int key, SatArray &a) {
+        s.array = key;
+        s.layer = a.freeLayers.back();
+        a.freeLayers.pop_back();
+        return true;
+    };
+    // A page with room, else the first page not there
+    const int first = satKey(size, bc1, 0);
+    int unused = first;
+    for (auto it = m_sat.lower_bound(first); it != m_sat.end() && it->first < first + kMaxPages; ++it) {
+        if (!it->second.freeLayers.empty()) return take(it->first, it->second);
+        if (it->first == unused) ++unused;
+    }
+    if (unused >= first + kMaxPages) return false;
+    SatArray &a = m_sat[unused];
+    a.size = size;
+    a.bc1 = bc1;
+    a.layers = std::min(m_maxLayers, pageLayers(size, bc1));
+    a.tex.reset(m_rhi->newTextureArray(bc1 ? QRhiTexture::BC1 : QRhiTexture::RGBA8, a.layers, QSize(size, size), 1, QRhiTexture::MipMapped));
+    if (!a.tex->create()) {
+        if (DebugLog::throttle(u"sat-pages"_s, 30000) >= 0) LOG_W("gpu") << "no memory for a satellite page of" << size << "px";
+        m_sat.erase(unused);
+        return false;
+    }
+    for (int i = a.layers - 1; i >= 0; --i) a.freeLayers.push_back(i);
+    LOG_D("gpu") << "satellite page" << size << "x" << size << ":" << a.layers << "layers," << m_sat.size() << "pages";
+    return take(unused, a);
+}
+
+void TerrainRenderer::releaseLayer(ChunkSat &s)
 {
     if (s.layer < 0) return;
     auto it = m_sat.find(s.array);
     if (it != m_sat.end()) it->second.freeLayers.push_back(s.layer);
-    if (s.image) m_imageBytes -= s.image->bytes();
     s.layer = -1;
 }
 
-void TerrainRenderer::uploadImage(SatArray &a, int layer, const ChunkImage &img, QRhiResourceUpdateBatch *u)
+void TerrainRenderer::removeImage(quint64 chunk)
 {
-    const int levels = std::min(int(img.mips.size()), m_rhi->mipLevelsForSize(QSize(a.size, a.size)));
-    QList<QRhiTextureUploadEntry> entries;
-    entries.reserve(levels);
-    for (int l = 0; l < levels; ++l)
-        entries.append(QRhiTextureUploadEntry(layer, l, QRhiTextureSubresourceUploadDescription(img.mips[std::size_t(l)])));
-    QRhiTextureUploadDescription desc;
-    desc.setEntries(entries.cbegin(), entries.cend());
-    u->uploadTexture(a.tex.get(), desc);
+    cancelUpload(chunk);
+    auto it = m_images.find(chunk);
+    if (it == m_images.end()) return;
+    m_imageBytes -= it->second.image->bytes();
+    releaseLayer(it->second);
+    m_images.erase(it);
 }
 
-void TerrainRenderer::addImage(const std::shared_ptr<const ChunkImage> &img, QRhiResourceUpdateBatch *u)
+void TerrainRenderer::cancelUpload(quint64 chunk)
+{
+    std::erase_if(m_uploads, [&](SatUpload &up) {
+        if (up.sat.image->chunk != chunk) return false;
+        releaseLayer(up.sat);
+        return true;
+    });
+}
+
+void TerrainRenderer::addImage(const std::shared_ptr<const ChunkImage> &img)
 {
     if (!img || img->mips.empty() || (img->bc1 && !m_bc1)) return;
-    const int key = satKey(img->size, img->bc1);
-    SatArray &a = m_sat[key];
-    if (!a.tex) {
-        a.size = img->size;
-        a.bc1 = img->bc1;
-        a.capacity = std::min(m_maxLayers, initialSatLayers(img->size));
-        a.tex.reset(m_rhi->newTextureArray(a.bc1 ? QRhiTexture::BC1 : QRhiTexture::RGBA8, a.capacity, QSize(a.size, a.size), 1,
-                                           QRhiTexture::MipMapped));
-        a.tex->create();
-        for (int i = a.capacity - 1; i >= 0; --i) a.freeLayers.push_back(i);
-        LOG_I("gpu") << "satellite array" << a.size << "x" << a.size << ":" << a.capacity << "layers";
-    }
-    // A new image of a chunk replaces its old one (band change): the old stayed drawn until now
-    auto old = m_images.find(img->chunk);
-    if (old != m_images.end()) {
-        releaseImage(old->second);
-        m_images.erase(old);
-    }
-    if (a.freeLayers.empty()) {
-        if (a.capacity * 2 > m_maxLayers) {
-            if (DebugLog::throttle(u"sat-layers"_s, 30000) >= 0)
-                LOG_W("gpu") << "satellite array" << a.size << "full at" << a.capacity << "layers";
-            return;
+    cancelUpload(img->chunk);
+    SatUpload up;
+    up.sat.image = img;
+    if (!allocateLayer(up.sat)) return;
+    up.level = std::min(int(img->mips.size()), m_rhi->mipLevelsForSize(QSize(img->size, img->size))) - 1;
+    m_uploads.push_back(std::move(up));
+}
+
+void TerrainRenderer::pumpUploads(QRhiResourceUpdateBatch *u)
+{
+    qsizetype budget = kImageBytesPerFrame;
+    while (budget > 0 && !m_uploads.empty()) {
+        SatUpload &up = m_uploads.front();
+        const ChunkImage &img = *up.sat.image;
+        const QByteArray &mip = img.mips[std::size_t(up.level)];
+        const int w = std::max(1, img.size >> up.level), h = w;
+        const qsizetype rb = rowBytes(w, img.bc1);
+        const int rows = rowCount(h, img.bc1), n = int(std::clamp<qsizetype>(budget / rb, 1, rows - up.row));
+        QRhiTextureSubresourceUploadDescription d;
+        if (n == rows) {
+            d.setData(mip);
+        } else {
+            // A strip. The image outlives the frame (m_uploads, then m_images), so its bytes need no copy
+            const int px = img.bc1 ? 4 : 1;
+            d.setData(QByteArray::fromRawData(mip.constData() + up.row * rb, n * rb));
+            d.setSourceSize(QSize(w, std::min(n * px, h - up.row * px)));
+            d.setDestinationTopLeft(QPoint(0, up.row * px));
         }
-        // Twice the layers; every image already in it is uploaded again with its layer
-        const int oldCapacity = a.capacity;
-        a.capacity *= 2;
-        retire(a.tex);
-        a.tex.reset(m_rhi->newTextureArray(a.bc1 ? QRhiTexture::BC1 : QRhiTexture::RGBA8, a.capacity, QSize(a.size, a.size), 1,
-                                           QRhiTexture::MipMapped));
-        a.tex->create();
-        for (int i = a.capacity - 1; i >= oldCapacity; --i) a.freeLayers.push_back(i);
-        for (auto &[chunk, s] : m_images)
-            if (s.array == key && s.layer >= 0 && s.image) uploadImage(a, s.layer, *s.image, u);
+        u->uploadTexture(m_sat[up.sat.array].tex.get(), QRhiTextureUploadDescription(QRhiTextureUploadEntry(up.sat.layer, up.level, d)));
+        budget -= n * rb;
+        up.row += n;
+        if (up.row < rows) continue;
+        up.row = 0;
+        if (--up.level >= 0) continue;
+        // Complete: the chunk's old image (band change) was drawn until now
+        const quint64 chunk = img.chunk;
+        ChunkSat done = std::move(up.sat);
+        m_uploads.pop_front();
+        auto old = m_images.find(chunk);
+        if (old != m_images.end()) {
+            m_imageBytes -= old->second.image->bytes();
+            releaseLayer(old->second);
+        }
+        m_imageBytes += done.image->bytes();
+        m_images[chunk] = std::move(done);
+    }
+}
+
+void TerrainRenderer::trimPages()
+{
+    // An empty page goes back when the other pages of its size have room for half a page
+    for (auto it = m_sat.begin(); it != m_sat.end();) {
+        const SatArray &a = it->second;
+        std::size_t room = 0;
+        if (int(a.freeLayers.size()) == a.layers)
+            for (const auto &[key, b] : m_sat)
+                if (key != it->first && b.size == a.size && b.bc1 == a.bc1) room += b.freeLayers.size();
+        if (room == 0 || int(room) < a.layers / 2) {
+            ++it;
+            continue;
+        }
         for (auto &[size, g] : m_grids) {
-            auto it = g.srbs.find(key);
-            if (it != g.srbs.end()) {
-                retire(it->second);
-                g.srbs.erase(it);
-            }
+            auto srb = g.srbs.find(it->first);
+            if (srb == g.srbs.end()) continue;
+            retire(srb->second);
+            g.srbs.erase(srb);
         }
-        LOG_I("gpu") << "satellite array" << a.size << "grown to" << a.capacity << "layers";
+        retire(it->second.tex);
+        it = m_sat.erase(it);
     }
-    ChunkSat s;
-    s.image = img;
-    s.array = key;
-    s.layer = a.freeLayers.back();
-    a.freeLayers.pop_back();
-    uploadImage(a, s.layer, *img, u);
-    m_imageBytes += img->bytes();
-    m_images[img->chunk] = std::move(s);
 }
 
 void TerrainRenderer::sync(TerrainChanges &changes, QRhiResourceUpdateBatch *u)
@@ -406,14 +491,18 @@ void TerrainRenderer::sync(TerrainChanges &changes, QRhiResourceUpdateBatch *u)
     std::vector<std::shared_ptr<const ChunkImage>> images;
     std::vector<quint64> imagesRemoved;
     bool clear = false, clearImages = false;
-    changes.take(added, removed, clear, kMaxUploadsPerFrame, images, imagesRemoved, clearImages, kImageBytesPerFrame);
+    changes.take(added, removed, clear, kMaxUploadsPerFrame, images, imagesRemoved, clearImages,
+                 m_uploads.size() < kMaxQueuedImages ? kImageBytesPerFrame : 0);
     if (clear) {
         for (auto &kv : m_chunks) releaseChunk(kv.second);
         m_chunks.clear();
     }
     if (clear || clearImages) {
-        for (auto &kv : m_images) releaseImage(kv.second);
+        for (SatUpload &up : m_uploads) releaseLayer(up.sat);
+        m_uploads.clear();
+        for (auto &kv : m_images) releaseLayer(kv.second);
         m_images.clear();
+        m_imageBytes = 0;
     }
     for (quint64 k : removed) {
         auto it = m_chunks.find(k);
@@ -421,44 +510,15 @@ void TerrainRenderer::sync(TerrainChanges &changes, QRhiResourceUpdateBatch *u)
             releaseChunk(it->second);
             m_chunks.erase(it);
         }
-        // The chunk's imagery goes with it
-        auto im = m_images.find(k);
-        if (im != m_images.end()) {
-            releaseImage(im->second);
-            m_images.erase(im);
-        }
+        removeImage(k);   // the chunk's imagery goes with it
     }
-    for (quint64 k : imagesRemoved) {
-        auto im = m_images.find(k);
-        if (im != m_images.end()) {
-            releaseImage(im->second);
-            m_images.erase(im);
-        }
-    }
+    for (quint64 k : imagesRemoved) removeImage(k);
     for (auto &c : added) {
         Grid *g = gridFor(c->grid, u);
         const quint64 key = c->key.packed();
         Chunk &slot = m_chunks[key];
         releaseChunk(slot);
-        if (g->freeLayers.empty()) {
-            // Grow the array: a new texture with twice the layers, every resident chunk uploaded again
-            const int old = g->capacity;
-            g->capacity *= 2;
-            retire(g->heights);
-            g->heights.reset(m_rhi->newTextureArray(m_heightFormat, g->capacity, QSize(g->size, g->size)));
-            g->heights->create();
-            retireAll(g->srbs);
-            retire(g->pipeline);
-            for (int i = g->capacity - 1; i >= old; --i) g->freeLayers.push_back(i);
-            for (auto &kv : m_chunks) {
-                if (kv.second.grid != g->size || kv.second.layer < 0 || !kv.second.data) continue;
-                std::vector<quint16> px(kv.second.data->heights.size());
-                for (std::size_t i = 0; i < px.size(); ++i) px[i] = quint16(int(kv.second.data->heights[i]) + 32768);
-                QRhiTextureSubresourceUploadDescription d(px.data(), quint32(px.size() * 2));
-                u->uploadTexture(g->heights.get(), QRhiTextureUploadDescription(QRhiTextureUploadEntry(kv.second.layer, 0, d)));
-            }
-            LOG_I("gpu") << "terrain grid" << g->size << "grown to" << g->capacity << "layers";
-        }
+        if (g->freeLayers.empty()) growHeights(*g, u);
         slot.data = c;
         slot.grid = c->grid;
         slot.layer = g->freeLayers.back();
@@ -475,7 +535,27 @@ void TerrainRenderer::sync(TerrainChanges &changes, QRhiResourceUpdateBatch *u)
             u->uploadTexture(g->heights.get(), QRhiTextureUploadDescription(QRhiTextureUploadEntry(slot.layer, 0, d)));
         }
     }
-    for (const auto &img : images) addImage(img, u);
+    for (const auto &img : images) addImage(img);
+    pumpUploads(u);
+    trimPages();
+}
+
+std::unique_ptr<QRhiShaderResourceBindings> TerrainRenderer::makeSrb(QRhiTexture *heights, QRhiTexture *sat)
+{
+    std::unique_ptr<QRhiShaderResourceBindings> p(m_rhi->newShaderResourceBindings());
+    p->setBindings({
+        QRhiShaderResourceBinding::uniformBuffer(0, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, m_ubuf.get()),
+        QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::VertexStage, heights, m_sampler.get()),
+        QRhiShaderResourceBinding::sampledTexture(2, QRhiShaderResourceBinding::FragmentStage, sat, m_satSampler.get()),
+        QRhiShaderResourceBinding::sampledTexture(3, QRhiShaderResourceBinding::FragmentStage, m_zoneCov.get(), m_zoneSampler.get()),
+        QRhiShaderResourceBinding::sampledTexture(4, QRhiShaderResourceBinding::FragmentStage, m_zoneFloor.get(), m_zoneSampler.get()),
+        QRhiShaderResourceBinding::sampledTexture(5, QRhiShaderResourceBinding::FragmentStage, m_detail[0] ? m_detail[0].get() : m_noDetail.get(), m_detailSampler.get()),
+        QRhiShaderResourceBinding::sampledTexture(6, QRhiShaderResourceBinding::FragmentStage, m_detail[1] ? m_detail[1].get() : m_noDetail.get(), m_detailSampler.get()),
+        QRhiShaderResourceBinding::sampledTexture(7, QRhiShaderResourceBinding::FragmentStage, m_detail[2] ? m_detail[2].get() : m_noDetail.get(), m_detailSampler.get()),
+        QRhiShaderResourceBinding::sampledTexture(8, QRhiShaderResourceBinding::FragmentStage, m_detail[3] ? m_detail[3].get() : m_noDetail.get(), m_detailSampler.get()),
+    });
+    p->create();
+    return p;
 }
 
 QRhiShaderResourceBindings *TerrainRenderer::srbFor(Grid &g, int key)
@@ -487,19 +567,7 @@ QRhiShaderResourceBindings *TerrainRenderer::srbFor(Grid &g, int key)
         auto it = m_sat.find(key);
         if (it != m_sat.end() && it->second.tex) sat = it->second.tex.get();
     }
-    p.reset(m_rhi->newShaderResourceBindings());
-    p->setBindings({
-        QRhiShaderResourceBinding::uniformBuffer(0, QRhiShaderResourceBinding::VertexStage | QRhiShaderResourceBinding::FragmentStage, m_ubuf.get()),
-        QRhiShaderResourceBinding::sampledTexture(1, QRhiShaderResourceBinding::VertexStage, g.heights.get(), m_sampler.get()),
-        QRhiShaderResourceBinding::sampledTexture(2, QRhiShaderResourceBinding::FragmentStage, sat, m_satSampler.get()),
-        QRhiShaderResourceBinding::sampledTexture(3, QRhiShaderResourceBinding::FragmentStage, m_zoneCov.get(), m_zoneSampler.get()),
-        QRhiShaderResourceBinding::sampledTexture(4, QRhiShaderResourceBinding::FragmentStage, m_zoneFloor.get(), m_zoneSampler.get()),
-        QRhiShaderResourceBinding::sampledTexture(5, QRhiShaderResourceBinding::FragmentStage, m_detail[0] ? m_detail[0].get() : m_noDetail.get(), m_detailSampler.get()),
-        QRhiShaderResourceBinding::sampledTexture(6, QRhiShaderResourceBinding::FragmentStage, m_detail[1] ? m_detail[1].get() : m_noDetail.get(), m_detailSampler.get()),
-        QRhiShaderResourceBinding::sampledTexture(7, QRhiShaderResourceBinding::FragmentStage, m_detail[2] ? m_detail[2].get() : m_noDetail.get(), m_detailSampler.get()),
-        QRhiShaderResourceBinding::sampledTexture(8, QRhiShaderResourceBinding::FragmentStage, m_detail[3] ? m_detail[3].get() : m_noDetail.get(), m_detailSampler.get()),
-    });
-    p->create();
+    p = makeSrb(g.heights.get(), sat);
     return p.get();
 }
 
@@ -516,8 +584,8 @@ void TerrainRenderer::ensurePipeline(Grid &g, QRhiRenderPassDescriptor *rp, int 
                           {1, 2, QRhiVertexInputAttribute::Float2, 4 * sizeof(float)},
                           {1, 3, QRhiVertexInputAttribute::Float, 6 * sizeof(float)}});
     g.pipeline->setVertexInputLayout(layout);
-    // Every satellite binding set has the layout of the plain one
-    g.pipeline->setShaderResourceBindings(srbFor(g, 0));
+    // Every binding set has this layout
+    g.pipeline->setShaderResourceBindings(m_layoutSrb.get());
     g.pipeline->setRenderPassDescriptor(rp);
     g.pipeline->setSampleCount(sampleCount);
     g.pipeline->setDepthTest(true);

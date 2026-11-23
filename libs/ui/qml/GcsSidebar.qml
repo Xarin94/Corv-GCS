@@ -151,7 +151,7 @@ Rectangle {
             Section {
                 title: "ACTIONS"
                 GcsButton { text: "SET HOME"; onClicked: Gcs.setHomeHere() }
-                GcsButton { text: "REBOOT FC"; onClicked: Gcs.rebootAutopilot() }
+                GcsButton { text: "REBOOT FC"; enabled: !Vehicle.armed; opacity: enabled ? 1 : 0.3; onClicked: Gcs.rebootAutopilot() }
             }
             Section {
                 title: "MISSION"

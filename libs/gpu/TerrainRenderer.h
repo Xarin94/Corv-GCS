@@ -7,15 +7,19 @@
 // instanced: a handful of draw calls for ~500 chunks. The step comes from the
 // screen-space error (6 px over the 30.9 m SRTM1 spacing), as lodStepForDistance().
 //
-// Satellite imagery (ChunkImage) lives in texture arrays too, one per image
-// size (4096 down to 256), BC1 with the whole mip chain (RGBA8 where the GPU
-// has no BC1); a chunk's instance carries its layer, -1 for the height palette.
-// The Electron version drew every textured chunk as a mesh of its own; here a
-// textured chunk costs no more than an untextured one.
+// Satellite imagery (ChunkImage) lives in texture arrays too, BC1 with the whole
+// mip chain (RGBA8 where the GPU has no BC1); a chunk's instance carries its
+// layer, -1 for the height palette. The Electron version drew every textured
+// chunk as a mesh of its own; here a textured chunk costs no more than an
+// untextured one. Each image size (4096 down to 256) has pages: arrays of a
+// fixed number of layers, about 20 MB at most. One more page is made when they
+// are full and given back when it empties; nothing already on the GPU is
+// uploaded again (an array that doubled cost a frame of 40 to 90 MB).
 //
-// Uploads per frame are capped: 24 chunks of heights and 6 MB of imagery
-// (CHUNKS_PER_FRAME of the Electron version, in bytes as the guide asks).
-// Render thread only.
+// Uploads per frame are capped: 24 chunks of heights and 2 MB of imagery
+// (CHUNKS_PER_FRAME of the Electron version, in bytes as the guide asks). An
+// image that is larger goes up in strips over some frames, coarse levels first,
+// and the chunk changes to it when it is complete. Render thread only.
 #pragma once
 
 #include "scene/GeoZoneRaster.h"
@@ -26,6 +30,7 @@
 #include <QVector3D>
 #include <QVector4D>
 #include <rhi/qrhi.h>
+#include <deque>
 #include <map>
 #include <memory>
 #include <unordered_map>
@@ -92,7 +97,7 @@ private:
         std::vector<int> freeLayers;
         std::unique_ptr<QRhiBuffer> instances;
         int instanceCapacity = 0;
-        // One binding set per satellite array (0: none); all share the pipeline's layout
+        // One binding set per satellite array (0: none), with the layout the pipeline was made for
         std::map<int, std::unique_ptr<QRhiShaderResourceBindings>> srbs;
         std::unique_ptr<QRhiGraphicsPipeline> pipeline;
         std::vector<Draw> draws;
@@ -102,10 +107,10 @@ private:
         int grid = 0;
         int layer = -1;
     };
-    struct SatArray {
+    struct SatArray {       // a page
         int size = 0;
         bool bc1 = true;
-        int capacity = 0;
+        int layers = 0;
         std::unique_ptr<QRhiTexture> tex;
         std::vector<int> freeLayers;
     };
@@ -114,15 +119,27 @@ private:
         int array = 0;      // SatArray key
         int layer = -1;
     };
+    struct SatUpload {
+        ChunkSat sat;
+        int level = 0;      // the next level to send, down to 0
+        int row = 0;        // and its next row (of blocks for BC1)
+    };
 
     Grid *gridFor(int size, QRhiResourceUpdateBatch *u);
     void ensurePipeline(Grid &g, QRhiRenderPassDescriptor *rp, int sampleCount);
     QRhiShaderResourceBindings *srbFor(Grid &g, int satKey);
+    std::unique_ptr<QRhiShaderResourceBindings> makeSrb(QRhiTexture *heights, QRhiTexture *sat);
+    void growHeights(Grid &g, QRhiResourceUpdateBatch *u);
     void releaseChunk(Chunk &c);
-    void addImage(const std::shared_ptr<const ChunkImage> &img, QRhiResourceUpdateBatch *u);
-    void releaseImage(ChunkSat &s);
-    void uploadImage(SatArray &a, int layer, const ChunkImage &img, QRhiResourceUpdateBatch *u);
-    static int satKey(int size, bool bc1) { return size * 2 + (bc1 ? 1 : 0); }
+    void addImage(const std::shared_ptr<const ChunkImage> &img);
+    bool allocateLayer(ChunkSat &s);
+    void releaseLayer(ChunkSat &s);
+    void removeImage(quint64 chunk);
+    void cancelUpload(quint64 chunk);
+    void pumpUploads(QRhiResourceUpdateBatch *u);
+    void trimPages();
+    static constexpr int kMaxPages = 256;
+    static int satKey(int size, bool bc1, int page) { return (size * 2 + (bc1 ? 1 : 0)) * kMaxPages + page; }
 
     QRhi *m_rhi;
     QShader m_vs, m_fs;
@@ -135,13 +152,18 @@ private:
     std::unique_ptr<QRhiSampler> m_zoneSampler;
     bool m_zonesReady = false;
     std::unique_ptr<QRhiTexture> m_detail[SatelliteDetail::kLevels];   // created when a level is first used
+    bool m_mipsDirty[SatelliteDetail::kLevels] = {};
+    int m_nextMips = 0;
     std::unique_ptr<QRhiTexture> m_noDetail;
     std::unique_ptr<QRhiSampler> m_detailSampler;
-    QByteArray m_zeroTile;
+    std::unique_ptr<QRhiTexture> m_zeroTile;    // a transparent tile: what clears a slot, copied on the GPU
+    bool m_zeroReady = false;
+    std::unique_ptr<QRhiShaderResourceBindings> m_layoutSrb;   // never drawn with: what the pipelines are made for
     std::map<int, Grid> m_grids;
     std::unordered_map<quint64, Chunk> m_chunks;
     std::map<int, SatArray> m_sat;
     std::unordered_map<quint64, ChunkSat> m_images;
+    std::deque<SatUpload> m_uploads;
     qint64 m_imageBytes = 0;
     QRhiRenderPassDescriptor *m_rp = nullptr;
     int m_sampleCount = 1;

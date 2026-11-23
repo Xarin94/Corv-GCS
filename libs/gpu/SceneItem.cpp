@@ -4,6 +4,7 @@
 #include "core/DataRoot.h"
 #include "core/DebugLog.h"
 #include "core/Settings.h"
+#include "gpu/FrameStats.h"
 #include "gpu/OutlineRenderer.h"
 #include "gpu/OverlayRenderer.h"
 #include "gpu/PointCloudRenderer.h"
@@ -25,6 +26,7 @@
 #include <QHash>
 #include <QKeyEvent>
 #include <QMutex>
+#include <QNativeGestureEvent>
 #include <QSet>
 #include <QPainter>
 #include <QPainterPath>
@@ -359,6 +361,8 @@ public:
     {
         auto *it = static_cast<SceneItem *>(item);
         m_item = it;
+        const double syncStart = monoMs();
+        m_syncMs = 0;
         if (!SceneItem::s_hub) return;
         const auto s = SceneItem::s_hub->snapshot();
         const std::int64_t now = wallMs();
@@ -631,10 +635,12 @@ public:
             QMetaObject::invokeMethod(it, [it, st] { it->reportStats(st); }, Qt::QueuedConnection);
         }
         if (!m_statClock.isValid()) m_statClock.start();
+        m_syncMs = monoMs() - syncStart;
     }
 
     void render(QRhiCommandBuffer *cb) override
     {
+        const double renderStart = monoMs();
         ++m_frames;
         QRhiResourceUpdateBatch *u = rhi()->nextResourceUpdateBatch();
         if (m_changes) m_terrain->sync(*m_changes, u);
@@ -705,8 +711,14 @@ public:
         m_points->draw(cb, out);
         m_overlay->drawTranslucent(cb, out);
         cb->endPass();
+        const double drawn = monoMs();
+        FrameStats::instance().frame(renderStart, m_syncMs, drawn - renderStart);
         // Keep rendering, the pose moves every frame: the next frame at once or on the cap's schedule
-        if (m_item) QMetaObject::invokeMethod(m_item, [i = m_item] { i->frameDrawn(); }, Qt::QueuedConnection);
+        if (m_item)
+            QMetaObject::invokeMethod(m_item, [i = m_item, drawn] {
+                FrameStats::instance().gui(monoMs() - drawn);
+                i->frameDrawn();
+            }, Qt::QueuedConnection);
     }
 
 private:
@@ -986,6 +998,7 @@ private:
     SceneItem *m_item = nullptr;
     QElapsedTimer m_statClock;
     int m_frames = 0;
+    double m_syncMs = 0;
     QString m_api;
     bool m_formatReported = false;
     // UAS zones
@@ -1026,6 +1039,7 @@ SceneItem::SceneItem(QQuickItem *parent) : QQuickRhiItem(parent)
 {
     setSampleCount(4);
     setAcceptedMouseButtons(Qt::LeftButton);
+    setAcceptTouchEvents(true);
     m_terrain.setSatellite(!m_schematic);
     m_terrainTimer.setInterval(250);
     connect(&m_terrainTimer, &QTimer::timeout, this, &SceneItem::tick);
@@ -1060,6 +1074,7 @@ void SceneItem::frameDrawn()
     if (vs.periodMs > 0 && std::abs(1000.0 / vs.periodMs - hz) > 0.02 * hz) vs = {};
     const double at = m_pacer.next(now, hz, vs);
     const int waitMs = int(at - now);   // rounded down: early rather than past the vblank
+    m_frameAtMs = now + std::max(0, waitMs);
     if (waitMs <= 0) requestFrame();
     else m_frameTimer.start(waitMs);
 }
@@ -1068,6 +1083,7 @@ void SceneItem::requestFrame()
 {
     // The vblank the frame is meant for, on the wall clock: the HUD and the 3D view take the pose of that instant
     const double mono = monoMs();
+    FrameStats::instance().gui(std::max(0.0, mono - m_frameAtMs));
     s_frameWallMs = double(wallMs()) + (m_pacer.dueMs() - mono);
     s_lastTickMs = mono;
     emit FrameTicker::instance()->tick(s_frameWallMs);
@@ -1122,6 +1138,7 @@ void SceneItem::itemChange(ItemChange change, const ItemChangeData &value)
     m_window = value.window;
     if (m_window) {
         m_window->installEventFilter(this);
+        connect(m_window, &QQuickWindow::frameSwapped, this, [] { FrameStats::instance().swapped(monoMs()); }, Qt::DirectConnection);
         connect(m_window, &QWindow::activeChanged, this, [this] { if (m_window && !m_window->isActive()) releaseKeys(); });
     }
 }
@@ -1200,22 +1217,51 @@ void SceneItem::mousePressEvent(QMouseEvent *e)
 {
     m_pressed = true;
     m_dragging = false;
-    m_press = m_last = e->position();
+    m_press = m_last = e->scenePosition();   // in the window: the corner panel grows under the cursor, which is no drag
     e->accept();
 }
 
 void SceneItem::mouseMoveEvent(QMouseEvent *e)
 {
     if (!m_pressed) return;
-    const QPointF d = e->position() - m_press;
+    const QPointF d = e->scenePosition() - m_press;
     if (!m_dragging && std::hypot(d.x(), d.y()) < 4) return;
     m_dragging = true;
-    const QPointF step = e->position() - m_last;
-    m_last = e->position();
+    orbitBy(e->scenePosition());
+}
+
+void SceneItem::orbitBy(QPointF pos)
+{
+    const QPointF step = pos - m_last;
+    m_last = pos;
     if (!m_thirdPerson) return;
     m_orbit.yaw -= step.x() * kOrbitRotateSpeed;
     m_orbit.pitch = std::clamp(m_orbit.pitch - step.y() * kOrbitRotateSpeed, kOrbitMinPitch, kOrbitMaxPitch);
     update();
+}
+
+void SceneItem::orbitZoom(double factor)
+{
+    if (!m_thirdPerson) return;
+    m_orbit.distance = std::clamp(m_orbit.distance * factor, kOrbitMinDistance, kOrbitMaxDistance);
+    update();
+}
+
+void SceneItem::pinch(QPointF, QPointF, double scale)
+{
+    // Fingers apart: closer
+    orbitZoom(1 / std::clamp(scale, 0.2, 5.0));
+}
+
+bool SceneItem::event(QEvent *e)
+{
+    if (e->type() == QEvent::NativeGesture && m_thirdPerson) {
+        if (double levels = 0; TouchGesture::nativeZoom(static_cast<QNativeGestureEvent *>(e), levels)) {
+            orbitZoom(std::exp2(-levels));
+            return true;
+        }
+    }
+    return QQuickRhiItem::event(e);
 }
 
 void SceneItem::mouseReleaseEvent(QMouseEvent *)
@@ -1230,10 +1276,9 @@ void SceneItem::wheelEvent(QWheelEvent *e)
         e->ignore();
         return;
     }
-    const int dir = e->angleDelta().y() > 0 ? -1 : e->angleDelta().y() < 0 ? 1 : 0;   // towards the user: farther
-    m_orbit.distance = std::clamp(m_orbit.distance * (1 + dir * kOrbitZoomSpeed), kOrbitMinDistance, kOrbitMaxDistance);
+    // Towards the user: farther; a notch is one step, a touchpad's small ones add up to it
+    orbitZoom(std::pow(1 + kOrbitZoomSpeed, -e->angleDelta().y() / 120.0));
     e->accept();
-    update();
 }
 
 void SceneItem::loadModel(const QString &name, double scale)

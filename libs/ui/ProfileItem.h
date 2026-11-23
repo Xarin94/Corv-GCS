@@ -4,10 +4,11 @@
 // Terrain under the calculated path, the route line with its points, the
 // minimum-clearance floor and the stretches under it, the radio link band and,
 // with LINK on, the line-of-sight cut to the hovered (or worst) point.
-// Ctrl+wheel zooms, wheel and drag scroll, a click selects the segment under
+// Ctrl+wheel or pinch zooms, wheel and drag scroll, a click selects the segment under
 // the cursor. The tooltip is a QML Text fed by tipText / tipX / tipY.
 #pragma once
 
+#include "gpu/TouchGesture.h"
 #include "mission/RadioLink.h"
 
 #include <QQuickPaintedItem>
@@ -18,7 +19,7 @@ namespace corv {
 
 class PlanController;
 
-class ProfileItem : public QQuickPaintedItem
+class ProfileItem : public QQuickPaintedItem, private TouchGesture::Client
 {
     Q_OBJECT
     QML_ELEMENT
@@ -47,8 +48,18 @@ protected:
     void mouseReleaseEvent(QMouseEvent *e) override;
     void hoverMoveEvent(QHoverEvent *e) override;
     void hoverLeaveEvent(QHoverEvent *e) override;
+    void touchEvent(QTouchEvent *e) override { m_touch.event(e); }
+    void touchUngrabEvent() override { m_touch.cancel(); }
 
 private:
+    void touchDragBegin(QPointF press) override;
+    void touchDrag(QPointF p) override { dragTo(p); }
+    void touchDragEnd(QPointF) override { m_dragging = false; }
+    void touchTap(QPointF p) override;
+    void touchCancel() override { m_dragging = false; }
+    void pinch(QPointF centre, QPointF moved, double scale) override;
+    void dragTo(QPointF p);
+
     struct Sample { double dist; std::optional<double> elev; double route; bool vertical; };
     struct Layout {
         double w = 0, h = 0, padL = 52, padR = 16, padT = 34, padB = 24, insetW = 0;
@@ -60,6 +71,8 @@ private:
         double bandY() const { return padT - 11; }
     };
     bool layout(Layout &L) const;
+    /// The distance under x stays there.
+    void zoomAt(double factor, double x, const Layout &L);
     void rebuildSamples();
     void updateHover();
     void clampScroll(const Layout &L);
@@ -77,6 +90,7 @@ private:
     double m_zoom = 1, m_scroll = 0;
     bool m_dragging = false, m_moved = false;
     double m_dragX = 0, m_scrollStart = 0;
+    TouchGesture m_touch{this};
     std::optional<QPointF> m_hover;
 
     // Hover results (GUI thread, read by paint during sync)

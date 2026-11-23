@@ -4,20 +4,32 @@
 #include "terrain/Hgt.h"
 #include "terrain/HgtDownloader.h"
 
-#include <QSet>
 #include <algorithm>
 #include <cmath>
 
 namespace corv {
 
+namespace {
+constexpr std::size_t kBuildBatch = 16;   // chunks per job of the pool
+} // namespace
+
 TerrainManager::TerrainManager(QObject *parent) : QObject(parent)
 {
+    m_pool.setMaxThreadCount(2);
+    m_pool.setThreadPriority(QThread::LowPriority);
     // A tile arriving makes its chunks buildable
     connect(&HgtStore::instance(), &HgtStore::tileLoaded, this, [this] { m_dirty = true; });
     // A tile downloaded (autoDownloadSRTM): HgtStore forgot it was missing, read it now
     connect(&HgtDownloader::instance(), &HgtDownloader::tileDone, this, [this](int, int, int result) {
         if (result == HgtDownloader::Downloaded) m_dirty = true;
     });
+}
+
+TerrainManager::~TerrainManager()
+{
+    // The jobs post back to this object
+    m_pool.clear();
+    m_pool.waitForDone();
 }
 
 void TerrainManager::setRadius(double metres)
@@ -27,7 +39,7 @@ void TerrainManager::setRadius(double metres)
     m_dirty = true;
 }
 
-std::shared_ptr<ChunkData> TerrainManager::build(const HgtTile &tile, const ChunkKey &k) const
+std::shared_ptr<ChunkData> TerrainManager::build(const HgtTile &tile, const ChunkKey &k, LatLon origin, int epoch)
 {
     const int span = (tile.size - 1) / kChunksPerTileAxis;   // 120 (SRTM1) or 40 (SRTM3)
     auto c = std::make_shared<ChunkData>();
@@ -52,14 +64,33 @@ std::shared_ptr<ChunkData> TerrainManager::build(const HgtTile &tile, const Chun
     c->maxH = hi;
     const double lat0 = k.latBase + 1 - double(k.cy) / kChunksPerTileAxis;
     const double lon0 = k.lonBase + double(k.cx) / kChunksPerTileAxis;
-    const GroundMeters p = latLonToMeters(lat0, lon0, m_origin);
-    const double mPerLon = kMetersPerDegLat * std::cos(m_origin.lat * kDeg);
+    const GroundMeters p = latLonToMeters(lat0, lon0, origin);
+    const double mPerLon = kMetersPerDegLat * std::cos(origin.lat * kDeg);
     c->x0 = p.x;
     c->z0 = p.z;
     c->dx = mPerLon / (tile.size - 1);
     c->dz = kMetersPerDegLat / (tile.size - 1);
-    c->originEpoch = m_epoch;
+    c->originEpoch = epoch;
     return c;
+}
+
+double TerrainManager::distanceTo(const ChunkKey &k, double lat, double lon)
+{
+    constexpr double step = 1.0 / kChunksPerTileAxis;
+    return flatDistance(lat, lon, k.latBase + 1 - (k.cy + 0.5) * step, k.lonBase + (k.cx + 0.5) * step);
+}
+
+void TerrainManager::built(const std::vector<std::shared_ptr<ChunkData>> &chunks, int epoch)
+{
+    if (epoch != m_epoch) return;   // the scene origin moved meanwhile: they are being built again
+    for (const auto &c : chunks) {
+        m_building.remove(c->key.packed());
+        if (distanceTo(c->key, m_lastLat, m_lastLon) > m_radius * kCleanupMargin) continue;
+        m_changes.add(c);
+        m_active.insert(c->key.packed(), c->key);
+    }
+    // New chunks inside the satellite radius want imagery now, not at the next pass
+    m_imagery.touch();
 }
 
 void TerrainManager::update(double lat, double lon, double groundSpeed, LatLon origin, int originEpoch)
@@ -69,6 +100,7 @@ void TerrainManager::update(double lat, double lon, double groundSpeed, LatLon o
         m_epoch = originEpoch;
         m_origin = origin;
         m_active.clear();
+        m_building.clear();
         m_changes.clearAll();
         m_imagery.resetResident();
         m_dirty = true;
@@ -108,9 +140,7 @@ void TerrainManager::updateChunks(double lat, double lon)
 
     // Drop what left the cleanup radius
     for (auto it = m_active.begin(); it != m_active.end();) {
-        const ChunkKey &k = it.value();
-        const double cLat = k.latBase + 1 - (k.cy + 0.5) * step, cLon = k.lonBase + (k.cx + 0.5) * step;
-        if (flatDistance(lat, lon, cLat, cLon) > m_radius * kCleanupMargin) {
+        if (distanceTo(it.value(), lat, lon) > m_radius * kCleanupMargin) {
             m_changes.remove(it.key());
             m_imagery.chunkRemoved(it.key());
             it = m_active.erase(it);
@@ -120,18 +150,27 @@ void TerrainManager::updateChunks(double lat, double lon)
     }
 
     // Build what is missing, nearest first; a tile still loading leaves its chunks for the next pass
-    QList<ChunkKey> todo;
+    std::vector<std::pair<double, ChunkKey>> todo;
     for (auto it = wanted.cbegin(); it != wanted.cend(); ++it)
-        if (!m_active.contains(it.key())) todo << it.value();
-    std::sort(todo.begin(), todo.end(), [&](const ChunkKey &a, const ChunkKey &b) {
-        auto d = [&](const ChunkKey &k) {
-            return flatDistance(lat, lon, k.latBase + 1 - (k.cy + 0.5) * step, k.lonBase + (k.cx + 0.5) * step);
-        };
-        return d(a) < d(b);
-    });
-    bool waiting = false, added = false;
+        if (!m_active.contains(it.key()) && !m_building.contains(it.key())) todo.emplace_back(distanceTo(it.value(), lat, lon), it.value());
+    std::sort(todo.begin(), todo.end(), [](const auto &a, const auto &b) { return a.first < b.first; });
+    struct Job {
+        std::shared_ptr<const HgtTile> tile;
+        ChunkKey key;
+    };
+    std::vector<Job> batch;
+    auto start = [&] {
+        if (batch.empty()) return;
+        m_pool.start([this, jobs = std::exchange(batch, {}), origin = m_origin, epoch = m_epoch] {
+            std::vector<std::shared_ptr<ChunkData>> out;
+            out.reserve(jobs.size());
+            for (const Job &j : jobs) out.push_back(build(*j.tile, j.key, origin, epoch));
+            QMetaObject::invokeMethod(this, [this, out = std::move(out), epoch] { built(out, epoch); }, Qt::QueuedConnection);
+        });
+    };
+    bool waiting = false;
     QSet<int> asked;
-    for (const ChunkKey &k : todo) {
+    for (const auto &[dist, k] : todo) {
         const auto tile = HgtStore::instance().get(k.latBase, k.lonBase);
         if (!tile) {
             if (!HgtStore::instance().missing(k.latBase, k.lonBase)) {
@@ -149,12 +188,11 @@ void TerrainManager::updateChunks(double lat, double lon)
             }
             continue;
         }
-        m_changes.add(build(*tile, k));
-        m_active.insert(k.packed(), k);
-        added = true;
+        m_building.insert(k.packed());
+        batch.push_back({tile, k});
+        if (batch.size() >= kBuildBatch) start();
     }
-    // New chunks inside the satellite radius want imagery now, not at the next pass
-    if (added) m_imagery.touch();
+    start();
     if (waiting) m_dirty = true;
 }
 

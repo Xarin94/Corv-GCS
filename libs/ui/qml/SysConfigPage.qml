@@ -294,6 +294,11 @@ Item {
                         }
                     }
                     SysRow {
+                        // TERRAIN_REQUEST / TERRAIN_DATA: the database of an autopilot with TERRAIN_ENABLE
+                        label: "VEHICLE TERRAIN DATA"
+                        Status { width: parent.width; text: Gcs.terrainFeed }
+                    }
+                    SysRow {
                         label: "ALTITUDE OFFSET (M)"
                         CfgInput {
                             width: parent.width

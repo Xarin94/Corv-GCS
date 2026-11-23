@@ -6,8 +6,10 @@
 #include "ui/GeoZonePainter.h"
 #include "vehicle/VehicleHub.h"
 
+#include <QNativeGestureEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <algorithm>
 #include <cmath>
 
 using namespace Qt::StringLiterals;
@@ -27,35 +29,60 @@ void MapItem::setFrozenTrail(std::vector<LatLon> points)
 namespace {
 constexpr int kTile = 256;
 constexpr std::size_t kTrailMax = 3000;
+constexpr double kMinZoom = 2, kMaxZoom = 20;
+constexpr int kMaxTileZoom = 19;
+constexpr double kMouseSlopPx = 4;
 const QString kProvider = u"satellite"_s;
 } // namespace
 
 MapItem::MapItem(QQuickItem *parent) : QQuickPaintedItem(parent)
 {
     setAcceptedMouseButtons(Qt::LeftButton);
+    setAcceptTouchEvents(true);
     setAntialiasing(true);
     setFillColor(Qt::black);
     m_timer.setInterval(100);
     connect(&m_timer, &PacedTimer::timeout, this, &MapItem::sample);
     m_timer.start();
     connect(&TileStore::instance(), &TileStore::tileReady, this, [this](const QString &p, int z) {
-        if (p == kProvider && z == m_zoom) update();
+        if (p == kProvider && std::abs(z - m_zoom) < 1.5) update();
     });
 }
 
-void MapItem::setZoom(int z)
+void MapItem::zoomAt(double z, QPointF anchor)
 {
-    z = std::clamp(z, 2, 19);
+    z = std::clamp(z, kMinZoom, kMaxZoom);
     if (z == m_zoom) return;
+    const QPointF fromCentre = m_follow ? QPointF() : anchor - QPointF(width() / 2, height() / 2);
+    const LatLon fixed = unproject(project(m_center.lat, m_center.lon) + fromCentre);
     m_zoom = z;
+    m_center = unproject(project(fixed.lat, fixed.lon) - fromCentre);
+    emit zoomChanged();
     update();
 }
+
+void MapItem::zoomIn() { zoomAt(std::floor(m_zoom + 1e-6) + 1, QPointF(width() / 2, height() / 2)); }
+void MapItem::zoomOut() { zoomAt(std::ceil(m_zoom - 1e-6) - 1, QPointF(width() / 2, height() / 2)); }
 
 void MapItem::setFollow(bool f)
 {
     if (f == m_follow) return;
     m_follow = f;
+    if (f && s_hub) {
+        const auto s = s_hub->snapshot();
+        m_center = {s->lat, s->lon};
+    }
+    emit followChanged();
     update();
+}
+
+void MapItem::setPanEnabled(bool on)
+{
+    if (on == m_pan) return;
+    m_pan = on;
+    // Back in the corner panel: on the vehicle again
+    if (!on) setFollow(true);
+    emit panEnabledChanged();
 }
 
 QPointF MapItem::project(double lat, double lon) const
@@ -144,23 +171,32 @@ void MapItem::paint(QPainter *p)
     f.setPixelSize(10);
     p->setFont(f);
     p->drawText(QRectF(4, height() - 16, width() - 8, 14), Qt::AlignRight | Qt::AlignVCenter,
-                u"z%1%2"_s.arg(m_zoom).arg(m_follow ? QString() : u"  (double-click: follow)"_s));
+                u"z%1%2"_s.arg(QString::number(m_zoom, 'f', std::abs(m_zoom - std::round(m_zoom)) < 0.05 ? 0 : 1),
+                               m_follow ? QString() : u"  (double-click: follow)"_s));
 }
 
 void MapItem::drawTiles(QPainter *p, QPointF origin)
 {
     // Tiles at 0.6 opacity over black, as the satellite layer of MapEngine.js;
     // a missing one borrows its parent at one zoom less, scaled
-    const int maxIndex = (1 << m_zoom) - 1;
+    // (between two zoom levels, the nearest one's tiles scaled)
+    const int z = std::clamp(int(std::lround(m_zoom)), int(kMinZoom), kMaxTileZoom);
+    const double ts = kTile * std::pow(2.0, m_zoom - z);
+    const int maxIndex = (1 << z) - 1;
+    // Edges on whole device pixels: no seams between scaled tiles
+    const double dpr = p->device() ? p->device()->devicePixelRatioF() * p->worldTransform().m11() : 1.0;
+    auto snap = [dpr](double v) { return std::round(v * dpr) / dpr; };
+    p->setRenderHint(QPainter::SmoothPixmapTransform, ts != kTile);
     p->setOpacity(0.6);
-    const int tx0 = int(std::floor(origin.x() / kTile)), ty0 = int(std::floor(origin.y() / kTile));
-    const int tx1 = int(std::floor((origin.x() + width()) / kTile)), ty1 = int(std::floor((origin.y() + height()) / kTile));
+    const int tx0 = int(std::floor(origin.x() / ts)), ty0 = int(std::floor(origin.y() / ts));
+    const int tx1 = int(std::floor((origin.x() + width()) / ts)), ty1 = int(std::floor((origin.y() + height()) / ts));
     for (int ty = std::max(ty0, 0); ty <= std::min(ty1, maxIndex); ++ty) {
         for (int tx = tx0; tx <= tx1; ++tx) {
             const int x = ((tx % (maxIndex + 1)) + maxIndex + 1) % (maxIndex + 1);
-            const QRectF dst(tx * kTile - origin.x(), ty * kTile - origin.y(), kTile, kTile);
-            if (const QImage img = TileStore::instance().tile(kProvider, m_zoom, x, ty); !img.isNull()) p->drawImage(dst, img);
-            else if (const QImage parent = TileStore::instance().tile(kProvider, m_zoom - 1, x / 2, ty / 2); !parent.isNull())
+            const QRectF dst(QPointF(snap(tx * ts - origin.x()), snap(ty * ts - origin.y())),
+                             QPointF(snap((tx + 1) * ts - origin.x()), snap((ty + 1) * ts - origin.y())));
+            if (const QImage img = TileStore::instance().tile(kProvider, z, x, ty); !img.isNull()) p->drawImage(dst, img);
+            else if (const QImage parent = TileStore::instance().tile(kProvider, z - 1, x / 2, ty / 2); !parent.isNull())
                 p->drawImage(dst, parent, QRectF((x % 2) * 128, (ty % 2) * 128, 128, 128));
         }
     }
@@ -230,42 +266,84 @@ void MapItem::drawVehicle(QPainter *p, QPointF at, double yaw)
     p->restore();
 }
 
+// ── Input ────────────────────────────────────────────────────────────────────
+
+void MapItem::panFrom(QPointF press)
+{
+    m_press = press;
+    m_pressCenter = m_center;
+}
+
+void MapItem::panTo(QPointF p)
+{
+    if (!m_pan) return;
+    setFollow(false);
+    m_center = unproject(project(m_pressCenter.lat, m_pressCenter.lon) - (p - m_press));
+    update();
+}
+
+void MapItem::click(QPointF p)
+{
+    const LatLon ll = unproject(project(m_center.lat, m_center.lon) + p - QPointF(width() / 2, height() / 2));
+    emit clicked(ll.lat, ll.lon);
+}
+
 void MapItem::wheelEvent(QWheelEvent *e)
 {
-    setZoom(m_zoom + (e->angleDelta().y() > 0 ? 1 : -1));
+    zoomAt(TouchGesture::wheelZoom(e, m_zoom), e->position());
     e->accept();
+}
+
+bool MapItem::event(QEvent *e)
+{
+    if (e->type() == QEvent::NativeGesture) {
+        auto *g = static_cast<QNativeGestureEvent *>(e);
+        if (double levels = 0; TouchGesture::nativeZoom(g, levels)) {
+            zoomAt(m_zoom + levels, g->position());
+            return true;
+        }
+    }
+    return QQuickPaintedItem::event(e);
 }
 
 void MapItem::mousePressEvent(QMouseEvent *e)
 {
-    m_press = e->position();
-    m_pressCenter = m_center;
+    panFrom(e->position());
+    m_pressScene = e->scenePosition();
     m_dragged = false;
     e->accept();
 }
 
 void MapItem::mouseMoveEvent(QMouseEvent *e)
 {
-    const QPointF d = e->position() - m_press;
-    if (!m_dragged && std::hypot(d.x(), d.y()) < 4) return;
+    // In the window: the corner panel grows under the cursor, which is no drag
+    const QPointF d = e->scenePosition() - m_pressScene;
+    if (!m_dragged && std::hypot(d.x(), d.y()) < kMouseSlopPx) return;
     m_dragged = true;
-    setFollow(false);
-    m_center = unproject(project(m_pressCenter.lat, m_pressCenter.lon) - d);
-    update();
+    panTo(m_press + d);
 }
 
 void MapItem::mouseReleaseEvent(QMouseEvent *e)
 {
-    if (!m_dragged) {
-        const QPointF c = project(m_center.lat, m_center.lon);
-        const LatLon ll = unproject(c + e->position() - QPointF(width() / 2, height() / 2));
-        emit clicked(ll.lat, ll.lon);
-    }
+    if (!m_dragged) click(e->position());
 }
 
 void MapItem::mouseDoubleClickEvent(QMouseEvent *)
 {
     setFollow(true);
+}
+
+void MapItem::touchDragBegin(QPointF press) { panFrom(press); }
+void MapItem::touchDrag(QPointF p) { panTo(p); }
+void MapItem::touchTap(QPointF p) { click(p); }
+void MapItem::touchDoubleTap(QPointF) { setFollow(true); }
+
+void MapItem::pinch(QPointF centre, QPointF moved, double scale)
+{
+    // Two fingers never take the map off the vehicle; away from it they move it too
+    if (!m_follow) m_center = unproject(project(m_center.lat, m_center.lon) - moved);
+    zoomAt(m_zoom + std::log2(scale), centre);
+    update();
 }
 
 } // namespace corv

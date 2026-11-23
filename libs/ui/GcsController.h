@@ -41,6 +41,7 @@ class LinkManager;
 class MessageBus;
 class PlanController;
 class SysConfig;
+class TerrainFeeder;
 class VehicleHub;
 class VehicleModel;
 
@@ -54,6 +55,8 @@ class GcsController : public QObject
     Q_PROPERTY(QString lastError READ lastError NOTIFY connectionStateChanged)
     Q_PROPERTY(bool gcsMuted READ gcsMuted WRITE setGcsMuted NOTIFY gcsMutedChanged)
     Q_PROPERTY(QString messageLog READ messageLog NOTIFY messageLogChanged)
+    /// What the vehicle's terrain database asked for and got (SYS CONFIG -> VEHICLE TERRAIN DATA).
+    Q_PROPERTY(QString terrainFeed READ terrainFeed NOTIFY terrainFeedChanged)
 
 public:
     // No default constructor: QML must take the instance from create(), not build a second one
@@ -82,15 +85,19 @@ public:
     /// Persistent settings (settings.json, the old localStorage)
     Q_INVOKABLE QString setting(const QString &key, const QString &fallback) const;
     Q_INVOKABLE void setSetting(const QString &key, const QString &value);
+    /// Asked first, as the side panel's SET HOME and REBOOT FC; the reboot never while armed.
     Q_INVOKABLE void setHomeHere();
     Q_INVOKABLE void rebootAutopilot();
     Q_INVOKABLE void setMissionSpeed(double speed);
     QString messageLog() const { return m_log.join(QLatin1Char('\n')); }
+    QString terrainFeed() const { return m_terrainText; }
 
     Q_INVOKABLE void arm(bool force = false);
     Q_INVOKABLE void disarm(bool force = false);
     Q_INVOKABLE void setMode(const QString &mode);
     Q_INVOKABLE void takeoff(double altitude);
+    /// The TAKEOFF button: the height is asked first (the vehicle arms by itself and climbs).
+    Q_INVOKABLE void askTakeoff();
     Q_INVOKABLE void land();
     Q_INVOKABLE void returnToLaunch();
 
@@ -98,6 +105,7 @@ signals:
     void connectionStateChanged();
     void gcsMutedChanged();
     void messageLogChanged();
+    void terrainFeedChanged();
     /// A line for the HUD message list: level info / warning / error.
     void hudMessage(const QString &text, const QString &level);
 
@@ -106,6 +114,7 @@ private:
     void createViewModels();
     void wireViewModels();
     void wireLink();
+    void createTerrainFeed();
 
     std::unique_ptr<MessageBus> m_bus;
     QThread m_linkThread;
@@ -141,6 +150,8 @@ private:
     QString m_state = QStringLiteral("DISCONNECTED");
     QString m_error;
     QStringList m_log;
+    TerrainFeeder *m_terrainFeed = nullptr;
+    QString m_terrainText;
 };
 
 } // namespace corv

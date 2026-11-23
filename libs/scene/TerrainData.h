@@ -102,7 +102,7 @@ public:
         m_clearImages = true;
     }
     /// Renderer side. Takes at most maxAdds chunks and images up to budgetBytes
-    /// (at least one); the rest stay for the next frame.
+    /// (at least one, none for a budget of 0); the rest stay for the next frame.
     void take(std::vector<std::shared_ptr<const ChunkData>> &added, std::vector<quint64> &removed, bool &clear, std::size_t maxAdds,
               std::vector<std::shared_ptr<const ChunkImage>> &images, std::vector<quint64> &imagesRemoved, bool &clearImages,
               qsizetype budgetBytes)
@@ -122,7 +122,7 @@ public:
         images.clear();
         qsizetype bytes = 0;
         std::size_t i = 0;
-        for (; i < m_imagesAdded.size(); ++i) {
+        for (; budgetBytes > 0 && i < m_imagesAdded.size(); ++i) {
             const qsizetype b = m_imagesAdded[i]->bytes();
             if (i > 0 && bytes + b > budgetBytes) break;
             bytes += b;

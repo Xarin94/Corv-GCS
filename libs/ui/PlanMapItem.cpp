@@ -11,6 +11,7 @@
 
 #include <QCursor>
 #include <QFont>
+#include <QNativeGestureEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QtMath>
@@ -86,7 +87,10 @@ QFont font(const QString &family, double px, int weight = QFont::Normal)
     return f;
 }
 
-double metersPerPixel(double lat, int zoom)
+constexpr double kMinZoom = 2, kMaxZoom = 20;
+constexpr double kFingerSlackPx = 10;
+
+double metersPerPixel(double lat, double zoom)
 {
     return 2 * M_PI * kMercR * std::cos(lat * M_PI / 180) / (kTile * std::pow(2.0, zoom));
 }
@@ -204,6 +208,7 @@ PlanMapItem::PlanMapItem(QQuickItem *parent) : QQuickPaintedItem(parent)
 {
     if (GeoZoneController::s_instance) connect(GeoZoneController::s_instance, &GeoZoneController::dataChanged, this, [this] { update(); });
     setAcceptedMouseButtons(Qt::LeftButton | Qt::RightButton);
+    setAcceptTouchEvents(true);
     setAcceptHoverEvents(true);
     setAntialiasing(true);
     setFillColor(QColor(0xdd, 0xdd, 0xdd));   // the Leaflet container before the tiles arrive
@@ -275,17 +280,20 @@ std::optional<LL> PlanMapItem::homePoint(bool *custom) const
     return home;
 }
 
-void PlanMapItem::setView(double lat, double lng, int zoom)
+void PlanMapItem::setView(double lat, double lng, double zoom)
 {
     m_center = {lat, lng};
-    m_zoom = std::clamp(zoom, 2, 20);
+    m_zoom = std::clamp(zoom, kMinZoom, kMaxZoom);
     emit viewChanged();
     update();
 }
 
-void PlanMapItem::zoomAt(int z, QPointF anchor)
+void PlanMapItem::zoomIn() { zoomAt(std::floor(m_zoom + 1e-6) + 1, {width() / 2, height() / 2}); }
+void PlanMapItem::zoomOut() { zoomAt(std::ceil(m_zoom - 1e-6) - 1, {width() / 2, height() / 2}); }
+
+void PlanMapItem::zoomAt(double z, QPointF anchor)
 {
-    z = std::clamp(z, 2, 20);
+    z = std::clamp(z, kMinZoom, kMaxZoom);
     if (z == m_zoom) return;
     const LL ll = toLL(anchor);
     m_zoom = z;
@@ -323,7 +331,11 @@ void PlanMapItem::fitRoute()
 
 void PlanMapItem::drawTiles(QPainter *p, const QString &provider, int maxNative)
 {
-    const int z = std::min(m_zoom, maxNative);
+    // Between two zoom levels, the nearest one's tiles scaled
+    const int z = std::min(int(std::lround(m_zoom)), maxNative);
+    // Edges on whole device pixels: no seams between scaled tiles
+    const double dpr = p->device() ? p->device()->devicePixelRatioF() * p->worldTransform().m11() : 1.0;
+    auto snap = [dpr](double v) { return std::round(v * dpr) / dpr; };
     const double ts = kTile * std::pow(2.0, m_zoom - z);
     const QPointF o = origin();
     const int maxIndex = (1 << z) - 1;
@@ -333,7 +345,7 @@ void PlanMapItem::drawTiles(QPainter *p, const QString &provider, int maxNative)
     for (int ty = std::max(ty0, 0); ty <= std::min(ty1, maxIndex); ++ty) {
         for (int tx = tx0; tx <= tx1; ++tx) {
             const int x = ((tx % (maxIndex + 1)) + maxIndex + 1) % (maxIndex + 1);
-            const QRectF dst(tx * ts - o.x(), ty * ts - o.y(), ts, ts);
+            const QRectF dst(QPointF(snap(tx * ts - o.x()), snap(ty * ts - o.y())), QPointF(snap((tx + 1) * ts - o.x()), snap((ty + 1) * ts - o.y())));
             const QImage img = store.tile(provider, z, x, ty);
             if (!img.isNull()) { p->drawImage(dst, img); continue; }
             // Missing: a parent tile, up to three levels up, scaled
@@ -750,14 +762,14 @@ PlanMapItem::Hit PlanMapItem::hitTest(QPointF s, bool forContext) const
         if (const QJsonObject seg = m_plan->segment(sel); !seg.isEmpty()) {
             if (const Hit h = hitHandles(s, seg, sel); h.kind != Hit::None) return h;
         }
-        if (const auto op = m_plan->placedOperator(); op && dist(s, toScreen(*op)) <= 14) return {Hit::Operator, {}, -1};
-        if (const auto home = homePoint(); home && dist(s, toScreen(*home)) <= 14) return {Hit::Home, {}, -1};
+        if (const auto op = m_plan->placedOperator(); op && dist(s, toScreen(*op)) <= 14 + m_slack) return {Hit::Operator, {}, -1};
+        if (const auto home = homePoint(); home && dist(s, toScreen(*home)) <= 14 + m_slack) return {Hit::Home, {}, -1};
     }
     // Base points, then figures, top-most first
     const QJsonArray segs = m_plan->route().value(u"segments"_s).toArray();
     for (qsizetype k = segs.size() - 1; k >= 0; --k) {
         const QJsonObject seg = segs[k].toObject();
-        const double r = (segmentDef(seg.value(u"type"_s).toString()).value(u"points"_s).isDouble() ? 7 : 4) + 3;
+        const double r = (segmentDef(seg.value(u"type"_s).toString()).value(u"points"_s).isDouble() ? 7 : 4) + 3 + m_slack;
         const QList<LL> pts = pointsOf(seg);
         for (qsizetype i = pts.size() - 1; i >= 0; --i)
             if (dist(s, toScreen(pts[i])) <= r) return {Hit::Point, seg.value(u"id"_s).toString(), int(i)};
@@ -773,14 +785,18 @@ PlanMapItem::Hit PlanMapItem::hitHandles(QPointF s, const QJsonObject &seg, cons
     const QJsonObject def = segmentDef(type);
     const QList<LL> pts = pointsOf(seg);
     const QString kind = def.value(u"points"_s).toString();
-    if (type == "circle"_L1 && !pts.isEmpty() && dist(s, toScreen(rimHandle(seg))) <= 7) return {Hit::Radius, id, 0};
+    if (type == "circle"_L1 && !pts.isEmpty() && dist(s, toScreen(rimHandle(seg))) <= 7 + m_slack) return {Hit::Radius, id, 0};
     if ((kind == "poly"_L1 || kind == "line"_L1) && pts.size() >= 2) {
-        if (dist(s, toScreen(*centroid(pts))) <= 10) return {Hit::Centre, id, -1};
+        // A finger covers a midpoint and its vertex: the vertex is the one meant
+        if (m_slack > 0)
+            for (qsizetype i = pts.size() - 1; i >= 0; --i)
+                if (dist(s, toScreen(pts[i])) <= 8 + m_slack) return {Hit::Vertex, id, int(i)};
+        if (dist(s, toScreen(*centroid(pts))) <= 10 + m_slack) return {Hit::Centre, id, -1};
         const QList<LL> mids = edgeMidpoints(pts, kind == "poly"_L1);
         for (qsizetype i = 0; i < mids.size(); ++i)
-            if (dist(s, toScreen(mids[i])) <= 6) return {Hit::Mid, id, int(i)};
+            if (dist(s, toScreen(mids[i])) <= 6 + m_slack) return {Hit::Mid, id, int(i)};
     }
-    const double r = (def.value(u"points"_s).isDouble() ? 7 : 4) + 4;
+    const double r = (def.value(u"points"_s).isDouble() ? 7 : 4) + 4 + m_slack;
     for (qsizetype i = pts.size() - 1; i >= 0; --i)
         if (dist(s, toScreen(pts[i])) <= r) return {Hit::Vertex, id, int(i)};
     return {};
@@ -839,13 +855,20 @@ void PlanMapItem::openContextMenu(QPointF pos)
 void PlanMapItem::mousePressEvent(QMouseEvent *e)
 {
     if (!m_plan) return;
-    forceActiveFocus();
-    const QPointF pos = e->position();
     e->accept();
+    m_slack = 0;
     if (e->button() == Qt::RightButton) {
-        openContextMenu(pos);
+        forceActiveFocus();
+        openContextMenu(e->position());
         return;
     }
+    pointerPress(e->position());
+}
+
+void PlanMapItem::pointerPress(QPointF pos)
+{
+    if (!m_plan) return;
+    forceActiveFocus();
     emit clickedAway();
     m_press = pos;
     m_pressCenter = m_center;
@@ -885,10 +908,11 @@ void PlanMapItem::mousePressEvent(QMouseEvent *e)
     setCursor(m_drag == Drag::Pan ? toolCursor(Qt::ClosedHandCursor) : Qt::ClosedHandCursor);
 }
 
-void PlanMapItem::mouseMoveEvent(QMouseEvent *e)
+void PlanMapItem::mouseMoveEvent(QMouseEvent *e) { pointerMove(e->position()); }
+
+void PlanMapItem::pointerMove(QPointF pos)
 {
     if (!m_plan) return;
-    const QPointF pos = e->position();
     const QPointF d = pos - m_press;
     const bool overThreshold = m_moved || std::hypot(d.x(), d.y()) >= 3;
     m_mouseLL = toLL(pos);
@@ -926,8 +950,12 @@ void PlanMapItem::mouseMoveEvent(QMouseEvent *e)
 
 void PlanMapItem::mouseReleaseEvent(QMouseEvent *e)
 {
-    if (!m_plan || e->button() != Qt::LeftButton) return;
-    const QPointF pos = e->position();
+    if (e->button() == Qt::LeftButton) pointerRelease(e->position());
+}
+
+void PlanMapItem::pointerRelease(QPointF pos)
+{
+    if (!m_plan) return;
     const Drag drag = m_drag;
     m_drag = Drag::None;
     setCursor(toolCursor(Qt::OpenHandCursor));
@@ -1013,8 +1041,76 @@ void PlanMapItem::hoverLeaveEvent(QHoverEvent *)
 
 void PlanMapItem::wheelEvent(QWheelEvent *e)
 {
-    zoomAt(m_zoom + (e->angleDelta().y() > 0 ? 1 : -1), e->position());
+    zoomAt(TouchGesture::wheelZoom(e, m_zoom), e->position());
     e->accept();
 }
+
+bool PlanMapItem::event(QEvent *e)
+{
+    if (e->type() == QEvent::NativeGesture) {
+        auto *g = static_cast<QNativeGestureEvent *>(e);
+        if (double levels = 0; TouchGesture::nativeZoom(g, levels)) {
+            zoomAt(m_zoom + levels, g->position());
+            return true;
+        }
+    }
+    return QQuickPaintedItem::event(e);
+}
+
+// ── Touch ────────────────────────────────────────────────────────────────────
+
+void PlanMapItem::touchDragBegin(QPointF press)
+{
+    m_slack = kFingerSlackPx;
+    pointerPress(press);
+}
+
+void PlanMapItem::touchDrag(QPointF p) { pointerMove(p); }
+
+void PlanMapItem::touchDragEnd(QPointF p)
+{
+    pointerRelease(p);
+    m_mouseLL.reset();
+}
+
+void PlanMapItem::touchTap(QPointF p)
+{
+    m_slack = kFingerSlackPx;
+    pointerPress(p);
+    pointerRelease(p);
+    m_mouseLL.reset();
+}
+
+void PlanMapItem::touchDoubleTap(QPointF)
+{
+    if (m_plan) m_plan->mapDoubleClick();
+}
+
+void PlanMapItem::touchLongPress(QPointF p)
+{
+    if (!m_plan) return;
+    m_slack = kFingerSlackPx;
+    emit clickedAway();
+    openContextMenu(p);
+}
+
+void PlanMapItem::touchCancel()
+{
+    // A second finger: what was being dragged stays where it is
+    if (m_drag == Drag::None) return;
+    if (m_moved && (m_drag == Drag::Vertex || m_drag == Drag::Centre || m_drag == Drag::Radius)) m_plan->endGesture(m_gestureLabel);
+    m_drag = Drag::None;
+    m_dragMarker.reset();
+    update();
+}
+
+void PlanMapItem::pinch(QPointF centre, QPointF moved, double scale)
+{
+    m_center = unproject(project(m_center.lat, m_center.lng) - moved);
+    zoomAt(m_zoom + std::log2(scale), centre);
+    update();
+}
+
+void PlanMapItem::pinchEnd() { emit viewChanged(); }
 
 } // namespace corv

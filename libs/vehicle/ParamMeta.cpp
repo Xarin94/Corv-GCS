@@ -129,12 +129,15 @@ bool ParamMeta::parse(const QByteArray &json, QHash<QString, ParamInfo> &out, QS
             continue;
         }
         const QJsonObject group = g.value().toObject();
+        const QString release = g.key().startsWith("stable "_L1) ? g.key().mid(7) : QString();
         for (auto it = group.begin(); it != group.end(); ++it) {
             if (!it.value().isObject()) continue;
             // Older files prefix the vehicle's own parameters ("ArduPlane:THR_MAX")
             QString name = it.key();
             if (const qsizetype colon = name.indexOf(':'_L1); colon >= 0) name = name.mid(colon + 1);
-            out.insert(name, parseEntry(it.value().toObject()));
+            ParamInfo info = parseEntry(it.value().toObject());
+            info.lastRelease = release;
+            out.insert(name, info);
             ++n;
         }
     }

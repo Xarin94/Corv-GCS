@@ -180,7 +180,7 @@ Rectangle {
                     tooltip: "ARM / DISARM"
                     onClicked: if (bar.canCommand) bar.armRequested()
                 }
-                CmdButton { anchors.verticalCenter: parent.verticalCenter; text: "TAKEOFF"; tooltip: "Takeoff"; onClicked: if (bar.canCommand) Gcs.takeoff(10) }
+                CmdButton { anchors.verticalCenter: parent.verticalCenter; text: "TAKEOFF"; tooltip: "Takeoff"; onClicked: if (bar.canCommand) Gcs.askTakeoff() }
                 CmdButton { anchors.verticalCenter: parent.verticalCenter; text: "RTL"; accent: Theme.accentActive; tooltip: "Return to Launch"; onClicked: if (bar.canCommand) Gcs.returnToLaunch() }
                 CmdButton { anchors.verticalCenter: parent.verticalCenter; text: "AUTO"; accent: Theme.accentGreen; tooltip: "Start AUTO mission"; onClicked: if (bar.canCommand) Gcs.setMode("AUTO") }
                 CmdButton { anchors.verticalCenter: parent.verticalCenter; text: "LAND"; accent: Theme.accentRed; tooltip: "Emergency Land"; onClicked: if (bar.canCommand) Gcs.land() }

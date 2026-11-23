@@ -100,6 +100,7 @@ QColor withAlpha(QColor c, double a)
 MagCalView::MagCalView(QQuickItem *parent) : QQuickPaintedItem(parent)
 {
     setAcceptedMouseButtons(Qt::LeftButton);
+    setAcceptTouchEvents(true);
     setAntialiasing(true);
     setCursor(Qt::OpenHandCursor);
 }
@@ -278,9 +279,25 @@ void MagCalView::mousePressEvent(QMouseEvent *e)
 
 void MagCalView::mouseMoveEvent(QMouseEvent *e)
 {
-    if (!m_dragging) return;
-    const QPointF d = e->position() - m_drag;
-    m_drag = e->position();
+    if (m_dragging) turnTo(e->position());
+}
+
+void MagCalView::touchEvent(QTouchEvent *e)
+{
+    setKeepTouchGrab(true);   // turns the sphere, does not scroll the page
+    m_touch.event(e);
+}
+
+void MagCalView::pinch(QPointF, QPointF, double scale)
+{
+    m_dist = std::clamp(m_dist / std::clamp(scale, 0.2, 5.0), 2.2, 10.0);
+    update();
+}
+
+void MagCalView::turnTo(QPointF p)
+{
+    const QPointF d = p - m_drag;
+    m_drag = p;
     m_yaw -= d.x() * 0.008;
     m_pitch = std::clamp(m_pitch + d.y() * 0.008, -1.45, 1.45);
     update();

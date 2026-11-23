@@ -104,7 +104,17 @@ Rectangle {
                     height: 24
                     color: custom ? Qt.rgba(0, 210 / 255, 1, 0.08) : (rowMouse.containsMouse ? Qt.rgba(0, 210 / 255, 1, 0.05) : "transparent")
                     Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: Theme.hairline; color: Qt.rgba(1, 1, 1, 0.03) }
-                    MouseArea { id: rowMouse; anchors.fill: parent; hoverEnabled: true; onClicked: Params.fetch(row.name) }
+                    // A click reads the parameter and explains it in the strip under the table
+                    MouseArea {
+                        id: rowMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: { page.selected = row.name; Params.fetch(row.name) }
+                        ToolTip.visible: containsMouse && ToolTip.text.length > 0
+                        ToolTip.text: containsMouse ? (Params.meta(row.name).title || "") : ""
+                        ToolTip.delay: 500
+                    }
+                    Rectangle { visible: page.selected === row.name; width: 2; height: parent.height; color: Theme.accentCyan }
                     Text {
                         x: 6; width: 14
                         anchors.verticalCenter: parent.verticalCenter
@@ -188,6 +198,7 @@ Rectangle {
                 GcsButton { text: Params.reading ? "STOP" : "READ ALL"; height: 30; enabled: Params.linkReady || Params.reading; onClicked: Params.reading ? Params.cancelRead() : Params.readAll() }
                 GcsButton { text: Params.changedCount ? "WRITE CHANGED (" + Params.changedCount + ")" : "WRITE CHANGED"; height: 30; enabled: Params.linkReady; onClicked: Params.writeChanged() }
                 Row {
+                    id: readRow
                     visible: Params.readText.length > 0
                     height: 30
                     spacing: 8
@@ -201,7 +212,8 @@ Rectangle {
                 }
                 CfgInput {
                     id: tableSearch
-                    width: Math.max(180, main.width - 600)
+                    // What the buttons and the progress leave of the line
+                    width: Math.max(180, main.width - 420 - (readRow.visible ? readRow.width + 10 : 0))
                     height: 30
                     font.family: Theme.fontUi
                     placeholderText: "Filter loaded parameters..."
@@ -399,9 +411,11 @@ Rectangle {
             Rectangle {
                 id: detail
                 readonly property var info: page.selected.length > 0 && Params.metaRev >= 0 ? Params.meta(page.selected) : null
+                // What every number (or bit) stands for
+                readonly property var choices: !info ? [] : info.kind === "bitmask" ? info.bits : info.kind === "values" ? info.values : []
                 anchors.bottom: parent.bottom
                 width: parent.width
-                height: 132
+                height: choices.length > 0 ? Math.max(190, Math.min(250, main.height * 0.36)) : 132
                 radius: 4
                 color: Qt.rgba(1, 1, 1, 0.02)
                 border.color: Qt.rgba(1, 1, 1, 0.06)
@@ -421,11 +435,12 @@ Rectangle {
                 Text {
                     visible: !detail.info
                     anchors.centerIn: parent
-                    text: "Click a parameter to see what it does, its range, its values or its bits."
+                    text: "Click a parameter, here or in the PARAM LIST, to see what it does, its range and what each value or bit means."
                     color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 12
                 }
 
                 Column {
+                    id: docs
                     visible: !!detail.info
                     x: 12; y: 10
                     width: parent.width - 24
@@ -444,6 +459,7 @@ Rectangle {
                         Badge { visible: !!detail.info && !!detail.info.readOnly; text: "READ ONLY"; tint: Theme.statusRed }
                         Badge { visible: !!detail.info && detail.info.user === "Advanced"; text: "ADVANCED"; tint: Theme.textNav }
                         Badge { visible: !!detail.info && !!detail.info.outOfRange; text: "OUT OF RANGE"; tint: Theme.statusRed }
+                        Badge { visible: !!detail.info && !!detail.info.lastRelease; text: detail.info ? "UP TO FIRMWARE " + detail.info.lastRelease : ""; tint: Theme.textNav }
                     }
                     Text {
                         width: parent.width
@@ -485,6 +501,57 @@ Rectangle {
                             height: 24
                             text: "EDIT BITS"
                             onClicked: bitmask.openFor(page.selected)
+                        }
+                    }
+                }
+
+                // The numbers of the parameter and what they mean; a click on one types it in
+                Flickable {
+                    id: choiceView
+                    visible: detail.choices.length > 0
+                    x: 12
+                    y: docs.y + docs.height + 6
+                    width: parent.width - 24
+                    height: parent.height - y - 32
+                    contentHeight: choiceFlow.height
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar { policy: choiceView.contentHeight > choiceView.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff }
+                    Flow {
+                        id: choiceFlow
+                        width: choiceView.width - 14
+                        spacing: 4
+                        Repeater {
+                            model: detail.choices
+                            delegate: Rectangle {
+                                id: chip
+                                required property var modelData
+                                readonly property bool bit: modelData.bit !== undefined
+                                readonly property bool on: bit ? modelData.set : modelData.value === detail.info.current
+                                readonly property bool canSet: detail.info.loaded && !detail.info.readOnly
+                                width: chipRow.implicitWidth + 14
+                                height: 22
+                                radius: 3
+                                color: on ? Qt.rgba(0, 210 / 255, 1, 0.18) : chipHover.hovered && canSet ? Qt.rgba(0, 210 / 255, 1, 0.08) : Qt.rgba(1, 1, 1, 0.03)
+                                border.color: on ? Theme.accentCyan : Theme.borderInput
+                                border.width: Theme.hairline
+                                Row {
+                                    id: chipRow
+                                    x: 7
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: 6
+                                    Text { text: chip.bit ? "bit " + chip.modelData.bit : chip.modelData.value; color: Theme.accentCyan; font.family: Theme.fontData; font.pixelSize: 10; font.weight: Font.Bold }
+                                    Text { text: chip.modelData.label; color: chip.on ? Theme.textMain : Theme.textMutedBright; font.family: Theme.fontUi; font.pixelSize: 11 }
+                                }
+                                HoverHandler { id: chipHover; cursorShape: chip.canSet ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                                TapHandler {
+                                    enabled: chip.canSet
+                                    onTapped: chip.bit ? Params.toggleBit(page.selected, chip.modelData.bit) : Params.setEdit(page.selected, chip.modelData.value)
+                                }
+                                ToolTip.visible: chip.bit && chipHover.hovered
+                                ToolTip.text: chip.bit ? "adds " + chip.modelData.value : ""
+                                ToolTip.delay: 400
+                            }
                         }
                     }
                 }

@@ -286,7 +286,7 @@ long-range radio a full read is thousands of packets and several minutes.
 | Search box | Type part of a name. |
 | **All groups** | Filter by group (`ATC_`, `BATT_`, `COMPASS_`…). |
 | Timeout | 2, 4 (default), 8 or 15 s per request: raise it on a high-latency link. |
-| Click a name | Reads that one parameter. |
+| Click a name | Reads that one parameter and explains it in the strip under the table. |
 | ☆ / ★ | Star a parameter for quick re-reading (remembered). |
 | **READ LISTED** | Reads every parameter currently listed (after a search or group filter). |
 | **READ ★** | Reads all starred parameters. |
@@ -301,7 +301,9 @@ long-range radio a full read is thousands of packets and several minutes.
 | Filter box | Filters the loaded parameters by name. |
 | **SAVE .PARAM** | Saves the loaded list to a Mission Planner-compatible `.param` file (`NAME,VALUE` per line) — a backup before you change anything. |
 | **LOAD .PARAM** | Opens a `.param` file and **writes every parameter in it to the vehicle straight away**, one by one, then says how many were loaded. There is no preview: load only a file made for this vehicle and firmware, disarmed. |
-| Table | NAME, VALUE (click to edit, Enter to confirm), DESCRIPTION. |
+| Table | NAME, VALUE (a list where the parameter has listed values, ▦ for the bits of a bitmask, else click to edit and Enter to confirm), UNITS, MEANING / RANGE, DESCRIPTION. |
+| Strip under the table | The selected parameter: what it does, its range, and **every number with its meaning** (the 48 protocols of `SERIALn_PROTOCOL`, for example) or every bit; click one to set it. *UP TO FIRMWARE 4.6.3* marks a parameter that newer ArduPilot releases renamed or dropped. |
+| **UPDATE DESCRIPTIONS** | Downloads ArduPilot's latest documentation for this vehicle type; **BUNDLED** goes back to the one shipped with the GCS, which covers the current firmware and the stable releases from 4.2 on. |
 
 The reference is ArduPilot's [Copter](https://ardupilot.org/copter/docs/parameters.html) /
 [Plane](https://ardupilot.org/plane/docs/parameters.html) /

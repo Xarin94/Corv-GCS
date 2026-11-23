@@ -932,6 +932,7 @@ Item {
 
             PlanMapItem {
                 id: map
+                objectName: "planMap"
                 anchors.fill: parent
                 onContextMenu: (x, y, items, lat, lng, segId, pointIdx) => ctxMenu.show(x, y, items, lat, lng, segId, pointIdx)
                 onClickedAway: { ctxMenu.visible = false; page.menuOpen = false }
@@ -992,7 +993,7 @@ Item {
                                 color: tb.active ? Theme.accentCyan : th.hovered && !tb.modelData.disabled ? "#ffffff" : "#aaaabb"
                             }
                             HoverHandler { id: th; cursorShape: tb.modelData.disabled ? Qt.ForbiddenCursor : Qt.PointingHandCursor }
-                            TapHandler { onTapped: Plan.setTool(tb.modelData.id) }
+                            TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: Plan.setTool(tb.modelData.id) }
                             ToolTip.visible: th.hovered
                             ToolTip.text: tb.modelData.title
                             ToolTip.delay: 500
@@ -1064,6 +1065,7 @@ Item {
                             }
                             HoverHandler { id: lh; cursorShape: Qt.PointingHandCursor }
                             TapHandler {
+                                gesturePolicy: TapHandler.ReleaseWithinBounds
                                 onTapped: {
                                     if (lb.index === 0) Plan.showSat = !Plan.showSat
                                     else if (lb.index === 1) Plan.showCalc = !Plan.showCalc
@@ -1112,7 +1114,7 @@ Item {
                                 font.bold: true
                             }
                             HoverHandler { id: zh; cursorShape: Qt.PointingHandCursor }
-                            TapHandler { onTapped: zb.index === 0 ? map.zoomIn() : map.zoomOut() }
+                            TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: zb.index === 0 ? map.zoomIn() : map.zoomOut() }
                         }
                     }
                 }
@@ -1160,6 +1162,7 @@ Item {
                             }
                             HoverHandler { id: ch; cursorShape: Qt.PointingHandCursor }
                             TapHandler {
+                                gesturePolicy: TapHandler.ReleaseWithinBounds
                                 onTapped: {
                                     ctxMenu.visible = false
                                     Plan.contextAction(parent.modelData[0], ctxMenu.lat, ctxMenu.lng, ctxMenu.segId, ctxMenu.pointIdx)

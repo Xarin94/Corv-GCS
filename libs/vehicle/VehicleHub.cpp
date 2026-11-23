@@ -29,6 +29,11 @@ VehicleHub::VehicleHub(LinkManager *link, QObject *parent) : QObject(parent), m_
         // Same thread as the link manager: direct call, no copy through the event loop
         connect(link, &LinkManager::message, this, &VehicleHub::onMessage, Qt::DirectConnection);
         connect(link, &LinkManager::connected, this, [this](const QString &type) {
+            // What the demo flight simulated is no reading of this vehicle
+            m_state.rangefinderDist.reset();
+            m_state.windDataTime = 0;
+            m_state.as = m_state.gs = m_state.vs = 0;
+            m_state.vn = m_state.ve = m_state.vd = 0;
             m_state.connected = true;
             m_state.mode = u"LIVE"_s;
             m_state.connectionType = type;

@@ -387,15 +387,26 @@ QVariantMap ParamsController::meta(const QString &name) const
     out.insert(u"increment"_s, m->increment > 0 ? numberText(m->increment) : QString());
     out.insert(u"reboot"_s, m->rebootRequired);
     out.insert(u"readOnly"_s, m->readOnly);
+    out.insert(u"lastRelease"_s, m->lastRelease);
     out.insert(u"outOfRange"_s, have && m->outOfRange(cur));
     QVariantList values, bits;
     for (const auto &[value, label] : m->values)
         values << QVariantMap{{u"value"_s, numberText(value)}, {u"label"_s, label}};
     for (const auto &[bit, label] : m->bits)
-        bits << QVariantMap{{u"bit"_s, bit}, {u"label"_s, label}};
+        bits << QVariantMap{{u"bit"_s, bit}, {u"value"_s, QString::number(qint64(1) << bit)}, {u"label"_s, label},
+                            {u"set"_s, have && (std::llround(cur) & (qint64(1) << bit)) != 0}};
     out.insert(u"values"_s, values);
     out.insert(u"bits"_s, bits);
     return out;
+}
+
+void ParamsController::toggleBit(const QString &name, int bit)
+{
+    const ParamValue *p = m_store->find(name);
+    if (!p || bit < 0 || bit > 62) return;
+    const QHash<QString, double> edits = m_table.edits();
+    const qint64 v = std::llround(edits.contains(name) ? edits.value(name) : p->value) ^ (qint64(1) << bit);
+    setEdit(name, QString::number(v));
 }
 
 QString ParamsController::bitsLabel(const QString &name, double value) const

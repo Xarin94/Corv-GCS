@@ -5,9 +5,11 @@
 #include "core/Settings.h"
 
 #include <QCoreApplication>
+#include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QUrl>
 #include <algorithm>
 #include <cmath>
 
@@ -17,6 +19,11 @@ namespace corv {
 
 namespace {
 constexpr int kMaxInFlight = 6;
+constexpr int kBulkInFlight = 4;          // the map's own requests keep their 6
+constexpr int kBulkChecksPerTurn = 200;   // tiles looked up on disk before the thread serves the map again
+constexpr int kWriteDelayMs = 500;
+constexpr std::size_t kMaxWrites = 64;
+const QLatin1StringView kUrlKey{"tile-url-"};
 } // namespace
 
 TileStore &TileStore::instance()
@@ -27,26 +34,145 @@ TileStore &TileStore::instance()
 
 TileStore::TileStore()
 {
-    m_net.setParent(this);
-    m_net.setTransferTimeout(15000);
-    // The first caller may be the render thread (a map painting): disk and network belong to the GUI thread
-    if (QCoreApplication::instance() && thread() != QCoreApplication::instance()->thread())
-        moveToThread(QCoreApplication::instance()->thread());
+    // Settings belong to the GUI thread: the URL templates are copied here and kept up to date
+    readUrls();
+    connect(&Settings::instance(), &Settings::changed, this, [this](const QString &k) {
+        if (k.startsWith(kUrlKey)) readUrls();
+    }, Qt::DirectConnection);
+
+    m_decoders.setMaxThreadCount(std::clamp(QThread::idealThreadCount() / 4, 1, 4));
+    m_decoders.setThreadPriority(QThread::LowPriority);
+    m_thread.setObjectName(u"tiles"_s);
+    moveToThread(&m_thread);
+    m_thread.start(QThread::LowPriority);
+    QMetaObject::invokeMethod(this, [this] {
+        m_net = new QNetworkAccessManager(this);
+        m_net->setTransferTimeout(15000);
+        m_writeTimer = new QTimer(this);
+        m_writeTimer->setSingleShot(true);
+        m_writeTimer->setInterval(kWriteDelayMs);
+        connect(m_writeTimer, &QTimer::timeout, this, &TileStore::flushWrites);
+    }, Qt::QueuedConnection);
+    // The end of the application: the last tiles are written and the connections closed
+    // on the thread that opened them. Not in the destructor: static objects go after the
+    // application, when waiting for a thread with an event loop never ends.
+    qAddPostRoutine([] { TileStore::instance().shutdown(); });
+}
+
+void TileStore::shutdown()
+{
+    if (!m_thread.isRunning()) return;
+    m_network = false;
+    QMetaObject::invokeMethod(this, [this] {
+        m_bulk.running = false;
+        m_queue.clear();
+        flushWrites();
+        delete m_net;
+        m_net = nullptr;
+        for (const QString &name : std::as_const(m_connections)) {
+            QSqlDatabase::database(name, false).close();
+            QSqlDatabase::removeDatabase(name);
+        }
+        m_connections.clear();
+    }, Qt::BlockingQueuedConnection);
+    m_thread.quit();
+    m_thread.wait();
+    m_decoders.clear();
+    m_decoders.waitForDone();
+}
+
+// ── URLs ─────────────────────────────────────────────────────────────────────
+
+void TileStore::readUrls()
+{
+    QHash<QString, QString> urls{
+        {u"osm"_s, u"https://tile.openstreetmap.org/{z}/{x}/{y}.png"_s},
+        // The satellite source of the Electron mini-map (MapEngine.js)
+        {u"satellite"_s, u"https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"_s},
+    };
+    for (auto it = urls.begin(); it != urls.end(); ++it) {
+        const QString custom = Settings::instance().value(kUrlKey + it.key()).toString();
+        if (!custom.isEmpty()) *it = custom;
+    }
+    QMutexLocker l(&m_memLock);
+    m_urls = urls;
 }
 
 QString TileStore::urlTemplate(const QString &provider) const
 {
-    const QString custom = Settings::instance().value(u"tile-url-"_s + provider).toString();
-    if (!custom.isEmpty()) return custom;
-    if (provider == "osm"_L1) return u"https://tile.openstreetmap.org/{z}/{x}/{y}.png"_s;
-    // The satellite source of the Electron mini-map (MapEngine.js)
-    return u"https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"_s;
+    QMutexLocker l(&m_memLock);
+    return m_urls.value(provider, m_urls.value(u"satellite"_s));
 }
+
+QUrl TileStore::urlOf(const Req &r) const
+{
+    QString url = urlTemplate(r.provider);
+    url.replace(u"{z}"_s, QString::number(r.z))
+        .replace(u"{x}"_s, QString::number(r.x))
+        .replace(u"{y}"_s, QString::number(r.y))
+        .replace(u"{s}"_s, u"a"_s);
+    return QUrl(url);
+}
+
+// ── Memory (any thread) ──────────────────────────────────────────────────────
+
+QImage TileStore::cached(const QString &provider, int z, int x, int y)
+{
+    QMutexLocker l(&m_memLock);
+    if (QImage *img = m_mem.get(key(provider, z, x, y))) return *img;
+    return {};
+}
+
+bool TileStore::hasFailed(const QString &provider, int z, int x, int y) const
+{
+    QMutexLocker l(&m_memLock);
+    return m_failed.contains(key(provider, z, x, y));
+}
+
+QImage TileStore::tile(const QString &provider, int z, int x, int y)
+{
+    const Req r{provider, z, x, y};
+    const QString k = key(r);
+    {
+        QMutexLocker l(&m_memLock);
+        if (QImage *img = m_mem.get(k)) return *img;
+        if (m_scheduled.contains(k)) return {};
+        m_scheduled.insert(k);
+    }
+    QMetaObject::invokeMethod(this, [this, r] { load(r); }, Qt::QueuedConnection);
+    return {};
+}
+
+void TileStore::deliver(const Req &r, const QImage &img)
+{
+    const QString k = key(r);
+    {
+        QMutexLocker l(&m_memLock);
+        m_mem.put(k, img);
+        m_scheduled.remove(k);
+    }
+    // Outside the lock: a listener may read the store again (ChunkImagery does)
+    emit tileReady(r.provider, r.z, r.x, r.y);
+}
+
+void TileStore::fail(const Req &r, bool forGood)
+{
+    {
+        // For good: it stays scheduled, so it is not asked again. Otherwise (no
+        // network) it is asked again once the network is back.
+        QMutexLocker l(&m_memLock);
+        if (forGood) m_failed.insert(key(r));
+        else m_scheduled.remove(key(r));
+    }
+    emit tileFailed(r.provider, r.z, r.x, r.y);
+}
+
+// ── Disk (store thread) ──────────────────────────────────────────────────────
 
 QSqlDatabase TileStore::db(const QString &provider)
 {
     auto it = m_connections.find(provider);
-    if (it != m_connections.end()) return QSqlDatabase::database(*it);
+    if (it != m_connections.end()) return QSqlDatabase::database(*it, false);
     const QString name = u"tiles-"_s + provider;
     QSqlDatabase d = QSqlDatabase::addDatabase(u"QSQLITE"_s, name);
     d.setDatabaseName(DataRoot::tilesDir() + '/'_L1 + provider + u".mbtiles"_s);
@@ -59,119 +185,130 @@ QSqlDatabase TileStore::db(const QString &provider)
         q.exec(u"CREATE TABLE IF NOT EXISTS metadata (name TEXT PRIMARY KEY, value TEXT)"_s);
         q.exec(u"INSERT OR IGNORE INTO metadata VALUES ('name', '%1'), ('format', 'png'), ('type', 'baselayer')"_s.arg(provider));
         q.exec(u"PRAGMA journal_mode=WAL"_s);
+        // A power cut may lose the last tiles, never the file: they are only a cache
+        q.exec(u"PRAGMA synchronous=NORMAL"_s);
     }
     m_connections.insert(provider, name);
     return d;
 }
 
-QImage TileStore::cached(const QString &provider, int z, int x, int y)
+namespace {
+void bindTile(QSqlQuery &q, int z, int x, int y)
 {
-    QMutexLocker l(&m_memLock);
-    if (QImage *img = m_mem.get(key(provider, z, x, y))) return *img;
-    return {};
+    // MBTiles rows count from the south (TMS)
+    q.addBindValue(z);
+    q.addBindValue(x);
+    q.addBindValue((1 << z) - 1 - y);
+}
+} // namespace
+
+QByteArray TileStore::readTile(const Req &r)
+{
+    QSqlDatabase d = db(r.provider);
+    if (!d.isOpen()) return {};
+    QSqlQuery q(d);
+    q.setForwardOnly(true);
+    q.prepare(u"SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?"_s);
+    bindTile(q, r.z, r.x, r.y);
+    return q.exec() && q.next() ? q.value(0).toByteArray() : QByteArray();
 }
 
-QImage TileStore::tile(const QString &provider, int z, int x, int y)
+bool TileStore::onDisk(const Req &r)
 {
-    const QString k = key(provider, z, x, y);
-    {
-        QMutexLocker l(&m_memLock);
-        if (QImage *img = m_mem.get(k)) return *img;
-        if (m_scheduled.contains(k)) return {};
-        m_scheduled.insert(k);
-    }
-    // Disk and network belong to the store's thread
-    QMetaObject::invokeMethod(this, [this, provider, z, x, y] { load(provider, z, x, y); }, Qt::QueuedConnection);
-    return {};
+    QSqlDatabase d = db(r.provider);
+    if (!d.isOpen()) return false;
+    QSqlQuery q(d);
+    q.setForwardOnly(true);
+    q.prepare(u"SELECT 1 FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?"_s);
+    bindTile(q, r.z, r.x, r.y);
+    return q.exec() && q.next();
 }
 
-void TileStore::load(const QString &provider, int z, int x, int y)
+void TileStore::queueWrite(const Req &r, const QByteArray &data)
 {
-    const QString k = key(provider, z, x, y);
-    if (m_pending.contains(k)) return;
-    if (m_failed.contains(k)) {
-        emit tileFailed(provider, z, x, y);
-        return;
-    }
+    m_writes.push_back({r, data});
+    if (m_writes.size() >= kMaxWrites) flushWrites();
+    else if (!m_writeTimer->isActive()) m_writeTimer->start();
+}
 
-    // Disk first: MBTiles rows count from the south (TMS)
-    QSqlDatabase d = db(provider);
-    if (d.isOpen()) {
+void TileStore::flushWrites()
+{
+    if (m_writeTimer) m_writeTimer->stop();
+    const std::vector<Write> writes = std::exchange(m_writes, {});
+    QStringList providers;
+    for (const Write &w : writes)
+        if (!providers.contains(w.tile.provider)) providers << w.tile.provider;
+    for (const QString &p : std::as_const(providers)) {
+        QSqlDatabase d = db(p);
+        if (!d.isOpen()) continue;
+        d.transaction();
         QSqlQuery q(d);
-        q.prepare(u"SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?"_s);
-        q.addBindValue(z);
-        q.addBindValue(x);
-        q.addBindValue((1 << z) - 1 - y);
-        if (q.exec() && q.next()) {
-            QImage img;
-            if (img.loadFromData(q.value(0).toByteArray())) {
-                {
-                    QMutexLocker l(&m_memLock);
-                    m_mem.put(k, img);
-                    m_scheduled.remove(k);
-                }
-                // Outside the lock: a listener may read the store again (ChunkImagery does)
-                emit tileReady(provider, z, x, y);
-                return;
-            }
+        q.prepare(u"INSERT OR REPLACE INTO tiles VALUES (?, ?, ?, ?)"_s);
+        for (const Write &w : writes) {
+            if (w.tile.provider != p) continue;
+            bindTile(q, w.tile.z, w.tile.x, w.tile.y);
+            q.addBindValue(w.data);
+            q.exec();
         }
+        if (!d.commit() && DebugLog::throttle(u"tile-write"_s, 30000) >= 0)
+            LOG_W("tiles") << "tiles not written:" << d.lastError().text();
     }
+}
+
+// ── Loading ──────────────────────────────────────────────────────────────────
+
+void TileStore::load(const Req &r)
+{
+    // Disk first
+    if (const QByteArray data = readTile(r); !data.isEmpty()) decode(r, data, true);
+    else fetch(r);
+}
+
+void TileStore::decode(const Req &r, const QByteArray &data, bool fromDisk)
+{
+    m_decoders.start([this, r, data, fromDisk] {
+        QImage img;
+        if (img.loadFromData(data)) {
+            // The formats QPainter and the textures take without converting again
+            deliver(r, std::move(img).convertToFormat(img.hasAlphaChannel() ? QImage::Format_ARGB32_Premultiplied : QImage::Format_RGB32));
+            if (!fromDisk) QMetaObject::invokeMethod(this, [this, r, data] { queueWrite(r, data); }, Qt::QueuedConnection);
+        } else if (fromDisk) {
+            QMetaObject::invokeMethod(this, [this, r] { fetch(r); }, Qt::QueuedConnection);   // a damaged row
+        } else {
+            if (DebugLog::throttle(u"tile-fail"_s, 30000) >= 0) LOG_W("tiles") << "tile" << key(r) << "is not an image";
+            fail(r, true);
+        }
+    });
+}
+
+void TileStore::fetch(const Req &r)
+{
     if (!m_network) {
-        // Asked again once the network is back
-        QMutexLocker l(&m_memLock);
-        m_scheduled.remove(k);
-        l.unlock();
-        emit tileFailed(provider, z, x, y);
+        fail(r, false);
         return;
     }
-    m_pending.insert(k);
-    m_queue.enqueue({provider, z, x, y});
+    m_queue.enqueue(r);
     pump();
 }
 
 void TileStore::pump()
 {
-    while (m_inFlight < kMaxInFlight && !m_queue.isEmpty()) {
+    while (m_net && m_inFlight < kMaxInFlight && !m_queue.isEmpty()) {
         const Req r = m_queue.dequeue();
-        QString url = urlTemplate(r.provider);
-        url.replace(u"{z}"_s, QString::number(r.z))
-            .replace(u"{x}"_s, QString::number(r.x))
-            .replace(u"{y}"_s, QString::number(r.y))
-            .replace(u"{s}"_s, u"a"_s);
-        QNetworkRequest req{QUrl(url)};
+        QNetworkRequest req(urlOf(r));
         // A generic client name: nothing about the user goes to the tile server
         req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("CORV-GCS/" CORV_VERSION));
         ++m_inFlight;
-        QNetworkReply *reply = m_net.get(req);
+        QNetworkReply *reply = m_net->get(req);
         connect(reply, &QNetworkReply::finished, this, [this, reply, r] {
             reply->deleteLater();
             --m_inFlight;
-            const QString k = key(r.provider, r.z, r.x, r.y);
-            m_pending.remove(k);
-            const QByteArray data = reply->readAll();
-            QImage img;
-            if (reply->error() != QNetworkReply::NoError || !img.loadFromData(data)) {
-                m_failed.insert(k);
-                if (DebugLog::throttle(u"tile-fail"_s, 30000) >= 0)
-                    LOG_W("tiles") << "tile" << k << "failed:" << reply->errorString();
-                emit tileFailed(r.provider, r.z, r.x, r.y);
+            if (reply->error() == QNetworkReply::NoError) {
+                decode(r, reply->readAll(), false);
             } else {
-                {
-                    QMutexLocker l(&m_memLock);
-                    m_mem.put(k, img);
-                    m_scheduled.remove(k);
-                }
-                QSqlDatabase d = db(r.provider);
-                if (d.isOpen()) {
-                    QSqlQuery q(d);
-                    q.prepare(u"INSERT OR REPLACE INTO tiles VALUES (?, ?, ?, ?)"_s);
-                    q.addBindValue(r.z);
-                    q.addBindValue(r.x);
-                    q.addBindValue((1 << r.z) - 1 - r.y);
-                    q.addBindValue(data);
-                    q.exec();
-                }
-                emit tileReady(r.provider, r.z, r.x, r.y);
+                if (DebugLog::throttle(u"tile-fail"_s, 30000) >= 0)
+                    LOG_W("tiles") << "tile" << key(r) << "failed:" << reply->errorString();
+                fail(r, true);
             }
             pump();
         });
@@ -200,59 +337,56 @@ qint64 TileStore::tileCount(double north, double south, double west, double east
     return n;
 }
 
-bool TileStore::onDisk(const QString &provider, int z, int x, int y)
-{
-    QSqlDatabase d = db(provider);
-    if (!d.isOpen()) return false;
-    QSqlQuery q(d);
-    q.prepare(u"SELECT 1 FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?"_s);
-    q.addBindValue(z);
-    q.addBindValue(x);
-    q.addBindValue((1 << z) - 1 - y);
-    return q.exec() && q.next();
-}
-
 void TileStore::prefetchArea(const QString &provider, double north, double south, double west, double east, int zmin, int zmax)
 {
-    m_bulk = Bulk{};
-    ++m_bulkGen;
-    m_bulk.provider = provider;
-    for (int z = zmin; z <= zmax; ++z)
-        for (int y = latToY(north, z); y <= latToY(south, z); ++y)
-            for (int x = lonToX(west, z); x <= lonToX(east, z); ++x) m_bulk.tiles.append({z, x, y});
-    m_bulk.total = int(m_bulk.tiles.size());
-    m_bulk.running = true;
-    LOG_I("tiles") << "offline download of" << m_bulk.total << provider << "tiles, zoom" << zmin << "-" << zmax;
-    emit prefetchProgress(0, 0, m_bulk.total);
-    pumpPrefetch();
+    QMetaObject::invokeMethod(this, [=, this] {
+        m_bulk = Bulk{};
+        ++m_bulkGen;
+        m_bulk.provider = provider;
+        for (int z = zmin; z <= zmax; ++z)
+            for (int y = latToY(north, z); y <= latToY(south, z); ++y)
+                for (int x = lonToX(west, z); x <= lonToX(east, z); ++x) m_bulk.tiles.append({z, x, y});
+        m_bulk.total = int(m_bulk.tiles.size());
+        m_bulk.running = true;
+        LOG_I("tiles") << "offline download of" << m_bulk.total << provider << "tiles, zoom" << zmin << "-" << zmax;
+        emit prefetchProgress(0, 0, m_bulk.total);
+        pumpPrefetch();
+    }, Qt::QueuedConnection);
 }
 
 void TileStore::cancelPrefetch()
 {
-    if (!m_bulk.running) return;
+    QMetaObject::invokeMethod(this, [this] {
+        if (m_bulk.running) finishPrefetch(true);
+    }, Qt::QueuedConnection);
+}
+
+void TileStore::finishPrefetch(bool cancelled)
+{
     m_bulk.running = false;
-    emit prefetchFinished(m_bulk.downloaded, m_bulk.failed, m_bulk.total, true);
+    emit prefetchFinished(m_bulk.downloaded, m_bulk.failed, m_bulk.total, cancelled);
 }
 
 void TileStore::pumpPrefetch()
 {
-    constexpr int kBulkInFlight = 4;   // the map's own requests keep their 6
-    while (m_bulk.running && m_bulk.inFlight < kBulkInFlight && m_bulk.next < m_bulk.tiles.size()) {
+    int checked = 0;
+    while (m_net && m_bulk.running && m_bulk.inFlight < kBulkInFlight && m_bulk.next < m_bulk.tiles.size()) {
+        if (++checked > kBulkChecksPerTurn) {
+            QMetaObject::invokeMethod(this, [this] { pumpPrefetch(); }, Qt::QueuedConnection);
+            return;
+        }
         const auto t = m_bulk.tiles[m_bulk.next++];
-        if (onDisk(m_bulk.provider, t[0], t[1], t[2])) {
+        const Req r{m_bulk.provider, t[0], t[1], t[2]};
+        if (onDisk(r)) {
             ++m_bulk.downloaded;
             if (m_bulk.downloaded % 50 == 0) emit prefetchProgress(m_bulk.downloaded, m_bulk.failed, m_bulk.total);
             continue;
         }
-        QString url = urlTemplate(m_bulk.provider);
-        url.replace(u"{z}"_s, QString::number(t[0])).replace(u"{x}"_s, QString::number(t[1]))
-            .replace(u"{y}"_s, QString::number(t[2])).replace(u"{s}"_s, u"a"_s);
-        QNetworkRequest req{QUrl(url)};
+        QNetworkRequest req(urlOf(r));
         req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("CORV-GCS/" CORV_VERSION));
         ++m_bulk.inFlight;
-        QNetworkReply *reply = m_net.get(req);
-        const QString provider = m_bulk.provider;
-        connect(reply, &QNetworkReply::finished, this, [this, reply, t, provider, gen = m_bulkGen] {
+        QNetworkReply *reply = m_net->get(req);
+        connect(reply, &QNetworkReply::finished, this, [this, reply, r, gen = m_bulkGen] {
             reply->deleteLater();
             if (gen != m_bulkGen) return;
             --m_bulk.inFlight;
@@ -260,32 +394,15 @@ void TileStore::pumpPrefetch()
             if (reply->error() != QNetworkReply::NoError || data.isEmpty()) {
                 ++m_bulk.failed;
             } else {
-                QSqlDatabase d = db(provider);
-                if (d.isOpen()) {
-                    QSqlQuery q(d);
-                    q.prepare(u"INSERT OR REPLACE INTO tiles VALUES (?, ?, ?, ?)"_s);
-                    q.addBindValue(t[0]);
-                    q.addBindValue(t[1]);
-                    q.addBindValue((1 << t[0]) - 1 - t[2]);
-                    q.addBindValue(data);
-                    q.exec();
-                }
+                queueWrite(r, data);
                 ++m_bulk.downloaded;
             }
             if (!m_bulk.running) return;
             emit prefetchProgress(m_bulk.downloaded, m_bulk.failed, m_bulk.total);
-            if (m_bulk.next >= m_bulk.tiles.size() && m_bulk.inFlight == 0) {
-                m_bulk.running = false;
-                emit prefetchFinished(m_bulk.downloaded, m_bulk.failed, m_bulk.total, false);
-                return;
-            }
             pumpPrefetch();
         });
     }
-    if (m_bulk.running && m_bulk.next >= m_bulk.tiles.size() && m_bulk.inFlight == 0) {
-        m_bulk.running = false;
-        emit prefetchFinished(m_bulk.downloaded, m_bulk.failed, m_bulk.total, false);
-    }
+    if (m_bulk.running && m_bulk.next >= m_bulk.tiles.size() && m_bulk.inFlight == 0) finishPrefetch(false);
 }
 
 } // namespace corv

@@ -6,7 +6,6 @@
 #include "terrain/TileStore.h"
 
 #include <QPainter>
-#include <QtConcurrent/QtConcurrentRun>
 #include <algorithm>
 #include <cmath>
 
@@ -101,7 +100,8 @@ std::shared_ptr<ChunkImage> compose(const ComposeInput &in)
         }
     }
 
-    // Web Mercator mosaic -> equirectangular chunk image, bilinear
+    // Web Mercator mosaic -> equirectangular chunk image, bilinear. Weights of 1/256,
+    // red and blue in one multiplication: half of what the floating point took.
     const int S = in.size;
     std::vector<uint8_t> rgba(std::size_t(S) * S * 4);
     const double world = double(1 << in.zoom) * kTile;
@@ -109,25 +109,35 @@ std::shared_ptr<ChunkImage> compose(const ComposeInput &in)
     const double mx1 = (in.b.lonRight + 180) / 360 * world - in.tx0 * kTile;
     const auto *src = reinterpret_cast<const uint32_t *>(mosaic.constBits());
     const int stride = int(mosaic.bytesPerLine() / 4), W = mosaic.width(), H = mosaic.height();
+    struct Column {
+        int x0, x1;
+        uint32_t f;
+    };
+    std::vector<Column> cols(std::size_t(S), Column{});
+    for (int i = 0; i < S; ++i) {
+        const double X = mx0 + (i + 0.5) / S * (mx1 - mx0) - 0.5;
+        const int x0 = std::clamp(int(std::floor(X)), 0, W - 1);
+        cols[std::size_t(i)] = {x0, std::min(x0 + 1, W - 1), uint32_t(std::clamp(X - std::floor(X), 0.0, 1.0) * 256 + 0.5)};
+    }
+    auto lerp = [](uint32_t p, uint32_t q, uint32_t f) {
+        const uint32_t rb = ((p & 0xff00ff) * (256 - f) + (q & 0xff00ff) * f + 0x800080) >> 8;
+        const uint32_t g = ((p & 0x00ff00) * (256 - f) + (q & 0x00ff00) * f + 0x008000) >> 8;
+        return (rb & 0xff00ff) | (g & 0x00ff00);
+    };
     for (int j = 0; j < S; ++j) {
         const double lat = in.b.latTop - (j + 0.5) / S * (in.b.latTop - in.b.latBottom);
         const double Y = mercY(lat) * world - in.ty0 * kTile - 0.5;
         const int y0 = std::clamp(int(std::floor(Y)), 0, H - 1), y1 = std::min(y0 + 1, H - 1);
-        const double fy = std::clamp(Y - std::floor(Y), 0.0, 1.0);
+        const uint32_t fy = uint32_t(std::clamp(Y - std::floor(Y), 0.0, 1.0) * 256 + 0.5);
         const uint32_t *r0 = src + std::size_t(y0) * stride, *r1 = src + std::size_t(y1) * stride;
         uint8_t *o = rgba.data() + std::size_t(j) * S * 4;
-        for (int i = 0; i < S; ++i, o += 4) {
-            const double X = mx0 + (i + 0.5) / S * (mx1 - mx0) - 0.5;
-            const int x0 = std::clamp(int(std::floor(X)), 0, W - 1), x1 = std::min(x0 + 1, W - 1);
-            const double fx = std::clamp(X - std::floor(X), 0.0, 1.0);
-            const uint32_t a = r0[x0], b = r0[x1], c = r1[x0], d = r1[x1];
-            for (int ch = 0; ch < 3; ++ch) {
-                const int sh = 16 - 8 * ch;   // R, G, B of 0xffRRGGBB
-                const double top = ((a >> sh) & 255) * (1 - fx) + ((b >> sh) & 255) * fx;
-                const double bot = ((c >> sh) & 255) * (1 - fx) + ((d >> sh) & 255) * fx;
-                o[ch] = uint8_t(std::lround(top * (1 - fy) + bot * fy));
-            }
+        for (const Column &c : cols) {
+            const uint32_t v = lerp(lerp(r0[c.x0], r0[c.x1], c.f), lerp(r1[c.x0], r1[c.x1], c.f), fy);   // 0x00RRGGBB
+            o[0] = uint8_t(v >> 16);
+            o[1] = uint8_t(v >> 8);
+            o[2] = uint8_t(v);
             o[3] = 255;
+            o += 4;
         }
     }
 
@@ -148,6 +158,8 @@ ChunkImagery::ChunkImagery(TerrainChanges &changes, QObject *parent) : QObject(p
     m_clock.start();
     m_sinceRefresh.start();
     m_logClock.start();
+    m_pool.setMaxThreadCount(kMaxComposing);
+    m_pool.setThreadPriority(QThread::LowPriority);   // behind the frames
     TileStore &store = TileStore::instance();
     connect(&store, &TileStore::tileReady, this, [this](const QString &p, int z, int x, int y) { onTile(p, z, x, y, true); });
     connect(&store, &TileStore::tileFailed, this, [this](const QString &p, int z, int x, int y) { onTile(p, z, x, y, false); });
@@ -156,7 +168,8 @@ ChunkImagery::ChunkImagery(TerrainChanges &changes, QObject *parent) : QObject(p
 ChunkImagery::~ChunkImagery()
 {
     // Compositions still running post back to this object: let them end first
-    m_futures.waitForFinished();
+    m_pool.clear();
+    m_pool.waitForDone();
 }
 
 void ChunkImagery::setEnabled(bool on)
@@ -398,18 +411,10 @@ void ChunkImagery::pumpCompose()
         pick->composing = true;
         ++m_composing;
         const quint64 chunk = pick->chunk, gen = pick->generation;
-        m_futures.addFuture(QtConcurrent::run([this, in = std::move(in), chunk, gen] {
+        m_pool.start([this, in = std::move(in), chunk, gen] {
             std::shared_ptr<ChunkImage> img = compose(in);
             QMetaObject::invokeMethod(this, [this, chunk, gen, img] { finished(chunk, gen, img); }, Qt::QueuedConnection);
-        }));
-    }
-    // Drop finished futures now and then
-    if (m_futures.futures().size() > 64) {
-        QFutureSynchronizer<void> keep;
-        for (const QFuture<void> &f : m_futures.futures())
-            if (!f.isFinished()) keep.addFuture(f);
-        m_futures.clearFutures();
-        for (const QFuture<void> &f : keep.futures()) m_futures.addFuture(f);
+        });
     }
 }
 

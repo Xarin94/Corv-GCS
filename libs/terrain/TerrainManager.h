@@ -6,7 +6,9 @@
 // radius (35 / 50 / 70 km, SYS CONFIG) are built, those beyond 1.05 x radius
 // dropped. Heights go to the renderer at full resolution; the renderer picks the
 // decimation per frame from the screen-space error. When the scene origin moves
-// every chunk is rebuilt in the new world metres.
+// every chunk is rebuilt in the new world metres. The chunks are cut out of the
+// tile on a low-priority pool, a few at a time: a tile that arrives makes some
+// hundred of them, too many for one turn of the GUI thread.
 // Chunks within the satellite radius also get satellite imagery (ChunkImagery)
 // while the satellite view is on.
 // GUI thread; tiles load on the pool (HgtStore).
@@ -18,7 +20,10 @@
 
 #include <QHash>
 #include <QObject>
+#include <QSet>
+#include <QThreadPool>
 #include <memory>
+#include <vector>
 
 namespace corv {
 
@@ -32,6 +37,7 @@ public:
     static constexpr double kCleanupMargin = 1.05;
 
     explicit TerrainManager(QObject *parent = nullptr);
+    ~TerrainManager() override;
 
     TerrainChanges &changes() { return m_changes; }
 
@@ -49,15 +55,17 @@ public:
 
     int activeChunks() const { return int(m_active.size()); }
 
-signals:
-
 private:
     void updateChunks(double lat, double lon);
-    std::shared_ptr<ChunkData> build(const HgtTile &tile, const ChunkKey &k) const;
+    static std::shared_ptr<ChunkData> build(const HgtTile &tile, const ChunkKey &k, LatLon origin, int epoch);
+    void built(const std::vector<std::shared_ptr<ChunkData>> &chunks, int epoch);
+    static double distanceTo(const ChunkKey &k, double lat, double lon);
 
     TerrainChanges m_changes;
     ChunkImagery m_imagery{m_changes};
     QHash<quint64, ChunkKey> m_active;
+    QSet<quint64> m_building;
+    QThreadPool m_pool;
     double m_radius = 35000;
     LatLon m_origin = kDefaultOrigin;
     int m_epoch = -1;

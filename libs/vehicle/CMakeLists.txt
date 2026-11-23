@@ -13,6 +13,7 @@ add_library(corv_vehicle STATIC
     ParamCatalog.h ParamCatalog.cpp ParamCatalogData.cpp
     ParamMeta.h ParamMeta.cpp
     LogDownloader.h LogDownloader.cpp
+    TerrainFeeder.h TerrainFeeder.cpp
     ParamStore.h ParamStore.cpp
     ServoMap.h ServoMap.cpp
     GeodesicGrid.h GeodesicGrid.cpp

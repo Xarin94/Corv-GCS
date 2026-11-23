@@ -88,8 +88,10 @@ QString VehicleModel::flightTime() const
 
 double VehicleModel::terrainAgl() const
 {
-    if (m_s->terrainHeight) return m_s->rawAlt - *m_s->terrainHeight;
-    if (const auto h = HgtStore::instance().elevation(m_s->lat, m_s->lon)) return m_s->rawAlt - *h;
+    // Above the terrain model under the vehicle; in the relative mode, above the zero plane
+    const double alt = m_s->rawAlt + m_s->offsetAlt;
+    if (m_s->relativeMode) return alt;
+    if (const auto h = HgtStore::instance().elevation(m_s->lat, m_s->lon)) return alt - *h;
     return std::numeric_limits<double>::quiet_NaN();
 }
 

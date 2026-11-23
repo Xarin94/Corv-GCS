@@ -4,8 +4,9 @@
 //
 // Source: ArduPilot's apm.pdef.json (Tools/autotest/param_metadata), one per
 // firmware. The copies bundled in resources/params/<Firmware>.pdef.json.gz are
-// generated from the ArduPilot tree the vehicles run (tools/gen-param-meta.py);
-// a newer file downloaded from autotest.ardupilot.org is saved to
+// generated from the ArduPilot tree the vehicles run (tools/gen-param-meta.py),
+// completed with the parameters only the stable releases still have (groups
+// "stable 4.6.3": SRn_*, ARMING_CHECK, WPNAV_*...); a newer file downloaded from autotest.ardupilot.org is saved to
 // <data>/params/<Firmware>.pdef.json and takes precedence, entry by entry, over
 // the bundled one (names only the bundle knows, e.g. those of a fork, stay).
 //
@@ -35,6 +36,7 @@ struct ParamInfo {
     QList<QPair<int, QString>> bits;        // sorted by bit
     bool rebootRequired = false;
     bool readOnly = false;
+    QString lastRelease;                // the last stable release that has it; empty: current firmware
 
     bool isBitmask() const { return !bits.isEmpty(); }
     bool hasValues() const { return !values.isEmpty(); }

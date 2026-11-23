@@ -63,7 +63,6 @@ void DemoFlight::step(VehicleState &s, double dtIn, double now)
     const double dt = std::clamp(dtIn, 1e-3, 0.1);
     if (!m_init) init(s);
     const std::optional<double> terrain = m_terrain ? m_terrain(s.lat, s.lon) : std::nullopt;
-    s.terrainHeight = terrain;
     if (!m_baseAltLocked) {
         if (const auto c = m_terrain ? m_terrain(m_centerLat, m_centerLon) : std::nullopt) {
             m_baseAlt = *c + kCruiseAgl;

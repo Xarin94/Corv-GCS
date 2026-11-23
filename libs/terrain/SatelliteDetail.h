@@ -22,7 +22,7 @@
 // from TileStore: memory, the MBTiles file, then the network.
 //
 // GUI thread object; update() runs in the 3D view's synchronize (GUI blocked)
-// and hands the renderer the texture operations in order, at most 8 tile
+// and hands the renderer the texture operations in order, at most 4 tile
 // uploads a frame, and each level's map from world x/z to its window.
 #pragma once
 

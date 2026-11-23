@@ -1,6 +1,7 @@
 #include "TestDriver.h"
 
 #include "core/DebugLog.h"
+#include "gpu/FrameStats.h"
 #include "ui/AnnunciatorController.h"
 #include "ui/CalibrationController.h"
 #include "ui/EkfController.h"
@@ -29,9 +30,13 @@
 #include <QJsonObject>
 #include <QKeyEvent>
 #include <QMetaMethod>
+#include <QPointingDevice>
 #include <QQmlApplicationEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <QScreen>
+#include <cmath>
+#include <qpa/qwindowsysteminterface.h>
 
 using namespace Qt::StringLiterals;
 
@@ -144,7 +149,7 @@ QJsonValue TestDriver::stats() const
     QObject *root = m_engine.rootObjects().value(0);
     if (root) {
         for (QQuickItem *it : root->findChildren<QQuickItem *>()) {
-            if (qstrcmp(it->metaObject()->className(), "corv::SceneItem") != 0) continue;
+            if (!it->inherits("corv::SceneItem")) continue;   // QML derives a type of its own
             QJsonObject v;
             v.insert(u"objectName"_s, it->objectName());
             v.insert(u"visible"_s, it->isVisible());
@@ -158,6 +163,16 @@ QJsonValue TestDriver::stats() const
     }
     QJsonObject out;
     out.insert(u"views"_s, views);
+    // The frames drawn since the last "stats"
+    const FrameStats::Summary f = FrameStats::instance().summary();
+    FrameStats::instance().reset();
+    auto r1 = [](double v) { return std::round(v * 10) / 10; };
+    out.insert(u"frames"_s, QJsonObject{{u"count"_s, f.frames}, {u"late"_s, f.late}, {u"dropped"_s, f.dropped},
+                                        {u"medianMs"_s, r1(f.median)}, {u"p95Ms"_s, r1(f.p95)}, {u"p99Ms"_s, r1(f.p99)},
+                                        {u"worstMs"_s, r1(f.worst)}, {u"renderWorstMs"_s, r1(f.renderWorst)},
+                                        {u"renderP99Ms"_s, r1(f.renderP99)}, {u"syncWorstMs"_s, r1(f.syncWorst)},
+                                        {u"swapWorstMs"_s, r1(f.swapWorst)}, {u"swapP99Ms"_s, r1(f.swapP99)},
+                                        {u"guiWorstMs"_s, r1(f.guiWorst)}, {u"guiP99Ms"_s, r1(f.guiP99)}});
     if (QQuickWindow *w = window()) {
         out.insert(u"window"_s, QJsonObject{{u"width"_s, w->width()}, {u"height"_s, w->height()},
                                                          {u"dpr"_s, w->effectiveDevicePixelRatio()},
@@ -255,6 +270,35 @@ QJsonValue TestDriver::run(const QString &cmd, const QString &arg, QString *erro
         QCoreApplication::sendEvent(win, &press);
         QMouseEvent release(QEvent::MouseButtonRelease, pos, global, Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
         QCoreApplication::sendEvent(win, &release);
+        return {};
+    }
+    if (cmd == "touch"_L1) {
+        // Fingers on the window: "touch press|move|release X Y [X Y]", as the system reports them
+        const QStringList a = arg.split(' '_L1, Qt::SkipEmptyParts);
+        if (!win || a.size() < 3 || a.size() % 2 == 0) return fail(u"touch press|move|release X Y [X Y]"_s);
+        static const QPointingDevice *device = [] {
+            auto *d = new QPointingDevice(u"test touch"_s, 4711, QInputDevice::DeviceType::TouchScreen, QPointingDevice::PointerType::Finger,
+                                          QInputDevice::Capability::Position | QInputDevice::Capability::Area, 10, 0);
+            QWindowSystemInterface::registerInputDevice(d);
+            return d;
+        }();
+        static QList<int> down;
+        const auto state = a[0] == "press"_L1 ? QEventPoint::State::Pressed : a[0] == "release"_L1 ? QEventPoint::State::Released : QEventPoint::State::Updated;
+        const qreal dpr = win->effectiveDevicePixelRatio();
+        QList<QWindowSystemInterface::TouchPoint> points;
+        for (int i = 0; 2 * i + 2 < a.size(); ++i) {
+            QWindowSystemInterface::TouchPoint p;
+            p.id = i + 1;
+            // A finger that was already down is not pressed again
+            p.state = state == QEventPoint::State::Pressed && down.contains(p.id) ? QEventPoint::State::Updated : state;
+            const QPointF g = win->mapToGlobal(QPointF(a[1 + 2 * i].toDouble(), a[2 + 2 * i].toDouble())) * dpr;
+            p.area = QRectF(g - QPointF(4, 4), QSizeF(8, 8));
+            p.pressure = state == QEventPoint::State::Released ? 0 : 1;
+            points << p;
+            if (state == QEventPoint::State::Pressed && !down.contains(p.id)) down << p.id;
+            if (state == QEventPoint::State::Released) down.removeAll(p.id);
+        }
+        QWindowSystemInterface::handleTouchEvent<QWindowSystemInterface::SynchronousDelivery>(win, device, points);
         return {};
     }
     if (cmd == "size"_L1) {

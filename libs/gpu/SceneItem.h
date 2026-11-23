@@ -8,8 +8,8 @@
 //                 with the horizon lock); the arrow keys turn the view while
 //                 held, 90 deg up / down and 110 deg left / right, an
 //                 ease-in-out sweep there and back (initLookAround);
-//   third person  orbit around the model: drag to turn, wheel to zoom, never
-//                 closer than 30 m to the ground under the camera.
+//   third person  orbit around the model: drag to turn, wheel or pinch to zoom,
+//                 never closer than 30 m to the ground under the camera.
 // Terrain clipping (SYS CONFIG -> 3D VIEW -> TERRAIN CLIPPING):
 //   off      everything at its true height, also under the ground;
 //   vehicle  the model and the first-person camera stay 0.5 m over the ground
@@ -25,6 +25,7 @@
 #pragma once
 
 #include "gpu/FrameTicker.h"
+#include "gpu/TouchGesture.h"
 #include "scene/FramePacer.h"
 #include "scene/GeoZoneRaster.h"
 #include "terrain/SatelliteDetail.h"
@@ -65,7 +66,7 @@ struct MissionPoint3D {
     int segPos = 0;                 // in a pattern: 1 first item, 2 inside, 3 last
 };
 
-class SceneItem : public QQuickRhiItem
+class SceneItem : public QQuickRhiItem, private TouchGesture::Client
 {
     Q_OBJECT
     QML_ELEMENT
@@ -174,9 +175,19 @@ protected:
     void mouseMoveEvent(QMouseEvent *e) override;
     void mouseReleaseEvent(QMouseEvent *e) override;
     void wheelEvent(QWheelEvent *e) override;
+    void touchEvent(QTouchEvent *e) override { m_touch.event(e); }
+    void touchUngrabEvent() override { m_touch.cancel(); }
+    bool event(QEvent *e) override;
 
 private:
     friend class SceneRenderer;
+    void touchDragBegin(QPointF press) override { m_last = press; }
+    void touchDrag(QPointF p) override { orbitBy(p); }
+    void touchTap(QPointF) override { emit clicked(); }
+    void pinch(QPointF centre, QPointF moved, double scale) override;
+    /// The chase camera turned by the movement to `pos`.
+    void orbitBy(QPointF pos);
+    void orbitZoom(double factor);
     void tick();
     void advanceLook();
     void releaseKeys();
@@ -191,6 +202,7 @@ private:
     static double s_frameWallMs, s_lastTickMs;
     FramePacer m_pacer;
     QTimer m_frameTimer;
+    double m_frameAtMs = 0;   // when the frame timer was to fire
     TerrainManager m_terrain;
     SatelliteDetail m_detail;
     QTimer m_terrainTimer;
@@ -216,6 +228,7 @@ private:
     } m_orbit;
     QPointF m_press, m_last;
     bool m_dragging = false, m_pressed = false;
+    TouchGesture m_touch{this};
 
     // Look-around (look of main.js)
     struct Look {

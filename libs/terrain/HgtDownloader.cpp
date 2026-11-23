@@ -42,7 +42,8 @@ void HgtDownloader::ensure(int latBase, int lonBase)
 {
     const int k = key(latBase, lonBase);
     if (m_failed.contains(k) || m_queued.contains(k) || m_active.contains(k)) return;
-    if (!HgtStore::instance().find(latBase, lonBase).isEmpty()) return;
+    // The store already looked for a missing tile, on the pool: no listing of the folders here again
+    if (!HgtStore::instance().missing(latBase, lonBase) && !HgtStore::instance().find(latBase, lonBase).isEmpty()) return;
     m_queued.insert(k);
     m_queue.enqueue({latBase, lonBase});
     pump();

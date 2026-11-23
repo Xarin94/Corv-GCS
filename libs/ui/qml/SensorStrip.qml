@@ -94,7 +94,7 @@ Rectangle {
                     font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.5
                 }
                 HoverHandler { id: btnHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: strip.clicked(btn.index) }
+                TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: strip.clicked(btn.index) }
                 ToolTip.visible: !!btn.modelData.tip && btnHover.hovered
                 ToolTip.text: btn.modelData.tip || ""
                 ToolTip.delay: 600

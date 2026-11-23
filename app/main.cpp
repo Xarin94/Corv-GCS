@@ -34,6 +34,11 @@ Q_IMPORT_QML_PLUGIN(Corv_UiPlugin)
 Q_IMPORT_QML_PLUGIN(Corv_GpuPlugin)
 
 #ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
 // Laptops: ask the driver for the dedicated GPU (was --force_high_performance_gpu in Electron)
 extern "C" {
 __declspec(dllexport) unsigned long NvOptimusEnablement = 1;
@@ -43,8 +48,28 @@ __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 
 using namespace corv;
 
+namespace {
+/// Windows slows a process down to save power (on battery, or with its window behind
+/// another) and gives it 15.6 ms timers: the frames, which are paced by a timer, came
+/// late and the telemetry with them. Not for a ground station in the field.
+void keepFullSpeed()
+{
+#ifdef Q_OS_WIN
+    PROCESS_POWER_THROTTLING_STATE state{};
+    state.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+    state.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+    state.StateMask = 0;   // never throttled
+    SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, &state, sizeof state);
+    // (Windows 11; refused as a whole by an older one, so asked apart)
+    state.ControlMask = PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION;
+    SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, &state, sizeof state);
+#endif
+}
+} // namespace
+
 int main(int argc, char *argv[])
 {
+    keepFullSpeed();
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral(CORV_APP_NAME));
     QGuiApplication::setApplicationVersion(QStringLiteral(CORV_VERSION));

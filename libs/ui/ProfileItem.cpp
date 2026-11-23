@@ -65,6 +65,7 @@ void text(QPainter *p, double x, double y, const QString &s, Qt::Alignment align
 ProfileItem::ProfileItem(QQuickItem *parent) : QQuickPaintedItem(parent)
 {
     setAcceptedMouseButtons(Qt::LeftButton);
+    setAcceptTouchEvents(true);
     setAcceptHoverEvents(true);
     setAntialiasing(true);
     setCursor(Qt::CrossCursor);
@@ -144,12 +145,7 @@ void ProfileItem::wheelEvent(QWheelEvent *e)
     Layout L;
     if (!layout(L)) return;
     if (e->modifiers() & (Qt::ControlModifier | Qt::MetaModifier)) {
-        const double factor = e->angleDelta().y() > 0 ? 1.2 : 1 / 1.2;
-        const double old = m_zoom;
-        m_zoom = std::max(1.0, std::min(40.0, m_zoom * factor));
-        const double mx = e->position().x() - L.padL;
-        const double ratio = (mx + m_scroll) / (L.plotW * old);
-        m_scroll = ratio * L.plotW * m_zoom - mx;
+        zoomAt(std::pow(1.2, e->angleDelta().y() / 120.0), e->position().x(), L);
     } else {
         // A wheel notch scrolls 100 px, as the browser did
         m_scroll -= (e->angleDelta().y() + e->angleDelta().x()) / 1.2;
@@ -158,6 +154,41 @@ void ProfileItem::wheelEvent(QWheelEvent *e)
     updateHover();
     update();
     e->accept();
+}
+
+void ProfileItem::zoomAt(double factor, double x, const Layout &L)
+{
+    const double old = m_zoom;
+    m_zoom = std::max(1.0, std::min(40.0, m_zoom * factor));
+    const double mx = x - L.padL;
+    const double ratio = (mx + m_scroll) / (L.plotW * old);
+    m_scroll = ratio * L.plotW * m_zoom - mx;
+}
+
+void ProfileItem::touchDragBegin(QPointF press)
+{
+    m_dragging = true;
+    m_moved = true;
+    m_dragX = press.x();
+    m_scrollStart = m_scroll;
+}
+
+void ProfileItem::touchTap(QPointF p)
+{
+    m_hover = p;
+    updateHover();
+    update();
+    if (m_plan && !m_hoverSeg.isEmpty()) m_plan->selectFromMap(m_hoverSeg);
+}
+
+void ProfileItem::pinch(QPointF centre, QPointF moved, double scale)
+{
+    Layout L;
+    if (!layout(L)) return;
+    m_scroll -= moved.x();
+    zoomAt(scale, centre.x(), L);
+    clampScroll(L);
+    update();
 }
 
 void ProfileItem::mousePressEvent(QMouseEvent *e)
@@ -169,15 +200,17 @@ void ProfileItem::mousePressEvent(QMouseEvent *e)
     e->accept();
 }
 
-void ProfileItem::mouseMoveEvent(QMouseEvent *e)
+void ProfileItem::mouseMoveEvent(QMouseEvent *e) { dragTo(e->position()); }
+
+void ProfileItem::dragTo(QPointF pos)
 {
     Layout L;
     if (!m_dragging || !layout(L)) return;
-    const double dx = m_dragX - e->position().x();
+    const double dx = m_dragX - pos.x();
     if (std::abs(dx) > 2) m_moved = true;
     m_scroll = m_scrollStart + dx;
     clampScroll(L);
-    m_hover = e->position();
+    m_hover = pos;
     updateHover();
     update();
 }

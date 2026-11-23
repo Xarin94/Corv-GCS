@@ -139,9 +139,11 @@ public:
 
     /// What ArduPilot documents about a parameter, for the detail strip and the editors:
     /// {name, known, title, description, units, user, hasRange, low, high, increment,
-    ///  values: [{value, label}], bits: [{bit, label}], reboot, readOnly,
+    ///  values: [{value, label}], bits: [{bit, value, label, set}], reboot, readOnly, lastRelease,
     ///  loaded, value (the vehicle's), current (typed or the vehicle's), edited, meaning, outOfRange}
     Q_INVOKABLE QVariantMap meta(const QString &name) const;
+    /// A bit of a bitmask parameter on or off, as an edit of its number (the list in the detail strip).
+    Q_INVOKABLE void toggleBit(const QString &name, int bit);
     /// The names of the bits set in `value` for a bitmask parameter.
     Q_INVOKABLE QString bitsLabel(const QString &name, double value) const;
     /// Newer metadata from autotest.ardupilot.org for the vehicle class (Mission Planner's

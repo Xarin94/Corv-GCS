@@ -13,7 +13,7 @@ namespace corv {
 namespace {
 constexpr double kRecenter = 0.75;               // the window moves once the aircraft is this many tiles off its centre
 constexpr double kDeactivate = 1.25;             // hysteresis on the distance a level is used to
-constexpr std::size_t kMaxCopiesPerFrame = 8;    // tile uploads per frame
+constexpr std::size_t kMaxCopiesPerFrame = 4;    // tile uploads per frame
 constexpr double kMPerPxZ0 = 156543.03392;       // Web Mercator metres per pixel at zoom 0 on the equator
 
 int mod(int a, int n) { return ((a % n) + n) % n; }
@@ -49,9 +49,10 @@ void SatelliteDetail::release(Level &l, std::vector<DetailOp> &ops)
 
 void SatelliteDetail::request(Level &l, int slot)
 {
-    const Slot &s = l.cells[std::size_t(slot)];
+    Slot &s = l.cells[std::size_t(slot)];
     const QImage img = TileStore::instance().tile(m_provider, l.zoom, s.tx, s.ty);
     if (!img.isNull()) m_copies.push_back({l.index, slot, s.tx, s.ty, img});
+    else if (TileStore::instance().hasFailed(m_provider, l.zoom, s.tx, s.ty)) s.state = SlotState::Missing;   // said once already
     // otherwise tileReady / tileFailed answer
 }
 
