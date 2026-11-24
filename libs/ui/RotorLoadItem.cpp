@@ -209,6 +209,17 @@ void RotorLoadItem::loadConfig()
         d.frame = sc->jsonField(kCfgKey, u"frame"_s, u"auto"_s).toString();
         d.singleChannel = int(num(sc->jsonField(kCfgKey, u"singleChannel"_s, 3), 3));
         d.rudderMax = num(sc->jsonField(kCfgKey, u"rudderMax"_s, 35), 35);
+        d.rpmSource = sc->jsonField(kCfgKey, u"rpmSource"_s, u"auto"_s).toString();
+        d.rpmRatio = num(sc->jsonField(kCfgKey, u"rpmRatio"_s, 1), 1);
+        d.rpmMax = num(sc->jsonField(kCfgKey, u"rpmMax"_s, 2000), 2000);
+        d.rpmLow = num(sc->jsonField(kCfgKey, u"rpmLow"_s, 0), 0);
+        d.rpmHigh = num(sc->jsonField(kCfgKey, u"rpmHigh"_s, 0), 0);
+        for (auto [name, s] : {std::pair{u"col"_s, &d.col}, std::pair{u"tail"_s, &d.tail}}) {
+            s->min = num(sc->jsonField(kCfgKey, name + u"Min"_s, 0), 0);
+            s->max = num(sc->jsonField(kCfgKey, name + u"Max"_s, 0), 0);
+            s->low = num(sc->jsonField(kCfgKey, name + u"Low"_s, 0), 0);
+            s->high = num(sc->jsonField(kCfgKey, name + u"High"_s, 0), 0);
+        }
     }
     // Thresholds that cross over each other would make the colours and the
     // scale meaningless, so they are forced back into ascending order.
@@ -219,6 +230,11 @@ void RotorLoadItem::loadConfig()
     d.thRed = std::min(std::max(d.thRed, d.thOrange), d.pwmMax);
     d.singleChannel = std::min(std::max(d.singleChannel, 1), 16);
     d.rudderMax = std::min(std::max(d.rudderMax, 1.0), 180.0);
+    d.rpmRatio = d.rpmRatio > 0 ? std::min(d.rpmRatio, 1000.0) : 1;
+    d.rpmMax = std::min(std::max(d.rpmMax, 100.0), 200000.0);
+    d.rpmLow = std::min(std::max(d.rpmLow, 0.0), d.rpmMax);
+    d.rpmHigh = std::min(std::max(d.rpmHigh, 0.0), d.rpmMax);
+    if (d.rpmSource.isEmpty()) d.rpmSource = u"auto"_s;
     if (d.frame.isEmpty()) d.frame = u"auto"_s;
     m_cfg = d;
 }
@@ -266,6 +282,11 @@ bool RotorLoadItem::servosApply() const
 RotorLoadItem::Rotors RotorLoadItem::rotors() const
 {
     Rotors r;
+    if (heliMode()) {
+        const int rsc = m_heli.rsc ? m_heli.rsc : m_cfg.singleChannel;
+        r.centre.push_back({rsc, u"CH%1"_s.arg(rsc), std::nullopt});
+        return r;
+    }
     if (m_cfg.frame == "auto"_L1 && servosApply() && m_servos.complete()) {
         const int type = m_s->vehicleType;
         const int rsc = m_servos.first(servo::kHeliRsc);
@@ -333,10 +354,111 @@ std::optional<RotorLoadItem::SailLayout> RotorLoadItem::sailMode() const
     return sailLayout();
 }
 
+/// A helicopter's own layout: picked by hand, or the vehicle says so.
+bool RotorLoadItem::heliMode() const
+{
+    if (m_cfg.frame == "heli"_L1) return true;
+    return m_cfg.frame == "auto"_L1 && servosApply() && m_s->vehicleType == kMavHelicopter;
+}
+
+std::optional<double> RotorLoadItem::escRpm(int output) const
+{
+    if (!servosApply()) return std::nullopt;
+    // ESC n is the one on output n, unless the autopilot renumbers them
+    const int offset = int(std::lround(param(u"ESC_TLM_MAV_OFS"_s).value_or(0)));
+    return m_s->escRpm(output - offset, wallMs());
+}
+
+std::optional<double> RotorLoadItem::rotorRpm(int output) const
+{
+    if (!servosApply() || m_cfg.rpmSource == "off"_L1) return std::nullopt;
+    const std::int64_t now = wallMs();
+    if (m_cfg.rpmSource == "rpm1"_L1) return m_s->sensorRpm(1, now);
+    if (m_cfg.rpmSource == "rpm2"_L1) return m_s->sensorRpm(2, now);
+    const auto esc = escRpm(output);
+    const auto geared = esc ? std::optional<double>(*esc / m_cfg.rpmRatio) : std::nullopt;
+    if (m_cfg.rpmSource == "esc"_L1) return geared;
+    // AUTO: a sensor on the rotor says more than its motor does
+    for (int n : {1, 2})
+        if (const auto v = m_s->sensorRpm(n, now)) return v;
+    return geared;
+}
+
+/// The RPM in place of the name where they are known.
+QString RotorLoadItem::labelFor(const Gauge &g) const
+{
+    auto text = [](double rpm) { return rpm >= 100000 ? u"%1k"_s.arg(rpm / 1000, 0, 'f', 0) : QString::number(qRound64(rpm)); };
+    if (heliMode()) {
+        const auto rotor = rotorRpm(g.output);
+        return rotor ? text(*rotor) : g.label;
+    }
+    if (const auto esc = escRpm(g.output)) return text(*esc);
+    // One rotor, or propeller: the sensor on it
+    if (m_rotors.ring.empty() && m_rotors.centre.size() == 1)
+        if (const auto rotor = rotorRpm(g.output)) return text(*rotor);
+    return g.label;
+}
+
+std::optional<double> RotorLoadItem::collective() const
+{
+    const ServoMap::Lookup lookup = [this](const QString &n) { return param(n); };
+    // The swashplate's outputs are centred on their trim: 1500 until it is read
+    return ServoMap::collectivePwm(m_heli, int(std::lround(param(u"H_SW_TYPE"_s).value_or(3))), m_s->servoOutputs, [&](int ch) {
+        OutputScale k = ServoMap::scale(lookup, ch);
+        k.trim = param(u"SERVO%1_TRIM"_s.arg(ch)).value_or(1500);
+        return k;
+    });
+}
+
+/// The ends of the sliders: the ones of SYS CONFIG, or the vehicle's.
+std::pair<double, double> RotorLoadItem::collectiveScale() const
+{
+    return {m_cfg.col.min > 0 ? m_cfg.col.min : param(u"H_COL_MIN"_s).value_or(1250), m_cfg.col.max > 0 ? m_cfg.col.max : param(u"H_COL_MAX"_s).value_or(1750)};
+}
+
+std::pair<double, double> RotorLoadItem::tailScale() const
+{
+    return {m_cfg.tail.min > 0 ? m_cfg.tail.min : param(u"SERVO%1_MIN"_s.arg(m_heli.tail)).value_or(1000),
+            m_cfg.tail.max > 0 ? m_cfg.tail.max : param(u"SERVO%1_MAX"_s.arg(m_heli.tail)).value_or(2000)};
+}
+
+QVariantMap RotorLoadItem::readings() const
+{
+    QVariantMap out;
+    if (!m_s || !m_shown) return out;
+    QStringList labels;
+    for (const Gauge &g : m_rotors.ring) labels << labelFor(g);
+    for (const Gauge &g : m_rotors.centre) labels << labelFor(g);
+    out[u"labels"_s] = labels;
+    if (!m_heliShown || m_rotors.centre.empty()) return out;
+    if (const auto v = rotorRpm(m_rotors.centre[0].output)) {
+        out[u"rotorRpm"_s] = *v;
+        out[u"rotorRpmGreen"_s] = rpmColor(*v) == kGreen;
+    }
+    const auto slider = [&out](const QString &name, double v, std::pair<double, double> ends, const Config::Scale &cfg) {
+        out[name] = v;
+        out[name + u"Pct"_s] = ends.second > ends.first ? 100 * (v - ends.first) / (ends.second - ends.first) : 0;
+        out[name + u"Green"_s] = cfg.in(v);
+    };
+    if (const auto v = collective()) slider(u"collective"_s, *v, collectiveScale(), m_cfg.col);
+    if (m_heli.tail && m_s->servoOutputs[std::size_t(m_heli.tail - 1)] > 0)
+        slider(u"tail"_s, m_s->servoOutputs[std::size_t(m_heli.tail - 1)], tailScale(), m_cfg.tail);
+    return out;
+}
+
 QStringList RotorLoadItem::wantedParams() const
 {
     QStringList names;
     for (int ch = 1; ch <= servo::kOutputs; ++ch) names << u"SERVO%1_FUNCTION"_s.arg(ch);
+    // Which ESC is on which output, once one of them speaks
+    if (m_s && std::any_of(m_s->esc.begin(), m_s->esc.end(), [](const auto &e) { return e.time != 0; })) names << u"ESC_TLM_MAV_OFS"_s;
+    if (heliMode()) {
+        names << u"H_SW_TYPE"_s << u"H_COL_MIN"_s << u"H_COL_MAX"_s;
+        std::vector<int> outputs = m_heli.swash;
+        if (m_heli.tail) outputs.push_back(m_heli.tail);
+        for (int ch : outputs)
+            for (const char *k : {"MIN", "TRIM", "MAX", "REVERSED"}) names << u"SERVO%1_%2"_s.arg(ch).arg(QLatin1String(k));
+    }
     // The sail settings only where a sail can be: a Rover, or FRAME on SAILBOAT
     if (m_cfg.frame == "sail"_L1 || (m_s && roverMavType(m_s->vehicleType))) {
         names << u"SAIL_ENABLE"_s << u"SAIL_ANGLE_MAX"_s;
@@ -463,9 +585,11 @@ void RotorLoadItem::applyVisibility(const std::optional<SailLayout> &lay)
     const bool show = m_cfg.enabled && (sail || !isHiddenVehicle());
     // FLAPS: part of the schematic, there only when an output carries flaps
     const bool flaps = show && !sail && servosApply() && m_servos.flaps().kind != ServoMap::Flaps::None;
-    if (m_applied && sail == m_sailShown && show == m_shown && flaps == m_flapShown) return;
+    const bool heli = !sail && heliMode();
+    if (m_applied && sail == m_sailShown && show == m_shown && flaps == m_flapShown && heli == m_heliShown) return;
     m_applied = true;
     m_sailShown = sail;
+    m_heliShown = heli;
     m_shown = show;
     m_flapShown = flaps;
     emit layoutChanged();
@@ -498,6 +622,7 @@ void RotorLoadItem::refresh()
     // A Rover is hidden until its parameters say it has a sail, so they are
     // asked for before the visibility check
     probeParams(wallMs());
+    m_heli = m_servos.heli();
     m_lay = sailMode();
     applyVisibility(m_lay);
     updateFlaps();
@@ -526,6 +651,7 @@ void RotorLoadItem::paint(QPainter *p)
         p->save();
         if (shadow) p->translate(kShadowOffset, kShadowOffset);
         if (m_lay) drawSail(p, w, h, *m_lay);
+        else if (m_heliShown) drawHeli(p, w, h);
         else drawRotors(p, w, h);
         p->restore();
     }
@@ -538,7 +664,7 @@ void RotorLoadItem::drawRotors(QPainter *p, double w, double h)
     const std::vector<Gauge> &ring = m_rotors.ring;
     const std::vector<Gauge> &centre = m_rotors.centre;
     const auto draw = [&](const Gauge &g, double x, double y, double r) {
-        drawGauge(p, x, y, r, pwmFor(g.output, g.angle), g.label);
+        drawGauge(p, x, y, r, pwmFor(g.output, g.angle), labelFor(g));
     };
 
     if (ring.empty()) {
@@ -611,10 +737,140 @@ void RotorLoadItem::drawGauge(QPainter *p, double cx, double cy, double r, std::
 
     // Motor label in the middle — the arc carries the value
     if (!label.isEmpty()) {
-        p->setFont(uiFont(clamp(std::round(r * 0.42), 9, 30)));
+        // (an RPM has up to five figures: as large as fits inside the ticks)
+        double px = clamp(std::round(r * 0.42), 9, 30);
+        while (px > 7 && QFontMetricsF(uiFont(px)).horizontalAdvance(label) > r * 1.16) px -= 1;
+        p->setFont(uiFont(px));
         p->setPen(ink(color));
         p->drawText(QRectF(cx - r, cy - r, 2 * r, 2 * r), Qt::AlignCenter, label);
     }
+}
+
+// ── Helicopter ──────────────────────────────────────────────────────────
+
+QColor RotorLoadItem::rpmColor(double rpm) const
+{
+    // Blue stopped; outside the band amber, inside it (or with none set) green
+    if (rpm < m_cfg.rpmMax * 0.02) return kIdle;
+    if (m_cfg.rpmHigh > m_cfg.rpmLow && m_cfg.rpmHigh > 0 && (rpm < m_cfg.rpmLow || rpm > m_cfg.rpmHigh)) return kOrange;
+    return kGreen;
+}
+
+/// The rotor's speed inside the gauge: 0 to RPM SCALE MAX on the same 270 degrees,
+/// the green band on its inner edge.
+void RotorLoadItem::drawRpmArc(QPainter *p, double cx, double cy, double r, double rpm)
+{
+    const double spread = m_shadow ? kShadowSpread : 0;
+    const double lw = std::max(2.0, kLineW * 0.75);
+    const double end = kGaugeStart + clamp(rpm / m_cfg.rpmMax, 0, 1) * kGaugeSweep;
+    p->setBrush(Qt::NoBrush);
+    p->setPen(QPen(ink(kScale), lw + spread, Qt::SolidLine, Qt::RoundCap));
+    p->drawPath(arcPath(cx, cy, r, kGaugeStart, kGaugeStart + kGaugeSweep));
+    if (end > kGaugeStart + 0.3) {
+        p->setPen(QPen(ink(rpmColor(rpm)), lw + spread, Qt::SolidLine, Qt::RoundCap));
+        p->drawPath(arcPath(cx, cy, r, kGaugeStart, end));
+    }
+    if (m_cfg.rpmHigh > m_cfg.rpmLow) {
+        const double a = kGaugeStart + clamp(m_cfg.rpmLow / m_cfg.rpmMax, 0, 1) * kGaugeSweep;
+        const double b = kGaugeStart + clamp(m_cfg.rpmHigh / m_cfg.rpmMax, 0, 1) * kGaugeSweep;
+        p->setPen(QPen(ink(kGreen), 1.6 + spread, Qt::SolidLine, Qt::FlatCap));
+        p->drawPath(arcPath(cx, cy, r - lw, a, b));
+        for (double d : {a, b}) {
+            const double t = d * M_PI / 180;
+            p->drawLine(QPointF(cx + std::cos(t) * (r - 1.8 * lw), cy + std::sin(t) * (r - 1.8 * lw)),
+                        QPointF(cx + std::cos(t) * (r + 0.5 * lw), cy + std::sin(t) * (r + 0.5 * lw)));
+        }
+    }
+}
+
+void RotorLoadItem::drawSlider(QPainter *p, QPointF a, QPointF b, std::pair<double, double> ends, const Config::Scale &cfg,
+                               std::optional<double> value, std::optional<double> rest)
+{
+    const double spread = m_shadow ? kShadowSpread : 0;
+    if (ends.second <= ends.first) return;
+    const auto frac = [ends](double v) { return clamp((v - ends.first) / (ends.second - ends.first), 0, 1); };
+    const QPointF d = b - a;
+    const double len = std::hypot(d.x(), d.y());
+    if (len <= 0) return;
+    const QPointF n(-d.y() / len, d.x() / len);   // across the line
+    const auto across = [&](double f, double half, double width, const QColor &c) {
+        const QPointF q = a + d * f;
+        p->setPen(QPen(ink(c), width + spread, Qt::SolidLine, Qt::RoundCap));
+        p->drawLine(q - n * half, q + n * half);
+    };
+    p->setBrush(Qt::NoBrush);
+    p->setPen(QPen(ink(kScale), kLineW + spread, Qt::SolidLine, Qt::RoundCap));
+    p->drawLine(a, b);
+    across(0, 5, 2, kTick);
+    across(1, 5, 2, kTick);
+    if (rest) across(frac(*rest), 4, 2, kTick);
+    if (cfg.banded()) {
+        // The green band along the line, closed by a mark at each end
+        const QPointF side = n * 6;
+        p->setPen(QPen(ink(kGreen), 2 + spread, Qt::SolidLine, Qt::FlatCap));
+        p->drawLine(a + d * frac(cfg.low) + side, a + d * frac(cfg.high) + side);
+        for (double v : {cfg.low, cfg.high}) p->drawLine(a + d * frac(v) - n * 3, a + d * frac(v) + side);
+    }
+    if (!value) return;
+    const QColor color = cfg.in(*value) ? kGreen : kOrange;
+    // From the mark of rest to the position, and the position itself
+    p->setPen(QPen(ink(color), kLineW + spread, Qt::SolidLine, Qt::RoundCap));
+    p->drawLine(a + d * (rest ? frac(*rest) : 0), a + d * frac(*value));
+    across(frac(*value), 8, 5, color);
+}
+
+/// The gauge of the rotor with its RPM inside, the collective standing beside it
+/// and the tail rotor lying under it.
+void RotorLoadItem::drawHeli(QPainter *p, double w, double h)
+{
+    if (m_rotors.centre.empty()) return;
+    const Gauge &g = m_rotors.centre[0];
+    const double fs = clamp(std::round(h * 0.085), 8, 14);
+    const QFont font = uiFont(fs);
+    const QFontMetricsF fm(font);
+    const auto text = [&](const QString &t, double x, double y, Qt::Alignment align, const QColor &c) {
+        p->setFont(font);
+        p->setPen(ink(c));
+        const double tw = fm.horizontalAdvance(t);
+        p->drawText(QPointF(align & Qt::AlignHCenter ? x - tw / 2 : x, y), t);
+    };
+    const double below = fs * 2.8;               // the tail slider and its words
+    const double side = std::max(44.0, w * 0.27);   // the collective slider and its words
+    const double r = std::max(10.0, std::min((w - side) / 2 - 2, (h - below) / 2 - 2));
+    const double cx = (w - side) / 2, cy = (h - below) / 2;
+
+    const auto rpm = rotorRpm(g.output);
+    drawGauge(p, cx, cy, r, pwmFor(g.output, std::nullopt), rpm ? QString() : g.label);
+    if (rpm) {
+        drawRpmArc(p, cx, cy, r * 0.66, *rpm);
+        const QString digits = labelFor(g);
+        double px = clamp(std::round(r * 0.42), 9, 34);
+        while (px > 7 && QFontMetricsF(uiFont(px)).horizontalAdvance(digits) > r * 0.95) px -= 1;
+        p->setFont(uiFont(px));
+        p->setPen(ink(rpmColor(*rpm)));
+        p->drawText(QRectF(cx - r, cy - r, 2 * r, 2 * r), Qt::AlignCenter, digits);
+        text(u"RPM"_s, cx, cy + px * 0.55 + fs, Qt::AlignHCenter, kText);
+    }
+
+    // Collective: bottom H_COL_MIN, top H_COL_MAX
+    const auto col = collective();
+    const double sx = w - side * 0.5;
+    const double top = fs * 1.5, bottom = h - below - fs * 1.4;
+    const auto tint = [](bool green) { return green ? kText : kOrange; };
+    drawSlider(p, {sx, bottom}, {sx, top}, collectiveScale(), m_cfg.col, col, std::nullopt);
+    text(u"COL"_s, sx, fs * 0.9, Qt::AlignHCenter, kText);
+    text(col ? QString::number(std::lround(*col)) : u"---"_s, sx, bottom + fs * 1.4, Qt::AlignHCenter, col ? tint(m_cfg.col.in(*col)) : kNoData);
+
+    // Tail rotor: the output between its ends, at rest on its trim (a servo) or at the left (a motor)
+    if (!m_heli.tail) return;
+    const double pwm = m_s->servoOutputs[std::size_t(m_heli.tail - 1)];
+    const double trim = param(u"SERVO%1_TRIM"_s.arg(m_heli.tail)).value_or(1500);
+    const double y = h - std::max(9.0, fs * 0.85);
+    // (the figure next to the word: at the right end it would sit under the collective's)
+    text(u"TAIL  "_s + (pwm > 0 ? QString::number(qRound(pwm)) : u"---"_s), 2, y - fs * 0.95, Qt::AlignLeft,
+         pwm > 0 ? tint(m_cfg.tail.in(pwm)) : kNoData);
+    drawSlider(p, {6, y}, {w - 6, y}, tailScale(), m_cfg.tail, pwm > 0 ? std::optional<double>(pwm) : std::nullopt,
+               m_heli.tailMotor ? std::optional<double>() : std::optional<double>(trim));
 }
 
 /// Radial tick growing inward from the scale circle.

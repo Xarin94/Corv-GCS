@@ -29,7 +29,8 @@ works against it: missions, modes, parameters, failsafes, logs. ArduPilot:
 | **LAUNCH & CONNECT** | Downloads the firmware if it is not there yet, starts the simulator and connects to it over TCP. |
 | **STOP** | Disconnects and ends the simulator. |
 
-The line underneath shows the state (*Not running*, downloading, running, an error). On Windows the
+The launch waits for the elevation of the home, so the vehicle starts on the ground and not under it. The
+line underneath shows the state (*Not running*, downloading, running, an error). On Windows the
 Linux binary runs inside **WSL**, which must be installed (`wsl --install` in an administrator
 terminal, then a reboot).
 
@@ -38,10 +39,10 @@ terminal, then a reboot).
 | Copter (Quad) | ArduCopter, standard quad |
 | Copter 12S High-Speed | ArduCopter on a fast 12S quad frame |
 | Tricopter 12S | ArduCopter, symmetric 12S tricopter (3 × Hobbywing X8 G2) |
-| Helicopter | ArduCopter, traditional helicopter |
+| Helicopter | ArduCopter built for helicopters, with a set-up of its own (`default_params_heli.parm`): the rotor runs up on the interlock, **channel 7 high** (gamepad or RC override), and the simulated RPM sensor feeds the [rotor load](flight-screen.md#bottom-right-rotor-load-position-traffic) |
 | Plane | ArduPlane on a 22 kg jet model: 300 km/h cruise, about 660 km/h top speed (needs ArduPlane 4.7+) |
-| QuadPlane | ArduPlane VTOL |
-| Rover | ArduRover |
+| QuadPlane | ArduPlane VTOL (`default_params_quadplane.parm`) |
+| Rover | ArduRover (`default_params_rover.parm`) |
 | Boat (ArduRover, waves on Lake Garda) | ArduRover on the `motorboat` model |
 | Sailboat (ArduRover, wing sail and wind vane) | ArduRover on the `sailboat` model, set up like the AutoSail drone |
 | ROV · Sub (BlueROV2, vectored) | ArduSub, with GPS |
@@ -53,10 +54,7 @@ terminal, then a reboot).
 southern basin of Lake Garda (45.4960 N, 10.6490 E). It is set up as a sonar survey boat: at most
 2 m/s on the lanes, a 5 m/s southerly with gusts, and 0.5 m waves 12 m long coming from the south, so
 the hull rolls, pitches and heaves in the telemetry. SITL's boat makes waves only once armed, and heaves
-only with `SIM_WAVE_ENABLE 2`. The `garda` scene of `scripts/rosbridge-sim.js` maps the same water —
-the lake bed with a wreck, a car, a container, a light aircraft, a pipeline and more on it — and its
-sonars (an imaging sonar, a sector-scanning sonar) are ray-cast from the boat's true pose: see
-[ROS](ROS.md#9-testing-without-a-vehicle). Parameters changed while the simulator runs (WP_SPEED,
+only with `SIM_WAVE_ENABLE 2`. Parameters changed while the simulator runs (WP_SPEED,
 for one) are kept in its storage and are still there at the next launch.
 
 ## The sailboat

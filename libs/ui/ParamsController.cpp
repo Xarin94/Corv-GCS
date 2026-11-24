@@ -275,6 +275,16 @@ ParamsController::ParamsController(ParamStore *store, VehicleHub *hub, QObject *
             ++m_metaRev;
             emit metaChanged();
         }
+        // and the release it runs, when it is one ("4.6.3", not a beta)
+        if (QString version = m_hub->snapshot()->firmwareVersion; ready && !version.isEmpty()) {
+            if (version.contains('-'_L1)) version.clear();
+            if (version != ParamMeta::instance().version(m_metaClass)) {
+                ParamMeta::instance().setVersion(m_metaClass, version);
+                m_table.touchAll();
+                ++m_metaRev;
+                emit metaChanged();
+            }
+        }
     });
     m_linkPoll.start();
     m_metaClass = u"Plane"_s;
@@ -417,22 +427,31 @@ QString ParamsController::bitsLabel(const QString &name, double value) const
 
 void ParamsController::updateMeta()
 {
-    if (m_metaBusy) return;
+    if (!m_metaBusy) downloadMeta(linkReady() ? ParamMeta::instance().version(m_metaClass) : QString());
+}
+
+void ParamsController::downloadMeta(const QString &version)
+{
     const QString fw = ParamMeta::firmwareOf(m_metaClass);
-    const QUrl url(u"https://autotest.ardupilot.org/Parameters/%1/apm.pdef.json"_s.arg(fw));
+    const QUrl url(version.isEmpty() ? u"https://autotest.ardupilot.org/Parameters/%1/apm.pdef.json"_s.arg(fw)
+                                     : u"https://autotest.ardupilot.org/Parameters/versioned/%1/stable-%2/apm.pdef.xml"_s.arg(m_metaClass, version));
     if (!m_net) m_net = new QNetworkAccessManager(this);
     QNetworkRequest req(url);
     req.setTransferTimeout(60000);
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     m_metaBusy = true;
     emit metaChanged();
-    DialogHub::toast(u"Downloading the %1 parameter descriptions…"_s.arg(fw));
+    DialogHub::toast(u"Downloading the %1 parameter descriptions…"_s.arg(version.isEmpty() ? fw : fw + ' '_L1 + version));
     LOG_I("params") << "metadata download" << url.toString();
     QNetworkReply *reply = m_net->get(req);
     const QString cls = m_metaClass;
-    connect(reply, &QNetworkReply::finished, this, [this, reply, cls, fw] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, cls, fw, version] {
         reply->deleteLater();
         m_metaBusy = false;
+        if (!version.isEmpty() && reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 404) {
+            downloadMeta({});   // a release autotest keeps no table of
+            return;
+        }
         if (reply->error() != QNetworkReply::NoError) {
             LOG_W("params") << "metadata download failed:" << reply->errorString();
             DialogHub::toast(u"Download failed: "_s + reply->errorString());
@@ -441,10 +460,10 @@ void ParamsController::updateMeta()
         }
         int n = 0;
         QString err;
-        if (!ParamMeta::instance().installDownloaded(cls, reply->readAll(), &n, &err)) {
+        if (!ParamMeta::instance().installDownloaded(cls, reply->readAll(), &n, &err, version)) {
             DialogHub::toast(u"Parameter descriptions not usable: "_s + err);
         } else {
-            DialogHub::toast(u"%1 parameter descriptions updated (%2)"_s.arg(fw).arg(n));
+            DialogHub::toast(u"%1 parameter descriptions updated (%2)"_s.arg(version.isEmpty() ? fw : fw + ' '_L1 + version).arg(n));
             m_table.refresh();
             m_table.touchAll();
         }

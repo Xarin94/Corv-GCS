@@ -53,6 +53,8 @@ ParamStore::ParamStore(LinkManager *link, MessageBus *bus, CommandSender *cmd, V
     m_learnTimer.setSingleShot(true);
     m_learnTimer.setInterval(1000);
     connect(&m_learnTimer, &QTimer::timeout, this, &ParamStore::flushLearned);
+    m_streamTimer.setInterval(400);
+    connect(&m_streamTimer, &QTimer::timeout, this, &ParamStore::streamTick);
     m_changedTimer.setSingleShot(true);
     m_changedTimer.setInterval(200);
     connect(&m_changedTimer, &QTimer::timeout, this, &ParamStore::changed);
@@ -99,10 +101,16 @@ void ParamStore::onParamValue(const QString &name, double value, int type, int i
     m_toLearn << name;
     if (!m_learnTimer.isActive()) m_learnTimer.start();
     if (m_streamRead) {
-        const int got = received();
+        if (index >= 0 && index < count && !m_streamSeen.contains(index)) {
+            m_streamSeen.insert(index);
+            m_streamHeard = qint64(monoMs());
+            m_streamQuiet = 0;
+        }
+        const int got = int(m_streamSeen.size());
         setRead(got < m_total, u"%1/%2"_s.arg(got).arg(m_total), m_total ? double(got) / m_total : 0);
         if (got >= m_total) {
             m_streamRead = false;
+            m_streamTimer.stop();
             LOG_I("param") << "parameter list read one by one:" << got << "in" << (monoMs() - m_readStarted) << "ms";
         }
     }
@@ -137,9 +145,45 @@ void ParamStore::startStream()
     m_params.clear();
     m_total = 0;
     m_streamRead = true;
+    m_streamSeen.clear();
+    m_streamQuiet = 0;
+    m_streamHeard = qint64(monoMs());
+    m_streamTimer.start();
     setRead(true, u"0/?"_s, 0);
     emit changed();
     m_cmd->requestAllParameters();
+}
+
+/// The list went quiet before its end: PARAM_VALUEs get lost on a radio, and nothing repeats them.
+void ParamStore::streamTick()
+{
+    constexpr int kQuietMs = 1500, kBatch = 20, kRounds = 12;
+    if (!m_streamRead) {
+        m_streamTimer.stop();
+        return;
+    }
+    const qint64 now = qint64(monoMs());
+    if (now - m_streamHeard < kQuietMs) return;
+    m_streamHeard = now;
+    if (++m_streamQuiet > kRounds) {
+        m_streamRead = false;
+        m_streamTimer.stop();
+        const int got = int(m_streamSeen.size());
+        LOG_W("param") << "parameter list incomplete:" << got << "of" << m_total;
+        setRead(false, m_total ? u"%1/%2 · incomplete"_s.arg(got).arg(m_total) : u"no answer from the vehicle"_s,
+                m_total ? double(got) / m_total : 0);
+        return;
+    }
+    if (m_total <= 0) {
+        m_cmd->requestAllParameters();
+        return;
+    }
+    int asked = 0;
+    for (int i = 0; i < m_total && asked < kBatch; ++i) {
+        if (m_streamSeen.contains(i)) continue;
+        m_cmd->requestParameterIndex(i);
+        ++asked;
+    }
 }
 
 void ParamStore::readAll()
@@ -151,6 +195,11 @@ void ParamStore::readAll()
         startStream();
         return;
     }
+    readPack(0);
+}
+
+void ParamStore::readPack(int tries)
+{
     setRead(true, u"FTP · opening…"_s, 0);
     MavFtpClient::Options o;
     o.targetSystem = m_cmd->targetSystem();
@@ -167,7 +216,7 @@ void ParamStore::readAll()
             self->setRead(true, part.total ? u"%1/%2 · FTP %3 kB"_s.arg(part.count).arg(part.total).arg(kb) : u"FTP %1 kB"_s.arg(kb),
                           part.total ? double(part.count) / part.total : 0);
         },
-        [self](bool ok, const QByteArray &data, const QString &code, const QString &text) {
+        [self, tries](bool ok, const QByteArray &data, const QString &code, const QString &text) {
             if (!self) return;
             if (ok) {
                 const ftp::ParamPack pack = ftp::decodeParamPack(data);
@@ -182,6 +231,11 @@ void ParamStore::readAll()
                     return;
                 }
                 LOG_W("ftp") << "parameter file not decodable:" << (pack.error.isEmpty() ? u"%1/%2 entries"_s.arg(pack.count).arg(pack.total) : pack.error);
+                if (tries == 0) {
+                    // Changed or cut while it was read: once more, before 1400 single reads
+                    self->readPack(1);
+                    return;
+                }
             } else {
                 LOG_W("param") << "FTP download failed (" << code << "):" << text << "- reading one by one";
                 if (code == "CANCELLED"_L1) {
@@ -200,6 +254,7 @@ void ParamStore::cancelRead()
     if (m_ftp->busy()) m_ftp->cancel(u"cancelled by the operator"_s);
     if (m_streamRead) {
         m_streamRead = false;
+        m_streamTimer.stop();
         setRead(false, u"%1/%2 · stopped"_s.arg(received()).arg(m_total), m_total ? double(received()) / m_total : 0);
     }
 }

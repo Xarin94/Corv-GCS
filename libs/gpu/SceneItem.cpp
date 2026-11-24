@@ -1284,9 +1284,9 @@ void SceneItem::setThirdPerson(bool v)
 {
     if (v == m_thirdPerson) return;
     m_thirdPerson = v;
-    // Entering the chase view: start behind the vehicle
+    // Entering the chase view: start behind the vehicle (north is -z: yaw 0 is south of it)
     if (v && s_hub) {
-        m_orbit.yaw = -s_hub->snapshot()->yaw + kPi;
+        m_orbit.yaw = -s_hub->snapshot()->yaw;
         m_orbit.pitch = 0.25;
     }
     releaseKeys();
@@ -1416,6 +1416,7 @@ void SceneItem::releaseKeys()
 
 void SceneItem::advanceLook()
 {
+    if (m_dragLook) return;   // held by the finger
     const bool first = !m_thirdPerson && m_lookKeys && isVisible();
     const double tp = first ? ((lookUp() ? 1 : 0) - (lookDown() ? 1 : 0)) * kLookPitchMax : 0;
     const double ty = first ? ((lookLeft() ? 1 : 0) - (lookRight() ? 1 : 0)) * kLookYawMax : 0;
@@ -1458,7 +1459,34 @@ void SceneItem::mouseMoveEvent(QMouseEvent *e)
     const QPointF d = e->scenePosition() - m_press;
     if (!m_dragging && std::hypot(d.x(), d.y()) < 4) return;
     m_dragging = true;
-    orbitBy(e->scenePosition());
+    dragBy(e->scenePosition());
+}
+
+void SceneItem::dragBy(QPointF pos)
+{
+    if (m_thirdPerson || m_videoMode == 1 || !m_lookKeys) {
+        orbitBy(pos);
+        return;
+    }
+    // First person: the picture follows the finger, to the limits of the arrow keys; back to the nose when it leaves
+    const QPointF step = pos - m_last;
+    m_last = pos;
+    const double perPx = m_fov * kDeg / std::max(1.0, height());
+    Look &l = m_look;
+    l.yaw = std::clamp(l.yaw + step.x() * perPx, -kLookYawMax, kLookYawMax);
+    l.pitch = std::clamp(l.pitch + step.y() * perPx, -kLookPitchMax, kLookPitchMax);
+    l.fromYaw = l.toYaw = l.yaw;
+    l.fromPitch = l.toPitch = l.pitch;
+    m_dragLook = true;
+    emit lookChanged();
+    update();
+}
+
+void SceneItem::endDrag()
+{
+    if (!m_dragLook) return;
+    m_dragLook = false;
+    m_lookTimer.start();
 }
 
 void SceneItem::orbitBy(QPointF pos)
@@ -1499,6 +1527,7 @@ void SceneItem::mouseReleaseEvent(QMouseEvent *)
 {
     if (m_pressed && !m_dragging) emit clicked();
     m_pressed = m_dragging = false;
+    endDrag();
 }
 
 void SceneItem::wheelEvent(QWheelEvent *e)

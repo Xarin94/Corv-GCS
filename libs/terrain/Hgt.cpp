@@ -1,5 +1,6 @@
 #include "terrain/Hgt.h"
 
+#include "core/Clock.h"
 #include "core/DataRoot.h"
 #include "core/DebugLog.h"
 
@@ -159,7 +160,10 @@ std::shared_ptr<const HgtTile> HgtStore::get(int latBase, int lonBase)
     const int k = key(latBase, lonBase);
     {
         QMutexLocker l(&m_lock);
-        if (auto it = m_tiles.constFind(k); it != m_tiles.constEnd()) return *it;
+        if (auto it = m_tiles.find(k); it != m_tiles.end()) {
+            it->lastUse = monoMs();
+            return it->tile;
+        }
         if (m_loading.contains(k) || m_missing.contains(k)) return nullptr;
         m_loading.insert(k);
     }
@@ -173,8 +177,12 @@ std::shared_ptr<const HgtTile> HgtStore::get(int latBase, int lonBase)
         {
             QMutexLocker l(&m_lock);
             m_loading.remove(k);
-            if (t) m_tiles.insert(k, t);
-            else m_missing.insert(k);
+            if (t) {
+                m_tiles.insert(k, {t, monoMs()});
+                evict();
+            } else {
+                m_missing.insert(k);
+            }
         }
         if (t) {
             LOG_I("terrain") << "tile" << HgtTile::name(latBase, lonBase) << "loaded from" << path << "in" << timer.elapsed() << "ms";
@@ -186,6 +194,19 @@ std::shared_ptr<const HgtTile> HgtStore::get(int latBase, int lonBase)
         }
     });
     return nullptr;
+}
+
+void HgtStore::evict()
+{
+    const double now = monoMs();
+    while (m_tiles.size() > kMaxTiles) {
+        auto oldest = m_tiles.begin();
+        for (auto it = m_tiles.begin(); it != m_tiles.end(); ++it)
+            if (it->lastUse < oldest->lastUse) oldest = it;
+        if (now - oldest->lastUse < kKeepMs) return;   // all of them in use: a wide radius
+        LOG_D("terrain") << "tile" << HgtTile::name(oldest->tile->latBase, oldest->tile->lonBase) << "left the memory";
+        m_tiles.erase(oldest);
+    }
 }
 
 std::optional<double> HgtStore::elevation(double lat, double lon)

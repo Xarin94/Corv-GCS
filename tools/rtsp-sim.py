@@ -6,7 +6,7 @@
                               [--reorder] [--no-sprop] [--file stream.h264] [--drop-after S]
 
 The pattern (ffmpeg's testsrc2: a moving gradient, a counter) is encoded once by the
-ffmpeg command and looped, without B frames and with a key frame a second, as a SIYI
+ffmpeg command, with the encoder it has, and looped, without B frames and with a key frame a second, as a SIYI
 camera sends it. RTP over TCP interleaved; --udp-only answers 461 to it, so that the
 client asks for UDP. --loss / --reorder act on the UDP packets. In SYS CONFIG -> SIYI
 CAMERA STREAM set the IP ADDRESS to 127.0.0.1 and press the FPV button.
@@ -15,6 +15,7 @@ import argparse
 import base64
 import os
 import random
+import shutil
 import socket
 import struct
 import subprocess
@@ -24,15 +25,31 @@ import threading
 import time
 
 
-def encode(codec, size, fps):
+def ffmpeg():
+    """The ffmpeg command: FFMPEG, the PATH, or the one tools/package-windows.ps1 fetched."""
+    local = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "tools", "ffmpeg", "bin", "ffmpeg.exe")
+    return os.environ.get("FFMPEG") or shutil.which("ffmpeg") or (local if os.path.exists(local) else "ffmpeg")
+
+
+# Encoders by preference: an LGPL FFmpeg has neither x264 nor x265
+ENCODERS = {
+    "h264": [("libx264", ["-preset", "veryfast", "-tune", "zerolatency", "-x264-params", "keyint={fps}:bframes=0"]),
+             ("libopenh264", ["-g", "{fps}", "-b:v", "6M"]), ("h264_mf", ["-g", "{fps}", "-b:v", "6M"])],
+    "h265": [("libx265", ["-preset", "ultrafast", "-tune", "zerolatency", "-x265-params", "keyint={fps}:bframes=0:log-level=error"]),
+             ("libkvazaar", ["-kvazaar-params", "preset=ultrafast,period={fps},gop=0"]), ("hevc_mf", ["-g", "{fps}", "-b:v", "6M"])]}
+
+
+def encode(codec, size, fps, source=None):
+    """The pattern, or `source` (ffmpeg input arguments), as an Annex-B stream."""
     out = os.path.join(tempfile.mkdtemp(prefix="rtsp-sim-"), "stream." + codec)
-    enc = (["-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency", "-x264-params", "keyint=%d:bframes=0" % fps]
-           if codec == "h264" else
-           ["-c:v", "libx265", "-preset", "ultrafast", "-tune", "zerolatency", "-x265-params",
-            "keyint=%d:bframes=0:log-level=error" % fps])
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=%s:rate=%d" % (size, fps), "-t", "4",
-                    "-pix_fmt", "yuv420p", *enc, "-f", "hevc" if codec == "h265" else "h264", out], check=True)
-    return open(out, "rb").read()
+    source = source or ["-f", "lavfi", "-i", "testsrc2=size=%s:rate=%d" % (size, fps)]
+    for name, args in ENCODERS[codec]:
+        run = subprocess.run([ffmpeg(), "-v", "error", "-y", *source, "-t", "4", "-pix_fmt", "yuv420p", "-c:v", name,
+                              *[x.format(fps=fps) for x in args], "-f", "hevc" if codec == "h265" else "h264", out],
+                             stderr=subprocess.DEVNULL)
+        if run.returncode == 0 and os.path.getsize(out) > 1000:
+            return open(out, "rb").read()
+    raise SystemExit("no %s encoder in this ffmpeg" % codec)
 
 
 def nals(data):

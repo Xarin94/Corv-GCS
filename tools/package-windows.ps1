@@ -22,7 +22,7 @@ $qt = if ($env:QT_DIR) { $env:QT_DIR } else { Join-Path $env:USERPROFILE "Qt\6.1
 $version = ([regex]::Match((Get-Content (Join-Path $root "CMakeLists.txt") -Raw), 'project\(CorvGcs VERSION ([0-9.]+)')).Groups[1].Value
 if (-not $version) { throw "version not found in CMakeLists.txt" }
 
-function Get-Zip([string]$url, [string]$name, [string]$dest) {
+function Get-Zip([string]$url, [string]$name, [string]$dest, [string]$sha256 = "") {
     if ($NoDownload) { throw "$name missing and -NoDownload given" }
     $dl = Join-Path $tools "dl"
     New-Item -ItemType Directory -Force $dl | Out-Null
@@ -30,6 +30,10 @@ function Get-Zip([string]$url, [string]$name, [string]$dest) {
     if (-not (Test-Path $zip)) {
         Write-Host "Downloading $name ..."
         Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing -UserAgent "curl/8"
+    }
+    if ($sha256 -and (Get-FileHash $zip -Algorithm SHA256).Hash -ne $sha256) {
+        Remove-Item $zip
+        throw "${name}: the download does not have the expected SHA-256"
     }
     Expand-Archive -Path $zip -DestinationPath $dest -Force
 }
@@ -70,6 +74,21 @@ if (-not $sdl) {
     if ($local) { $sdl = Join-Path $local.FullName "cmake" }
 }
 if ($sdl) { $env:SDL3_DIR = $sdl; Write-Host "SDL3: $sdl" }
+
+# ── FFmpeg (the FPV video): an LGPL shared build, a month-end one (kept for two years) ──
+$ffmpeg = $env:FFMPEG_ROOT
+if (-not $ffmpeg) {
+    $local = Join-Path $tools "ffmpeg"
+    if (-not (Test-Path (Join-Path $local "lib\avcodec.lib")) -and -not $NoDownload) {
+        $unpack = Join-Path $tools "ffmpeg-unpack"
+        Get-Zip "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-07-31-14-10/ffmpeg-n7.1.5-12-g1fdbca85aa-win64-lgpl-shared-7.1.zip" `
+                "ffmpeg-n7.1.5-lgpl-shared" $unpack "0f376f96fb38554ccefb1b2ae9c7c6a7b351f0e60a372b38262c320e8392c5d0"
+        Move-Item (Get-ChildItem $unpack -Directory | Select-Object -First 1).FullName $local
+        Remove-Item $unpack -Recurse -Force
+    }
+    if (Test-Path (Join-Path $local "lib\avcodec.lib")) { $ffmpeg = $local }
+}
+if ($ffmpeg) { $env:FFMPEG_ROOT = $ffmpeg; Write-Host "FFmpeg: $ffmpeg" }
 
 # ── Build ──
 if (-not $SkipBuild) {
@@ -145,11 +164,11 @@ if (Select-String -Path $exe -Pattern "SDL3.dll" -SimpleMatch -Quiet) {
 $ffmpegNotice = ""
 $exeText = Select-String -Path $exe -Pattern "avcodec-[0-9]+\.dll" -Quiet
 if ($exeText) {
-    $ffmpeg = if ($env:FFMPEG_ROOT) { $env:FFMPEG_ROOT } else { Join-Path $tools "ffmpeg" }
     $dlls = Get-ChildItem (Join-Path $ffmpeg "bin") -Filter "*.dll" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^(avcodec|avutil|swresample)-" }
     if (-not $dlls) { throw "the build links FFmpeg but its DLLs were not found in $ffmpeg\bin" }
     $dlls | ForEach-Object { Copy-Item $_.FullName $stage }
-    $ffmpegNotice = "FFmpeg (LGPLv2.1), avcodec-*.dll and avutil-*.dll, dynamically linked and replaceable: https://ffmpeg.org/download.html"
+    $ffmpegNotice = "FFmpeg 7.1 (LGPLv3), avcodec-*.dll, avutil-*.dll and swresample-*.dll, dynamically linked and replaceable:
+https://ffmpeg.org/download.html - the build and its sources: https://github.com/FFmpeg-Builds/FFmpeg-Builds"
 } else {
     Write-Warning "built without FFmpeg: the package has no FPV video"
 }

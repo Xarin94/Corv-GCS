@@ -28,7 +28,7 @@ vehicle does with it.
 
 ## What it looks like
 
-The pictures are the program itself, flying ArduPilot in simulation: a plane at 1500 m over
+The pictures are the program itself, flying ArduPilot in simulation: a jet at 1470 m over
 Innsbruck, a copter surveying a slope above Lake Garda. Each links to the chapter that explains it.
 
 ### First person with synthetic vision
@@ -47,9 +47,13 @@ Third person around the vehicle, with the route, the heights above ground and th
 
 ![The mission in the 3D view over the satellite imagery](images/view-3d.jpg)
 
-![The survey in the 3D view, synthetic](images/view-3d-survey.jpg)
+![The same view without the imagery, as a drawn chart](images/view-3d-schematic.jpg)
 
 ![Close behind the vehicle](images/view-3d-chase.jpg)
+
+![A survey over Lake Garda, satellite imagery](images/view-3d-survey.jpg)
+
+![The same survey as a drawn chart](images/view-3d-survey-schematic.jpg)
 
 ### Map and flight data
 

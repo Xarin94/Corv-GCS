@@ -1,5 +1,6 @@
 #include "TestDriver.h"
 
+#include "core/Clock.h"
 #include "core/DebugLog.h"
 #include "gpu/FrameStats.h"
 #include "ui/AnnunciatorController.h"
@@ -28,13 +29,16 @@
 #include "ui/UpdateController.h"
 #include "ui/VehicleModel.h"
 
+#include <QAbstractItemModel>
 #include <QBuffer>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
 #include <QMetaMethod>
+#include <QMetaProperty>
 #include <QPointingDevice>
 #include <QQmlApplicationEngine>
 #include <QQuickItem>
@@ -53,6 +57,24 @@ QVariant toVariant(const QJsonValue &v)
     if (v.isObject()) return v.toObject().toVariantMap();
     if (v.isArray()) return v.toArray().toVariantList();
     return v.toVariant();
+}
+
+constexpr qsizetype kMaxEvents = 4000;
+
+/// A property value as JSON: NaN and infinity as null, objects (models, items) by their class name.
+QJsonValue toJson(const QVariant &v)
+{
+    if (const int t = v.typeId(); t == QMetaType::Double || t == QMetaType::Float) {
+        const double d = v.toDouble();
+        return std::isfinite(d) ? QJsonValue(d) : QJsonValue();
+    }
+    if (QObject *o = v.value<QObject *>()) return QString::fromLatin1(o->metaObject()->className());
+    return QJsonValue::fromVariant(v);
+}
+
+QJsonValue opt(const std::optional<double> &v)
+{
+    return v && std::isfinite(*v) ? QJsonValue(*v) : QJsonValue();
 }
 } // namespace
 
@@ -103,6 +125,7 @@ QObject *TestDriver::object(const QString &name) const
 {
     if (QObject *vm = viewModel(name)) return vm;
     QObject *root = m_engine.rootObjects().value(0);
+    if (name == "window"_L1) return root;
     return root ? root->findChild<QObject *>(name) : nullptr;
 }
 
@@ -136,7 +159,10 @@ QJsonValue TestDriver::call(const QString &target, const QJsonValue &args, QStri
             g[k] = mm.parameterType(k) == QMetaType::QVariant ? QGenericArgument("QVariant", &conv[k]) : QGenericArgument(conv[k].typeName(), conv[k].constData());
         QVariant ret;
         bool ok;
-        if (mm.returnType() != QMetaType::Void && mm.returnType() != QMetaType::UnknownType) {
+        if (mm.returnType() == QMetaType::QVariant) {
+            // A JavaScript function of a QML item, or a method that gives a QVariant (SetupCfg.param)
+            ok = mm.invoke(o, Qt::DirectConnection, QGenericReturnArgument("QVariant", &ret), g[0], g[1], g[2], g[3], g[4], g[5]);
+        } else if (mm.returnType() != QMetaType::Void && mm.returnType() != QMetaType::UnknownType) {
             ret = QVariant(QMetaType(mm.returnType()));
             ok = mm.invoke(o, Qt::DirectConnection, QGenericReturnArgument(mm.typeName(), ret.data()), g[0], g[1], g[2], g[3], g[4], g[5]);
         } else {
@@ -189,6 +215,139 @@ QJsonValue TestDriver::stats() const
                                                          {u"exposed"_s, w->isExposed()}});
     }
     return out;
+}
+
+QJsonValue TestDriver::state() const
+{
+    if (!VehicleModel::s_instance) return {};
+    const VehicleState &s = *VehicleModel::s_instance->state();
+    QJsonObject o{
+        {u"mode"_s, s.mode}, {u"connected"_s, s.connected}, {u"connectionType"_s, s.connectionType},
+        {u"vehicleType"_s, s.vehicleType}, {u"systemId"_s, s.systemId}, {u"componentId"_s, s.componentId},
+        {u"armed"_s, s.armed}, {u"flightMode"_s, s.flightMode}, {u"heartbeatCount"_s, qint64(s.heartbeatCount)},
+        {u"lastHeartbeatTime"_s, qint64(s.lastHeartbeatTime)}, {u"firmwareVersion"_s, s.firmwareVersion},
+        {u"roll"_s, s.roll}, {u"pitch"_s, s.pitch}, {u"yaw"_s, s.yaw},
+        {u"rollRate"_s, s.rollRate}, {u"pitchRate"_s, s.pitchRate}, {u"yawRate"_s, s.yawRate},
+        {u"lat"_s, s.lat}, {u"lon"_s, s.lon}, {u"rawAlt"_s, s.rawAlt}, {u"offsetAlt"_s, s.offsetAlt},
+        {u"subSurfaceAlt"_s, opt(s.subSurfaceAlt)}, {u"rangefinder"_s, opt(s.rangefinderDist)},
+        {u"as"_s, s.as}, {u"gs"_s, s.gs}, {u"vs"_s, s.vs}, {u"vn"_s, s.vn}, {u"ve"_s, s.ve}, {u"vd"_s, s.vd},
+        {u"ax"_s, s.ax}, {u"ay"_s, s.ay}, {u"az"_s, s.az},
+        {u"homeLat"_s, opt(s.homeLat)}, {u"homeLon"_s, opt(s.homeLon)}, {u"homeAlt"_s, opt(s.homeAlt)},
+        {u"batteryVoltage"_s, s.batteryVoltage}, {u"batteryCurrent"_s, s.batteryCurrent}, {u"batteryRemaining"_s, s.batteryRemaining},
+        {u"gpsFix"_s, s.gpsFix}, {u"gpsNumSat"_s, s.gpsNumSat}, {u"gpsHdop"_s, s.gpsHdop},
+        {u"preArm"_s, int(s.preArm())}, {u"preArmText"_s, s.preArmText},
+        {u"ekfFlags"_s, s.ekfFlags}, {u"ekfVariance"_s, s.ekfVariance},
+        {u"missionCount"_s, s.missionCount}, {u"missionSeq"_s, s.missionCurrentSeq},
+        {u"wpDist"_s, s.wpDist}, {u"xtrackError"_s, s.xtrackError},
+        {u"windDir"_s, s.windDir}, {u"windSpeed"_s, s.windSpeed},
+        {u"appWindDir"_s, s.appWindDir}, {u"appWindSpeed"_s, s.appWindSpeed},
+        {u"terrainPending"_s, s.terrainPending}, {u"terrainLoaded"_s, s.terrainLoaded},
+        {u"statusText"_s, s.statusText}, {u"statusSeverity"_s, s.statusSeverity},
+        {u"ackCommand"_s, s.lastAckCommand}, {u"ackResult"_s, s.lastAckResult},
+        {u"originLat"_s, s.sceneOrigin.lat}, {u"originLon"_s, s.sceneOrigin.lon}, {u"originEpoch"_s, s.sceneOriginEpoch},
+        {u"relativeMode"_s, s.relativeMode}, {u"relativeSource"_s, s.relativeSource}, {u"relativeVelSource"_s, s.relativeVelSource},
+        {u"vibX"_s, s.vibX}, {u"vibY"_s, s.vibY}, {u"vibZ"_s, s.vibZ},
+    };
+    QJsonArray rc, servo, traffic;
+    QJsonArray rpm, esc;
+    const std::int64_t now = wallMs();
+    const auto turn = [](std::optional<double> v) { return v ? QJsonValue(*v) : QJsonValue(); };
+    for (int n = 1; n <= 2; ++n) rpm.append(turn(s.sensorRpm(n, now)));
+    for (int n = 1; n <= int(s.esc.size()); ++n) esc.append(turn(s.escRpm(n, now)));
+    o.insert(u"rpm"_s, rpm);
+    o.insert(u"esc"_s, esc);
+    for (const auto v : s.rcChannels) rc.append(int(v));
+    for (const auto v : s.servoOutputs) servo.append(int(v));
+    for (const TrafficEntry &t : s.traffic)
+        traffic.append(QJsonObject{{u"icao24"_s, t.icao24}, {u"callsign"_s, t.callsign}, {u"lat"_s, t.lat}, {u"lon"_s, t.lon},
+                                   {u"alt"_s, t.alt}, {u"heading"_s, t.heading}, {u"velocity"_s, t.velocity}});
+    o.insert(u"rc"_s, rc);
+    o.insert(u"servo"_s, servo);
+    o.insert(u"traffic"_s, traffic);
+    return o;
+}
+
+QJsonValue TestDriver::props(const QString &name, QString *error) const
+{
+    QObject *o = object(name);
+    if (!o) {
+        *error = u"no such object"_s;
+        return {};
+    }
+    // A view model: what it declares; a QML item: what its own type declares (not the Item's)
+    QJsonObject out;
+    const QMetaObject *mo = o->metaObject();
+    const int from = o->inherits("QQuickItem") ? QQuickItem::staticMetaObject.propertyCount() : QObject::staticMetaObject.propertyCount();
+    for (int i = from; i < mo->propertyCount(); ++i) {
+        const QMetaProperty p = mo->property(i);
+        if (p.isReadable()) out.insert(QString::fromLatin1(p.name()), toJson(p.read(o)));
+    }
+    return out;
+}
+
+QJsonValue TestDriver::rows(const QString &name, const QString &property, int from, int max, QString *error) const
+{
+    QObject *o = object(name);
+    const QVariant v = o ? o->property(property.toLatin1().constData()) : QVariant();
+    const auto *model = qobject_cast<QAbstractItemModel *>(v.value<QObject *>());
+    if (!model) {
+        *error = u"no such model"_s;
+        return {};
+    }
+    QJsonArray out;
+    const auto roles = model->roleNames();
+    const int count = model->rowCount();
+    for (int r = std::max(0, from); r < count && out.size() < max; ++r) {
+        QJsonObject row;
+        for (auto it = roles.cbegin(); it != roles.cend(); ++it)
+            row.insert(QString::fromLatin1(it.value()), toJson(model->data(model->index(r, 0), it.key())));
+        out.append(row);
+    }
+    return QJsonObject{{u"count"_s, count}, {u"rows"_s, out}};
+}
+
+void TestDriver::addEvent(QJsonObject e)
+{
+    e.insert(u"n"_s, ++m_eventSeq);
+    e.insert(u"time"_s, QDateTime::currentMSecsSinceEpoch());
+    m_events.append(std::move(e));
+    if (m_events.size() > kMaxEvents) m_events.removeFirst();
+}
+
+QJsonValue TestDriver::events(qint64 since) const
+{
+    QJsonArray out;
+    for (const QJsonObject &e : m_events)
+        if (e.value(u"n"_s).toInteger() > since) out.append(e);
+    return QJsonObject{{u"last"_s, m_eventSeq}, {u"events"_s, out}};
+}
+
+void TestDriver::recordEvents()
+{
+    auto said = [this](const QString &kind, const QString &text, const QString &level) {
+        addEvent(QJsonObject{{u"kind"_s, kind}, {u"text"_s, text}, {u"level"_s, level}});
+    };
+    auto toast = [said](const QString &text) { said(u"toast"_s, text, QString()); };
+    auto confirm = [this](int token, const QString &text) {
+        addEvent(QJsonObject{{u"kind"_s, u"confirm"_s}, {u"token"_s, token}, {u"text"_s, text}});
+    };
+    auto prompt = [this](int token, const QString &text, const QString &value) {
+        addEvent(QJsonObject{{u"kind"_s, u"prompt"_s}, {u"token"_s, token}, {u"text"_s, text}, {u"value"_s, value}});
+    };
+    if (auto *hub = DialogHub::s_instance) {
+        QObject::connect(hub, &DialogHub::toastRequested, &m_context, toast);
+        QObject::connect(hub, &DialogHub::confirmRequested, &m_context, confirm);
+        QObject::connect(hub, &DialogHub::promptRequested, &m_context, prompt);
+    }
+    if (auto *plan = PlanController::s_instance) {
+        QObject::connect(plan, &PlanController::toast, &m_context, toast);
+        QObject::connect(plan, &PlanController::confirmRequested, &m_context, confirm);
+        QObject::connect(plan, &PlanController::promptRequested, &m_context, prompt);
+    }
+    if (auto *sys = SysConfig::s_instance) QObject::connect(sys, &SysConfig::toast, &m_context, toast);
+    if (auto *gcs = GcsController::s_instance)
+        QObject::connect(gcs, &GcsController::hudMessage, &m_context,
+                         [said](const QString &text, const QString &level) { said(u"hud"_s, text, level); });
 }
 
 QJsonValue TestDriver::run(const QString &cmd, const QString &arg, QString *error)
@@ -348,6 +507,17 @@ QJsonValue TestDriver::runJson(const QString &method, const QJsonValue &params, 
     }
     if (method == "call"_L1) return call(p.value(u"target"_s).toString(), p.value(u"args"_s), error);
     if (method == "stats"_L1) return stats();
+    if (method == "state"_L1) return state();
+    if (method == "props"_L1) return props(p.value(u"object"_s).toString(), error);
+    if (method == "rows"_L1)
+        return rows(p.value(u"object"_s).toString(), p.value(u"property"_s).toString(), p.value(u"from"_s).toInt(),
+                    p.value(u"max"_s).toInt(10000), error);
+    if (method == "events"_L1) return events(p.value(u"since"_s).toInteger());
+    if (method == "quit"_L1) {
+        // As the operator closes the window, once this answer is out
+        if (QQuickWindow *win = window()) QMetaObject::invokeMethod(win, &QWindow::close, Qt::QueuedConnection);
+        return true;
+    }
     if (method == "screenshot"_L1) {
         QQuickWindow *win = window();
         if (!win) {

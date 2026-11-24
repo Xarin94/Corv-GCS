@@ -33,8 +33,8 @@ INAV and Betaflight boards over MSP.
 
 ![First person over Innsbruck, satellite imagery on the terrain](docs/images/flight-hud.jpg)
 
-*Every picture on this page is the program itself, flying ArduPilot in simulation: a plane at
-1500 m over Innsbruck, a copter surveying a slope above Lake Garda.*
+*Every picture on this page is the program itself, flying ArduPilot in simulation: a jet at
+1470 m over Innsbruck, a copter surveying a slope above Lake Garda.*
 
 ## First person, over real terrain
 
@@ -65,7 +65,9 @@ trail flown, home, the predicted path and the air traffic around it.
 
 ![The mission over Innsbruck in the 3D view](docs/images/view-3d.jpg)
 
-![The survey of a slope in the synthetic view](docs/images/view-3d-survey.jpg)
+![The same view without the imagery, as a drawn chart](docs/images/view-3d-schematic.jpg)
+
+![The survey of a slope above Lake Garda](docs/images/view-3d-survey.jpg)
 
 ## Mission planning
 
@@ -120,6 +122,8 @@ replay on the flight screen, with a timeline to scrub through.
 ## Also on board
 
 - **Annunciators**: 47 warnings and cautions for GPS, compass, IMU, EKF, radio, battery and failsafes.
+- **Rotor load**: each motor by its output, with the RPM of its ESC; for a helicopter the rotor's
+  RPM, the collective and the tail rotor.
 - **Restricted zones**: UAS geographical zones on the maps and the terrain, with height warnings.
 - **ADS-B traffic**: nearby aircraft on the map, in a table and in 3D.
 - **Calibration**: accelerometer, level, gyro, barometer, and onboard compass calibration on a 3D sphere.

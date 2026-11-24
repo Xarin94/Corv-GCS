@@ -724,6 +724,7 @@ void CalibrationController::magStart()
     if (!linked()) return setMagText(u"Not connected to a vehicle."_s, u"error"_s);
     const bool autosave = m_magAutosave;
     m_magFinish.stop();
+    m_magEndedAt = 0;
     m_mag = Mag{};
     m_mag.starting = true;
     m_samples.clear();
@@ -762,6 +763,7 @@ void CalibrationController::onMagProgress(const MavMessage &mm)
     if (id < 0 || id >= 3) return;
     if (!m_mag.running) {
         if (!isMagRunning(d.cal_status)) return;
+        if (wallMs() - m_magEndedAt < 4000) return;   // still under way when the cancel went out
         // Started elsewhere, or before this page was opened: follow it
         m_mag = Mag{};
         m_mag.running = true;
@@ -805,7 +807,9 @@ void CalibrationController::onMagReport(const MavMessage &mm)
     p.pct = d.cal_status == 4 ? 100 : (had ? p.pct : 0);
     if (!had) p.attempt = 0;
     emit magChanged();
-    if (m_mag.running) m_magFinish.start();
+    // The autopilot repeats its reports until the result is accepted: started by the first one
+    // (each of them starting it again kept the calibration running for ever, with no ACCEPT)
+    if (m_mag.running && !m_magFinish.isActive()) m_magFinish.start();
 }
 
 /// The compasses in this calibration: cal_mask, or every one heard from
@@ -875,6 +879,7 @@ void CalibrationController::magCancel()
     // Stop here regardless of the answer
     m_cmd->cancelMagCal(0, [this](bool, const CommandSender::Ack &) {
         m_magFinish.stop();
+        m_magEndedAt = wallMs();
         m_mag.running = false;
         restoreRates();
         refreshCoverage();

@@ -4,6 +4,7 @@
 #include "core/DebugLog.h"
 #include "link/LinkManager.h"
 #include "terrain/Hgt.h"
+#include "terrain/HgtDownloader.h"
 #include "ui/SysConfig.h"
 #include "vehicle/ConnectionManager.h"
 
@@ -14,6 +15,7 @@
 #include <QRegularExpression>
 #include <QTimer>
 #include <cmath>
+#include <memory>
 
 using namespace Qt::StringLiterals;
 
@@ -28,7 +30,7 @@ const Vehicle kVehicles[] = {
     {"copter", "Copter (Quad)", "arducopter", "quad"},
     {"copter12s", "Copter 12S High-Speed", "arducopter", "X:quad12s.json"},
     {"tri12s", "Tricopter 12S (3x X8 G2)", "arducopter", "tri:tri12s.json"},
-    {"heli", "Helicopter", "arducopter", "heli"},
+    {"heli", "Helicopter", "arducopter-heli", "heli"},   // a firmware of its own: the copter one has no helicopter frames
     {"plane", "Plane", "arduplane", "plane-jet:jet600.json"},
     {"quadplane", "QuadPlane", "arduplane", "quadplane"},
     {"rover", "Rover", "ardurover", "rover"},
@@ -176,7 +178,9 @@ void SitlController::startDownload(const QString &vehicle, const QString &versio
 {
     const Vehicle *v = find(vehicle);
     if (!v) return done(false, u"Unknown vehicle: "_s + vehicle);
-    const QUrl url(u"https://firmware.ardupilot.org/%1/%2/SITL_x86_64_linux_gnu/%3"_s.arg(firmwareDir(vehicle), version, QLatin1String(v->binary)));
+    const QString binary = QLatin1String(v->binary);
+    const QString board = binary.endsWith("-heli"_L1) ? u"SITL_x86_64_linux_gnu-heli"_s : u"SITL_x86_64_linux_gnu"_s;
+    const QUrl url(u"https://firmware.ardupilot.org/%1/%2/%3/%4"_s.arg(firmwareDir(vehicle), version, board, binary));
     LOG_I("sitl") << "downloading" << vehicle << version << "from" << url.toString();
     m_downloadText = u"DOWNLOADING..."_s;
     setStatus(u"Downloading %1 %2..."_s.arg(vehicle, version));
@@ -210,14 +214,49 @@ void SitlController::launch(const QString &vehicle, const QString &version, doub
     if (m_busy) return;
     if (!std::isfinite(homeLat) || homeLat == 0) homeLat = kLandLat;
     if (!std::isfinite(homeLon) || homeLon == 0) homeLon = kLandLon;
-    // Terrain elevation at home: a ROV starts on the water at 0 m
-    const std::optional<double> terrain = HgtStore::instance().elevation(homeLat, homeLon);
-    const bool rov = isRov(vehicle);
-    const double homeAlt = !rov && terrain && *terrain > 0 ? *terrain : 0;
-    LOG_I("sitl") << "home" << homeLat << homeLon << "terrain" << (terrain ? QString::number(*terrain) : u"none"_s) << "homeAlt" << homeAlt;
-    if (rov) beginRovSession(vehicle);
-    else endRovSession();
     m_busy = true;
+    // A ROV starts on the water at 0 m, anything else on the ground of its home
+    if (isRov(vehicle)) {
+        beginRovSession(vehicle);
+        launchAt(vehicle, version, homeLat, homeLon, 0, speedup);
+        return;
+    }
+    endRovSession();
+    setStatus(u"Reading the elevation of the home..."_s);
+    withHomeAltitude(homeLat, homeLon, [=, this](std::optional<double> terrain) {
+        const double homeAlt = terrain && *terrain > 0 ? *terrain : 0;
+        LOG_I("sitl") << "home" << homeLat << homeLon << "terrain" << (terrain ? QString::number(*terrain) : u"none"_s) << "homeAlt" << homeAlt;
+        launchAt(vehicle, version, homeLat, homeLon, homeAlt, speedup);
+    });
+}
+
+/// The ground at a point: its tile is read from disk, or downloaded, if it was not in memory yet
+/// (a vehicle launched before the tile was in started at sea level, under the terrain).
+void SitlController::withHomeAltitude(double lat, double lon, std::function<void(std::optional<double>)> done)
+{
+    const int la = int(std::floor(lat)), lo = int(std::floor(lon));
+    auto *poll = new QTimer(this);
+    poll->setInterval(100);
+    auto tries = std::make_shared<int>(0);
+    connect(poll, &QTimer::timeout, this, [=] {
+        HgtStore &store = HgtStore::instance();
+        HgtDownloader &dl = HgtDownloader::instance();
+        const std::optional<double> h = store.elevation(lat, lon);
+        const bool late = ++*tries > 200;   // 20 s: a slow network
+        if (!h && !late && !store.get(la, lo)) {
+            if (store.loading(la, lo) || dl.busy(la, lo)) return;
+            if (store.missing(la, lo)) dl.ensure(la, lo);
+            // Not missing: being read, or just downloaded
+            if (!store.missing(la, lo) || dl.busy(la, lo)) return;
+        }
+        poll->deleteLater();
+        done(h);
+    });
+    poll->start();
+}
+
+void SitlController::launchAt(const QString &vehicle, const QString &version, double homeLat, double homeLon, double homeAlt, int speedup)
+{
     emit statusChanged();
     if (binaryUsable(vehicle, version)) {
         start(vehicle, version, homeLat, homeLon, homeAlt, speedup);

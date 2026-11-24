@@ -98,11 +98,7 @@ ReplayController::ReplayController(LogReplay *engine, FftController *fft, QObjec
 
     m_seekDebounce.setSingleShot(true);
     m_seekDebounce.setInterval(80);
-    connect(&m_seekDebounce, &QTimer::timeout, this, [this] {
-        const double target = m_scrubTarget;
-        QMetaObject::invokeMethod(m_engine, [e = m_engine, target] { e->seek(target); });
-        m_scrubbing = false;
-    });
+    connect(&m_seekDebounce, &QTimer::timeout, this, &ReplayController::seekNow);
     applyFftConfig();
 }
 
@@ -135,7 +131,21 @@ void ReplayController::openPath(const QString &path)
 }
 
 void ReplayController::unload() { QMetaObject::invokeMethod(m_engine, [e = m_engine] { e->unload(); }); }
-void ReplayController::play() { QMetaObject::invokeMethod(m_engine, [e = m_engine] { e->play(); }); }
+void ReplayController::seekNow()
+{
+    m_seekDebounce.stop();
+    const double target = m_scrubTarget;
+    QMetaObject::invokeMethod(m_engine, [e = m_engine, target] { e->seek(target); });
+    m_scrubbing = false;
+}
+
+void ReplayController::play()
+{
+    // From where the timeline was just dragged to, not from where the log was
+    if (m_seekDebounce.isActive()) seekNow();
+    QMetaObject::invokeMethod(m_engine, [e = m_engine] { e->play(); });
+}
+
 void ReplayController::pause() { QMetaObject::invokeMethod(m_engine, [e = m_engine] { e->pause(); }); }
 
 void ReplayController::playPause()

@@ -1,0 +1,112 @@
+# CORV GCS - VTOL plane SITL (ArduPlane on the 'quadplane' model)
+# Values of ArduPilot's Tools/autotest/default_params/quadplane.parm. On the raw firmware
+# defaults Q_ENABLE is 0 (no VTOL at all) and it does not arm.
+# 4.5+ names; the older ones are there too, ignored where they do not exist.
+
+Q_ENABLE         1
+Q_FRAME_CLASS    1
+Q_FRAME_TYPE     1
+# So that it says it is a VTOL plane, not a fixed wing: GUIDED take-off, QLAND on LAND
+Q_MAV_TYPE       20
+# GUIDED hovers and takes off vertically
+Q_GUIDED_MODE    1
+Q_ASSIST_SPEED   18
+Q_M_THST_EXPO    0.65
+Q_M_PWM_MIN      1000
+Q_M_PWM_MAX      2000
+Q_M_BAT_VOLT_MAX 12.8
+Q_M_BAT_VOLT_MIN 9.6
+Q_A_RAT_RLL_P    0.108
+Q_A_RAT_RLL_I    0.108
+Q_A_RAT_RLL_D    0.001
+Q_A_RAT_PIT_P    0.103
+Q_A_RAT_PIT_I    0.103
+Q_A_RAT_PIT_D    0.001
+Q_A_RAT_YAW_P    0.2
+Q_A_RAT_YAW_I    0.02
+Q_A_ANG_RLL_P    6
+Q_A_ANG_PIT_P    6
+SCHED_LOOP_RATE  300
+
+# --- RC calibration ---
+RC1_MIN 1000
+RC1_MAX 2000
+RC1_TRIM 1500
+RC2_MIN 1000
+RC2_MAX 2000
+RC2_TRIM 1500
+RC3_MIN 1000
+RC3_MAX 2000
+RC3_TRIM 1500
+RC4_MIN 1000
+RC4_MAX 2000
+RC4_TRIM 1500
+RC5_MIN 1000
+RC5_MAX 2000
+RC5_TRIM 1500
+RC6_MIN 1000
+RC6_MAX 2000
+RC6_TRIM 1500
+RC7_MIN 1000
+RC7_MAX 2000
+RC7_TRIM 1500
+RC8_MIN 1000
+RC8_MAX 2000
+RC8_TRIM 1500
+SERVO3_MIN 1000
+SERVO3_MAX 2000
+
+# --- small INS offsets so both IMUs count as calibrated, and the simulated compasses' own offsets ---
+INS_ACCOFFS_X  0.001
+INS_ACCOFFS_Y  0.001
+INS_ACCOFFS_Z  0.001
+INS_ACCSCAL_X  1.001
+INS_ACCSCAL_Y  1.001
+INS_ACCSCAL_Z  1.001
+INS_ACC2OFFS_X  0.001
+INS_ACC2OFFS_Y  0.001
+INS_ACC2OFFS_Z  0.001
+INS_ACC2SCAL_X  1.001
+INS_ACC2SCAL_Y  1.001
+INS_ACC2SCAL_Z  1.001
+COMPASS_OFS_X  5
+COMPASS_OFS_Y  13
+COMPASS_OFS_Z  -18
+COMPASS_OFS2_X  5
+COMPASS_OFS2_Y  13
+COMPASS_OFS2_Z  -18
+COMPASS_OFS3_X  5
+COMPASS_OFS3_Y  13
+COMPASS_OFS3_Z  -18
+
+# --- battery ---
+BATT_MONITOR     4
+
+# --- airspeed ---
+AIRSPEED_MIN     13
+AIRSPEED_MAX     35
+AIRSPEED_CRUISE  25
+ARSPD_FBW_MIN    13
+ARSPD_FBW_MAX    35
+TRIM_ARSPD_CM    2500
+ARSPD_USE        1
+
+# --- fixed-wing tune of the model ---
+PTCH_LIM_MAX_DEG 30
+PTCH_LIM_MIN_DEG -30
+ROLL_LIMIT_DEG   65
+KFF_RDDRMIX      0.5
+NAVL1_PERIOD     14
+PTCH2SRV_RLL     1
+PTCH_RATE_P      0.309954
+PTCH_RATE_I      0.2125
+PTCH_RATE_D      0
+PTCH_RATE_FF     1.407055
+PTCH_RATE_IMAX   0.888889
+RLL_RATE_P       0.141009
+RLL_RATE_I       0.2125
+RLL_RATE_D       0
+RLL_RATE_FF      0.552741
+RLL_RATE_IMAX    0.888889
+RTL_ALTITUDE     60
+ALT_HOLD_RTL     6000

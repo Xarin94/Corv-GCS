@@ -40,6 +40,7 @@
 #include "ui/VehicleModel.h"
 #include "vehicle/CommandSender.h"
 #include "vehicle/ConnectionManager.h"
+#include "vehicle/FlightModes.h"
 #include "vehicle/ParamStore.h"
 #include "vehicle/TerrainFeeder.h"
 #include "vehicle/VehicleHub.h"
@@ -356,7 +357,12 @@ void GcsController::setSetting(const QString &key, const QString &value) { Setti
 void GcsController::setHomeHere()
 {
     DialogHub::confirm(u"Set HOME to the vehicle's current position?"_s, [this](bool ok) {
-        if (ok) m_cmd->setHome(std::nullopt, std::nullopt, std::nullopt);
+        if (!ok) return;
+        m_cmd->setHome(std::nullopt, std::nullopt, std::nullopt, [](bool got, const CommandSender::Ack &ack) {
+            if (!got) DialogHub::toast(u"Set HOME: no answer from the autopilot"_s);
+            else if (ack.result == MAV_RESULT_ACCEPTED) DialogHub::toast(u"HOME set to the current position"_s);
+            else DialogHub::toast(u"Set HOME rejected by the autopilot (%1): it needs a 3D GPS fix and a healthy EKF"_s.arg(ack.resultName));
+        });
     });
 }
 
@@ -374,12 +380,31 @@ void GcsController::rebootAutopilot()
 void GcsController::setMissionSpeed(double speed) { m_cmd->setMissionSpeed(speed); }
 void GcsController::arm(bool force) { m_cmd->armVehicle(force); }
 void GcsController::disarm(bool force) { m_cmd->disarmVehicle(force); }
-void GcsController::setMode(const QString &mode) { m_cmd->setFlightMode(mode); }
-void GcsController::takeoff(double altitude) { m_cmd->takeoff(altitude); }
+
+void GcsController::setMode(const QString &mode)
+{
+    if (!m_cmd->setFlightMode(mode)) DialogHub::toast(u"%1 is not a mode of this vehicle"_s.arg(mode));
+}
+
+
+void GcsController::takeoff(double altitude)
+{
+    m_cmd->takeoff(altitude, [](bool ok, const QString &why) {
+        if (!ok) DialogHub::toast(u"Take-off: %1"_s.arg(why));
+    });
+}
 
 void GcsController::askTakeoff()
 {
-    DialogHub::prompt(u"Take-off height above ground (m). The vehicle goes to GUIDED, arms and climbs at once."_s, u"10"_s,
+    const auto s = m_hub->snapshot();
+    const modes::Table t = modes::tableFor(s->vehicleType, s->connectionType);
+    if (t != modes::Table::Copter && t != modes::Table::Plane) {
+        DialogHub::toast(u"TAKEOFF: not for this vehicle"_s);
+        return;
+    }
+    const bool fixedWing = t == modes::Table::Plane && !modes::isVtolType(s->vehicleType);
+    DialogHub::prompt(fixedWing ? u"Take-off height above ground (m). The vehicle goes to TAKEOFF, arms and starts its run at once."_s
+                                : u"Take-off height above ground (m). The vehicle goes to GUIDED, arms and climbs at once."_s, u"10"_s,
                       [this](bool ok, const QString &text) {
                           if (!ok) return;
                           bool number = false;
@@ -389,7 +414,21 @@ void GcsController::askTakeoff()
                       });
 }
 
-void GcsController::land() { m_cmd->land(); }
-void GcsController::returnToLaunch() { m_cmd->returnToLaunch(); }
+void GcsController::land()
+{
+    // What lands it: a mode on a copter or a VTOL plane, the landing sequence of the mission
+    // on a fixed wing (denied when there is none), the surface for a ROV
+    const auto s = m_hub->snapshot();
+    switch (modes::tableFor(s->vehicleType, s->connectionType)) {
+    case modes::Table::Plane:
+        if (modes::isVtolType(s->vehicleType)) setMode(u"QLAND"_s);
+        else m_cmd->landSequence();
+        break;
+    case modes::Table::Sub: setMode(u"SURFACE"_s); break;
+    default: setMode(u"LAND"_s); break;
+    }
+}
+
+void GcsController::returnToLaunch() { setMode(u"RTL"_s); }
 
 } // namespace corv

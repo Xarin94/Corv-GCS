@@ -155,4 +155,35 @@ std::optional<double> ServoMap::flapPercent(const Flaps &src, const std::array<s
     return std::nullopt;
 }
 
+ServoMap::Heli ServoMap::heli() const
+{
+    Heli h;
+    if (!complete()) return Heli{{1, 2, 3}, 4, false, 8};
+    for (int n : {1, 2, 3, 5})
+        if (const auto it = m_motors.find(n); it != m_motors.end()) h.swash.push_back(it->second);
+    if (const auto it = m_motors.find(4); it != m_motors.end()) h.tail = it->second;
+    if (const int rsc = first(servo::kHeliTailRsc)) {
+        h.tail = rsc;
+        h.tailMotor = true;
+    }
+    h.rsc = first(servo::kHeliRsc);
+    return h;
+}
+
+std::optional<double> ServoMap::collectivePwm(const Heli &h, int swashType, const std::array<std::uint16_t, servo::kOutputs> &pwm,
+                                              const std::function<OutputScale(int)> &scale)
+{
+    std::vector<int> outputs = h.swash;
+    if (swashType == 1 && outputs.size() >= 3) outputs = {outputs[2]};
+    if (outputs.empty()) return std::nullopt;
+    double sum = 0;
+    for (int ch : outputs) {
+        const double v = ch >= 1 && ch <= servo::kOutputs ? pwm[std::size_t(ch - 1)] : 0;
+        if (v <= 0) return std::nullopt;
+        const OutputScale k = scale(ch);
+        sum += 1500 + (v - k.trim) * (k.reversed ? -1 : 1);
+    }
+    return sum / double(outputs.size());
+}
+
 } // namespace corv

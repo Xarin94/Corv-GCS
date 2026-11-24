@@ -16,6 +16,7 @@ namespace corv {
 class LinkManager;
 class MessageBus;
 class VehicleHub;
+struct VehicleState;
 
 struct MissionItem {
     int command = MAV_CMD_NAV_WAYPOINT;
@@ -53,6 +54,8 @@ public:
     void takeoff(double altitude, Done done = {});
     Q_INVOKABLE void land();
     Q_INVOKABLE void returnToLaunch();
+    /// A fixed wing: to the landing sequence (DO_LAND_START) of its mission, in AUTO.
+    void landSequence();
     Q_INVOKABLE void setMissionSpeed(double speed, int speedType = 1);
     void setHome(std::optional<double> lat, std::optional<double> lon, std::optional<double> alt, AckDone done = {});
     Q_INVOKABLE void requestHomePosition();
@@ -85,6 +88,8 @@ public:
     void setParameter(const QString &id, float value, int type, std::function<void(bool ok, float value)> done);
     void requestAllParameters();
     void requestParameter(const QString &id);
+    /// One of the list by its place in it (what a PARAM_REQUEST_LIST lost).
+    void requestParameterIndex(int index);
     void fetchParameter(const QString &id, int timeoutMs, int retries, std::function<void(bool ok, float value, int type)> done);
 
     // Mission upload (MISSION_COUNT -> REQUEST_INT/REQUEST -> ITEM_INT -> ACK)
@@ -98,6 +103,8 @@ public:
     int targetComponent() const;
 
 private:
+    /// `then(true)` once the state satisfies cond, `then(false)` after the timeout.
+    void waitFor(std::function<bool(const VehicleState &)> cond, int timeoutMs, std::function<void(bool)> then);
     void sendMsg(const mavlink_message_t &m);
 
     LinkManager *m_link;

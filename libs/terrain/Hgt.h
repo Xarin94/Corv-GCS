@@ -38,18 +38,21 @@ struct HgtTile {
     static std::shared_ptr<HgtTile> load(const QString &path, int latBase, int lonBase, QString *error = nullptr);
 };
 
-/// Every tile the GCS has seen, loaded once, on the thread pool.
+/// The tiles the GCS is using, loaded on the thread pool. 26 MB each: past kMaxTiles the ones
+/// not asked for in the last kKeepMs go, the oldest first (read again if they are needed).
 class HgtStore : public QObject
 {
     Q_OBJECT
 public:
     static HgtStore &instance();
+    static constexpr int kMaxTiles = 20;
+    static constexpr double kKeepMs = 60000;
 
     QStringList searchDirs() const;
     /// Path of a tile, or empty when no folder has it.
     QString find(int latBase, int lonBase) const;
 
-    /// The tile if loaded; otherwise starts loading it (once) and returns null.
+    /// The tile if loaded; otherwise starts loading it and returns null.
     std::shared_ptr<const HgtTile> get(int latBase, int lonBase);
     /// True when no folder has the tile (it will never load).
     bool missing(int latBase, int lonBase) const;
@@ -86,7 +89,12 @@ private:
     static int key(int latBase, int lonBase) { return (latBase + 90) * 1000 + (lonBase + 180); }
 
     mutable QMutex m_lock;
-    QHash<int, std::shared_ptr<const HgtTile>> m_tiles;
+    struct Loaded {
+        std::shared_ptr<const HgtTile> tile;
+        double lastUse = 0;   // monoMs()
+    };
+    void evict();   // m_lock held
+    QHash<int, Loaded> m_tiles;
     QSet<int> m_loading;
     QSet<int> m_missing;
     QStringList m_extraDirs;

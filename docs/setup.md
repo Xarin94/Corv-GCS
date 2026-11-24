@@ -185,12 +185,18 @@ RC channels.
 
 | Control | |
 |---------|---|
-| **ENABLE RC OVERRIDE** | Starts sending. While on, the gamepad overrides the RC receiver on the channels it maps. |
+| **ENABLE RC OVERRIDE** | Asks for confirmation, then starts sending. While on, the gamepad overrides the RC receiver on the channels it maps. |
 | **GAMEPAD** + **SCAN** | The gamepads the PC sees; press a button on the pad if it does not appear, then SCAN. |
 | **SEND RATE** | 10, 25 (default) or 50 Hz. |
 | **STATUS** | Disabled, active, or **SUSPENDED** — the pad was unplugged, or sends no data because the GCS window lost focus: the RC channels are released to the receiver, and override resumes when the pad comes back. |
 | **AXIS MAPPING** | One row per axis: **AX n**, the **RC channel** it drives, **INV** (reverse), **DZ** (dead zone 0–50 %, ignored around the centre), a live bar and value. |
 | **CHANNEL OUTPUT (PWM)** | The PWM being sent on CH1–CH18. |
+| **ENABLE SERVO BUTTONS** | Two commands, CMD 1 and CMD 2: a button, a servo output (1–16) and a position (0 % = 1000 µs, 100 % = 2000 µs). Each press sends one `MAV_CMD_DO_SET_SERVO`; works without RC override. |
+| **FPV LOOK BUTTONS** | Buttons that look around in first person while held, like the arrow keys; they work without a vehicle too. |
+
+At least eight inputs (IN 1–8), each an axis or a button and the RC channel it drives; a button moves
+its channel between 1000 and 2000. The mapping is kept; override and servo buttons are switched on
+again at every start.
 
 ArduPilot: [joystick](https://ardupilot.org/copter/docs/common-joystick.html). A sub only takes pilot
 input from its own GCS system ID (`SYSID_MYGCS`, 255), and reacts when the input stops for a few
@@ -303,7 +309,7 @@ long-range radio a full read is thousands of packets and several minutes.
 | **LOAD .PARAM** | Opens a `.param` file and **writes every parameter in it to the vehicle straight away**, one by one, then says how many were loaded. There is no preview: load only a file made for this vehicle and firmware, disarmed. |
 | Table | NAME, VALUE (a list where the parameter has listed values, ▦ for the bits of a bitmask, else click to edit and Enter to confirm), UNITS, MEANING / RANGE, DESCRIPTION. |
 | Strip under the table | The selected parameter: what it does, its range, and **every number with its meaning** (the 48 protocols of `SERIALn_PROTOCOL`, for example) or every bit; click one to set it. *UP TO FIRMWARE 4.6.3* marks a parameter that newer ArduPilot releases renamed or dropped. |
-| **UPDATE DESCRIPTIONS** | Downloads ArduPilot's latest documentation for this vehicle type; **BUNDLED** goes back to the one shipped with the GCS, which covers the current firmware and the stable releases from 4.2 on. |
+| **UPDATE DESCRIPTIONS** | Downloads ArduPilot's documentation of the release the vehicle runs (the latest one when that release has none); **BUNDLED** goes back to the one shipped with the GCS, which covers the current firmware and the stable releases from 4.2 on. |
 
 The reference is ArduPilot's [Copter](https://ardupilot.org/copter/docs/parameters.html) /
 [Plane](https://ardupilot.org/plane/docs/parameters.html) /

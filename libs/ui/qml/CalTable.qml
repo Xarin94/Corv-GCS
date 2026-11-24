@@ -12,8 +12,9 @@ Column {
     property Component rowDelegate: defaultRow
     width: parent ? parent.width : 320
 
-    function colX(i) { let x = 0; for (let k = 0; k < i; ++k) x += columns[k][1] * width; return x }
-    function colW(i) { return columns[i][1] * width }
+    // (a table emptied has no columns while the rows it had are still going)
+    function colX(i) { let x = 0; for (let k = 0; k < i && k < columns.length; ++k) x += columns[k][1] * width; return x }
+    function colW(i) { return i < columns.length ? columns[i][1] * width : 0 }
 
     Item {
         width: t.width

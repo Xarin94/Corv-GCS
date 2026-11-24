@@ -216,6 +216,7 @@ int main(int argc, char *argv[])
     std::unique_ptr<DebugServer> debugServer;
     if (p.isSet(debugPortOpt)) {
         debugServer = std::make_unique<DebugServer>(driver);
+        driver.recordEvents();
         debugServer->listen(quint16(p.value(debugPortOpt).toUInt()));
     }
 

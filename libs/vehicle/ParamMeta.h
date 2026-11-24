@@ -8,7 +8,10 @@
 // completed with the parameters only the stable releases still have (groups
 // "stable 4.6.3": SRn_*, ARMING_CHECK, WPNAV_*...); a newer file downloaded from autotest.ardupilot.org is saved to
 // <data>/params/<Firmware>.pdef.json and takes precedence, entry by entry, over
-// the bundled one (names only the bundle knows, e.g. those of a fork, stay).
+// the bundled one (names only the bundle knows, e.g. those of a fork, stay). The
+// table of one stable release ("4.6.3", the apm.pdef.xml of that tag, saved as
+// <Firmware>-4.6.3.pdef.xml) wins over both while a vehicle of that version is
+// the one shown: its value lists are the ones that firmware takes.
 //
 // Lookup by vehicle class ('Plane', 'Copter', 'Rover', 'Sub' as ParamCatalog
 // names them): the firmware of the class first, then the others, so a
@@ -62,13 +65,21 @@ public:
     int count(const QString &vehicleClass);
     QString source(const QString &vehicleClass);
 
-    /// A downloaded apm.pdef.json: parsed, saved under <data>/params, used from now on.
-    bool installDownloaded(const QString &vehicleClass, const QByteArray &json, int *count = nullptr, QString *error = nullptr);
+    /// The stable release the vehicle of a class runs ("4.6.3"), empty when unknown: its own table is used if it was downloaded.
+    void setVersion(const QString &vehicleClass, const QString &version);
+    QString version(const QString &vehicleClass) const { return m_versions.value(firmwareOf(vehicleClass)); }
+
+    /// A downloaded table, saved under <data>/params and used from now on: apm.pdef.json, or with
+    /// a version the apm.pdef.xml of that release.
+    bool installDownloaded(const QString &vehicleClass, const QByteArray &data, int *count = nullptr, QString *error = nullptr,
+                           const QString &version = {});
     /// Back to the bundled table.
     void removeDownloaded(const QString &vehicleClass);
 
     /// apm.pdef.json (grouped by prefix, "json" holds the version) into a flat table.
     static bool parse(const QByteArray &json, QHash<QString, ParamInfo> &out, QString *source = nullptr, QString *error = nullptr);
+    /// apm.pdef.xml of a release into the same.
+    static bool parseXml(const QByteArray &xml, QHash<QString, ParamInfo> &out, QString *error = nullptr);
     /// The folder of the downloaded tables (tests point it elsewhere).
     static QString downloadDir();
 
@@ -84,6 +95,7 @@ private:
     void load(const QString &firmware, Table &t);
 
     QHash<QString, Table> m_tables;
+    QHash<QString, QString> m_versions;   // firmware -> release
 };
 
 } // namespace corv

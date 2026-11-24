@@ -4,6 +4,7 @@
 #include "core/DebugLog.h"
 #include "core/Settings.h"
 #include "gpu/SceneItem.h"
+#include "ui/DialogHub.h"
 #include "vehicle/CommandSender.h"
 #include "vehicle/VehicleHub.h"
 #include "vehicle/VehicleState.h"
@@ -136,6 +137,20 @@ void JoystickController::select(int id)
 
 // ── Override ─────────────────────────────────────────────────────────────────
 
+void JoystickController::askEnable()
+{
+    if (m_enabled) return;
+    if (!m_pad.isOpen() && !reselect()) {
+        DialogHub::toast(u"No gamepad selected — press SCAN and pick one"_s);
+        emit stateChanged();
+        return;
+    }
+    DialogHub::confirm(u"RC override takes control of the vehicle: it may move. Continue?"_s, [this](bool ok) {
+        if (ok) setEnabled(true);
+        emit stateChanged();
+    });
+}
+
 void JoystickController::setEnabled(bool on)
 {
     if (on) {
@@ -179,9 +194,14 @@ void JoystickController::applyParameters()
     struct Step {
         QString id;
         std::function<std::optional<float>(float)> target;
+        QString otherId = {};   // its name before or after 4.7
     };
+    // MAV_GCS_SYSID from 4.7 on: the name of this version first, the other when it does not answer
+    const QStringList version = s->firmwareVersion.section('-'_L1, 0, 0).split('.'_L1);
+    const bool renamed = version.size() >= 2 && version[0].toInt() * 100 + version[1].toInt() >= 407;
+    const QString gcsId[] = {u"SYSID_MYGCS"_s, u"MAV_GCS_SYSID"_s};
     auto steps = std::make_shared<std::vector<Step>>(std::vector<Step>{
-        {u"SYSID_MYGCS"_s, [](float) { return std::optional<float>(255); }},
+        {gcsId[renamed], [](float v) { return v == 255 ? std::nullopt : std::optional<float>(255); }, gcsId[!renamed]},
         {u"RC_OVERRIDE_TIME"_s, [](float) { return std::optional<float>(3); }},
         {u"RC_OPTIONS"_s,
          [](float v) {
@@ -203,8 +223,14 @@ void JoystickController::applyParameters()
         const Step step = (*steps)[i];
         const auto next = weak.lock();
         if (!next) return;
-        m_cmd->fetchParameter(step.id, 1500, 2, [this, session, step, next, i](bool ok, float value, int type) {
+        m_cmd->fetchParameter(step.id, 1500, 2, [this, session, step, steps, next, i](bool ok, float value, int type) {
             if (session != m_paramSession) return;
+            if (!ok && !step.otherId.isEmpty()) {
+                (*steps)[i].id = step.otherId;
+                (*steps)[i].otherId.clear();
+                (*next)(i);
+                return;
+            }
             if (!ok) {
                 LOG_W("joystick") << "could not read" << step.id;
                 (*next)(i + 1);

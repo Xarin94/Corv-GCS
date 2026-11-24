@@ -25,7 +25,8 @@ QString gpsFixName(int fixType);
 /// AUTOPILOT_VERSION.flight_sw_version: "4.7.0", "4.8.0-dev", "4.7.0-beta2".
 QString firmwareVersion(std::uint32_t flightSwVersion);
 
-bool isPlaneType(int t);
+bool isPlaneType(int t);   // VTOL planes too
+bool isVtolType(int t);
 bool isRoverType(int t);
 bool isSubType(int t);
 

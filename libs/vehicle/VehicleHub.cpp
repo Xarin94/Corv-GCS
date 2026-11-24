@@ -33,9 +33,7 @@ VehicleHub::VehicleHub(LinkManager *link, QObject *parent) : QObject(parent), m_
             m_state.windDataTime = 0;
             m_state.as = m_state.gs = m_state.vs = 0;
             m_state.vn = m_state.ve = m_state.vd = 0;
-            m_state.firmwareVersion.clear();
-            m_state.preArmReport = VehicleState::PreArm::Unknown;
-            m_state.preArmText.clear();
+            newVehicle();
             m_state.connected = true;
             m_state.mode = u"LIVE"_s;
             m_state.connectionType = type;
@@ -60,6 +58,42 @@ VehicleHub::VehicleHub(LinkManager *link, QObject *parent) : QObject(parent), m_
             publish();
         }, Qt::DirectConnection);
     }
+}
+
+/// What the vehicle of the last link said is no reading of this one (or of the same one after
+/// a reboot: its pre-arm light was green until the first SYS_STATUS).
+void VehicleHub::newVehicle()
+{
+    const VehicleState fresh;
+    m_state.firmwareVersion.clear();
+    m_state.preArmReport = VehicleState::PreArm::Unknown;
+    m_state.preArmText.clear();
+    m_state.sensorsPresent = m_state.sensorsEnabled = m_state.sensorsHealth = 0;
+    m_state.sysStatusTime = m_state.ekfDataTime = m_state.gnssIntegrityTime = m_state.gpsDataTime = 0;
+    m_state.magCalTime = m_state.navDataTime = m_state.appWindTime = 0;
+    m_state.gpsFix = fresh.gpsFix;
+    m_state.gpsNumSat = fresh.gpsNumSat;
+    m_state.gpsHdop = fresh.gpsHdop;
+    m_state.batteryVoltage = m_state.batteryCurrent = 0;
+    m_state.batteryRemaining = fresh.batteryRemaining;
+    m_state.rssi.reset();
+    m_state.remRssi.reset();
+    m_state.homeLat.reset();
+    m_state.homeLon.reset();
+    m_state.homeAlt.reset();
+    m_state.rcChannels = fresh.rcChannels;
+    m_state.servoOutputs = fresh.servoOutputs;
+    m_state.rpmSensor = fresh.rpmSensor;
+    m_state.rpmTime = 0;
+    m_state.esc = fresh.esc;
+    m_state.missionCount = m_state.missionCurrentSeq = 0;
+    m_state.terrainPending = m_state.terrainLoaded = 0;
+    m_state.lastAckCommand = m_state.lastAckResult = -1;
+    m_state.statusText.clear();
+    m_state.statusTextTime = 0;
+    m_state.vibX = m_state.vibY = m_state.vibZ = 0;
+    m_state.vibClip0 = m_state.vibClip1 = m_state.vibClip2 = 0;
+    m_state.vibHistory.clear();
 }
 
 template <typename F>

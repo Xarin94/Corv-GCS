@@ -17,6 +17,7 @@
 #include <QQmlEngine>
 #include <QVariantList>
 #include <functional>
+#include <optional>
 
 class QNetworkAccessManager;
 class QNetworkReply;
@@ -66,6 +67,8 @@ private:
     bool binaryUsable(const QString &vehicle, const QString &version) const;
     void syncAssets() const;
     void startDownload(const QString &vehicle, const QString &version, std::function<void(bool ok, const QString &error)> done);
+    void launchAt(const QString &vehicle, const QString &version, double homeLat, double homeLon, double homeAlt, int speedup);
+    void withHomeAltitude(double lat, double lon, std::function<void(std::optional<double> terrain)> done);
     void start(const QString &vehicle, const QString &version, double homeLat, double homeLon, double homeAlt, int speedup);
     void killSitl();
     void setStatus(const QString &text);

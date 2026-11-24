@@ -233,6 +233,7 @@ private:
     Accel m_accel;
     int m_accelRun = 0;          // drops the answers of a run that was replaced
     qint64 m_accelEndedAt = 0;
+    qint64 m_magEndedAt = 0;   // a late progress of a cancelled run is not a new one
     QTimer m_accelTimer;
     QString m_accelText = QStringLiteral("Press CALIBRATE ACCEL to start.");
     QString m_accelKind;

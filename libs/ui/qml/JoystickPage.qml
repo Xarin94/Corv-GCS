@@ -23,7 +23,11 @@ Flickable {
             CfgCheck {
                 text: "ENABLE RC OVERRIDE"
                 checked: Joystick.enabled
-                onToggled: (c) => Joystick.setEnabled(c)
+                onToggled: (c) => {
+                    if (c) Joystick.askEnable()
+                    else Joystick.setEnabled(false)
+                    checked = Qt.binding(() => Joystick.enabled)   // not ticked until it is confirmed
+                }
             }
             CfgRow {
                 label: "GAMEPAD"

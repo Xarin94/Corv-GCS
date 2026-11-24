@@ -228,25 +228,6 @@ RANGE* under 2 m and those false echoes appear as a trail along the track,
 which is exactly what the setting is for. The scan stops by itself when a
 link comes up.
 
-### Emulated sensor against SITL
-```
-# terminal 1: launch the GCS, start SITL (SETUP → SIMULATION), connect
-# terminal 2:
-node scripts/livox-sim.js --mount 180,0,0 --lever 0,0,0.1 --pps 1000
-```
-
-The emulator speaks the real SDK2 protocol on `127.0.0.2` (search, config
-ack, point packets) and synthesises returns from a ground plane and four boxes
-using the *true* vehicle pose read from SITL's second MAVLink port (TCP 5762).
-In the GCS set *LIDAR IP* `127.0.0.2`, *HOST IP* an address of this machine,
-and the same mount / lever arm passed to the emulator, then enable the point
-cloud and take off. Sharp boxes and a flat ground mean the frame chain is
-right; anything wrong in signs, order or lag smears them.
-
-`node scripts/test-lidar-math.js` runs the same pipeline offline: SDK2
-framing and CRCs, identity / yaw / inverted / rolled / lever-arm cases,
-filters, gate, live path, batching, lag.
-
 Measured on the development machine with the emulator at the sensor's real
 rate (2 040 packets/s, 196 kpts/s, 22 Mbit/s): worker thread ≈ 15 % of one
 core, renderer at 60 FPS while accumulating 34 kpts/s in flight, 2.4 M points

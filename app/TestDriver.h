@@ -13,10 +13,16 @@
 //   select N, popover ID, library open|close   FLIGHT PLAN helpers
 //   grab FILE                 the window as an image
 //   stats                     what the 3D views report (fps, chunks, draw calls...)
+//
+// The debug server reads more (tests/sitl): the vehicle snapshot ("state"), every
+// property of an object ("props"), the rows of a model ("rows"), and what the operator
+// was told since the start: toasts, HUD messages and questions ("events").
 // GUI thread.
 #pragma once
 
+#include <QJsonObject>
 #include <QJsonValue>
+#include <QList>
 #include <QObject>
 #include <QString>
 
@@ -36,6 +42,9 @@ public:
     /// The same with JSON parameters (the debug server).
     QJsonValue runJson(const QString &method, const QJsonValue &params, QString *error);
 
+    /// Keep what the operator is told (toasts, HUD messages, questions) for "events".
+    void recordEvents();
+
     /// A view model by the name QML gives it: Gcs, Plan, Params...
     static QObject *viewModel(const QString &name);
 
@@ -45,8 +54,16 @@ private:
     QObject *object(const QString &name) const;
     QJsonValue call(const QString &target, const QJsonValue &args, QString *error);
     QJsonValue stats() const;
+    QJsonValue state() const;
+    QJsonValue props(const QString &name, QString *error) const;
+    QJsonValue rows(const QString &name, const QString &property, int from, int max, QString *error) const;
+    QJsonValue events(qint64 since) const;
+    void addEvent(QJsonObject e);
 
     QQmlApplicationEngine &m_engine;
+    QObject m_context;             // receiver of the recorded signals
+    QList<QJsonObject> m_events;   // the last kMaxEvents, oldest first
+    qint64 m_eventSeq = 0;
 };
 
 } // namespace corv

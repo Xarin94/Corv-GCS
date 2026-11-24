@@ -10,7 +10,9 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QSaveFile>
+#include <QXmlStreamReader>
 #include <algorithm>
 #include <cmath>
 
@@ -148,6 +150,77 @@ bool ParamMeta::parse(const QByteArray &json, QHash<QString, ParamInfo> &out, QS
     return true;
 }
 
+bool ParamMeta::parseXml(const QByteArray &xml, QHash<QString, ParamInfo> &out, QString *error)
+{
+    QXmlStreamReader r(xml);
+    ParamInfo p;
+    QString name;
+    int n = 0;
+    while (!r.atEnd()) {
+        r.readNext();
+        if (r.isStartElement()) {
+            const auto tag = r.name();
+            const auto a = r.attributes();
+            if (tag == "param"_L1) {
+                p = ParamInfo{};
+                name = a.value("name"_L1).toString();
+                if (const qsizetype colon = name.indexOf(':'_L1); colon >= 0) name = name.mid(colon + 1);
+                p.displayName = a.value("humanName"_L1).toString().trimmed();
+                p.description = a.value("documentation"_L1).toString().simplified();
+                p.user = a.value("user"_L1).toString().trimmed();
+            } else if (tag == "field"_L1) {
+                const QString key = a.value("name"_L1).toString();
+                const QString text = r.readElementText(QXmlStreamReader::IncludeChildElements).trimmed();
+                bool ok = false;
+                if (key == "Units"_L1) p.units = text;
+                else if (key == "Increment"_L1) {
+                    const double inc = text.toDouble(&ok);
+                    if (ok && inc > 0 && std::isfinite(inc)) p.increment = inc;
+                } else if (key == "Range"_L1) {
+                    static const QRegularExpression space(u"\\s+"_s);
+                    const QStringList ends = text.split(space, Qt::SkipEmptyParts);
+                    bool okLo = false, okHi = false;
+                    if (ends.size() == 2) {
+                        p.low = ends[0].toDouble(&okLo);
+                        p.high = ends[1].toDouble(&okHi);
+                    }
+                    p.hasRange = okLo && okHi && p.low <= p.high;
+                } else if (key == "RebootRequired"_L1) p.rebootRequired = text.compare("True"_L1, Qt::CaseInsensitive) == 0;
+                else if (key == "ReadOnly"_L1) p.readOnly = text.compare("True"_L1, Qt::CaseInsensitive) == 0;
+            } else if (tag == "value"_L1) {
+                bool ok = false;
+                const double v = a.value("code"_L1).toString().trimmed().toDouble(&ok);
+                const QString label = r.readElementText().trimmed();
+                if (ok) p.values.append({v, label});
+            } else if (tag == "bit"_L1) {
+                bool ok = false;
+                const int b = a.value("code"_L1).toString().trimmed().toInt(&ok);
+                const QString label = r.readElementText().trimmed();
+                if (ok && b >= 0 && b < 63) p.bits.append({b, label});
+            }
+        } else if (r.isEndElement() && r.name() == "param"_L1 && !name.isEmpty()) {
+            std::sort(p.values.begin(), p.values.end(), [](const auto &x, const auto &y) { return x.first < y.first; });
+            std::sort(p.bits.begin(), p.bits.end(), [](const auto &x, const auto &y) { return x.first < y.first; });
+            out.insert(name, p);
+            ++n;
+        }
+    }
+    if (r.hasError() || n == 0) {
+        if (error) *error = r.hasError() ? r.errorString() : u"no parameter in the file"_s;
+        return false;
+    }
+    return true;
+}
+
+void ParamMeta::setVersion(const QString &vehicleClass, const QString &version)
+{
+    const QString fw = firmwareOf(vehicleClass);
+    if (m_versions.value(fw) == version) return;
+    m_versions.insert(fw, version);
+    // Read again only where a table of that release exists, or existed
+    m_tables.remove(fw);
+}
+
 void ParamMeta::load(const QString &firmware, Table &t)
 {
     QElapsedTimer clock;
@@ -172,6 +245,18 @@ void ParamMeta::load(const QString &firmware, Table &t)
             t.source = u"autotest.ardupilot.org · "_s + QFileInfo(dl).lastModified().toString(u"yyyy-MM-dd"_s);
         } else {
             LOG_W("params") << dl.fileName() << "unreadable:" << err;
+        }
+    }
+    // The release the vehicle runs wins over both
+    const QString version = m_versions.value(firmware);
+    QFile rel(downloadDir() + u"/%1-%2.pdef.xml"_s.arg(firmware, version));
+    if (!version.isEmpty() && rel.open(QIODevice::ReadOnly)) {
+        QString err;
+        if (parseXml(rel.readAll(), t.params, &err)) {
+            t.downloaded = true;
+            t.source = u"%1 · autotest.ardupilot.org · %2"_s.arg(version, QFileInfo(rel).lastModified().toString(u"yyyy-MM-dd"_s));
+        } else {
+            LOG_W("params") << rel.fileName() << "unreadable:" << err;
         }
     }
     LOG_I("params") << "metadata of" << firmware << ":" << t.params.size() << "parameters," << t.source << "," << clock.elapsed() << "ms";
@@ -202,13 +287,13 @@ const ParamInfo *ParamMeta::find(const QString &name, const QString &vehicleClas
 int ParamMeta::count(const QString &vehicleClass) { return int(table(firmwareOf(vehicleClass)).params.size()); }
 QString ParamMeta::source(const QString &vehicleClass) { return table(firmwareOf(vehicleClass)).source; }
 
-bool ParamMeta::installDownloaded(const QString &vehicleClass, const QByteArray &json, int *count, QString *error)
+bool ParamMeta::installDownloaded(const QString &vehicleClass, const QByteArray &data, int *count, QString *error, const QString &version)
 {
     QHash<QString, ParamInfo> check;
-    if (!parse(json, check, nullptr, error)) return false;
+    if (version.isEmpty() ? !parse(data, check, nullptr, error) : !parseXml(data, check, error)) return false;
     const QString fw = firmwareOf(vehicleClass);
-    QSaveFile f(downloadDir() + u"/%1.pdef.json"_s.arg(fw));
-    if (!f.open(QIODevice::WriteOnly) || f.write(json) != json.size() || !f.commit()) {
+    QSaveFile f(downloadDir() + (version.isEmpty() ? u"/%1.pdef.json"_s.arg(fw) : u"/%1-%2.pdef.xml"_s.arg(fw, version)));
+    if (!f.open(QIODevice::WriteOnly) || f.write(data) != data.size() || !f.commit()) {
         if (error) *error = f.errorString();
         return false;
     }
@@ -221,6 +306,7 @@ void ParamMeta::removeDownloaded(const QString &vehicleClass)
 {
     const QString fw = firmwareOf(vehicleClass);
     QFile::remove(downloadDir() + u"/%1.pdef.json"_s.arg(fw));
+    for (const QString &f : QDir(downloadDir()).entryList({u"%1-*.pdef.xml"_s.arg(fw)}, QDir::Files)) QFile::remove(downloadDir() + '/'_L1 + f);
     m_tables.remove(fw);
 }
 

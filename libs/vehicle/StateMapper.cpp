@@ -56,6 +56,7 @@ void StateMapper::apply(const MavMessage &mm, VehicleState &s)
     default:
         guidance(m, s, now);
         sensors(m, s, now);
+        rotation(m, s, now);
         reports(m, s, now);
     }
 }
@@ -110,6 +111,56 @@ void StateMapper::guidance(const mavlink_message_t &m, VehicleState &s, std::int
                                 r.servo7_raw, r.servo8_raw, r.servo9_raw, r.servo10_raw, r.servo11_raw, r.servo12_raw,
                                 r.servo13_raw, r.servo14_raw, r.servo15_raw, r.servo16_raw};
         for (int i = 0; i < 16; ++i) s.servoOutputs[i] = v[i];
+        break;
+    }
+    default: break;
+    }
+}
+
+/// What turns: the RPM sensors and the ESCs (DroneCAN, DShot, BLHeli, APD...).
+void StateMapper::rotation(const mavlink_message_t &m, VehicleState &s, std::int64_t now)
+{
+    // Four ESCs a message: one is alive while its count moves, or where no count is kept while it says something
+    auto escs = [&](int first, const uint16_t *rpm, const uint16_t *count) {
+        for (int i = 0; i < 4; ++i) {
+            if (first + i >= int(s.esc.size())) return;
+            VehicleState::EscReading &e = s.esc[std::size_t(first + i)];
+            if (count[i] != 0 && int(count[i]) != e.count) e.time = now;
+            e.count = count[i];
+            e.rpm = rpm[i];
+        }
+    };
+    switch (m.msgid) {
+    case MAVLINK_MSG_ID_RPM: {
+        mavlink_rpm_t r;
+        mavlink_msg_rpm_decode(&m, &r);
+        // -1: no sensor there, or one that does not answer
+        s.rpmSensor = {r.rpm1 >= 0 ? std::optional<double>(r.rpm1) : std::nullopt, r.rpm2 >= 0 ? std::optional<double>(r.rpm2) : std::nullopt};
+        s.rpmTime = now;
+        break;
+    }
+    case MAVLINK_MSG_ID_ESC_TELEMETRY_1_TO_4: {
+        mavlink_esc_telemetry_1_to_4_t e;
+        mavlink_msg_esc_telemetry_1_to_4_decode(&m, &e);
+        escs(0, e.rpm, e.count);
+        break;
+    }
+    case MAVLINK_MSG_ID_ESC_TELEMETRY_5_TO_8: {
+        mavlink_esc_telemetry_5_to_8_t e;
+        mavlink_msg_esc_telemetry_5_to_8_decode(&m, &e);
+        escs(4, e.rpm, e.count);
+        break;
+    }
+    case MAVLINK_MSG_ID_ESC_TELEMETRY_9_TO_12: {
+        mavlink_esc_telemetry_9_to_12_t e;
+        mavlink_msg_esc_telemetry_9_to_12_decode(&m, &e);
+        escs(8, e.rpm, e.count);
+        break;
+    }
+    case MAVLINK_MSG_ID_ESC_TELEMETRY_13_TO_16: {
+        mavlink_esc_telemetry_13_to_16_t e;
+        mavlink_msg_esc_telemetry_13_to_16_decode(&m, &e);
+        escs(12, e.rpm, e.count);
         break;
     }
     default: break;

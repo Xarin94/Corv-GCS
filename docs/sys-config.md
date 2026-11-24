@@ -60,7 +60,7 @@ FLAPS indicator over it when the vehicle has flaps or flaperons. On a sailboat, 
 | Field | Default | |
 |-------|---------|---|
 | **SCHEMATIC** — *Show rotor load schematic* | on | The same switch as **SHOW ROTOR LOAD** in the side panel. |
-| **FRAME** | AUTO (servo outputs, MAV_TYPE) | Or force: sailboat (wing + rudder), single rotor (plane / heli), tricopter, quad, hexa, octo, deca, dodeca. AUTO draws the motors the outputs are assigned to (`SERVOn_FUNCTION`), and the vehicle type until those are known; it picks the sailboat dials for a Rover with `SAIL_ENABLE` or a MastRotation output. The servo parameters are read from the vehicle only while the schematic is on. |
+| **FRAME** | AUTO (servo outputs, MAV_TYPE) | Or force: sailboat (wing + rudder), helicopter (RPM, collective, tail), single rotor (plane / heli), tricopter, quad, hexa, octo, deca, dodeca. AUTO draws the motors the outputs are assigned to (`SERVOn_FUNCTION`), and the vehicle type until those are known; it picks the sailboat dials for a Rover with `SAIL_ENABLE` or a MastRotation output. The servo parameters are read from the vehicle only while the schematic is on. |
 | PWM SCALE · **MOTORS OFF (MIN)** | 1000 | The PWM at which the gauges read empty. |
 | **FULL (MAX)** | 2000 | The PWM at which they read full. |
 | **GREEN ABOVE** | 1100 | Below it a motor reads **blue** (stopped). |
@@ -68,6 +68,19 @@ FLAPS indicator over it when the vehicle has flaps or flaperons. On a sailboat, 
 | **RED ABOVE** | 1700 | A motor in the red for long is near its limit: no control margin left on that arm. |
 | SINGLE ROTOR & SAIL · **MAIN ROTOR CHANNEL** | 3 | For a plane or helicopter, the output shown as the main rotor: ArduPlane throttle = 3, heli RSC = 8. |
 | **RUDDER MAX (DEG)** | 35 | Sailboat: the rudder angle at full steering (`SERVOn_MIN` / `_MAX` of the rudder output). A property of the boat, not an ArduPilot parameter (AutoSail: 35). |
+
+| ROTOR RPM · **SOURCE** | AUTO | Where the speed of a helicopter's rotor, or of a single propeller, comes from: AUTO (RPM sensor 1, then 2, then the ESC on the rotor's output), RPM sensor 1 or 2 (`RPM1_TYPE`, `RPM2_TYPE`), ESC / CAN bus, off. |
+| **GEAR RATIO (MOTOR : ROTOR)** | 1 | Turns of the ESC's motor for one turn of the rotor. A sensor has its own scale (`RPM1_SCALING`). |
+| **RPM SCALE MAX** | 2000 | Full scale of the RPM arc. |
+| **GREEN FROM / TO (RPM)** | 0 / 0 | The green band of the rotor: green inside, amber outside, blue stopped. 0 and 0 for none. |
+| COLLECTIVE (PWM) · **SCALE MIN / MAX** | 0 / 0 | Ends of the collective slider in µs; 0 takes `H_COL_MIN` and `H_COL_MAX`. |
+| **GREEN FROM / TO (PWM)** | 0 / 0 | Green band of the collective; 0 and 0 for none. |
+| TAIL ROTOR (PWM) · **SCALE MIN / MAX** | 0 / 0 | Ends of the tail slider in µs; 0 takes `SERVOn_MIN` and `SERVOn_MAX` of the tail's output. |
+| **GREEN FROM / TO (PWM)** | 0 / 0 | Green band of the tail rotor; 0 and 0 for none. |
+
+The collective is the value ArduPilot asks of the swashplate, worked back from its servos
+(`SERVO_OUTPUT_RAW`, with their `_TRIM` and `_REVERSED`); with `H_SW_TYPE` 1 the collective has a
+servo of its own. `ESC_TLM_MAV_OFS`, when set, is taken into account to find the ESC of an output.
 
 On a healthy multirotor in a hover all motors sit in the same colour; one constantly higher shows a
 centre of gravity off to that side, a weak motor or a twisted arm.

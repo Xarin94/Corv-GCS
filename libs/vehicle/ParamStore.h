@@ -13,6 +13,7 @@
 
 #include <QHash>
 #include <QObject>
+#include <QSet>
 #include <QStringList>
 #include <QTimer>
 #include <functional>
@@ -83,6 +84,8 @@ private:
     void onParamValue(const QString &name, double value, int type, int index, int count);
     void ingestPack(const QList<std::tuple<QString, double, int>> &params, int total);
     void startStream();
+    void readPack(int tries);
+    void streamTick();
     void setRead(bool reading, const QString &text, double fraction);
     void drainQueue();
     void flushLearned();
@@ -98,6 +101,10 @@ private:
 
     bool m_reading = false;
     bool m_streamRead = false;   // PARAM_REQUEST_LIST running
+    QSet<int> m_streamSeen;      // places of the list that came
+    QTimer m_streamTimer;        // what did not is asked again
+    qint64 m_streamHeard = 0;
+    int m_streamQuiet = 0;       // rounds in a row that brought nothing
     QString m_readText;
     double m_readFraction = 0;
     qint64 m_readStarted = 0;

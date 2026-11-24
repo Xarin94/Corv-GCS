@@ -44,7 +44,8 @@ UpdateController::UpdateController(VehicleHub *hub, QObject *parent) : QObject(p
         connect(SysConfig::s_instance, &SysConfig::jsonFieldChanged, this, [this](const QString &key) {
             if (key == kCfg) emit changed();
         });
-    if (checkAtStart())
+    // A build without a release label ("2.0.3-dev") is nobody's older version: it only looks when asked
+    if (checkAtStart() && !version().endsWith("-dev"_L1))
         QTimer::singleShot(kStartDelayMs, this, [this] {
             m_atStart = true;
             check();

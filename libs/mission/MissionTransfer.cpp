@@ -53,11 +53,24 @@ QJsonObject itemsToRoute(const QList<RawItem> &itemsIn, const QString &name, boo
     }
     P.insert(u"takeoff"_s, false);
     P.insert(u"endAction"_s, u"none"_s);
+    P.insert(u"defaultSpeed"_s, 0);   // the vehicle's own, unless the mission says one
 
     QJsonArray segs;
     int last = -1;                      // last segment that can carry actions
+    // A DO_CHANGE_SPEED runs once the point before it is reached: the speed of the legs that
+    // follow, which is where the compiler takes it from. Read as the speed of the point before it
+    // (the Electron version did), every speed of a mission read back moved one segment earlier.
+    double routeSpeed = 0, speed = 0;        // of the route, of the legs so far
+    std::optional<double> pendingSpeed;      // asked for since the last point
     bool defaultSpeedSet = false;
-    auto attach = [&](const QJsonObject &action) {
+    auto append = [&](const QString &type, const LL &at, QJsonObject params) {
+        if (pendingSpeed) speed = *pendingSpeed;
+        pendingSpeed.reset();
+        if (speed != routeSpeed) params.insert(u"speed"_s, speed);
+        segs.append(createSegment(type, {at}, params));
+        last = int(segs.size()) - 1;
+    };
+    auto attachTo = [&](const QJsonObject &action) {
         if (last < 0) {
             // Actions before the first navigation point: kept on a zero-length waypoint
             const QJsonObject home = P.value(u"home"_s).toObject();
@@ -71,6 +84,17 @@ QJsonObject itemsToRoute(const QList<RawItem> &itemsIn, const QString &name, boo
         s.insert(u"actions"_s, acts);
         segs[last] = s;
     };
+    // Something else is done between the speed change and the next point: the change is an
+    // action too, or the two would swap
+    auto flushSpeed = [&] {
+        if (!pendingSpeed) return;
+        attachTo(createAction(u"speed"_s, o({{u"speed"_s, *pendingSpeed}})));
+        pendingSpeed.reset();
+    };
+    auto attach = [&](const QJsonObject &action) {
+        flushSpeed();
+        attachTo(action);
+    };
     auto altOf = [](const RawItem &it) { return std::isfinite(it.alt) ? QJsonValue(it.alt) : QJsonValue(QJsonValue::Null); };
 
     for (qsizetype i = 0; i < list.size(); ++i) {
@@ -79,20 +103,16 @@ QJsonObject itemsToRoute(const QList<RawItem> &itemsIn, const QString &name, boo
         const LL at{it.lat, it.lng};
         switch (it.command) {
         case 16: case 82:
-            segs.append(createSegment(u"waypoint"_s, {at},
-                                      o({{u"alt"_s, altOf(it)},
+            append(u"waypoint"_s, at, o({{u"alt"_s, altOf(it)},
                                          {u"turn"_s, it.command == 82 ? u"spline"_s : u"route"_s},
-                                         {u"delay"_s, it.param1}, {u"acceptRadius"_s, it.param2}})));
-            last = int(segs.size()) - 1;
+                                         {u"delay"_s, it.param1}, {u"acceptRadius"_s, it.param2}}));
             break;
         case 17: case 18: case 19: case 31: {
             const double pr = it.param3 ? it.param3 : it.param2;
             const double rr = std::abs(pr ? pr : 50);
-            segs.append(createSegment(u"circle"_s, {at},
-                                      o({{u"alt"_s, altOf(it)}, {u"radius"_s, rr},
-                                         {u"turns"_s, it.command == 18 ? std::max(1.0, it.param1 ? it.param1 : 1) : 1.0},
-                                         {u"direction"_s, pr < 0 ? u"ccw"_s : u"cw"_s}})));
-            last = int(segs.size()) - 1;
+            append(u"circle"_s, at, o({{u"alt"_s, altOf(it)}, {u"radius"_s, rr},
+                                       {u"turns"_s, it.command == 18 ? std::max(1.0, it.param1 ? it.param1 : 1) : 1.0},
+                                       {u"direction"_s, pr < 0 ? u"ccw"_s : u"cw"_s}}));
             break;
         }
         case 22: case 84: {
@@ -117,16 +137,16 @@ QJsonObject itemsToRoute(const QList<RawItem> &itemsIn, const QString &name, boo
             if (isLast && samePlace) {
                 P.insert(u"endAction"_s, u"land"_s);
             } else {
-                segs.append(createSegment(u"landing"_s, {at},
-                                          o({{u"vtol"_s, it.command == 85}, {u"abortAlt"_s, it.param1}})));
-                last = int(segs.size()) - 1;
+                append(u"landing"_s, at, o({{u"vtol"_s, it.command == 85}, {u"abortAlt"_s, it.param1}}));
             }
             break;
         }
         case 201: case 195:
+            flushSpeed();
             segs.append(createSegment(u"poi"_s, {at}, o({{u"mode"_s, u"set"_s}, {u"alt"_s, std::isfinite(it.alt) ? it.alt : 0}})));
             break;
         case 197: {
+            flushSpeed();
             LL where = at;
             if (!it.lat && !it.lng) {
                 if (last >= 0 && !pointsOf(segs[last].toObject()).isEmpty()) where = pointsOf(segs[last].toObject())[0];
@@ -139,17 +159,14 @@ QJsonObject itemsToRoute(const QList<RawItem> &itemsIn, const QString &name, boo
             break;
         }
         case 178:
+            if (it.param2 <= 0) break;   // no change (-1) or the vehicle's own
             if (!defaultSpeedSet && last < 0) {
-                if (it.param2) P.insert(u"defaultSpeed"_s, it.param2);
+                P.insert(u"defaultSpeed"_s, it.param2);
+                routeSpeed = speed = it.param2;
                 defaultSpeedSet = true;
-            } else if (last >= 0 && !num(segs[last].toObject().value(u"params"_s).toObject().value(u"speed"_s))) {
-                QJsonObject s = segs[last].toObject();
-                QJsonObject sp = s.value(u"params"_s).toObject();
-                sp.insert(u"speed"_s, it.param2);
-                s.insert(u"params"_s, sp);
-                segs[last] = s;
             } else {
-                attach(createAction(u"speed"_s, o({{u"speed"_s, it.param2}})));
+                flushSpeed();
+                pendingSpeed = it.param2;
             }
             break;
         case 206: attach(createAction(u"trigger_dist"_s, o({{u"distance"_s, it.param1}}))); break;
@@ -166,21 +183,7 @@ QJsonObject itemsToRoute(const QList<RawItem> &itemsIn, const QString &name, boo
         }
     }
 
-    // A speed change that only ever sits on the first segment is really the route speed
-    if (!defaultSpeedSet && !segs.isEmpty()) {
-        const double first = num(segs[0].toObject().value(u"params"_s).toObject().value(u"speed"_s));
-        bool others = false;
-        for (qsizetype i = 1; i < segs.size(); ++i)
-            if (num(segs[i].toObject().value(u"params"_s).toObject().value(u"speed"_s))) others = true;
-        if (first > 0 && !others) {
-            P.insert(u"defaultSpeed"_s, first);
-            QJsonObject s = segs[0].toObject();
-            QJsonObject sp = s.value(u"params"_s).toObject();
-            sp.insert(u"speed"_s, 0);
-            s.insert(u"params"_s, sp);
-            segs[0] = s;
-        }
-    }
+    flushSpeed();   // nothing is flown after it
     route.insert(u"params"_s, P);
     route.insert(u"segments"_s, segs);
     return route;

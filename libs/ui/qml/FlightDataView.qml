@@ -472,8 +472,8 @@ Item {
                     id: rotor
                     objectName: "rotorLoad"
                     anchors.horizontalCenter: parent.horizontalCenter
-                    // #rotor-load-panel: clamp(110px, 9.5vw, 190px), wider for the sail dials
-                    width: sail ? Theme.clamp(200, 17 * Theme.vw, 340) : Theme.clamp(110, 9.5 * Theme.vw, 190)
+                    // #rotor-load-panel: clamp(110px, 9.5vw, 190px), wider for the sail dials and the helicopter's sliders
+                    width: sail ? Theme.clamp(200, 17 * Theme.vw, 340) : heli ? Theme.clamp(150, 13 * Theme.vw, 260) : Theme.clamp(110, 9.5 * Theme.vw, 190)
                     height: Theme.clamp(110, 9.5 * Theme.vw, 190)
                 }
             }

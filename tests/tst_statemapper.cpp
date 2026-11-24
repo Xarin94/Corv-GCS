@@ -30,6 +30,49 @@ class TestStateMapper : public QObject
 {
     Q_OBJECT
 private slots:
+    void rpmSensors()
+    {
+        StateMapper mapper;
+        VehicleState s;
+        mavlink_message_t m;
+        mavlink_msg_rpm_pack(1, 1, &m, 1485.5f, -1.f);
+        mapper.apply(msgAt(m, 10000), s);
+        QCOMPARE(s.sensorRpm(1, 10500).value_or(-9), 1485.5);
+        QVERIFY(!s.sensorRpm(2, 10500));     // -1: not there
+        QVERIFY(!s.sensorRpm(1, 14000));     // gone quiet
+        QVERIFY(!s.sensorRpm(3, 10500));
+    }
+
+    void escTelemetry()
+    {
+        StateMapper mapper;
+        VehicleState s;
+        mavlink_message_t m;
+        const uint8_t temp[4] = {};
+        const uint16_t zero[4] = {};
+        uint16_t rpm[4] = {4000, 4100, 4200, 0}, count[4] = {10, 20, 30, 0};
+        mavlink_msg_esc_telemetry_1_to_4_pack(1, 1, &m, temp, zero, zero, zero, rpm, count);
+        mapper.apply(msgAt(m, 10000), s);
+        QCOMPARE(s.escRpm(1, 10100).value_or(-1), 4000.0);
+        QCOMPARE(s.escRpm(3, 10100).value_or(-1), 4200.0);
+        QVERIFY(!s.escRpm(4, 10100));        // nothing ever came from it
+        QVERIFY(!s.escRpm(5, 10100));
+        // ESC 2 dies: the message goes on with the others, its count stands still
+        rpm[0] = 4050;
+        count[0] = 11;
+        count[2] = 31;
+        mavlink_msg_esc_telemetry_1_to_4_pack(1, 1, &m, temp, zero, zero, zero, rpm, count);
+        mapper.apply(msgAt(m, 14000), s);
+        QCOMPARE(s.escRpm(1, 14100).value_or(-1), 4050.0);
+        QVERIFY(!s.escRpm(2, 14100));
+        // The next four
+        mavlink_msg_esc_telemetry_5_to_8_pack(1, 1, &m, temp, zero, zero, zero, rpm, count);
+        mapper.apply(msgAt(m, 14100), s);
+        QCOMPARE(s.escRpm(5, 14200).value_or(-1), 4050.0);
+        QVERIFY(!s.escRpm(0, 14200));
+        QVERIFY(!s.escRpm(17, 14200));
+    }
+
     void heartbeatModes()
     {
         StateMapper mapper;

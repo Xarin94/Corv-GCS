@@ -1410,6 +1410,7 @@ void PlanController::flattenRoute()
         const QJsonObject fp = flat.value(u"params"_s).toObject();
         P.insert(u"takeoff"_s, fp.value(u"takeoff"_s));
         P.insert(u"endAction"_s, fp.value(u"endAction"_s));
+        P.insert(u"defaultSpeed"_s, fp.value(u"defaultSpeed"_s));
         P.insert(u"altMode"_s, u"agl"_s);
         flat.insert(u"params"_s, P);
         replaceRoute(flat);

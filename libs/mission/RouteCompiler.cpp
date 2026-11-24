@@ -748,7 +748,7 @@ void Compilation::addActions(const QJsonArray &actions, const QString &segId)
     for (const QJsonValue &av : actions) {
         const QJsonObject a = av.toObject();
         const QString at = str(a, "type");
-        if (at == "trigger_dist"_L1) doItem(206, n(a, "distance"), 0, 1, 0, segId);
+        if (at == "trigger_dist"_L1) doItem(206, n(a, "distance"), 0, n(a, "distance") > 0 ? 1 : 0, 0, segId);   // a photo at once, not at the stop
         else if (at == "shot"_L1) doItem(203, 0, 0, 0, 0, segId);
         else if (at == "gimbal"_L1) doItem(205, n(a, "pitch"), 0, n(a, "yaw"), 0, segId, 2);   // z = MAV_MOUNT_MODE_MAVLINK_TARGETING
         else if (at == "yaw"_L1) doItem(115, n(a, "heading"), 0, 1, 0, segId);

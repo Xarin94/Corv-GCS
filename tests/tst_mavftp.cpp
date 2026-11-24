@@ -44,6 +44,7 @@ struct FakeVehicle {
     MavFtpClient *client = nullptr;
     int dropEvery = 0;
     bool dropReadOnce = false;
+    int dropTail = 0;           // packets lost at the end of the file, once, before the NAK that ends it
     bool busyFirst = false;
     bool silent = false;
     int burstLimit = 2000;
@@ -135,7 +136,25 @@ struct FakeVehicle {
                 const QByteArray d = file.mid(ofs, std::min<qsizetype>(max, file.size() - ofs));
                 const bool last = i == burstLimit - 1 || d.size() < max;
                 ++burstSent;
-                const bool drop = dropEvery && (burstSent % dropEvery == 0) && !last;
+                bool drop = dropEvery && (burstSent % dropEvery == 0) && !last;
+                const uint32_t left = uint32_t(file.size()) - ofs;
+                if (dropTail && left <= uint32_t(dropTail) * max) {
+                    // GCS_FTP.cpp sends the end as an ACK and then a NAK at the end's offset
+                    drop = true;
+                    if (d.size() < max) {
+                        dropTail = 0;
+                        Request r;
+                        r.seq = uint16_t(seq + 1);
+                        r.session = req.session;
+                        r.opcode = Nak;
+                        r.reqOpcode = req.opcode;
+                        r.burstComplete = true;
+                        r.offset = uint32_t(file.size());
+                        r.data = QByteArray(1, char(EndOfFile));
+                        reply(r);
+                        return;
+                    }
+                }
                 if (!drop) {
                     Request r;
                     r.seq = seq;
@@ -267,6 +286,24 @@ private slots:
         QVERIFY2(r.ok, qPrintable(r.text));
         QCOMPARE(r.data, file);
         QVERIFY(p->veh.reads >= p->veh.burstSent / 5);
+    }
+
+    void lostTailRefetched_data()
+    {
+        QTest::addColumn<int>("packets");
+        QTest::newRow("the last one") << 1;
+        QTest::newRow("the last three") << 3;
+    }
+
+    void lostTailRefetched()
+    {
+        QFETCH(int, packets);
+        auto p = makePair(file);
+        p->veh.dropTail = packets;
+        const Result r = read(*p->client, "@PARAM/param.pck", opts(100));
+        QVERIFY2(r.ok, qPrintable(r.text));
+        QCOMPARE(r.data, file);
+        QCOMPARE(p->veh.reads, packets);
     }
 
     void burstLimit()

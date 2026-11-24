@@ -35,6 +35,7 @@ constexpr int kFlaperonLeft = 24;
 constexpr int kFlaperonRight = 25;
 constexpr int kGroundSteering = 26;
 constexpr int kHeliRsc = 31;
+constexpr int kHeliTailRsc = 32;
 constexpr int kMotor1 = 33;     // Motor1..8 = 33..40
 constexpr int kThrottle = 70;
 constexpr int kThrottleLeft = 73;
@@ -92,6 +93,22 @@ public:
     Flaps flaps() const;
     /// Output parameters the flap reading needs, given flaps().
     QStringList flapParams() const;
+
+    /// A helicopter (AP_MotorsHeli): the swashplate is on Motor1..3 (and 5 with four servos), the
+    /// tail on Motor4, or on a motor of its own; the rotor is the RSC output.
+    struct Heli {
+        std::vector<int> swash;   // 1-based outputs, by motor number
+        int tail = 0;             // 0 none
+        bool tailMotor = false;   // HeliTailRSC: a throttle, not a servo around its centre
+        int rsc = 0;
+    };
+    /// ArduPilot's default outputs until every function is read.
+    Heli heli() const;
+    /// The collective as the PWM AP_MotorsHeli asks of the swashplate (between H_COL_MIN and H_COL_MAX):
+    /// the mean of its servos, each put back the right way round; the third alone on an H1 head
+    /// (H_SW_TYPE 1: roll, pitch and collective on a servo each). None without PWM on all of them.
+    static std::optional<double> collectivePwm(const Heli &h, int swashType, const std::array<std::uint16_t, servo::kOutputs> &pwm,
+                                               const std::function<OutputScale(int output)> &scale);
 
     /// Flap deployment in percent (0 = retracted, 100 = full; negative is
     /// reflex, from flaperons only), or none with no source or no PWM.

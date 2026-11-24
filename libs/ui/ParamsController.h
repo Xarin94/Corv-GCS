@@ -188,6 +188,8 @@ private:
     QTimer m_linkPoll;
     bool m_linkReady = false;
     QString m_metaClass;
+    /// The descriptions of the vehicle's class: of its release when `version` is given, else the newest.
+    void downloadMeta(const QString &version);
     bool m_metaBusy = false;
     int m_metaRev = 0;
     QNetworkAccessManager *m_net = nullptr;

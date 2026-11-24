@@ -48,6 +48,19 @@ Item {
         width: 96
         numeric: true
     }
+    /// A number of ROTOR LOAD: [label, field, default, min, max, tip]
+    component RotorRow: SysRow {
+        required property var modelData
+        label: modelData[0]
+        tip: modelData[5]
+        NumField {
+            text: page.jsonNum("rotor-load-cfg", modelData[1], modelData[2])
+            onCommitted: (t) => {
+                const v = parseFloat(t.replace(",", "."))
+                if (!isNaN(v)) SysConfig.setJsonField("rotor-load-cfg", modelData[1], Math.max(modelData[3], Math.min(modelData[4], v)))
+            }
+        }
+    }
 
     function jsonNum(key, field, def) { return String(SysConfig.jsonField(key, field, def)) }
 
@@ -167,6 +180,7 @@ Item {
                         CfgSelect {
                             width: parent.width
                             options: [{ value: "auto", label: "AUTO (servo outputs, MAV_TYPE)" }, { value: "sail", label: "SAILBOAT (wing + rudder)" },
+                                      { value: "heli", label: "HELICOPTER (RPM, collective, tail)" },
                                       { value: "1", label: "SINGLE ROTOR (plane / heli)" }, { value: "3", label: "TRICOPTER (3)" },
                                       { value: "4", label: "QUAD (4)" }, { value: "6", label: "HEXA (6)" }, { value: "8", label: "OCTO (8)" },
                                       { value: "10", label: "DECA (10)" }, { value: "12", label: "DODECA (12)" }]
@@ -202,6 +216,42 @@ Item {
                             onCommitted: (t) => { const v = parseInt(t); if (!isNaN(v)) SysConfig.setJsonField("rotor-load-cfg", "rudderMax", Math.max(1, Math.min(180, v))) }
                         }
                     }
+                    SysRow { sub: "ROTOR RPM" }
+                    SysRow {
+                        label: "SOURCE"
+                        tip: "The speed shown on a helicopter's rotor, or a single propeller: a sensor of the vehicle (RPM1, RPM2) or the ESC on the rotor's output (DroneCAN, DShot, BLHeli telemetry)"
+                        CfgSelect {
+                            width: parent.width
+                            options: [{ value: "auto", label: "AUTO (sensor, else ESC)" }, { value: "rpm1", label: "RPM SENSOR 1" },
+                                      { value: "rpm2", label: "RPM SENSOR 2" }, { value: "esc", label: "ESC / CAN BUS" }, { value: "off", label: "OFF" }]
+                            value: String(SysConfig.jsonField("rotor-load-cfg", "rpmSource", "auto"))
+                            onPicked: (v) => SysConfig.setJsonField("rotor-load-cfg", "rpmSource", v)
+                        }
+                    }
+                    Repeater {
+                        model: [["GEAR RATIO (MOTOR : ROTOR)", "rpmRatio", 1, 0.01, 1000, "Turns of the ESC's motor for one turn of the rotor; a sensor has its own scale (RPM1_SCALING)"],
+                                ["RPM SCALE MAX", "rpmMax", 2000, 100, 200000, "Full scale of the RPM arc"],
+                                ["GREEN FROM (RPM)", "rpmLow", 0, 0, 200000, "Start of the green band; amber outside it, 0 and 0 for none"],
+                                ["GREEN TO (RPM)", "rpmHigh", 0, 0, 200000, "End of the green band"]]
+                        delegate: RotorRow {}
+                    }
+                    SysRow { sub: "COLLECTIVE (PWM)" }
+                    Repeater {
+                        model: [["SCALE MIN (0 = H_COL_MIN)", "colMin", 0, 0, 2500, "Bottom of the collective slider, in µs; 0 takes the vehicle's parameter"],
+                                ["SCALE MAX (0 = H_COL_MAX)", "colMax", 0, 0, 2500, "Top of the collective slider, in µs; 0 takes the vehicle's parameter"],
+                                ["GREEN FROM (PWM)", "colLow", 0, 0, 2500, "Start of the green band; amber outside it, 0 and 0 for none"],
+                                ["GREEN TO (PWM)", "colHigh", 0, 0, 2500, "End of the green band"]]
+                        delegate: RotorRow {}
+                    }
+                    SysRow { sub: "TAIL ROTOR (PWM)" }
+                    Repeater {
+                        model: [["SCALE MIN (0 = SERVOn_MIN)", "tailMin", 0, 0, 2500, "Left end of the tail slider, in µs; 0 takes the output's parameter"],
+                                ["SCALE MAX (0 = SERVOn_MAX)", "tailMax", 0, 0, 2500, "Right end of the tail slider, in µs; 0 takes the output's parameter"],
+                                ["GREEN FROM (PWM)", "tailLow", 0, 0, 2500, "Start of the green band; amber outside it, 0 and 0 for none"],
+                                ["GREEN TO (PWM)", "tailHigh", 0, 0, 2500, "End of the green band"]]
+                        delegate: RotorRow {}
+                    }
+                    SysRow { note: "A motor whose ESC reports its speed over CAN, DShot or BLHeli shows the RPM in place of its name. A helicopter shows the rotor's RPM inside the gauge, and two sliders: the collective, put together from the swashplate servos between H_COL_MIN and H_COL_MAX, and the tail rotor's output. RPM, collective and tail each have a green band: they read green inside it and amber outside." }
                     SysRow { note: "Below the green threshold the gauges read blue (motors stopped). On AUTO the motors are the ones the outputs are assigned to (SERVOn_FUNCTION: MotorN on the ring, the fixed-wing throttles in the middle), read from the vehicle only while the schematic is shown; the FLAPS indicator appears over it when an output carries flaps or flaperons. Until those parameters arrive, plane and helicopter show only the main rotor, on the channel above (ArduPlane throttle = 3, heli RSC = 8). A Rover with SAIL_ENABLE or a MastRotation output shows the wing and rudder dials instead; the rudder angle at full steering is a property of the boat, not a parameter (AutoSail: 35)." }
                 }
 

@@ -436,6 +436,12 @@ void MavFtpClient::handle(const Packet &op)
         if (op.opcode == Nak) {
             const auto [code, text] = nak();
             if (code == EndOfFile) {
+                // The firmware puts the end of the file in the offset: past what came, the last
+                // packets were lost (taken for the end, the file lacked its tail)
+                if (op.offset > m_t->expected && op.offset <= m_t->sizeHint + 65536) {
+                    m_t->gaps.push_back({m_t->expected, op.offset - m_t->expected});
+                    m_t->expected = op.offset;
+                }
                 m_t->eof = m_t->expected;
                 m_timer.stop();
                 m_t->pending = false;

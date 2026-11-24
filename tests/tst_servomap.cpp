@@ -180,6 +180,57 @@ private slots:
         QVERIFY2(std::abs(*got - flap) < 0.5, qPrintable(QString::number(*got)));
     }
 
+    void helicopterOutputs()
+    {
+        // The defaults until the functions are read
+        const ServoMap::Heli d = ServoMap::read(lookupOf({})).heli();
+        QCOMPARE(d.swash, (std::vector<int>{1, 2, 3}));
+        QCOMPARE(d.tail, 4);
+        QCOMPARE(d.rsc, 8);
+        // Moved about, with a tail motor
+        const ServoMap::Heli h = ServoMap::read(lookupOf(functions({{5, 33}, {6, 34}, {7, 35}, {9, 31}, {10, 32}}))).heli();
+        QCOMPARE(h.swash, (std::vector<int>{5, 6, 7}));
+        QCOMPARE(h.tail, 10);
+        QVERIFY(h.tailMotor);
+        QCOMPARE(h.rsc, 9);
+        // Four swashplate servos (H4)
+        QCOMPARE(ServoMap::read(lookupOf(functions({{1, 33}, {2, 34}, {3, 35}, {4, 36}, {5, 37}, {8, 31}}))).heli().swash, (std::vector<int>{1, 2, 3, 5}));
+    }
+
+    void collective_data()
+    {
+        QTest::addColumn<double>("collective");
+        QTest::addColumn<double>("roll");
+        QTest::addColumn<double>("pitch");
+        for (double c : {1300.0, 1500.0, 1680.0})
+            for (double r : {-80.0, 0.0, 60.0})
+                for (double p : {-50.0, 70.0}) QTest::addRow("%g %g %g", c, r, p) << c << r << p;
+    }
+
+    /// Whatever the cyclic, the collective comes out of the three servos, one of them mounted the other way round.
+    void collective()
+    {
+        QFETCH(double, collective);
+        QFETCH(double, roll);
+        QFETCH(double, pitch);
+        ServoMap::Heli h{{1, 2, 3}, 4, false, 8};
+        const double az[3] = {-60, 60, 180};   // H3-120
+        const OutputScale scale[3] = {{1000, 1500, 2000, false}, {1000, 1520, 2000, true}, {1000, 1490, 2000, false}};
+        std::array<std::uint16_t, 16> pwm{};
+        for (int i = 0; i < 3; ++i) {
+            const double a = az[i] * M_PI / 180;
+            const double v = collective + roll * std::cos(a + M_PI / 2) + pitch * std::cos(a);
+            pwm[std::size_t(i)] = std::uint16_t(std::lround(scale[i].trim + (v - 1500) * (scale[i].reversed ? -1 : 1)));
+        }
+        const auto got = ServoMap::collectivePwm(h, 3, pwm, [&](int ch) { return scale[ch - 1]; });
+        QVERIFY(got);
+        QVERIFY2(std::abs(*got - collective) < 1, qPrintable(QString::number(*got)));
+        // H1: the collective has a servo of its own
+        QVERIFY(std::abs(*ServoMap::collectivePwm(h, 1, pwm, [&](int ch) { return scale[ch - 1]; }) - (1500 + (pwm[2] - 1490))) < 1e-9);
+        pwm[1] = 0;
+        QVERIFY(!ServoMap::collectivePwm(h, 3, pwm, [&](int ch) { return scale[ch - 1]; }));
+    }
+
     void noPwmNoValue()
     {
         const auto look = lookupOf(functions({{5, 2}}));

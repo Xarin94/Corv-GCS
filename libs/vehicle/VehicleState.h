@@ -156,6 +156,30 @@ struct VehicleState {
     std::array<std::uint16_t, 18> rcChannels{};
     std::array<std::uint16_t, 16> servoOutputs{};
 
+    // RPM sensors (RPM: RPM1, RPM2; none unhealthy), and the ESCs' own (ESC_TELEMETRY_x_TO_y)
+    // by ESC number, which is the output it is on (less ESC_TLM_MAV_OFS)
+    std::array<std::optional<double>, 2> rpmSensor{};
+    std::int64_t rpmTime = 0;
+    struct EscReading {
+        double rpm = 0;
+        int count = -1;            // telemetry packets the autopilot got from it
+        std::int64_t time = 0;     // when that last moved
+    };
+    std::array<EscReading, 16> esc{};
+
+    /// The speed an ESC (1-based) reports, none once it went quiet.
+    std::optional<double> escRpm(int number, std::int64_t now) const
+    {
+        if (number < 1 || number > int(esc.size())) return std::nullopt;
+        const EscReading &e = esc[std::size_t(number - 1)];
+        return e.time && now - e.time < 3000 ? std::optional<double>(e.rpm) : std::nullopt;
+    }
+    /// What an RPM sensor (1 or 2) reports.
+    std::optional<double> sensorRpm(int number, std::int64_t now) const
+    {
+        return (number == 1 || number == 2) && rpmTime && now - rpmTime < 3000 ? rpmSensor[std::size_t(number - 1)] : std::nullopt;
+    }
+
     // Mission
     int missionCount = 0;
     int missionCurrentSeq = 0;

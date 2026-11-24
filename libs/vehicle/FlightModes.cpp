@@ -41,7 +41,8 @@ const ModeMap &mapOf(Table t)
 }
 } // namespace
 
-bool isPlaneType(int t) { return t == 1 || t == 20 || t == 21; }
+bool isVtolType(int t) { return t >= 19 && t <= 25; }   // tailsitters, quadplanes, tilt rotors and wings
+bool isPlaneType(int t) { return t == 1 || isVtolType(t); }
 bool isRoverType(int t) { return t == 10 || t == 11; }
 bool isSubType(int t) { return t == 12; }
 

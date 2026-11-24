@@ -232,11 +232,16 @@ protected:
 private:
     friend class SceneRenderer;
     void touchDragBegin(QPointF press) override { m_last = press; }
-    void touchDrag(QPointF p) override { orbitBy(p); }
+    void touchDrag(QPointF p) override { dragBy(p); }
+    void touchDragEnd(QPointF) override { endDrag(); }
+    void touchCancel() override { endDrag(); }
     void touchTap(QPointF) override { emit clicked(); }
     void pinch(QPointF centre, QPointF moved, double scale) override;
     /// The chase camera turned by the movement to `pos`.
     void orbitBy(QPointF pos);
+    /// A drag on the view: the orbit in third person, the look in first.
+    void dragBy(QPointF pos);
+    void endDrag();
     void orbitZoom(double factor);
     void tick();
     void advanceLook();
@@ -289,6 +294,7 @@ private:
     } m_orbit;
     QPointF m_press, m_last;
     bool m_dragging = false, m_pressed = false;
+    bool m_dragLook = false;   // the first-person view held off the nose by a drag
     TouchGesture m_touch{this};
 
     // Look-around (look of main.js)

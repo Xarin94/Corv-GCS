@@ -68,6 +68,7 @@ private:
     void cellInfo(const mavlink_message_t &m, VehicleState &s, std::int64_t now);
     void guidance(const mavlink_message_t &m, VehicleState &s, std::int64_t now);
     void sensors(const mavlink_message_t &m, VehicleState &s, std::int64_t now);
+    void rotation(const mavlink_message_t &m, VehicleState &s, std::int64_t now);
     void reports(const mavlink_message_t &m, VehicleState &s, std::int64_t now);
     void firstFix(VehicleState &s);
     void subSurface(VehicleState &s, std::int64_t now);

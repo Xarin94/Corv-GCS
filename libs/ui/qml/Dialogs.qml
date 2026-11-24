@@ -127,6 +127,7 @@ Item {
                 Item { width: 1; height: host.mode === "prompt" ? 12 : 18 }
                 TextField {
                     id: input
+                    objectName: "dialogInput"
                     visible: host.mode === "prompt"
                     width: parent.width
                     height: visible ? 32 : 0

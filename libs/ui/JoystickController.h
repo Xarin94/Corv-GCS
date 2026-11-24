@@ -71,6 +71,8 @@ public:
     Q_INVOKABLE void scan();
     Q_INVOKABLE void select(int id);
     Q_INVOKABLE void setEnabled(bool on);
+    /// ENABLE RC OVERRIDE ticked: the operator confirms that the vehicle may move.
+    Q_INVOKABLE void askEnable();
     Q_INVOKABLE void setSendRate(int hz);
     Q_INVOKABLE void setInput(int index, const QVariantMap &patch);   // source "axis:2", channel, inverted, deadzone, expo
     Q_INVOKABLE void setServo(int index, const QVariantMap &patch);   // button, servo, percent

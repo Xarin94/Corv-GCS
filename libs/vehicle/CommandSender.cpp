@@ -106,28 +106,50 @@ void CommandSender::setFlightModeNum(int modeNum)
     sendMsg(m);
 }
 
+void CommandSender::waitFor(std::function<bool(const VehicleState &)> cond, int timeoutMs, std::function<void(bool)> then)
+{
+    auto *t = new QTimer(this);
+    t->setInterval(100);
+    auto left = std::make_shared<int>(timeoutMs / 100);
+    connect(t, &QTimer::timeout, this, [this, t, left, cond = std::move(cond), then = std::move(then)] {
+        const bool ok = cond(*m_hub->snapshot());
+        if (!ok && --*left > 0) return;
+        t->deleteLater();
+        t->stop();
+        then(ok);
+    });
+    t->start();
+}
+
 void CommandSender::takeoff(double altitude, Done done)
 {
-    // ArduCopter needs GUIDED for the takeoff command, then armed
-    setFlightMode(u"GUIDED"_s);
-    QPointer<CommandSender> self(this);
-    QTimer::singleShot(500, this, [self, altitude, done] {
-        if (!self) return;
-        auto send = [self, altitude, done] {
-            if (!self) return;
-            self->commandLong(MAV_CMD_NAV_TAKEOFF, 0, 0, 0, 0, 0, 0, float(altitude));
-            if (done) done(true, QString());
+    // ArduCopter (and a VTOL plane) needs GUIDED for the takeoff command, then armed. A fixed
+    // wing has a mode for it, with the height in a parameter: GUIDED would fly it to its last
+    // guided point from the ground. Each step waits for the one before: on a slow link the
+    // command came before the mode or the arming it needs.
+    const auto s = m_hub->snapshot();
+    const bool fixedWing = modes::tableFor(s->vehicleType, s->connectionType) == modes::Table::Plane && !modes::isVtolType(s->vehicleType);
+    const QString mode = fixedWing ? u"TAKEOFF"_s : u"GUIDED"_s;
+    auto end = [done](bool ok, const QString &why) { if (done) done(ok, why); };
+    if (!setFlightMode(mode)) return end(false, u"%1 is not a mode of this vehicle"_s.arg(mode));
+    if (fixedWing) setParameter(u"TKOFF_ALT"_s, float(altitude), MAV_PARAM_TYPE_REAL32, [](bool, float) {});
+    waitFor([mode](const VehicleState &v) { return v.flightMode == mode; }, 4000, [this, mode, altitude, fixedWing, end](bool ok) {
+        if (!ok) return end(false, u"the vehicle did not go to %1"_s.arg(mode));
+        auto go = [this, altitude, fixedWing, end] {
+            if (!fixedWing) commandLong(MAV_CMD_NAV_TAKEOFF, 0, 0, 0, 0, 0, 0, float(altitude));
+            end(true, QString());
         };
-        if (!self->m_hub->snapshot()->armed) {
-            self->armVehicle();
-            QTimer::singleShot(1000, self, send);
-        } else {
-            send();
-        }
+        if (m_hub->snapshot()->armed) return go();
+        armVehicle();
+        waitFor([](const VehicleState &v) { return v.armed; }, 6000, [go, end](bool armed) {
+            if (armed) go();
+            else end(false, u"the vehicle did not arm"_s);
+        });
     });
 }
 
 void CommandSender::land() { commandLong(MAV_CMD_NAV_LAND); }
+void CommandSender::landSequence() { commandLong(MAV_CMD_DO_LAND_START); }
 void CommandSender::returnToLaunch() { setFlightMode(u"RTL"_s); }
 void CommandSender::setMissionSpeed(double speed, int speedType) { commandLong(MAV_CMD_DO_CHANGE_SPEED, float(speedType), float(speed), -1); }
 
@@ -227,7 +249,8 @@ void CommandSender::requestAllDataStreams()
     const int streams[][2] = {{1, 4}, {2, 2}, {3, 10}, {6, 25}, {10, 25}, {11, 20}, {12, 2}};
     for (const auto &s : streams) requestDataStream(s[0], s[1]);
     // Reliable backstop: the per-message rates the EXTRA streams are supposed to give
-    const double msgs[][2] = {{30, 25}, {74, 20}, {31, 10}, {27, 10}, {241, 2}, {133, 1}, {136, 1}};
+    const double msgs[][2] = {{30, 25}, {74, 20}, {31, 10}, {27, 10}, {241, 2}, {133, 1}, {136, 1},
+                              {226, 4}, {11030, 4}};   // RPM and the ESC telemetry: where the vehicle has them
     for (const auto &m : msgs) setMessageInterval(uint32_t(m[0]), m[1]);
 }
 
@@ -295,6 +318,15 @@ void CommandSender::requestParameter(const QString &id)
     sendMsg(m);
 }
 
+void CommandSender::requestParameterIndex(int index)
+{
+    char pid[16] = {};
+    mavlink_message_t m;
+    mavlink_msg_param_request_read_pack(mav::kGcsSystemId, mav::kGcsComponentId, &m, uint8_t(targetSystem()),
+                                        uint8_t(targetComponent()), pid, int16_t(index));
+    sendMsg(m);
+}
+
 void CommandSender::fetchParameter(const QString &id, int timeoutMs, int retries, std::function<void(bool, float, int)> done)
 {
     const QString target = id.trimmed().toUpper();
@@ -336,16 +368,22 @@ void CommandSender::uploadMission(const QList<MissionItem> &items, Done done)
         return;
     }
     LOG_I("mission") << "upload of" << items.size() << "items to" << targetSystem() << "/" << targetComponent();
+    // The vehicle asks for the items one by one and asks again for the ones it did not get. What
+    // it cannot mend is done here: a MISSION_COUNT that was lost is sent again, and a lost last
+    // MISSION_ACK is replaced by asking how many items it holds. There is no limit on the whole
+    // transfer, only on the silence: a long mission on a slow link takes its time.
     struct State {
         QList<int> tokens;
         bool finished = false;
-        int lastSeq = -1;
-        qint64 t0 = 0;
+        int lastSeq = -1, highest = -1;
+        int counts = 0, verifies = 0;
+        qint64 t0 = 0, heardAt = 0;
         QTimer timer;
     };
     auto st = std::make_shared<State>();
-    st->t0 = QDateTime::currentMSecsSinceEpoch();
+    st->t0 = st->heardAt = QDateTime::currentMSecsSinceEpoch();
     QPointer<CommandSender> self(this);
+    const int n = int(items.size());
     auto finish = [st, self, done](bool ok, const QString &text) {
         if (st->finished) return;
         st->finished = true;
@@ -354,13 +392,23 @@ void CommandSender::uploadMission(const QList<MissionItem> &items, Done done)
             for (int t : st->tokens) self->m_bus->unsubscribe(t);
         if (done) done(ok, text);
     };
+    auto sendCount = [st, self, n] {
+        if (!self) return;
+        ++st->counts;
+        mavlink_message_t m;
+        mavlink_msg_mission_count_pack(mav::kGcsSystemId, mav::kGcsComponentId, &m, uint8_t(self->targetSystem()),
+                                       uint8_t(self->targetComponent()), uint16_t(n), MAV_MISSION_TYPE_MISSION);
+        self->sendMsg(m);
+    };
     auto onRequest = [st, self, items](int seq) {
         if (!self) return;
+        st->heardAt = QDateTime::currentMSecsSinceEpoch();
         if (seq >= items.size()) {
             LOG_W("mission") << "vehicle asked for item" << seq << "the mission has" << items.size();
             return;
         }
         st->lastSeq = seq;
+        st->highest = std::max(st->highest, seq);
         const MissionItem &it = items[seq];
         mavlink_message_t m;
         mavlink_msg_mission_item_int_pack(mav::kGcsSystemId, mav::kGcsComponentId, &m, uint8_t(self->targetSystem()),
@@ -373,34 +421,61 @@ void CommandSender::uploadMission(const QList<MissionItem> &items, Done done)
     st->tokens << m_bus->subscribe(MAVLINK_MSG_ID_MISSION_REQUEST_INT, this, [onRequest](const MavMessage &mm) {
         mavlink_mission_request_int_t r;
         mavlink_msg_mission_request_int_decode(&mm.msg, &r);
-        onRequest(r.seq);
+        if (r.mission_type == MAV_MISSION_TYPE_MISSION) onRequest(r.seq);
     });
     st->tokens << m_bus->subscribe(MAVLINK_MSG_ID_MISSION_REQUEST, this, [onRequest](const MavMessage &mm) {
         mavlink_mission_request_t r;
         mavlink_msg_mission_request_decode(&mm.msg, &r);
-        onRequest(r.seq);
+        if (r.mission_type == MAV_MISSION_TYPE_MISSION) onRequest(r.seq);
     });
-    st->tokens << m_bus->subscribe(MAVLINK_MSG_ID_MISSION_ACK, this, [st, finish, n = items.size()](const MavMessage &mm) {
+    st->tokens << m_bus->subscribe(MAVLINK_MSG_ID_MISSION_ACK, this, [st, finish, n](const MavMessage &mm) {
         mavlink_mission_ack_t a;
         mavlink_msg_mission_ack_decode(&mm.msg, &a);
+        if (a.mission_type != MAV_MISSION_TYPE_MISSION) return;
         if (a.type == MAV_MISSION_ACCEPTED) {
             LOG_I("mission") << u"upload accepted: %1 items in %2 ms"_s.arg(n).arg(QDateTime::currentMSecsSinceEpoch() - st->t0);
             finish(true, u"%1 items"_s.arg(n));
+        } else if (a.type == MAV_MISSION_INVALID_SEQUENCE) {
+            // A second copy of an item: the vehicle had asked again before the first came (an
+            // answer slower than its patience). It drops the copy and goes on
+            LOG_W("mission") << "a copy of item" << st->lastSeq << "dropped by the vehicle";
+            st->heardAt = QDateTime::currentMSecsSinceEpoch();
+        } else if (st->verifies && a.type == MAV_MISSION_DENIED) {
+            // Still receiving: it will ask for the item it misses
         } else {
             LOG_E("mission") << u"upload rejected: MISSION_ACK type %1 after item %2"_s.arg(a.type).arg(st->lastSeq);
             finish(false, u"Mission ACK error: type=%1"_s.arg(a.type));
         }
     });
-    st->timer.setSingleShot(true);
-    connect(&st->timer, &QTimer::timeout, this, [st, finish, n = items.size()] {
-        LOG_E("mission") << u"upload timeout after 15 s: last item requested %1 of %2"_s.arg(st->lastSeq).arg(n);
-        finish(false, u"Mission upload timeout"_s);
+    st->tokens << m_bus->subscribe(MAVLINK_MSG_ID_MISSION_COUNT, this, [st, finish, n](const MavMessage &mm) {
+        mavlink_mission_count_t c;
+        mavlink_msg_mission_count_decode(&mm.msg, &c);
+        if (!st->verifies || c.mission_type != MAV_MISSION_TYPE_MISSION) return;
+        LOG_I("mission") << "no MISSION_ACK; the vehicle holds" << c.count << "items of" << n;
+        if (c.count == n) finish(true, u"%1 items"_s.arg(n));
+        else finish(false, u"the vehicle holds %1 items of %2"_s.arg(c.count).arg(n));
     });
-    st->timer.start(15000);
-    mavlink_message_t m;
-    mavlink_msg_mission_count_pack(mav::kGcsSystemId, mav::kGcsComponentId, &m, uint8_t(targetSystem()),
-                                   uint8_t(targetComponent()), uint16_t(items.size()), MAV_MISSION_TYPE_MISSION);
-    sendMsg(m);
+    st->timer.setInterval(500);
+    connect(&st->timer, &QTimer::timeout, this, [st, self, finish, sendCount, n] {
+        if (!self) return;
+        const qint64 quiet = QDateTime::currentMSecsSinceEpoch() - st->heardAt;
+        if (quiet > 15000) {
+            LOG_E("mission") << u"upload: silence after item %1 of %2"_s.arg(st->lastSeq).arg(n);
+            finish(false, st->highest < 0 ? u"the vehicle did not ask for the mission"_s : u"Mission upload timeout"_s);
+        } else if (st->highest < 0) {
+            // Nobody asked for anything: the count was lost
+            if (quiet >= 2500 * st->counts) sendCount();
+        } else if (st->highest == n - 1 && quiet >= 3000 * (st->verifies + 1)) {
+            // Everything was asked for and it went quiet: the acknowledgement was lost
+            ++st->verifies;
+            mavlink_message_t m;
+            mavlink_msg_mission_request_list_pack(mav::kGcsSystemId, mav::kGcsComponentId, &m, uint8_t(self->targetSystem()),
+                                                  uint8_t(self->targetComponent()), MAV_MISSION_TYPE_MISSION);
+            self->sendMsg(m);
+        }
+    });
+    st->timer.start();
+    sendCount();
 }
 
 void CommandSender::downloadMission(std::function<void(int, int)> progress,
@@ -411,8 +486,12 @@ void CommandSender::downloadMission(std::function<void(int, int)> progress,
         QList<MissionItem> items;
         int total = -1;
         bool finished = false;
+        int tries = 0;              // of the request out now
+        qint64 askedAt = 0;
+        int patience = 2500;        // ms for an answer: grows with the link's own delay
         QTimer timer;
     };
+    constexpr int kTries = 6;
     auto st = std::make_shared<State>();
     QPointer<CommandSender> self(this);
     const uint8_t sys = uint8_t(targetSystem()), comp = uint8_t(targetComponent());
@@ -431,13 +510,24 @@ void CommandSender::downloadMission(std::function<void(int, int)> progress,
         cleanup();
         if (finished) finished(false, msg, {});
     };
-    // Every request re-arms the 4 s answer timer: a vehicle that stops answering fails the read
-    auto request = [st, self, sys, comp](int seq) {
-        if (!self) return;
-        st->timer.start(4000);
+    // A request that is not answered goes out again: on a radio either of the two gets lost
+    auto ask = [st, self, sys, comp] {
+        if (!self || st->finished) return;
+        st->askedAt = QDateTime::currentMSecsSinceEpoch();
+        st->timer.start(st->patience);
         mavlink_message_t m;
-        mavlink_msg_mission_request_int_pack(mav::kGcsSystemId, mav::kGcsComponentId, &m, sys, comp, uint16_t(seq), MAV_MISSION_TYPE_MISSION);
+        if (st->total < 0)
+            mavlink_msg_mission_request_list_pack(mav::kGcsSystemId, mav::kGcsComponentId, &m, sys, comp, MAV_MISSION_TYPE_MISSION);
+        else
+            mavlink_msg_mission_request_int_pack(mav::kGcsSystemId, mav::kGcsComponentId, &m, sys, comp, uint16_t(st->items.size()), MAV_MISSION_TYPE_MISSION);
         self->sendMsg(m);
+    };
+    auto request = [st, ask] {
+        // The answer to a first request says how slow the link is
+        if (st->tries == 0 && st->askedAt)
+            st->patience = int(std::clamp<qint64>(3 * (QDateTime::currentMSecsSinceEpoch() - st->askedAt), 1200, 5000));
+        st->tries = 0;
+        ask();
     };
     auto finish = [st, self, cleanup, finished, sys, comp] {
         if (st->finished) return;
@@ -455,7 +545,7 @@ void CommandSender::downloadMission(std::function<void(int, int)> progress,
         st->items.append(it);
         if (progress) progress(int(st->items.size()), st->total);
         if (st->items.size() >= st->total) finish();
-        else request(int(st->items.size()));
+        else request();
     };
 
     st->tokens << m_bus->subscribe(MAVLINK_MSG_ID_MISSION_COUNT, this, [st, request, finish, progress](const MavMessage &mm) {
@@ -467,7 +557,7 @@ void CommandSender::downloadMission(std::function<void(int, int)> progress,
         LOG_I("mission") << "download: vehicle has" << st->total << "items";
         if (progress) progress(0, st->total);
         if (st->total == 0) finish();
-        else request(0);
+        else request();
     });
     st->tokens << m_bus->subscribe(MAVLINK_MSG_ID_MISSION_ITEM_INT, this, [onItem](const MavMessage &mm) {
         mavlink_mission_item_int_t r;
@@ -497,11 +587,11 @@ void CommandSender::downloadMission(std::function<void(int, int)> progress,
         onItem(r.seq, it);
     });
     st->timer.setSingleShot(true);
-    connect(&st->timer, &QTimer::timeout, this, [fail] { fail(u"Vehicle did not answer"_s); });
-    st->timer.start(4000);
-    mavlink_message_t m;
-    mavlink_msg_mission_request_list_pack(mav::kGcsSystemId, mav::kGcsComponentId, &m, sys, comp, MAV_MISSION_TYPE_MISSION);
-    sendMsg(m);
+    connect(&st->timer, &QTimer::timeout, this, [st, ask, fail] {
+        if (++st->tries >= kTries) fail(u"Vehicle did not answer"_s);
+        else ask();
+    });
+    ask();
 }
 
 } // namespace corv

@@ -92,6 +92,7 @@ signals:
     void folderChanged();
 
 private:
+    void seekNow();
     LogReplay *m_engine;
     FftController *m_fft;
     bool m_loaded = false, m_loading = false, m_playing = false;

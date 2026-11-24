@@ -56,11 +56,11 @@ screen only, never while typing in a field.
 | **Trajectory** | **P** | The predicted path ahead: a corridor about 2 m wide at the aircraft widening to 12 m at the end of the prediction, with a cross-bar every 5 s of flight. Built from the current speed, bank (and the bank the autopilot is commanding) and vertical speed; nothing is drawn below 2 m/s. |
 | **Theme** | | Dark (default) or light interface. In the light theme the schematic chart becomes green relief under a pale sky. |
 
-**First person (1P)**: hold the **arrow keys** to look around — up/down pitch the view up to 90°,
-left/right turn it up to 110°; releasing them returns the view to the nose. The HUD stays fixed to
-the nose like a glass, so while you look aside it slides off.
+**First person (1P)**: hold the **arrow keys** to look around, or drag with the mouse or a finger —
+up/down pitch the view up to 90°, left/right turn it up to 110°; letting go returns the view to the
+nose. The HUD stays fixed to the nose like a glass, so while you look aside it slides off.
 
-**Chase view (3P)**: drag with the mouse or a finger to orbit the aircraft, scroll or pinch to zoom (50 m to 2.5 km). The
+**Chase view (3P)**: it starts behind the aircraft; drag with the mouse or a finger to orbit the aircraft, scroll or pinch to zoom (50 m to 2.5 km). The
 camera stays at least 30 m above the terrain under it, except over water, where it can follow a ROV
 under the surface. Far out, a ring marks the aircraft.
 
@@ -438,11 +438,14 @@ free OpenCelliD token) or **IMPORT CSV** (any file in the OpenCelliD or MLS layo
 
 | Panel | |
 |-------|---|
-| **ROTOR LOAD** | For multirotors: a schematic of the frame with each motor coloured by its output — blue stopped, green, orange, red as the PWM rises past the thresholds. A motor that runs much harder than the others shows a weight imbalance, a failing motor or a bent arm. The motors are the ones the vehicle's outputs are assigned to (`SERVOn_FUNCTION`): a quadplane shows its four lift motors on the ring and the pusher in the middle, a twin its two engines side by side, a plane its throttle, a helicopter its rotor (RSC) output; until those parameters arrive, the vehicle type decides. |
+| **ROTOR LOAD** | For multirotors: a schematic of the frame with each motor coloured by its output — blue stopped, green, orange, red as the PWM rises past the thresholds. A motor that runs much harder than the others shows a weight imbalance, a failing motor or a bent arm. The motors are the ones the vehicle's outputs are assigned to (`SERVOn_FUNCTION`): a quadplane shows its four lift motors on the ring and the pusher in the middle, a twin its two engines side by side, a plane its throttle, a helicopter its rotor (RSC) output; until those parameters arrive, the vehicle type decides. A motor whose ESC reports its speed (DroneCAN, DShot, BLHeli: `ESC_TELEMETRY_x`) shows its **RPM** in place of its name; when the telemetry stops, the name comes back. |
+| **ROTOR LOAD, helicopter** | The RSC output on the outer arc, and inside it the **rotor RPM** (an RPM sensor, or the ESC on the rotor's output) on an arc with its green band. Beside it the **collective** (COL), put together from the swashplate servos, and under it the **tail rotor** (TAIL), each a slider with its PWM. Source, scales and green bands in [SYS CONFIG → ROTOR LOAD](sys-config.md#rotor-load): green inside the band, amber outside. |
 | **FLAPS** | Over the rotor load, only when an output carries flaps or flaperons: the wing seen from the side with the flap at its deployment, read back from the outputs — 0 % flush with the wing, 100 % drawn at 30° down, reflex up to −10° — and the percentage underneath, blue retracted, green deployed. On/off with **SHOW ROTOR LOAD** in the side panel or in SYS CONFIG; frame and thresholds in [SYS CONFIG → ROTOR LOAD](sys-config.md#rotor-load). |
 | **SAIL · RUDDER** | For a sailboat (a Rover with `SAIL_ENABLE` or a MastRotation output; the GCS reads `SAIL_ENABLE`, `SAIL_ANGLE_MAX` and the `SERVOn_FUNCTION`, `_MIN`, `_TRIM`, `_MAX` it needs by itself when a Rover connects), in place of the rotor schematic: two dials seen from above, bow up, angles clockwise. The green foil, a NACA 0018 section turning about its stock at 30 % of the chord, is set at the angle commanded on the output — `SERVO_OUTPUT_RAW` as a fraction of the way from `SERVOn_TRIM` to `_MIN` / `_MAX`, the way ArduPilot spreads ±100 % over an output, times `SAIL_ANGLE_MAX` for the mast and **RUDDER MAX DEG** for the rudder. The wing's round leading edge points at that angle, into the wind; the rudder's trailing edge swings to the side it steers (+ = to starboard), as on a rudder angle indicator. The blue arc is where the trailing edge sweeps over the full travel (none when the mast turns all the way round). On the wing, the red stroke is the apparent wind coming in from the rim: `AppWndDir` from the wind vane, or `WIND` minus the heading. The measured position of a DroneCAN servo does not reach MAVLink (ArduPilot only logs it, `CSRV`), so the dials show the command. |
 | **Position** | LATITUDE and LONGITUDE. In the relative navigation mode: **VX · NORTH, VY · EAST, VZ · DOWN** velocities in m/s instead. On the cellular link, while the module reports its cell, also: **LTE CELL** (operator, eNB/sector), **FREQ · PCI** (downlink carrier frequency in MHz, from the EARFCN; the band, e.g. B20, if the frequency is not known), **RSSI** (the same value as the signal in the command bar), **RSRP · SINR**, **NEIGHBOURS** (cells the modem measures besides the serving one), **CELL CHANGES** since the module started, **MAST DIST** (to the serving site of the [mini-map](#lte-cells); NOT IN DB when the site is neither in the cell database nor found online). The cell rows turn amber for 5 s after a cell change; **LTE OVERLAY** in the side panel's GCS OPTIONS hides them. The rangefinder distance is in the HUD cell **LiDAR**. |
 | **Traffic** | The 4 nearest ADS-B aircraft — see [ADS-B traffic](#ads-b-traffic). Hidden when ADS-B is off. |
+
+![The RPM of the ESCs on a quad](images/rotor-load-esc.png) ![Rotor RPM, collective and tail rotor of a helicopter](images/rotor-load-heli.png)
 
 ## Command bar
 
@@ -462,16 +465,16 @@ Left to right:
 | **Flight mode** | The current mode, coloured by kind — yellow manual, cyan assisted, green automatic, orange return / land — and the list to change it. See [Flight modes](flight-modes.md). |
 | **Pre-arm dot** | Green: pre-arm checks pass (or armed); red: the autopilot reported a pre-arm failure; grey: unknown yet. |
 | **ARM / DISARM** | Asks for confirmation (`MAV_CMD_COMPONENT_ARM_DISARM`) and says whether the pre-arm checks pass. **FORCE ARM** skips the checks — only if you know which one fails and why. **DISARM** is refused by the autopilot while flying; **FORCE DISARM** cuts the motors at once, in flight too: the vehicle falls. |
-| **TAKEOFF** | Asks for a height above ground (default 10 m), switches to [GUIDED](https://ardupilot.org/copter/docs/ac2_guidedmode.html), **arms the motors if they are not armed**, and sends `MAV_CMD_NAV_TAKEOFF` to that height (a Copter take-off). |
+| **TAKEOFF** | Asks for a height above ground (default 10 m), switches to [GUIDED](https://ardupilot.org/copter/docs/ac2_guidedmode.html), **arms the motors if they are not armed**, and sends `MAV_CMD_NAV_TAKEOFF` to that height, each step once the one before is confirmed by the vehicle. A plane goes to [TAKEOFF](https://ardupilot.org/plane/docs/takeoff-mode.html) instead, with `TKOFF_ALT` set to the height. Refused on a rover, a boat and a sub; a step that fails says which. |
 | **RTL** | [Return to launch](https://ardupilot.org/copter/docs/rtl-mode.html) mode, at once, no confirmation. |
 | **AUTO** | [AUTO](https://ardupilot.org/copter/docs/auto-mode.html): fly the mission loaded on the vehicle. |
 | **FBWA** | Planes only: [Fly-By-Wire A](https://ardupilot.org/plane/docs/fbwa-mode.html), the stabilised manual mode to take over. |
 | **POSHOLD** | Copters only: [PosHold](https://ardupilot.org/copter/docs/poshold-mode.html), stop and hold position. |
-| **LAND** | [LAND](https://ardupilot.org/copter/docs/land-mode.html) mode at once — land where it is. |
+| **LAND** | [LAND](https://ardupilot.org/copter/docs/land-mode.html) mode at once — land where it is. A VTOL plane goes to QLAND, a sub to SURFACE; a fixed wing starts the landing sequence of its mission (`MAV_CMD_DO_LAND_START`), and says so when there is none. |
 | **SPD … SET** | Target speed in m/s, sent as `MAV_CMD_DO_CHANGE_SPEED` with **SET** or Enter; the label flashes *SET* when sent. Changes the speed of the mission being flown (or of GUIDED). |
 | **Home / WP** | Straight-line distance to home; active waypoint / number of mission items. |
 
-The flight buttons do nothing with no vehicle connected or on a CORV binary link (telemetry only).
+The flight buttons do nothing with no vehicle connected. A mode the vehicle does not have says so instead of being sent.
 
 ## FPV video
 

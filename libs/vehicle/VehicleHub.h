@@ -62,6 +62,7 @@ signals:
 private:
     void onMessage(const MavMessage &m);
     void publish();
+    void newVehicle();
     template <typename F>
     void post(F &&f);
 
