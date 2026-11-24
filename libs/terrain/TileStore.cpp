@@ -1,5 +1,6 @@
 #include "terrain/TileStore.h"
 
+#include "core/Clock.h"
 #include "core/DataRoot.h"
 #include "core/DebugLog.h"
 #include "core/Settings.h"
@@ -23,6 +24,10 @@ constexpr int kBulkInFlight = 4;          // the map's own requests keep their 6
 constexpr int kBulkChecksPerTurn = 200;   // tiles looked up on disk before the thread serves the map again
 constexpr int kWriteDelayMs = 500;
 constexpr std::size_t kMaxWrites = 64;
+constexpr int kRetryMs = 60000;
+constexpr int kOfflineRetryMs = 10000;
+constexpr int kLostAfter = 8;             // downloads in a row without an answer
+constexpr int kProbeMs = 10000;
 const QLatin1StringView kUrlKey{"tile-url-"};
 } // namespace
 
@@ -52,6 +57,9 @@ TileStore::TileStore()
         m_writeTimer->setSingleShot(true);
         m_writeTimer->setInterval(kWriteDelayMs);
         connect(m_writeTimer, &QTimer::timeout, this, &TileStore::flushWrites);
+        m_probeTimer = new QTimer(this);
+        m_probeTimer->setInterval(kProbeMs);
+        connect(m_probeTimer, &QTimer::timeout, this, &TileStore::probe);
     }, Qt::QueuedConnection);
     // The end of the application: the last tiles are written and the connections closed
     // on the thread that opened them. Not in the destructor: static objects go after the
@@ -66,6 +74,7 @@ void TileStore::shutdown()
     QMetaObject::invokeMethod(this, [this] {
         m_bulk.running = false;
         m_queue.clear();
+        m_probeTimer->stop();
         flushWrites();
         delete m_net;
         m_net = nullptr;
@@ -125,8 +134,15 @@ QImage TileStore::cached(const QString &provider, int z, int x, int y)
 
 bool TileStore::hasFailed(const QString &provider, int z, int x, int y) const
 {
+    const QString k = key(provider, z, x, y);
     QMutexLocker l(&m_memLock);
-    return m_failed.contains(key(provider, z, x, y));
+    return m_failed.contains(k) || m_retryAt.value(k) > wallMs();
+}
+
+bool TileStore::failedForNow(const QString &provider, int z, int x, int y) const
+{
+    QMutexLocker l(&m_memLock);
+    return m_retryAt.contains(key(provider, z, x, y));
 }
 
 QImage TileStore::tile(const QString &provider, int z, int x, int y)
@@ -137,6 +153,10 @@ QImage TileStore::tile(const QString &provider, int z, int x, int y)
         QMutexLocker l(&m_memLock);
         if (QImage *img = m_mem.get(k)) return *img;
         if (m_scheduled.contains(k)) return {};
+        if (const auto retry = m_retryAt.constFind(k); retry != m_retryAt.cend()) {
+            if (*retry > wallMs()) return {};
+            m_retryAt.erase(retry);
+        }
         m_scheduled.insert(k);
     }
     QMetaObject::invokeMethod(this, [this, r] { load(r); }, Qt::QueuedConnection);
@@ -158,11 +178,14 @@ void TileStore::deliver(const Req &r, const QImage &img)
 void TileStore::fail(const Req &r, bool forGood)
 {
     {
-        // For good: it stays scheduled, so it is not asked again. Otherwise (no
-        // network) it is asked again once the network is back.
+        // For good: it stays scheduled, so it is not asked again. Otherwise it is after a while
         QMutexLocker l(&m_memLock);
-        if (forGood) m_failed.insert(key(r));
-        else m_scheduled.remove(key(r));
+        if (forGood) {
+            m_failed.insert(key(r));
+        } else {
+            m_retryAt.insert(key(r), wallMs() + (m_online ? kRetryMs : kOfflineRetryMs));
+            m_scheduled.remove(key(r));
+        }
     }
     emit tileFailed(r.provider, r.z, r.x, r.y);
 }
@@ -275,15 +298,16 @@ void TileStore::decode(const Req &r, const QByteArray &data, bool fromDisk)
         } else if (fromDisk) {
             QMetaObject::invokeMethod(this, [this, r] { fetch(r); }, Qt::QueuedConnection);   // a damaged row
         } else {
+            // (the login page of a captive portal, most often)
             if (DebugLog::throttle(u"tile-fail"_s, 30000) >= 0) LOG_W("tiles") << "tile" << key(r) << "is not an image";
-            fail(r, true);
+            fail(r, false);
         }
     });
 }
 
 void TileStore::fetch(const Req &r)
 {
-    if (!m_network) {
+    if (!m_network || !m_online) {
         fail(r, false);
         return;
     }
@@ -303,16 +327,53 @@ void TileStore::pump()
         connect(reply, &QNetworkReply::finished, this, [this, reply, r] {
             reply->deleteLater();
             --m_inFlight;
+            const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            if (status) m_unanswered = 0;
             if (reply->error() == QNetworkReply::NoError) {
                 decode(r, reply->readAll(), false);
             } else {
                 if (DebugLog::throttle(u"tile-fail"_s, 30000) >= 0)
                     LOG_W("tiles") << "tile" << key(r) << "failed:" << reply->errorString();
-                fail(r, true);
+                // The server has no such tile; anything else may pass
+                fail(r, status == 400 || status == 404 || status == 410);
+                if (!status) unanswered();
             }
             pump();
         });
     }
+}
+
+void TileStore::unanswered()
+{
+    if (++m_unanswered < kLostAfter || !m_online) return;
+    LOG_W("tiles") << "no answer from the tile servers: cached tiles only";
+    m_online = false;
+    while (!m_queue.isEmpty()) fail(m_queue.dequeue(), false);
+    m_probeTimer->start();
+    emit networkLost();
+}
+
+void TileStore::probe()
+{
+    if (!m_net || m_online) return;
+    QNetworkRequest req(urlOf({u"satellite"_s, 0, 0, 0}));
+    req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("CORV-GCS/" CORV_VERSION));
+    req.setTransferTimeout(5000);
+    QNetworkReply *reply = m_net->get(req);
+    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+        reply->deleteLater();
+        // Any answer will do: the network is there
+        if (m_online || !reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt()) return;
+        LOG_I("tiles") << "the tile servers answer again";
+        m_unanswered = 0;
+        m_online = true;
+        m_probeTimer->stop();
+        {
+            QMutexLocker l(&m_memLock);
+            m_retryAt.clear();
+        }
+        emit networkRestored();
+    });
 }
 
 // ── Bulk download ────────────────────────────────────────────────────────────

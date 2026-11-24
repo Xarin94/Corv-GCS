@@ -54,6 +54,9 @@ public:
     ChunkImagery &imagery() { return m_imagery; }
 
     int activeChunks() const { return int(m_active.size()); }
+    int buildingChunks() const { return int(m_building.size()); }
+    /// The chunk under a point is there.
+    bool covers(double lat, double lon) const;
 
 private:
     void updateChunks(double lat, double lon);

@@ -41,7 +41,7 @@ Rectangle {
             x: 10
             anchors.verticalCenter: parent.verticalCenter
             anchors.verticalCenterOffset: 1
-            text: pop.title
+            text: Theme.tr(pop.title)
             color: Theme.accentCyan
             font.family: Theme.fontUi
             font.pixelSize: 11

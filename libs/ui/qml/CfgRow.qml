@@ -13,7 +13,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         width: row.width - slot.width - 8
         elide: Text.ElideRight
-        text: row.label
+        text: Theme.tr(row.label)
         visible: text.length > 0
     }
     Row {

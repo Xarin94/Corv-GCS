@@ -265,6 +265,69 @@ private slots:
         QVERIFY2(worst < 0.5, qPrintable(QString::number(worst)));
     }
 
+    // MOTION SMOOTHING and the angular velocity: ATTITUDE at 10 Hz of a vehicle rocking in
+    // roll, its gyro rates with it. The drawn attitude is propagated on those rates between
+    // samples; at a sample neither the angle nor the angular velocity drawn may step.
+    void angularVelocityBlend()
+    {
+        const double amp = 0.4, w = 2 * M_PI * 0.5;
+        struct Run { double worstRateStep = 0, worstErr = 0, stillShare = 0; };
+        auto rock = [&](double tau) {
+            PoseSmoother smoother;
+            auto state = truth(0);
+            Run run;
+            double prevRoll = 0, prevRate = 0;
+            int n = 0, stills = 0;
+            std::size_t sample = 0;
+            for (double t = 0; t < 6000; t += FRAME) {
+                while (sample * 100.0 + 5 <= t) {
+                    const double take = sample * 100.0, s = take / 1000;
+                    state.roll = amp * std::sin(w * s);
+                    state.pitch = 0;
+                    state.yaw = 0;
+                    state.rollRate = amp * w * std::cos(w * s);
+                    state.pitchRate = state.yawRate = 0;
+                    state.attTime = state.posTime = take + 5;
+                    state.attBootMs = state.posBootMs = 1000 + take;
+                    ++sample;
+                }
+                const double roll = smoother.update(state, t, tau).roll;
+                const double rate = (roll - prevRoll) / (FRAME / 1000);
+                if (n > 60) {
+                    run.worstRateStep = std::max(run.worstRateStep, std::abs(rate - prevRate));
+                    run.worstErr = std::max(run.worstErr, std::abs(roll - amp * std::sin(w * t / 1000)));
+                    if (roll == prevRoll) ++stills;
+                }
+                prevRoll = roll;
+                prevRate = rate;
+                ++n;
+            }
+            run.stillShare = double(stills) / (n - 60);
+            return run;
+        };
+        const Run raw = rock(PoseSmoother::tauFor(0)), def = rock(PoseSmoother::tauFor(PoseSmoother::kDefaultSmoothing)),
+                  full = rock(PoseSmoother::tauFor(PoseSmoother::kMaxSmoothing));
+        // Off: as received, standing still between samples
+        QVERIFY2(raw.stillShare > 0.7, qPrintable(QString::number(raw.stillShare)));
+        QCOMPARE(def.stillShare, 0.0);
+        // The true angular velocity changes by 0.07 rad/s a frame: the steps of 10 Hz samples do
+        // not show (blending the angle alone gave steps of 0.6 rad/s at each one)
+        QVERIFY2(def.worstRateStep < 0.13, qPrintable(QString::number(def.worstRateStep)));
+        QVERIFY2(full.worstRateStep < def.worstRateStep, qPrintable(QString::number(full.worstRateStep)));
+        // And the drawn attitude stays on the true one: within 2 degrees, 8 at the slider's end
+        QVERIFY2(def.worstErr < 0.035, qPrintable(QString::number(def.worstErr)));
+        QVERIFY2(full.worstErr < 0.14, qPrintable(QString::number(full.worstErr)));
+    }
+
+    void tauFollowsTheSlider()
+    {
+        QCOMPARE(PoseSmoother::tauFor(0), 0.0);
+        QCOMPARE(PoseSmoother::tauFor(0.15), 0.075);
+        QCOMPARE(PoseSmoother::tauFor(0.5), 0.25);
+        QCOMPARE(PoseSmoother::tauFor(3), 0.25);
+        QCOMPARE(PoseSmoother::tauFor(-1), 0.0);
+    }
+
     void smoothingOff()
     {
         PoseSmoother smoother;

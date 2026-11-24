@@ -18,6 +18,11 @@
 # AppImage whose runtime is cut out (the ELF part before its squashfs).
 # Default: build/appimage-tools/runtime-x86_64.
 #
+# FPV video: FFMPEG_ROOT, an LGPL build of FFmpeg (libavcodec with the H.264 and H.265
+# decoders, libavutil; shared), is linked and its libraries packed. Without it the
+# AppImage has no video decoder: the build machine's own library would be needed on
+# every other one.
+#
 # The AppImage runs on distributions with a glibc at least as new as the build
 # machine's: release builds come from the oldest Ubuntu LTS to support (the CI's
 # ubuntu-22.04). Inside it the program folder is read-only, so the data root is
@@ -40,9 +45,10 @@ command -v mksquashfs >/dev/null || { echo "mksquashfs not found (squashfs-tools
 export PATH="$HOME/Qt/Tools/Ninja:$QT_DIR/bin:$PATH"
 
 # 1. Build
-if [ ! -f "$BUILD/build.ninja" ] || [ -n "$LABEL" ]; then
-    cmake --preset linux-release -DCMAKE_PREFIX_PATH="$QT_DIR" -DCORV_VERSION_LABEL="$LABEL" ${CORV_CMAKE_ARGS:-}
-fi
+FFMPEG_ROOT="${FFMPEG_ROOT:-}"
+[ -n "$FFMPEG_ROOT" ] || echo "FFMPEG_ROOT not set: the AppImage will have no FPV video decoder" >&2
+cmake --preset linux-release -DCMAKE_PREFIX_PATH="$QT_DIR" -DCORV_VERSION_LABEL="$LABEL" \
+    -DFFMPEG_ROOT="$FFMPEG_ROOT" -DCORV_SYSTEM_FFMPEG=OFF ${CORV_CMAKE_ARGS:-}
 cmake --build --preset linux-release
 
 # 2. AppDir: Qt's own layout under usr/, so the RUNPATHs of its plugins hold
@@ -96,6 +102,14 @@ find "$APPDIR/usr/bin/corv-gcs" "$APPDIR/usr/plugins" "$APPDIR/usr/qml" -type f 
     while read -r lib; do cp -L "$lib" "$APPDIR/usr/lib/"; done
 unset LD_LIBRARY_PATH
 
+# FFmpeg (FPV video), replaceable as Qt's libraries are
+if [ -n "$FFMPEG_ROOT" ]; then
+    for lib in "$FFMPEG_ROOT"/lib/libavcodec.so.* "$FFMPEG_ROOT"/lib/libavutil.so.*; do
+        case "$lib" in *.so.*.*) continue ;; esac      # the soname only: libavcodec.so.62
+        cp -L "$lib" "$APPDIR/usr/lib/"
+    done
+fi
+
 # Launcher, desktop entry, icon
 cat > "$APPDIR/AppRun" <<'RUN'
 #!/bin/sh
@@ -114,6 +128,8 @@ CORV GCS $VERSION is Apache-2.0 (LICENSE).
 It uses Qt $(basename "$(dirname "$QT_DIR")") under the LGPLv3, linked dynamically: the Qt libraries in
 usr/lib can be replaced. Qt sources: https://download.qt.io/official_releases/qt/
 MAVLink generated headers: MIT.
+$([ -z "$FFMPEG_ROOT" ] || echo "It uses FFmpeg (libavcodec, libavutil) under the LGPLv2.1, linked dynamically: the libraries in
+usr/lib can be replaced. FFmpeg sources: https://ffmpeg.org/download.html")
 TXT
 
 # 3. squashfs behind the runtime; the type-2 magic "AI\x02" at offset 8

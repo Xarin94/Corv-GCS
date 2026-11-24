@@ -25,6 +25,12 @@ ConnectionManager::ConnectionManager(LinkManager *link, VehicleHub *hub, Message
         m_streamPoll.stop();
         m_cmd->requestAllDataStreams();
         QTimer::singleShot(2000, this, [this] { m_cmd->requestHomePosition(); });
+        // The firmware version, asked again once if the first answer is lost
+        for (const int at : {1000, 6000})
+            QTimer::singleShot(at, this, [this] {
+                const auto s = m_hub->snapshot();
+                if (s->connected && s->firmwareVersion.isEmpty()) m_cmd->requestAutopilotVersion();
+            });
     });
     m_homePoll.setInterval(5000);
     connect(&m_homePoll, &QTimer::timeout, this, [this] {

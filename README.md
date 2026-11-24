@@ -125,11 +125,13 @@ replay on the flight screen, with a timeline to scrub through.
 - **Calibration**: accelerometer, level, gyro, barometer, and onboard compass calibration on a 3D sphere.
 - **RTK**: corrections from an NTRIP caster or a serial base, forwarded to the vehicle.
 - **Cellular link**: an LTEtelem module through an end-to-end encrypted relay, with the LTE cells on the map.
+- **FPV video**: an RTSP camera (SIYI and similar) full screen, or with the synthetic view drawn over it.
 - **LiDAR and ROS**: a Livox Mid-360 point cloud, or surfaces from LiDAR, echo sounder and sonar over rosbridge.
 - **Water, ROVs and no GPS**: lakes and seas, depth under the surface, and a relative frame without GPS.
 - **Joystick**: RC override from a gamepad, with servo and camera buttons.
 - **Telemetry forwarding**: MAVLink over UDP or serial, or LTM to an antenna tracker.
 - **Simulator**: ArduPilot SITL with one click.
+- **English and Simplified Chinese**, switched while running.
 - **Offline**: imagery and elevation downloaded for an area, for a flight with no network.
 
 ## Install

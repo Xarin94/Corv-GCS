@@ -56,6 +56,8 @@ public:
     Q_INVOKABLE void setMissionSpeed(double speed, int speedType = 1);
     void setHome(std::optional<double> lat, std::optional<double> lon, std::optional<double> alt, AckDone done = {});
     Q_INVOKABLE void requestHomePosition();
+    /// AUTOPILOT_VERSION, for the firmware version.
+    void requestAutopilotVersion();
     Q_INVOKABLE void rebootAutopilot();
     void sendRcChannelsOverride(const std::array<uint16_t, 18> &channels);
     Q_INVOKABLE void sendServoTest(int servo, int pwm);

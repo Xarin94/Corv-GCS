@@ -59,7 +59,7 @@ Flickable {
                     }
                 }
                 Text {
-                    text: "Clipping: " + (SetupCfg.vib.clip0 || 0) + " / " + (SetupCfg.vib.clip1 || 0) + " / " + (SetupCfg.vib.clip2 || 0)
+                    text: qsTr("Clipping: ") + (SetupCfg.vib.clip0 || 0) + " / " + (SetupCfg.vib.clip1 || 0) + " / " + (SetupCfg.vib.clip2 || 0)
                     color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: 12
                 }
             }

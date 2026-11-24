@@ -28,7 +28,7 @@ Item {
         y: cell.pad
         width: parent.width - cell.unitW - 0.4 * Theme.fsSm
         horizontalAlignment: Text.AlignRight
-        text: cell.label.toUpperCase()
+        text: Theme.tr(cell.label).toUpperCase()
         color: Theme.hudTextLbl
         font.family: Theme.fontUi
         font.pixelSize: Theme.fsSm

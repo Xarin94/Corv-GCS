@@ -23,11 +23,11 @@ Flickable {
         property color valueColor: Theme.textMain
         width: parent ? parent.width : 320
         spacing: 2
-        CfgLabel { text: parent.label }
+        CfgLabel { text: Theme.tr(parent.label) }
         Text {
             width: parent.width
             wrapMode: Text.Wrap
-            text: parent.value
+            text: Theme.tr(parent.value)
             color: parent.valueColor
             font.family: Theme.fontData
             font.pixelSize: 11
@@ -48,7 +48,7 @@ Flickable {
                 CfgInput {
                     id: keyIn
                     width: 150
-                    placeholderText: "64 hex characters"
+                    placeholderText: qsTr("64 hex characters")
                     echoMode: showBtn.shown ? TextInput.Normal : TextInput.Password
                     text: Lte.savedKey
                 }
@@ -64,15 +64,16 @@ Flickable {
             CfgCheck {
                 id: rememberChk
                 text: "REMEMBER KEY ON THIS COMPUTER"
+                tip: "Stored encrypted by the operating system keychain, never in plain text"
                 enabled: Lte.keychain
                 checked: Lte.keychain && !!page.saved.rememberKey
                 opacity: enabled ? 1 : 0.5
             }
             CfgNote {
-                text: Lte.keychain ? "Telemetry and commands are encrypted end to end with this key: the relay cannot read or alter them."
-                                   : "No OS keychain available: the key must be entered every time. Telemetry and commands are encrypted end to end with this key."
+                text: Theme.tr(Lte.keychain ? "Telemetry and commands are encrypted end to end with this key: the relay cannot read or alter them."
+                                   : "No OS keychain available: the key must be entered every time. Telemetry and commands are encrypted end to end with this key.")
             }
-            CfgNote { visible: !Lte.available; color: "#ff3333"; text: "This build has no crypto backend (OpenSSL): the cellular link is not available." }
+            CfgNote { visible: !Lte.available; color: "#ff3333"; text: qsTr("This build has no crypto backend (OpenSSL): the cellular link is not available.") }
             Row {
                 spacing: 6
                 GcsButton {
@@ -94,7 +95,7 @@ Flickable {
             CfgRow { label: "PORT"; CfgInput { id: portIn; width: 80; numeric: true; text: String(page.saved.port || 5765) } }
             CfgRow {
                 label: "CERT SHA-256"
-                CfgInput { id: certIn; width: 150; placeholderText: "Optional: pin the relay certificate"; text: page.saved.certSha256 || "" }
+                CfgInput { id: certIn; width: 150; placeholderText: qsTr("Optional: pin the relay certificate"); text: page.saved.certSha256 || "" }
                 GcsButton {
                     width: 44; height: 26
                     text: "PIN"
@@ -102,7 +103,7 @@ Flickable {
                     onClicked: { const fp = Lte.pinCertificate(); if (fp) certIn.text = fp }
                 }
             }
-            CfgNote { text: "Relay settings stay on this computer only." }
+            CfgNote { text: qsTr("Relay settings stay on this computer only.") }
         }
 
         SetupPanel {
@@ -128,11 +129,13 @@ Flickable {
             InfoRow { label: "MAST"; value: Lte.cell.mast || "--" }
             CfgCheck {
                 text: "SHOW CELL SITES ON THE MAP"
+                tip: "Cell sites within 100 km and a dashed line to the serving cell, on the 2D map"
                 checked: !!Lte.cellMap.show
                 onToggled: (c) => Lte.setCellMap("show", c)
             }
             CfgCheck {
                 text: "ALL OPERATORS"
+                tip: "Off: only the network of the serving cell"
                 checked: !!Lte.cellMap.allOperators
                 onToggled: (c) => Lte.setCellMap("allOperators", c)
             }
@@ -147,6 +150,7 @@ Flickable {
             InfoRow { label: "ONLINE LOOKUPS"; value: page.db.lookups || "--" }
             CfgCheck {
                 text: "LOOK UP MISSING CELLS ONLINE"
+                tip: "A serving cell in no database is asked to beaconDB (and to the OpenCelliD API with a token): only its identifiers are sent"
                 checked: page.db.online !== false
                 onToggled: (c) => Lte.dbSetOnline(c)
             }
@@ -156,7 +160,7 @@ Flickable {
                     id: tokenIn
                     width: 150
                     echoMode: TextInput.Password
-                    placeholderText: page.db.hasToken ? "saved (type a new one to replace it)" : "free at opencellid.org"
+                    placeholderText: Theme.tr(page.db.hasToken ? "saved (type a new one to replace it)" : "free at opencellid.org")
                 }
                 GcsButton {
                     width: 44; height: 26

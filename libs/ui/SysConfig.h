@@ -6,9 +6,9 @@
 //   datad-hud-cells, rotor-load-cfg, fpv-settings, log-fft-cfg, gcs-lang,
 //   selectedModel, modelScale, ground-clamp-enabled, renderFpsCap,
 //   renderQuality, satDetailMaxZoom, satelliteRadiusM, terrainRadiusM, hgt-folder.
-// What has a consumer in this version is applied live (navigation, battery,
-// ADS-B, HUD cells, terrain and satellite radius, stream rates, HGT folder, offline data);
-// the rest is stored for the components still to be ported.
+// Every one is applied live. New in this version, under keys of their own:
+//   motionSmoothing, mapBrightness (remembered; Electron kept them for the session).
+// Not remembered: ALTITUDE OFFSET and TIME OF DAY.
 #pragma once
 
 #include <QJsonObject>
@@ -17,6 +17,7 @@
 #include <QTimer>
 #include <QUrl>
 #include <QVariantList>
+#include <functional>
 
 namespace corv {
 
@@ -41,9 +42,23 @@ class SysConfig : public QObject
     Q_PROPERTY(QString batCells READ batCells NOTIFY batteryChanged)
     // 3D VIEW
     Q_PROPERTY(QStringList models READ models CONSTANT)
+    /// The model drawn, as picked here or as the vehicle type set it
+    Q_PROPERTY(QString selectedModel READ selectedModel WRITE setSelectedModel NOTIFY modelChanged)
     Q_PROPERTY(QString hgtStatus READ hgtStatus NOTIFY hgtChanged)
     Q_PROPERTY(double terrainRadius READ terrainRadius NOTIFY viewChanged)
     Q_PROPERTY(double satelliteRadius READ satelliteRadius NOTIFY viewChanged)
+    Q_PROPERTY(double motionSmoothing READ motionSmoothing WRITE setMotionSmoothing NOTIFY displayChanged)
+    /// The blend time constant MOTION SMOOTHING stands for, s: the 3D view and the HUD draw their pose with it
+    Q_PROPERTY(double smoothingTau READ smoothingTau NOTIFY displayChanged)
+    Q_PROPERTY(double mapBrightness READ mapBrightness WRITE setMapBrightness NOTIFY displayChanged)
+    Q_PROPERTY(QString renderQuality READ renderQuality WRITE setRenderQuality NOTIFY displayChanged)
+    /// Minutes from midnight the sun is held at, -1 follows the clock
+    Q_PROPERTY(int timeOfDay READ timeOfDay WRITE setTimeOfDay NOTIFY timeOfDayChanged)
+    Q_PROPERTY(int clockMinutes READ clockMinutes NOTIFY clockChanged)
+    // APPLICATION
+    Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
+    /// The settings of CORV GCS 1.x on this computer: when they were last used, empty when there are none.
+    Q_PROPERTY(QString legacySettings READ legacySettings CONSTANT)
     // HUD DATA FIELDS
     Q_PROPERTY(QVariantList hudFields READ hudFields CONSTANT)
     Q_PROPERTY(QVariantList hudCells READ hudCells NOTIFY hudCellsChanged)
@@ -84,11 +99,32 @@ public:
     Q_INVOKABLE void setBatteryRange(const QString &vmin, const QString &vmax);
 
     QStringList models() const;
+    QString selectedModel() const;
+    void setSelectedModel(const QString &name);
     QString hgtStatus() const;
     Q_INVOKABLE void selectHgtFolder(const QUrl &folder);
     double terrainRadius() const;
     double satelliteRadius() const;
     Q_INVOKABLE void setTerrainRadius(double meters);
+    double motionSmoothing() const;
+    void setMotionSmoothing(double v);
+    double smoothingTau() const;
+    double mapBrightness() const;
+    void setMapBrightness(double v);
+    QString renderQuality() const;
+    void setRenderQuality(const QString &q);
+    int timeOfDay() const { return m_timeOfDay; }
+    void setTimeOfDay(int minutes);
+    int clockMinutes() const;
+    /// ALTITUDE OFFSET as typed (parseFloat(...) || 0); Vehicle.altOffset is the one in use.
+    Q_INVOKABLE void setAltitudeOffset(const QString &text);
+
+    QString legacySettings() const;
+    /// Asked first; the ones read only at start need a restart.
+    Q_INVOKABLE void importLegacySettings();
+    /// The interface's language, "en" or "zh" (gcs-lang): changed at once.
+    QString language() const;
+    void setLanguage(const QString &code);
 
     QVariantList hudFields() const;
     QVariantList hudCells() const;
@@ -124,6 +160,11 @@ signals:
     void batteryChanged();
     void hgtChanged();
     void viewChanged();
+    void displayChanged();
+    void timeOfDayChanged();
+    void modelChanged();
+    void languageChanged();
+    void clockChanged();
     void hudCellsChanged();
     void streamRatesChanged();
     void offlineChanged();
@@ -136,12 +177,17 @@ private:
     QJsonArray hudCellsJson() const;
     void saveHudCells(const QJsonArray &a);
     void startSatellite();
+    void withRatePrefix(std::function<void(bool known)> then);
+    void flashRate(int i, const QString &state);
 
     VehicleHub *m_hub;
     CommandSender *m_cmd;
     QTimer m_statusTimer;
     QString m_navStatus = QStringLiteral("--");
+    int m_timeOfDay = -1;
+    int m_clockMinute = -1;
     QVariantList m_rates, m_rateState;
+    QString m_ratePrefix;   // SR0_ or MAV1_, once the vehicle told
     // Offline run
     bool m_offlineBusy = false;
     QString m_offlineStatus;

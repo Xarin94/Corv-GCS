@@ -45,7 +45,7 @@ Rectangle {
     Text {
         id: label
         anchors.centerIn: parent
-        text: b.text
+        text: Theme.tr(b.text)
         color: b.dashed ? Theme.textDim : b.primary ? (b.blocked ? "#ff8080" : Theme.accentGreen) : Theme.textMain
         font.family: Theme.fontUi
         font.pointSize: (b.fontSize) * 0.75
@@ -56,6 +56,6 @@ Rectangle {
     // The press stays here: with the default policy a map under the button got it too
     TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; enabled: b.enabled; onTapped: b.clicked() }
     ToolTip.visible: tip.length > 0 && hover.hovered
-    ToolTip.text: tip
+    ToolTip.text: Theme.tr(tip)
     ToolTip.delay: 600
 }

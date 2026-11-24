@@ -79,6 +79,18 @@ bool VehicleModel::gpsStale() const
     return m_s->connected && wallMs() - m_s->gpsDataTime > 5000;
 }
 
+int VehicleModel::signalBars() const
+{
+    // The steps of the 3GPP signal quality, 2 / 6 / 10 / 15 / 20 (updateSignalBars)
+    if (m_s->rssi) {
+        const int dbm = int(std::lround(rssiDbm()));   // the scale has ~0.5 dB steps
+        int n = 0;
+        for (const int t : {-109, -101, -93, -83, -73}) n += dbm >= t;
+        return n;
+    }
+    return m_s->linkQuality > 0 ? std::min(5, int(std::ceil(m_s->linkQuality / 20))) : -1;
+}
+
 QString VehicleModel::flightTime() const
 {
     qint64 ms = m_flightMs + (m_armedSince ? wallMs() - m_armedSince : 0);

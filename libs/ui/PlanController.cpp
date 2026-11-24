@@ -6,6 +6,7 @@
 #include "gpu/SceneItem.h"
 #include "link/LinkManager.h"
 #include "ui/GcsController.h"
+#include "ui/MapItem.h"
 #include "mission/MissionStore.h"
 #include "mission/MissionTransfer.h"
 #include "mission/Platforms.h"
@@ -1806,6 +1807,25 @@ QString PlanController::platformLink() const
     return u"%1 · %2 baud"_s.arg(connectionLabel(p.connType)).arg(p.connBaud);
 }
 
+QString PlanController::platformLabel() const { return platform(activePlatformId()).label; }
+QString PlanController::platformConnType() const { return platform(activePlatformId()).connType; }
+QString PlanController::platformConnLabel() const { return connectionLabel(platform(activePlatformId()).connType); }
+int PlanController::platformBaud() const { return platform(activePlatformId()).connBaud; }
+bool PlanController::missionsSupported() const { return mission::missionsSupported(); }
+
+QString PlanController::noMissionReason() const
+{
+    const Platform &p = platform(activePlatformId());
+    if (p.missions) return {};
+    return p.noMissionReason.isEmpty() ? u"%1 cannot fly missions"_s.arg(p.label) : p.noMissionReason;
+}
+
+QString PlanController::setupReason(const QString &section) const
+{
+    const QString why = unsupportedReason(u"setup"_s, section);
+    return why.isEmpty() ? QString() : u"%1: %2"_s.arg(platform(activePlatformId()).label, why);
+}
+
 // ── Radio link ───────────────────────────────────────────────────────────────
 
 void PlanController::setShowLink(bool v)
@@ -1901,11 +1921,23 @@ void PlanController::publishMission3D()
     // (buildMissionTrajectory3D of main.js): altitudes already resolved against
     // the terrain by the compiler, so the route in 3D and the profile agree
     static const QSet<int> nav = {16, 17, 18, 19, 21, 22, 31, 82, 84, 85};
-    std::vector<MissionPoint3D> pts;
-    std::vector<QString> segOf;
+    Mission3DInput mission;
+    std::vector<MapItem::MissionPoint> onMap;
     for (qsizetype i = 0; i < m_compiled.items.size(); ++i) {
         const CompiledItem &it = m_compiled.items[i];
-        if (!nav.contains(it.command) || (!it.lat && !it.lng)) continue;
+        const bool home = it.isHome || (i == 0 && it.frame == 0 && it.command == 16);
+        if (it.command == MAV_CMD_NAV_RETURN_TO_LAUNCH) {
+            mission.rtlSeq = it.seq;
+            continue;
+        }
+        if (!it.lat && !it.lng) continue;
+        onMap.push_back({{it.lat, it.lng}, home});
+        if (it.command == MAV_CMD_DO_SET_ROI || it.command == MAV_CMD_DO_SET_ROI_LOCATION) {
+            mission.pois.push_back({it.lat, it.lng, it.altMsl, it.terrain, it.seq});
+            continue;
+        }
+        if (!nav.contains(it.command)) continue;
+        mission.rtlSeq.reset();   // a return closes the route only when nothing is flown after it
         MissionPoint3D p;
         p.lat = it.lat;
         p.lon = it.lng;
@@ -1913,29 +1945,28 @@ void PlanController::publishMission3D()
         p.ground = it.terrain;
         p.seq = it.seq;
         p.derived = it.derived;
-        if (it.isHome || (i == 0 && it.frame == 0 && it.command == 16)) p.kind = u"home"_s;
+        if (home) p.kind = u"home"_s;
         else if (it.command == 22 || it.command == 84) p.kind = u"takeoff"_s;
         else if (it.command == 21 || it.command == 85 || it.landing) p.kind = u"land"_s;
         else if (it.command == 17 || it.command == 18 || it.command == 19 || it.command == 31) p.kind = u"loiter"_s;
         else p.kind = u"wp"_s;
-        if (p.kind == "loiter"_L1) p.loiterRadius = it.loiter ? it.loiter->r : std::abs(it.command == 31 ? it.param2 : it.param3);
+        if (p.kind == "loiter"_L1) {
+            const double r = it.command == 31 ? it.param2 : it.param3;   // LOITER_TO_ALT keeps its radius in param 2
+            p.loiterRadius = it.loiter ? it.loiter->r : std::abs(r);
+            p.turns = it.loiter ? it.loiter->turns : it.command == 18 ? std::max(1, int(std::lround(it.param1))) : 1;
+            p.ccw = r < 0;
+        }
+        p.navLand = it.command == 21;
         p.alt = it.alt;
-        p.hold = (it.command == 16 || it.command == 19) ? it.param1 : 0;
-        p.turns = it.command == 18 ? int(it.param1) : 0;
-        if (!it.segId.isEmpty()) p.segType = it.segType;
-        segOf.push_back(it.segId);
-        pts.push_back(p);
+        p.hold = it.command == 16 || it.command == 82 ? it.param1 : 0;
+        p.segId = it.segId;
+        p.segType = it.segType;
+        mission.points.push_back(p);
     }
-    // Inside a pattern only its ends are marked
-    for (std::size_t i = 0; i < pts.size(); ++i) {
-        if (segOf[i].isEmpty() || pts[i].derived) continue;
-        auto same = [&](std::size_t j) { return segOf[j] == segOf[i] && !pts[j].derived; };
-        bool before = false, after = false;
-        for (std::size_t j = 0; j < i && !before; ++j) before = same(j);
-        for (std::size_t j = i + 1; j < pts.size() && !after; ++j) after = same(j);
-        pts[i].segPos = !before ? 1 : !after ? 3 : 2;
-    }
-    SceneItem::setMission(std::move(pts));
+    // (a mission of nothing but a home draws nothing)
+    if (mission.points.empty()) mission = {};
+    SceneItem::setMission(std::move(mission));
+    MapItem::setMission(std::move(onMap));
 }
 
 } // namespace corv

@@ -1,13 +1,19 @@
 #include "ui/SysConfig.h"
 
+#include "ui/DialogHub.h"
+#include "ui/Language.h"
+
 #include "core/DataRoot.h"
 #include "core/DebugLog.h"
+#include "core/ElectronSettings.h"
 #include "core/Settings.h"
 #include "gpu/SceneItem.h"
+#include "scene/RenderQuality.h"
 #include "terrain/Hgt.h"
 #include "terrain/HgtDownloader.h"
 #include "terrain/TileStore.h"
 #include "vehicle/CommandSender.h"
+#include "vehicle/PoseSmoother.h"
 #include "vehicle/VehicleHub.h"
 
 #include <QDateTime>
@@ -47,12 +53,14 @@ const HudField kHudFields[] = {
 };
 const char *kDefaultCells[6] = {"as", "gs", "gload", "alt", "agl", "lidar"};
 
-// SR0_* of the autopilot's USB port and the streams / messages WRITE also sets on the link in use
+// SR0_* of the autopilot's first MAVLink port (normally its USB), named MAV1_* from firmware
+// 4.7 on, and the streams / messages WRITE also sets on the link in use
+const char *kRatePrefixes[] = {"SR0_", "MAV1_"};
 struct Rate { const char *param; int def; int stream; int msgs[2]; };
 const Rate kRates[] = {
-    {"SR0_RAW_SENS", 2, 1, {27, -1}}, {"SR0_EXT_STAT", 2, 2, {-1, -1}}, {"SR0_RC_CHAN", 5, 3, {-1, -1}}, {"SR0_RAW_CTRL", 1, 4, {-1, -1}},
-    {"SR0_POSITION", 3, 6, {-1, -1}}, {"SR0_EXTRA1", 10, 10, {30, 31}}, {"SR0_EXTRA2", 10, 11, {74, -1}}, {"SR0_EXTRA3", 1, 12, {241, -1}},
-    {"SR0_PARAMS", 10, -1, {-1, -1}},
+    {"RAW_SENS", 2, 1, {27, -1}}, {"EXT_STAT", 2, 2, {-1, -1}}, {"RC_CHAN", 5, 3, {-1, -1}}, {"RAW_CTRL", 1, 4, {-1, -1}},
+    {"POSITION", 3, 6, {-1, -1}}, {"EXTRA1", 10, 10, {30, 31}}, {"EXTRA2", 10, 11, {74, -1}}, {"EXTRA3", 1, 12, {241, -1}},
+    {"PARAMS", 10, -1, {-1, -1}},
 };
 
 bool isHudField(const QString &k)
@@ -83,6 +91,9 @@ SysConfig::SysConfig(VehicleHub *hub, CommandSender *cmd, QObject *parent) : QOb
     const QString folder = Settings::instance().value(u"hgt-folder"_s).toString();
     if (!folder.isEmpty()) HgtStore::instance().addSearchDir(folder);
 
+    // Another vehicle may have the other names
+    if (m_hub) connect(m_hub, &VehicleHub::connectionChanged, this, [this] { m_ratePrefix.clear(); }, Qt::QueuedConnection);
+
     // Twice a second: where the position comes from (TabController.initNavigationPanel)
     m_statusTimer.setInterval(500);
     connect(&m_statusTimer, &QTimer::timeout, this, [this] {
@@ -97,9 +108,14 @@ SysConfig::SysConfig(VehicleHub *hub, CommandSender *cmd, QObject *parent) : QOb
                 text = u"relative · dead reckoning (%1)"_s.arg(vel.value(s->relativeVelSource, u"no velocity yet"_s));
         }
         if (text != m_navStatus) { m_navStatus = text; emit navStatusChanged(); }
+        if (const int minute = clockMinutes(); minute != m_clockMinute) { m_clockMinute = minute; emit clockChanged(); }
     });
     m_statusTimer.start();
 
+    // The 3D view follows the vehicle type: the select with it
+    connect(&Settings::instance(), &Settings::changed, this, [this](const QString &key) {
+        if (key == "selectedModel"_L1) emit modelChanged();
+    });
     connect(&HgtStore::instance(), &HgtStore::tileLoaded, this, [this] { emit hgtChanged(); }, Qt::QueuedConnection);
     connect(&HgtDownloader::instance(), &HgtDownloader::tileDone, this, [this] { emit hgtChanged(); });
 
@@ -288,6 +304,10 @@ QStringList SysConfig::models() const
     return names;
 }
 
+QString SysConfig::selectedModel() const { return value(u"selectedModel"_s, u"plane.glb"_s); }
+
+void SysConfig::setSelectedModel(const QString &name) { Settings::instance().setValue(u"selectedModel"_s, name); }
+
 QString SysConfig::hgtStatus() const
 {
     const int n = HgtStore::instance().availableCount();
@@ -322,6 +342,104 @@ void SysConfig::setTerrainRadius(double meters)
 {
     Settings::instance().setValue(u"terrainRadiusM"_s, QString::number(qRound64(meters)));
     emit viewChanged();
+}
+
+double SysConfig::motionSmoothing() const
+{
+    const double v = Settings::instance().value(u"motionSmoothing"_s, PoseSmoother::kDefaultSmoothing).toDouble();
+    return std::isfinite(v) ? std::clamp(v, 0.0, PoseSmoother::kMaxSmoothing) : PoseSmoother::kDefaultSmoothing;
+}
+
+void SysConfig::setMotionSmoothing(double v)
+{
+    v = std::clamp(std::round(v * 100) / 100, 0.0, PoseSmoother::kMaxSmoothing);
+    if (v == motionSmoothing()) return;
+    Settings::instance().setValue(u"motionSmoothing"_s, v);
+    emit displayChanged();
+}
+
+double SysConfig::smoothingTau() const { return PoseSmoother::tauFor(motionSmoothing()); }
+
+double SysConfig::mapBrightness() const
+{
+    const double v = Settings::instance().value(u"mapBrightness"_s, 0.85).toDouble();
+    return std::isfinite(v) && v > 0 ? std::clamp(v, 0.3, 1.6) : 0.85;
+}
+
+void SysConfig::setMapBrightness(double v)
+{
+    v = std::clamp(std::round(v * 100) / 100, 0.3, 1.6);
+    if (v == mapBrightness()) return;
+    Settings::instance().setValue(u"mapBrightness"_s, v);
+    emit displayChanged();
+}
+
+QString SysConfig::renderQuality() const { return renderQuality::normalize(Settings::instance().value(u"renderQuality"_s).toString()); }
+
+void SysConfig::setRenderQuality(const QString &q)
+{
+    if (renderQuality::normalize(q) == renderQuality()) return;
+    Settings::instance().setValue(u"renderQuality"_s, renderQuality::normalize(q));
+    emit displayChanged();
+}
+
+int SysConfig::clockMinutes() const
+{
+    const QTime t = QTime::currentTime();
+    return t.hour() * 60 + t.minute();
+}
+
+void SysConfig::setTimeOfDay(int minutes)
+{
+    minutes = minutes < 0 ? -1 : std::min(minutes, 24 * 60);
+    if (minutes == m_timeOfDay) return;
+    m_timeOfDay = minutes;
+    emit timeOfDayChanged();
+}
+
+void SysConfig::setAltitudeOffset(const QString &text)
+{
+    bool ok = false;
+    QString t = text.trimmed();
+    t.replace(','_L1, '.'_L1);
+    const double v = QLocale::c().toDouble(t, &ok);
+    if (m_hub) m_hub->setAltitudeOffset(ok && std::isfinite(v) ? v : 0);
+}
+
+// ── Language ─────────────────────────────────────────────────────────────────
+
+QString SysConfig::legacySettings() const
+{
+    const QString dir = electronSettings::findStore();
+    return dir.isEmpty() ? QString() : u"Last used %1"_s.arg(QLocale().toString(electronSettings::lastUsed(dir), QLocale::ShortFormat));
+}
+
+void SysConfig::importLegacySettings()
+{
+    QString error;
+    const auto store = electronSettings::read(electronSettings::findStore(), &error);
+    int n = 0;
+    for (const QString &k : electronSettings::knownKeys()) n += store.contains(k);
+    if (!n) {
+        DialogHub::toast(error.isEmpty() ? u"No settings of 1.x to import"_s : error);
+        return;
+    }
+    DialogHub::confirm(u"Import %1 settings of CORV GCS 1.x? They replace the same settings here; restart the program to apply them all."_s.arg(n),
+                       [store](bool ok) {
+                           if (!ok) return;
+                           const int done = electronSettings::importInto(store);
+                           DialogHub::toast(u"%1 settings imported: restart to apply them all"_s.arg(done));
+                       });
+}
+
+QString SysConfig::language() const { return Language::instance().code(); }
+
+void SysConfig::setLanguage(const QString &code)
+{
+    if (code == language()) return;
+    Language::instance().set(code);
+    Settings::instance().setValue(u"gcs-lang"_s, language());
+    emit languageChanged();
 }
 
 // ── HUD data fields ──────────────────────────────────────────────────────────
@@ -417,43 +535,91 @@ void SysConfig::setStreamRate(int index, const QString &text)
     if (ok) m_rates[index] = std::clamp(v, 0, 50);
 }
 
+// Which of the two names this firmware has: asked once per connection, with the first rate
+void SysConfig::withRatePrefix(std::function<void(bool known)> then)
+{
+    if (!m_ratePrefix.isEmpty()) return then(true);
+    QPointer<SysConfig> self(this);
+    auto left = std::make_shared<int>(int(std::size(kRatePrefixes)));
+    auto done = std::make_shared<bool>(false);
+    for (const char *prefix : kRatePrefixes) {
+        const QString p = QLatin1String(prefix);
+        m_cmd->fetchParameter(p + QLatin1String(kRates[0].param), 1500, 2, [self, p, left, done, then](bool ok, float value, int) {
+            --*left;
+            if (!self || *done) return;
+            if (ok) {
+                *done = true;
+                self->m_ratePrefix = p;
+                self->m_rates[0] = int(std::lround(value));
+                emit self->streamRatesChanged();
+                then(true);
+            } else if (*left == 0) {
+                then(false);
+            }
+        });
+    }
+}
+
+void SysConfig::flashRate(int i, const QString &state)
+{
+    m_rateState[i] = state;
+    emit streamRatesChanged();
+    QTimer::singleShot(2000, this, [this, i] {
+        m_rateState[i] = QString();
+        emit streamRatesChanged();
+    });
+}
+
 void SysConfig::readStreamRates()
 {
     if (!m_cmd) return;
     QPointer<SysConfig> self(this);
-    for (int i = 0; i < int(std::size(kRates)); ++i) {
-        m_cmd->fetchParameter(QString::fromLatin1(kRates[i].param), 2000, 2, [self, i](bool ok, float value, int) {
-            if (!self || !ok) return;
-            self->m_rates[i] = int(std::lround(value));
-            emit self->streamRatesChanged();
-        });
-    }
+    withRatePrefix([self](bool known) {
+        if (!self) return;
+        for (int i = 0; i < int(std::size(kRates)); ++i) {
+            if (!known) {
+                self->flashRate(i, u"error"_s);   // nobody answered
+                continue;
+            }
+            self->m_cmd->fetchParameter(self->m_ratePrefix + QLatin1String(kRates[i].param), 2000, 2, [self, i](bool ok, float value, int) {
+                if (!self) return;
+                if (!ok) return self->flashRate(i, u"error"_s);
+                self->m_rates[i] = int(std::lround(value));
+                emit self->streamRatesChanged();
+            });
+        }
+    });
 }
 
 void SysConfig::writeStreamRates()
 {
     if (!m_cmd) return;
     QPointer<SysConfig> self(this);
-    for (int i = 0; i < int(std::size(kRates)); ++i) {
-        const Rate &r = kRates[i];
-        const int rate = m_rates[i].toInt();
-        // SRn_* are AP_Int16
-        m_cmd->setParameter(QString::fromLatin1(r.param), float(rate), MAV_PARAM_TYPE_INT16, [self, i, r, rate](bool ok, float) {
-            if (!self) return;
-            self->m_rateState[i] = ok ? u"ok"_s : u"error"_s;
-            emit self->streamRatesChanged();
-            if (ok && r.stream >= 0) {
-                // The rates of the link in use: the stream group, and the messages pinned by requestAllDataStreams
-                self->m_cmd->requestDataStream(r.stream, rate, rate > 0 ? 1 : 0);
-                for (int id : r.msgs) if (id >= 0) self->m_cmd->setMessageInterval(uint32_t(id), rate);
+    // As typed: the probe for the parameter names writes the first one over
+    const QVariantList wanted = m_rates;
+    withRatePrefix([self, wanted](bool known) {
+        if (!self) return;
+        self->m_rates = wanted;
+        for (int i = 0; i < int(std::size(kRates)); ++i) {
+            if (!known) {
+                self->flashRate(i, u"error"_s);
+                continue;
             }
-            QTimer::singleShot(2000, self, [self, i] {
+            const Rate &r = kRates[i];
+            const int rate = wanted[i].toInt();
+            // SRn_* and MAVn_* are AP_Int16
+            self->m_cmd->setParameter(self->m_ratePrefix + QLatin1String(r.param), float(rate), MAV_PARAM_TYPE_INT16, [self, i, r, rate](bool ok, float) {
                 if (!self) return;
-                self->m_rateState[i] = QString();
-                emit self->streamRatesChanged();
+                if (ok && r.stream >= 0) {
+                    // The rates of the link in use: the stream group, and the messages pinned by requestAllDataStreams
+                    self->m_cmd->requestDataStream(r.stream, rate, rate > 0 ? 1 : 0);
+                    for (int id : r.msgs) if (id >= 0) self->m_cmd->setMessageInterval(uint32_t(id), rate);
+                }
+                self->flashRate(i, ok ? u"ok"_s : u"error"_s);
             });
-        });
-    }
+        }
+        emit self->streamRatesChanged();
+    });
 }
 
 // ── Offline data download ────────────────────────────────────────────────────

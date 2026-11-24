@@ -68,7 +68,10 @@ public:
     void touch() { m_force = true; }
     /// Every chunk was dropped (new scene origin): images must be sent again.
     void resetResident();
-
+    // How far the first pass is (the loading screen)
+    int images() const { return int(m_resident.size()); }
+    int pending() const { return int(m_jobs.size() + m_queue.size()); }
+    bool firstPassDone() const { return m_initialDone || (m_firstPassQueued && m_jobs.empty() && m_queue.isEmpty()); }
 
 private:
     struct Job {
@@ -81,12 +84,14 @@ private:
         int waiting = 0;
         double dist = 0;
         bool composing = false;
+        bool partial = false;           // tiles missing for now: built again later
         qint64 started = 0;
         quint64 generation = 0;
     };
     struct Resident {
         int band = 0;
         qint64 bytes = 0;
+        qint64 retryAt = 0;   // some tiles were missing for now: when to build it again (0: complete)
         std::shared_ptr<const ChunkImage> image;   // shared with the renderer
     };
 

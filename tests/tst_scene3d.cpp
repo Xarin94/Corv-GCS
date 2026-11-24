@@ -1,10 +1,12 @@
 // The 3D view's pure parts: the GLB model loader (orientation and pivot as
 // loadModel() of js/main.js left them), the vehicle type -> model table and the
-// trajectory predictor (TrajectoryPredictor.js), plus MAVLink frames read
-// through line noise on a serial link.
+// trajectory predictor (TrajectoryPredictor.js), the resolution profiles
+// (scripts/test-render-backend.js), plus MAVLink frames read through line noise
+// on a serial link.
 #include "link/Mavlink.h"
 #include "link/MavlinkParser.h"
 #include "scene/ModelData.h"
+#include "scene/RenderQuality.h"
 #include "vehicle/TrajectoryPredictor.h"
 #include "vehicle/VehicleState.h"
 
@@ -100,6 +102,20 @@ private slots:
         slow.gs = 1;
         TrajectoryPredictor r;
         QVERIFY(r.predict(slow, 45, 10, 100, 40, 10, 1000).empty());
+    }
+
+    void resolutionProfiles()
+    {
+        using namespace renderQuality;
+        const auto n = QStringLiteral("native"), b = QStringLiteral("balanced"), e = QStringLiteral("eco");
+        QCOMPARE(pixelRatio(n, 2), 2.0);
+        QCOMPARE(pixelRatio(b, 2), 1.5);
+        QCOMPARE(pixelRatio(e, 2), 1.0);
+        QCOMPARE(pixelRatio(e, 0.75), 0.75);   // never more than the display has
+        QCOMPARE(pixelRatio(b, 1.25), 1.25);
+        QCOMPARE(pixelRatio(b, 0), 1.0);
+        QCOMPARE(normalize(QString()), b);
+        QCOMPARE(normalize(QStringLiteral("ultra")), b);
     }
 
     void mavlinkThroughNoise()

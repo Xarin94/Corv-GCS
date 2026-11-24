@@ -1,6 +1,5 @@
 // SETUP tab: vertical navigation on the left (COMMS, VEHICLE SETUP, TUNING,
-// TOOLS) and the page of the selected entry. Pages not ported yet say which
-// phase brings them.
+// TOOLS) and the page of the selected entry.
 import QtQuick
 import QtQuick.Controls.Basic
 
@@ -17,10 +16,18 @@ Item {
         color: "#00ff7f"
         Rectangle { anchors.centerIn: parent; width: 10; height: 10; radius: 5; color: Qt.rgba(0, 1, 127 / 255, 0.25); z: -1 }
     }
-    // Pages already ported; the others say which phase brings them
-    readonly property var ported: ["CONNECTION", "PARAMETERS", "ACCELEROMETER", "COMPASS", "GYRO / BARO", "RTK / GPS INJECT", "TELEMETRY FORWARD", "CELLULAR LINK", "JOYSTICK / RC",
-                                     "FLIGHT MODES", "FAILSAFE", "PID TUNING", "EXT TUNING", "RADIO CAL", "VIBRATIONS", "SERVO / RELAY", "SIMULATION", "LOG DOWNLOAD",
-                                     "LIDAR", "ROS"]
+    // The pages a flight stack cannot use (Platforms.h): greyed, the reason in the tooltip
+    readonly property var sections: ({ "CONNECTION": "connection", "CELLULAR LINK": "lte-link", "TELEMETRY FORWARD": "tel-forward", "RTK / GPS INJECT": "rtk-gps",
+                                       "ACCELEROMETER": "accel-cal", "COMPASS": "compass-cal", "GYRO / BARO": "sensor-cal", "RADIO CAL": "radio-cal",
+                                       "JOYSTICK / RC": "joystick", "FLIGHT MODES": "flight-modes", "FAILSAFE": "failsafe", "SERVO / RELAY": "servo-relay",
+                                       "PID TUNING": "pid-tuning", "EXT TUNING": "ext-tuning", "VIBRATIONS": "vibration", "PARAMETERS": "parameters",
+                                       "LOG DOWNLOAD": "log-download", "SIMULATION": "simulation", "LIDAR": "lidar", "ROS": "ros" })
+    function reason(name) { return Plan.platformId.length > 0 ? Plan.setupReason(sections[name] || "") : "" }
+    Connections {
+        target: Plan
+        // The operator was standing on a page that just went away under them
+        function onPlatformChanged() { if (page.reason(page.current).length > 0) page.current = "CONNECTION" }
+    }
     // A procedure running on a page: green dot on its entry and on its group
     function busy(name) {
         switch (name) {
@@ -83,6 +90,8 @@ Item {
                         required property var modelData
                         readonly property string key: ({ "COMMS": "comms", "VEHICLE SETUP": "vehicle", "TUNING": "tuning", "TOOLS": "tools" })[modelData.name]
                         property bool open: !page.collapsed[key]
+                        // All of its entries gone: dimmed with them
+                        opacity: modelData.items.every(it => page.reason(it[0]).length > 0) ? 0.4 : 1
                         width: 165
                         Item {
                             width: parent.width
@@ -92,7 +101,7 @@ Item {
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 6
                                 Text { text: "▾"; rotation: grp.open ? 0 : -90; color: Theme.groupAmber; font.family: Theme.fontUi; font.pixelSize: Theme.fsXs; font.weight: Font.Bold }
-                                Text { text: grp.modelData.name; color: Theme.groupAmber; font.family: Theme.fontUi; font.pixelSize: Theme.fsXs; font.weight: Font.Bold; font.letterSpacing: 2 }
+                                Text { text: Theme.tr(grp.modelData.name); color: Theme.groupAmber; font.family: Theme.fontUi; font.pixelSize: Theme.fsXs; font.weight: Font.Bold; font.letterSpacing: 2 }
                             }
                             StatusDot { anchors.right: parent.right; anchors.rightMargin: 4; visible: page.groupBusy(grp.modelData.items) }
                             MouseArea { anchors.fill: parent; onClicked: page.setCollapsed(grp.key, grp.open) }
@@ -102,6 +111,8 @@ Item {
                             delegate: Rectangle {
                                 required property var modelData
                                 readonly property bool active: page.current === modelData[0]
+                                readonly property string why: page.reason(modelData[0])
+                                opacity: why.length > 0 ? 0.4 : 1
                                 width: 165
                                 height: navTitle.implicitHeight + navDesc.implicitHeight + 14
                                 color: active ? Qt.rgba(0, 210 / 255, 1, 0.06) : (navMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.03) : "transparent")
@@ -111,7 +122,7 @@ Item {
                                     x: 19
                                     y: 7
                                     width: 130
-                                    text: parent.modelData[0]
+                                    text: Theme.tr(parent.modelData[0])
                                     color: parent.active ? Theme.accentCyan : (navMouse.containsMouse ? Theme.textMutedBright : Theme.textDim)
                                     font.family: Theme.fontUi
                                     font.pixelSize: Theme.fsSm
@@ -124,14 +135,17 @@ Item {
                                     anchors.top: navTitle.bottom
                                     width: 130
                                     wrapMode: Text.Wrap
-                                    text: parent.modelData[1]
+                                    text: Theme.tr(parent.modelData[1])
                                     color: Theme.textDim
                                     font.family: Theme.fontUi
                                     font.pixelSize: Theme.fs2xs
                                     font.letterSpacing: 0.5
                                 }
                                 StatusDot { anchors.right: parent.right; anchors.rightMargin: 10; visible: page.busy(parent.modelData[0]) }
-                                MouseArea { id: navMouse; anchors.fill: parent; hoverEnabled: true; onClicked: page.current = parent.modelData[0] }
+                                MouseArea { id: navMouse; anchors.fill: parent; hoverEnabled: true; onClicked: if (parent.why.length === 0) page.current = parent.modelData[0] }
+                                ToolTip.visible: why.length > 0 && navMouse.containsMouse
+                                ToolTip.text: Theme.tr(why)
+                                ToolTip.delay: 400
                             }
                         }
                     }
@@ -164,8 +178,8 @@ Item {
                         width: 320
                         spacing: 5
                         bottomPadding: 9
-                        CfgLabel { text: parent.modelData[0] }
-                        Text { text: parent.modelData[1]; color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: 12 }
+                        CfgLabel { text: Theme.tr(parent.modelData[0]) }
+                        Text { text: Theme.tr(parent.modelData[1]); color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: 12 }
                     }
                 }
             }
@@ -222,15 +236,6 @@ Item {
             x: 24; y: 24
             width: parent.width - 48
             height: parent.height - 48
-        }
-
-        Text {
-            visible: page.ported.indexOf(page.current) < 0
-            anchors.centerIn: parent
-            text: page.current + " — arriva con le fasi 6-8 del porting"
-            color: Theme.textDim
-            font.family: Theme.fontUi
-            font.pixelSize: Theme.fsLg
         }
     }
 }

@@ -4,8 +4,12 @@
 #include "gpu/FrameStats.h"
 #include "ui/AnnunciatorController.h"
 #include "ui/CalibrationController.h"
+#include "ui/DialogHub.h"
+#include "ui/RtlOptions.h"
+#include "ui/TargetController.h"
 #include "ui/EkfController.h"
 #include "ui/FftController.h"
+#include "ui/FpvController.h"
 #include "ui/GcsController.h"
 #include "ui/GeoZoneController.h"
 #include "ui/JoystickController.h"
@@ -22,6 +26,7 @@
 #include "ui/RosController.h"
 #include "ui/TelForwardController.h"
 #include "ui/UpdateController.h"
+#include "ui/VehicleModel.h"
 
 #include <QBuffer>
 #include <QCoreApplication>
@@ -75,6 +80,11 @@ QObject *TestDriver::viewModel(const QString &name)
     if (name == "Joystick"_L1) return JoystickController::s_instance;
     if (name == "Lidar"_L1) return LidarController::s_instance;
     if (name == "Ros"_L1) return RosController::s_instance;
+    if (name == "Target"_L1) return TargetController::s_instance;
+    if (name == "Rtl"_L1) return RtlOptions::s_instance;
+    if (name == "Fpv"_L1) return FpvController::s_instance;
+    if (name == "Vehicle"_L1) return VehicleModel::s_instance;
+    if (name == "DialogHub"_L1) return DialogHub::s_instance;
     return nullptr;
 }
 
@@ -99,9 +109,9 @@ QObject *TestDriver::object(const QString &name) const
 QJsonValue TestDriver::call(const QString &target, const QJsonValue &args, QString *error)
 {
     const QString obj = target.section('.'_L1, 0, 0), method = target.section('.'_L1, 1);
-    QObject *o = viewModel(obj);
+    QObject *o = object(obj);   // a view model, or a named QML item (paramsPage.editBits)
     if (!o) {
-        if (error) *error = u"no view model "_s + obj;
+        if (error) *error = u"no object "_s + obj;
         return {};
     }
     // The arguments: none, one value, or the list

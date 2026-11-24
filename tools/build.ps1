@@ -51,6 +51,15 @@ if ($sdl) {
     $env:PATH = "$(Join-Path (Split-Path -Parent $sdl) 'lib\x64');$env:PATH"
 }
 
+# FFmpeg (FPV video) from FFMPEG_ROOT, else build\tools\ffmpeg: an LGPL shared build with
+# include\, lib\ (avcodec.lib, avutil.lib) and bin\ (the DLLs); without it no FPV video
+$ffmpeg = $env:FFMPEG_ROOT
+if (-not $ffmpeg -and (Test-Path (Join-Path $root "build\tools\ffmpeg\lib\avcodec.lib"))) { $ffmpeg = Join-Path $root "build\tools\ffmpeg" }
+if ($ffmpeg) {
+    $sslArgs += "-DFFMPEG_ROOT=$ffmpeg"
+    $env:PATH = "$(Join-Path $ffmpeg 'bin');$env:PATH"
+}
+
 Push-Location $root
 try {
     # Always passed, so a dev build after a release build drops the cached label

@@ -7,7 +7,9 @@ Rectangle {
     property string label
     property bool rightEdge: false
     property bool open: false
+    property string tip: ""
     signal clicked()
+    HoverTip { text: tab.tip }
 
     width: 24
     height: col.implicitHeight + 18
@@ -32,7 +34,7 @@ Rectangle {
                 id: txt
                 anchors.centerIn: parent
                 rotation: tab.rightEdge ? 90 : -90
-                text: tab.label
+                text: Theme.tr(tab.label)
                 color: Theme.accentCyan
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fsXs

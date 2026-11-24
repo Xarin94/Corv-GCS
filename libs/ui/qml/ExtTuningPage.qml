@@ -60,7 +60,7 @@ Flickable {
                     }
                 }
             }
-            CfgNote { text: SetupCfg.status["EXT TUNING"] ? SetupCfg.status["EXT TUNING"].text : "" }
+            CfgNote { text: Theme.tr(SetupCfg.status["EXT TUNING"] ? SetupCfg.status["EXT TUNING"].text : "") }
         }
     }
 }

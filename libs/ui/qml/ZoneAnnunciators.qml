@@ -46,7 +46,7 @@ Column {
                 }
                 OutlinedText {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: a.modelData.label
+                    text: Theme.tr(a.modelData.label)
                     color: a.tone
                     font.family: Theme.fontUi; font.pixelSize: Theme.fsSm; font.weight: Font.Bold; font.letterSpacing: 0.08 * Theme.fsSm
                 }
@@ -56,7 +56,7 @@ Column {
                     visible: text.length > 0
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
-                    text: a.modelData.value
+                    text: Theme.tr(a.modelData.value)
                     color: Theme.hudText
                     font.family: Theme.fontData; font.pixelSize: Theme.fsXs
                 }
@@ -69,7 +69,7 @@ Column {
                 onClicked: GeoZones.silence(a.modelData.id)
             }
             ToolTip.visible: am.containsMouse
-            ToolTip.text: modelData.title
+            ToolTip.text: Theme.tr(modelData.title)
             ToolTip.delay: 500
         }
     }

@@ -15,6 +15,9 @@
 // a small low-priority pool, and the downloaded tiles are written in batches
 // (one transaction every half second). On the GUI thread a tile cost a disk
 // read, a JPEG decode and a commit, 3 to 20 ms of frozen frames for each.
+// A tile the server does not have (404) is not asked again; one that failed for any
+// other reason is, a minute later. After several downloads in a row without an answer
+// the network counts as lost: the cache alone serves until a probe gets through.
 // The public functions are safe from any thread; the signals are emitted off
 // the GUI thread and reach its objects queued.
 #pragma once
@@ -50,10 +53,14 @@ public:
     /// The tile if it is in memory, without queueing anything.
     QImage cached(const QString &provider, int z, int x, int y);
     QString urlTemplate(const QString &provider) const;
-    /// The tile failed to download in this session (it is not asked again).
+    /// The tile failed to download and is not asked now (for good, or until its retry).
     bool hasFailed(const QString &provider, int z, int x, int y) const;
+    /// It failed for a reason that passes: it will be asked again.
+    bool failedForNow(const QString &provider, int z, int x, int y) const;
 
     void setNetworkEnabled(bool on) { m_network = on; }
+    /// False between networkLost and networkRestored.
+    bool online() const { return m_online; }
 
     // Bulk download for a flight without network (SYS CONFIG → OFFLINE DATA DOWNLOAD)
     static qint64 tileCount(double north, double south, double west, double east, int zmin, int zmax);
@@ -61,6 +68,9 @@ public:
     void cancelPrefetch();
 
 signals:
+    /// Downloads fail in a row: only the cache answers until networkRestored.
+    void networkLost();
+    void networkRestored();
     void tileReady(const QString &provider, int z, int x, int y);
     /// Not on disk and the download failed (or the network is off): it will not come.
     void tileFailed(const QString &provider, int z, int x, int y);
@@ -82,6 +92,8 @@ private:
     void load(const Req &r);
     void fetch(const Req &r);
     void pump();
+    void unanswered();
+    void probe();
     void queueWrite(const Req &r, const QByteArray &data);
     void flushWrites();
     void pumpPrefetch();
@@ -101,8 +113,10 @@ private:
     LruCache<QString, QImage> m_mem{1500};
     QSet<QString> m_scheduled;
     QSet<QString> m_failed;
+    QHash<QString, qint64> m_retryAt;   // failed for now: when it may be asked again (wall ms)
     QHash<QString, QString> m_urls;
     std::atomic<bool> m_network{true};
+    std::atomic<bool> m_online{true};
 
     // Store thread
     QThread m_thread;
@@ -113,6 +127,8 @@ private:
     std::vector<Write> m_writes;
     QTimer *m_writeTimer = nullptr;
     int m_inFlight = 0;
+    int m_unanswered = 0;   // downloads in a row the server did not answer
+    QTimer *m_probeTimer = nullptr;
     struct Bulk {
         QString provider;
         QList<std::array<int, 3>> tiles;

@@ -11,6 +11,7 @@ using namespace Qt::StringLiterals;
 namespace corv {
 
 namespace {
+constexpr int kRetryMs = 60000;
 constexpr double kRecenter = 0.75;               // the window moves once the aircraft is this many tiles off its centre
 constexpr double kDeactivate = 1.25;             // hysteresis on the distance a level is used to
 constexpr std::size_t kMaxCopiesPerFrame = 4;    // tile uploads per frame
@@ -28,6 +29,24 @@ SatelliteDetail::SatelliteDetail(QObject *parent) : QObject(parent)
     TileStore &store = TileStore::instance();
     connect(&store, &TileStore::tileReady, this, [this](const QString &p, int z, int x, int y) { onTile(p, z, x, y, true); });
     connect(&store, &TileStore::tileFailed, this, [this](const QString &p, int z, int x, int y) { onTile(p, z, x, y, false); });
+    // Tiles that failed for now are asked again: at once when the network is back, else a minute later
+    connect(&store, &TileStore::networkRestored, this, &SatelliteDetail::retryMissing);
+    m_retryTimer.setInterval(kRetryMs);
+    connect(&m_retryTimer, &QTimer::timeout, this, &SatelliteDetail::retryMissing);
+    m_retryTimer.start();
+}
+
+void SatelliteDetail::retryMissing()
+{
+    for (Level &l : m_levels) {
+        if (!l.placed) continue;
+        for (int slot = 0; slot < int(l.cells.size()); ++slot) {
+            Slot &s = l.cells[std::size_t(slot)];
+            if (s.state != SlotState::Missing || TileStore::instance().hasFailed(m_provider, l.zoom, s.tx, s.ty)) continue;
+            s.state = SlotState::Loading;
+            request(l, slot);
+        }
+    }
 }
 
 void SatelliteDetail::setMaxZoom(int zoom)

@@ -111,6 +111,84 @@ private slots:
         QVERIFY(s.homeLat.has_value());
         QCOMPARE(*s.homeAlt, 5.0);
     }
+
+    void firmwareVersion()
+    {
+        QCOMPARE(modes::firmwareVersion(0x040700ff), QStringLiteral("4.7.0"));
+        QCOMPARE(modes::firmwareVersion(0x04080000), QStringLiteral("4.8.0-dev"));
+        QCOMPARE(modes::firmwareVersion(0x04070081), QStringLiteral("4.7.0-beta1"));
+        QCOMPARE(modes::firmwareVersion(0x040603c0), QStringLiteral("4.6.3-rc"));
+        StateMapper mapper;
+        VehicleState s;
+        mavlink_message_t m;
+        const uint8_t custom[8] = {}, uid2[18] = {};
+        mavlink_msg_autopilot_version_pack(1, 1, &m, 0, 0x040603ff, 0, 0, 0, custom, custom, custom, 0, 0, 0, uid2);
+        mapper.apply(msgAt(m, 1000), s);
+        QCOMPARE(s.firmwareVersion, QStringLiteral("4.6.3"));
+        // A companion's version is not the autopilot's
+        mavlink_msg_autopilot_version_pack(1, 191, &m, 0, 0x010000ff, 0, 0, 0, custom, custom, custom, 0, 0, 0, uid2);
+        mapper.apply(msgAt(m, 1100), s);
+        QCOMPARE(s.firmwareVersion, QStringLiteral("4.6.3"));
+    }
+
+    void preArm()
+    {
+        using P = VehicleState::PreArm;
+        StateMapper mapper;
+        VehicleState s;
+        QVERIFY(s.preArm() == P::Unknown);
+        mavlink_message_t m;
+        char text[50] = "PreArm: Compass not calibrated";
+        mavlink_msg_statustext_pack(1, 1, &m, MAV_SEVERITY_CRITICAL, text, 0, 0);
+        mapper.apply(msgAt(m, 1000), s);
+        QVERIFY(s.preArm() == P::Failed);
+        QCOMPARE(s.preArmText, QStringLiteral("PreArm: Compass not calibrated"));
+        char good[50] = "PreArm: good";
+        mavlink_msg_statustext_pack(1, 1, &m, MAV_SEVERITY_INFO, good, 0, 0);
+        mapper.apply(msgAt(m, 1050), s);
+        QVERIFY(s.preArm() == P::Passed);
+        // The vehicle's own bit says more than its last message
+        constexpr uint32_t bit = 0x10000000;
+        mavlink_msg_sys_status_pack(1, 1, &m, bit | 1, bit | 1, bit, 0, 12600, -1, 90, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        mapper.apply(msgAt(m, 1100), s);
+        QVERIFY(s.preArm() == P::Passed);
+        mavlink_msg_sys_status_pack(1, 1, &m, bit | 1, bit | 1, 1, 0, 12600, -1, 90, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        mapper.apply(msgAt(m, 1200), s);
+        QVERIFY(s.preArm() == P::Failed);
+        s.armed = true;
+        QVERIFY(s.preArm() == P::Passed);
+    }
+
+    void subOnALake()
+    {
+        StateMapper mapper;
+        VehicleState s;
+        bool loaded = false;
+        mapper.setHooks({.surface = [&](double, double) { return loaded ? std::optional<double>(65) : std::nullopt; }});
+        mavlink_message_t m;
+        mavlink_msg_heartbeat_pack(1, 1, &m, MAV_TYPE_SUBMARINE, MAV_AUTOPILOT_ARDUPILOTMEGA, 0, 0, MAV_STATE_ACTIVE);
+        mapper.apply(msgAt(m, 1000), s);
+        auto position = [&](std::int64_t t, int32_t relMm) {
+            mavlink_msg_global_position_int_pack(1, 1, &m, 1000, 456420000, 106700000, relMm, relMm, 0, 0, 0, 9000);
+            mapper.apply(msgAt(m, t), s);
+            mapper.finish(s, t);
+        };
+        // The elevation tile is not in yet: as the vehicle says it
+        position(2000, -8000);
+        QCOMPARE(s.rawAlt, -8.0);
+        QVERIFY(!s.subSurfaceAlt);
+        // In: the depth is below the lake, 65 m above the sea
+        loaded = true;
+        position(2400, -8000);
+        QCOMPARE(*s.subSurfaceAlt, 65.0);
+        position(2500, -8000);
+        QCOMPARE(s.rawAlt, 57.0);
+        // Another vehicle has no such surface
+        mavlink_msg_heartbeat_pack(1, 1, &m, MAV_TYPE_QUADROTOR, MAV_AUTOPILOT_ARDUPILOTMEGA, 0, 0, MAV_STATE_ACTIVE);
+        mapper.apply(msgAt(m, 3000), s);
+        mapper.finish(s, 3000);
+        QVERIFY(!s.subSurfaceAlt);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestStateMapper)

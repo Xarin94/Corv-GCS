@@ -49,7 +49,7 @@ Flickable {
                     id: side
                     width: 280
                     spacing: 10
-                    CfgNote { text: "Press START, then turn the vehicle slowly through every attitude — nose down, tail down, each side down, upside down — until every bar is full. Keep away from metal, cars and cables." }
+                    CfgNote { text: qsTr("Press START, then turn the vehicle slowly through every attitude — nose down, tail down, each side down, upside down — until every bar is full. Keep away from metal, cars and cables.") }
                     Row {
                         width: parent.width
                         spacing: 8
@@ -61,20 +61,21 @@ Flickable {
                     Column {
                         width: parent.width
                         spacing: 4
-                        CfgLabel { text: "FITNESS" }
+                        CfgLabel { text: qsTr("FITNESS") }
                         CfgSelect {
                             width: parent.width
                             options: Calibration.magFitOptions
                             value: Calibration.magFit
                             onPicked: (v) => Calibration.setMagFit(v)
                             ToolTip.visible: hovered
-                            ToolTip.text: "COMPASS_CAL_FIT: how close to a sphere the samples must be"
+                            ToolTip.text: qsTr("COMPASS_CAL_FIT: how close to a sphere the samples must be")
                             ToolTip.delay: 600
                         }
                     }
                     CfgCheck {
                         width: parent.width
                         text: "AUTO-ACCEPT A GOOD RESULT"
+                        tip: "Save a good result as soon as it is found, without pressing ACCEPT"
                         checked: Calibration.magAutosave
                         onToggled: (on) => Calibration.magAutosave = on
                     }
@@ -91,7 +92,7 @@ Flickable {
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 5
                                 Swatch { color: bar.modelData.color }
-                                Text { text: bar.modelData.name; color: Theme.textMain; font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1 }
+                                Text { text: Theme.tr(bar.modelData.name); color: Theme.textMain; font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1 }
                             }
                             Rectangle {
                                 x: 64
@@ -116,7 +117,7 @@ Flickable {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: Math.max(108, implicitWidth)
                                 horizontalAlignment: Text.AlignRight
-                                text: bar.modelData.text
+                                text: Theme.tr(bar.modelData.text)
                                 color: Theme.textDim
                                 font.family: Theme.fontData; font.pointSize: 7.125
                             }
@@ -140,7 +141,7 @@ Flickable {
                         height: 400
                         HoverHandler { id: viewHover }
                         ToolTip.visible: viewHover.hovered
-                        ToolTip.text: "Drag to turn · wheel to zoom · double-click to reset"
+                        ToolTip.text: qsTr("Drag to turn · wheel to zoom · double-click to reset")
                         ToolTip.delay: 1200
                     }
                     Flow {
@@ -155,7 +156,7 @@ Flickable {
                                 spacing: 5
                                 height: 14
                                 Swatch { color: parent.modelData[0]; square: parent.modelData[2] }
-                                Text { anchors.verticalCenter: parent.verticalCenter; text: parent.modelData[1]; color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 10 }
+                                Text { anchors.verticalCenter: parent.verticalCenter; text: Theme.tr(parent.modelData[1]); color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 10 }
                             }
                         }
                     }
@@ -169,13 +170,13 @@ Flickable {
                             value: String(Calibration.magFocus)
                             onPicked: (v) => Calibration.magFocus = parseInt(v)
                             ToolTip.visible: hovered
-                            ToolTip.text: "The compass the sphere and its coverage refer to"
+                            ToolTip.text: qsTr("The compass the sphere and its coverage refer to")
                             ToolTip.delay: 600
                         }
                         Text {
                             width: parent.width - focusSel.width - clearBtn.width - resetBtn.width - 24
                             anchors.verticalCenter: parent.verticalCenter
-                            text: Calibration.magStats
+                            text: Theme.tr(Calibration.magStats)
                             elide: Text.ElideRight
                             color: Theme.textDim
                             font.family: Theme.fontData; font.pixelSize: 10
@@ -201,7 +202,7 @@ Flickable {
                         height: 24
                         spacing: 5
                         Swatch { color: rr.r.color }
-                        Cell { text: rr.r.name }
+                        Cell { text: Theme.tr(rr.r.name) }
                     }
                     Repeater {
                         model: rr.r.cells
@@ -210,7 +211,7 @@ Flickable {
                             required property int index
                             x: rr.t.colX(index + 1) + 6
                             width: rr.t.colW(index + 1) - 12
-                            text: modelData
+                            text: Theme.tr(modelData)
                             color: index === 0 ? (rr.r.ok ? Theme.accentGreen : "#ff7070") : Theme.textMain
                         }
                     }
@@ -238,7 +239,7 @@ Flickable {
                         width: cr.t.colW(1) - 12
                         spacing: 6
                         Cell { text: cr.r.device }
-                        Cell { visible: cr.r.missing; text: "not detected"; color: Theme.accentOrange }
+                        Cell { visible: cr.r.missing; text: qsTr("not detected"); color: Theme.accentOrange }
                     }
                     Cell { x: cr.t.colX(2) + 6; width: cr.t.colW(2) - 12; text: cr.r.bus }
                     CfgCheck {
@@ -249,12 +250,12 @@ Flickable {
                         opacity: enabled ? 1 : 0.4
                         onToggled: (on) => Calibration.setCompassUse(cr.r.useParam, on)
                         ToolTip.visible: hov.hovered
-                        ToolTip.text: cr.r.useParam + ": use this compass for heading"
+                        ToolTip.text: cr.r.useParam + qsTr(": use this compass for heading")
                         ToolTip.delay: 600
                         HoverHandler { id: hov }
                     }
-                    Cell { x: cr.t.colX(4) + 6; width: cr.t.colW(4) - 12; text: cr.r.mount }
-                    Cell { x: cr.t.colX(5) + 6; width: cr.t.colW(5) - 12; text: cr.r.orientation }
+                    Cell { x: cr.t.colX(4) + 6; width: cr.t.colW(4) - 12; text: Theme.tr(cr.r.mount) }
+                    Cell { x: cr.t.colX(5) + 6; width: cr.t.colW(5) - 12; text: Theme.tr(cr.r.orientation) }
                     Cell { x: cr.t.colX(6) + 6; width: cr.t.colW(6) - 12; text: cr.r.offsets }
                     Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: Theme.hairline; color: Theme.borderSubtle }
                 }
@@ -262,7 +263,7 @@ Flickable {
             Text {
                 visible: Calibration.compassNote.length > 0
                 width: parent.width
-                text: Calibration.compassNote
+                text: Theme.tr(Calibration.compassNote)
                 color: Theme.textDim
                 font.family: Theme.fontData; font.pointSize: 7.875
             }
@@ -276,11 +277,11 @@ Flickable {
         SetupPanel {
             title: "LARGE VEHICLE MAGCAL"
             anchors.horizontalCenter: parent.horizontalCenter
-            CfgNote { text: "For a vehicle too large to turn: point its nose at a known true heading, with a GPS fix, and enter that heading. The offsets come from the world magnetic model." }
+            CfgNote { text: qsTr("For a vehicle too large to turn: point its nose at a known true heading, with a GPS fix, and enter that heading. The offsets come from the world magnetic model.") }
             Column {
                 width: parent.width
                 spacing: 4
-                CfgLabel { text: "NOSE HEADING (° TRUE)" }
+                CfgLabel { text: qsTr("NOSE HEADING (° TRUE)") }
                 CfgInput {
                     id: yawInput
                     width: parent.width

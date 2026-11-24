@@ -106,6 +106,13 @@ class PlanController : public QObject
     Q_PROPERTY(QString platformId READ platformId WRITE setPlatformId NOTIFY platformChanged)
     Q_PROPERTY(QString platformHint READ platformHint NOTIFY platformChanged)
     Q_PROPERTY(QString platformLink READ platformLink NOTIFY platformChanged)
+    /// What the flight stack pre-sets on SETUP → CONNECTION, and whether it can fly missions at all
+    Q_PROPERTY(QString platformLabel READ platformLabel NOTIFY platformChanged)
+    Q_PROPERTY(QString platformConnType READ platformConnType NOTIFY platformChanged)
+    Q_PROPERTY(QString platformConnLabel READ platformConnLabel NOTIFY platformChanged)
+    Q_PROPERTY(int platformBaud READ platformBaud NOTIFY platformChanged)
+    Q_PROPERTY(bool missionsSupported READ missionsSupported NOTIFY platformChanged)
+    Q_PROPERTY(QString noMissionReason READ noMissionReason NOTIFY platformChanged)
     // Library
     Q_PROPERTY(QVariantList libraryMissions READ libraryMissions NOTIFY libraryChanged)
     Q_PROPERTY(QVariantList libraryLogs READ libraryLogs NOTIFY libraryChanged)
@@ -173,6 +180,14 @@ public:
     void setPlatformId(const QString &id);
     QString platformHint() const;
     QString platformLink() const;
+    QString platformLabel() const;
+    QString platformConnType() const;
+    QString platformConnLabel() const;
+    int platformBaud() const;
+    bool missionsSupported() const;
+    QString noMissionReason() const;
+    /// Why a SETUP page (Platforms.h section key) cannot be used on this flight stack; empty when it can.
+    Q_INVOKABLE QString setupReason(const QString &section) const;
 
     QVariantList libraryMissions() const { return m_libMissions; }
     QVariantList libraryLogs() const { return m_libLogs; }

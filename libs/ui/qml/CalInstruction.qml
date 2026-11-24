@@ -22,7 +22,7 @@ Rectangle {
         x: 13
         y: 8
         width: parent.width - 23
-        text: box.text
+        text: Theme.tr(box.text)
         wrapMode: Text.Wrap
         color: box.kind === "error" ? "#ff7070" : Theme.textMain
         font.family: Theme.fontUi

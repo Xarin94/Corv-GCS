@@ -15,11 +15,10 @@ VehicleHub::VehicleHub(LinkManager *link, QObject *parent) : QObject(parent), m_
 {
     m_snapshot = std::make_shared<const VehicleState>(m_state);
 
-    StateMapper::Hooks hooks;
-    hooks.rememberLastHome = [this](double lat, double lon) { emit lastHomeChanged(lat, lon); };
-    hooks.commandAck = [this](int c, int r) { emit commandAck(c, r); };
-    hooks.statusText = [this](int sev, const QString &t) { emit statusText(sev, t); };
-    m_mapper.setHooks(hooks);
+    m_hooks.rememberLastHome = [this](double lat, double lon) { emit lastHomeChanged(lat, lon); };
+    m_hooks.commandAck = [this](int c, int r) { emit commandAck(c, r); };
+    m_hooks.statusText = [this](int sev, const QString &t) { emit statusText(sev, t); };
+    m_mapper.setHooks(m_hooks);
     m_mapper.origin().onMoved = [this](LatLon o) {
         m_state.sceneOrigin = o;
         m_state.sceneOriginEpoch = m_mapper.origin().epoch();
@@ -34,6 +33,9 @@ VehicleHub::VehicleHub(LinkManager *link, QObject *parent) : QObject(parent), m_
             m_state.windDataTime = 0;
             m_state.as = m_state.gs = m_state.vs = 0;
             m_state.vn = m_state.ve = m_state.vd = 0;
+            m_state.firmwareVersion.clear();
+            m_state.preArmReport = VehicleState::PreArm::Unknown;
+            m_state.preArmText.clear();
             m_state.connected = true;
             m_state.mode = u"LIVE"_s;
             m_state.connectionType = type;
@@ -120,6 +122,19 @@ void VehicleHub::setAdsbEnabled(bool on)
 void VehicleHub::setBatteryRange(double vmin, double vmax)
 {
     post([this, vmin, vmax] { m_mapper.setBatteryRange(vmin, vmax); });
+}
+
+void VehicleHub::setAltitudeOffset(double metres)
+{
+    mutate([metres](VehicleState &s) { s.offsetAlt = metres; });
+}
+
+void VehicleHub::setSurface(std::function<std::optional<double>(double, double)> fn)
+{
+    post([this, fn = std::move(fn)] {
+        m_hooks.surface = fn;
+        m_mapper.setHooks(m_hooks);
+    });
 }
 
 void VehicleHub::setRelativeNav(const RelativeNav::Settings &s)

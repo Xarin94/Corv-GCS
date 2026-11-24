@@ -55,7 +55,7 @@ Popup {
             Row {
                 spacing: 10
                 Text { id: nameText; text: pop.name; color: Theme.accentCyan; font.family: Theme.fontData; font.pixelSize: 13; font.weight: Font.Bold }
-                Text { text: "BITMASK"; anchors.baseline: nameText.baseline; color: Theme.groupAmber; font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.5 }
+                Text { text: qsTr("BITMASK"); anchors.baseline: nameText.baseline; color: Theme.groupAmber; font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.5 }
             }
             Text {
                 width: parent.width
@@ -137,7 +137,7 @@ Popup {
                 Row {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 8
-                    Text { anchors.verticalCenter: parent.verticalCenter; text: "VALUE"; color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.5 }
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: qsTr("VALUE"); color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.5 }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: pop.value + "   0x" + pop.value.toString(16).toUpperCase()
@@ -146,7 +146,7 @@ Popup {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         visible: pop.info.value !== undefined && pop.info.value !== "" && Number(pop.info.value) !== pop.value
-                        text: "vehicle " + pop.info.value
+                        text: qsTr("vehicle ") + pop.info.value
                         color: "#ffaa00"; font.family: Theme.fontData; font.pixelSize: 10
                     }
                 }

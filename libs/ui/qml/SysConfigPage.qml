@@ -75,12 +75,13 @@ Item {
             Column {
                 width: 360
                 spacing: 20
-                ColumnTitle { text: "VEHICLE & LINK" }
+                ColumnTitle { text: qsTr("VEHICLE & LINK") }
 
                 SysPanel {
                     title: "FLIGHT STACK"
                     SysRow {
                         label: "ENVIRONMENT"
+                        tip: "Which firmware this GCS is set up for: it suggests the link protocol and decides which mission features can be flown"
                         stack: true
                         CfgSelect {
                             width: parent.width
@@ -91,7 +92,7 @@ Item {
                             onPicked: (v) => Plan.platformId = v
                         }
                     }
-                    SysRow { label: "SUGGESTED LINK"; Val { text: Plan.platformLink } }
+                    SysRow { label: "SUGGESTED LINK"; Val { text: Theme.tr(Plan.platformLink) } }
                     SysRow { note: Plan.platformHint }
                 }
 
@@ -99,6 +100,7 @@ Item {
                     title: "NAVIGATION"
                     SysRow {
                         label: "POSITION"
+                        tip: "Relative: for a vehicle that has never had a GPS (a ROV, a flight with no GNSS). Position from the vehicle's local frame when it sends one, otherwise dead-reckoned here; no map or terrain, a plane at zero"
                         stack: true
                         CfgSelect {
                             width: parent.width
@@ -110,6 +112,7 @@ Item {
                     }
                     SysRow {
                         label: "VELOCITY SOURCE"
+                        tip: "What the GCS dead-reckons on when the vehicle sends no local position of its own. Auto: a fixed wing's airspeed along the heading, else the EKF velocity, else ground speed along the heading"
                         CfgSelect {
                             width: parent.width
                             options: [{ value: "auto", label: "Auto" }, { value: "air", label: "Airspeed + heading" },
@@ -120,6 +123,7 @@ Item {
                     }
                     SysRow {
                         label: "WATER (DEPTH SENSOR)"
+                        tip: "Density used to turn a sub's pressure reading into depth in the relative mode"
                         CfgSelect {
                             width: parent.width
                             options: [{ value: "fresh", label: "Fresh water" }, { value: "salt", label: "Sea water" }]
@@ -127,7 +131,7 @@ Item {
                             onPicked: (v) => SysConfig.navWater = v
                         }
                     }
-                    SysRow { label: "ESTIMATE"; Val { text: SysConfig.navStatus } }
+                    SysRow { label: "ESTIMATE"; Val { text: Theme.tr(SysConfig.navStatus) } }
                     SysRow {
                         label: ""
                         GcsButton {
@@ -203,7 +207,7 @@ Item {
 
                 SysPanel {
                     title: "MAVLINK STREAM RATES"
-                    SysRow { note: "Messages per second the vehicle sends on this link (SR0_* parameters). Read them first; a write stores them on the vehicle."; noteTop: true }
+                    SysRow { note: "Messages per second the vehicle sends on this link (SR0_* parameters, MAV1_* from firmware 4.7). Read them first; a write stores them on the vehicle."; noteTop: true }
                     Repeater {
                         model: ["RAW SENSORS", "EXT STATUS", "RC CHANNELS", "RAW CTRL", "POSITION", "EXTRA1 (ATTITUDE)", "EXTRA2 (VFR HUD)", "EXTRA3", "PARAMS"]
                         delegate: SysRow {
@@ -234,7 +238,7 @@ Item {
             Column {
                 width: 360
                 spacing: 20
-                ColumnTitle { text: "DISPLAY" }
+                ColumnTitle { text: qsTr("DISPLAY") }
 
                 SysPanel {
                     title: "3D VIEW"
@@ -244,8 +248,8 @@ Item {
                         CfgSelect {
                             width: parent.width
                             options: SysConfig.models.map(m => ({ value: m + ".glb", label: m }))
-                            value: SysConfig.value("selectedModel", "plane.glb")
-                            onPicked: (v) => SysConfig.setValue("selectedModel", v)
+                            value: SysConfig.selectedModel
+                            onPicked: (v) => SysConfig.selectedModel = v
                         }
                     }
                     SysRow {
@@ -262,6 +266,7 @@ Item {
                         // What may not go under the ground in the 3D view (ground-clamp-enabled
                         // stays in step for the Electron version: off is "0")
                         label: "TERRAIN CLIPPING"
+                        tip: "What may not go under the terrain in the 3D view"
                         CfgSelect {
                             width: parent.width
                             options: [{ value: "all", label: "Vehicle, camera, trail, mission" },
@@ -275,8 +280,18 @@ Item {
                         }
                     }
                     SysRow {
+                        // Position, attitude and angular velocity drawn between the telemetry
+                        // samples, in the 3D view and on the HUD (PoseSmoother)
                         label: "MOTION SMOOTHING"
-                        CfgSlider { width: parent.width; from: 0; to: 0.5; stepSize: 0.01; value: 0.15 }
+                        tip: "How long a new telemetry sample takes to blend into the drawn movement (slider × 0.5 s): the position, the attitude and the angular velocity it turns with between samples. 0 draws the telemetry as received, without any propagation"
+                        CfgSlider {
+                            width: parent.width
+                            from: 0; to: 0.5; stepSize: 0.01
+                            bound: true
+                            value: SysConfig.motionSmoothing
+                            valueText: value > 0 ? value.toFixed(2) : "OFF"
+                            onMoved: (v) => SysConfig.motionSmoothing = v
+                        }
                     }
                     SysRow { sub: "TERRAIN & LIGHT" }
                     SysRow {
@@ -290,28 +305,52 @@ Item {
                                 text: "SELECT HGT FOLDER"
                                 onClicked: hgtDialog.open()
                             }
-                            Status { text: SysConfig.hgtStatus }
+                            Status { text: Theme.tr(SysConfig.hgtStatus) }
                         }
                     }
                     SysRow {
                         // TERRAIN_REQUEST / TERRAIN_DATA: the database of an autopilot with TERRAIN_ENABLE
                         label: "VEHICLE TERRAIN DATA"
-                        Status { width: parent.width; text: Gcs.terrainFeed }
+                        Status { width: parent.width; text: Theme.tr(Gcs.terrainFeed) }
                     }
                     SysRow {
                         label: "ALTITUDE OFFSET (M)"
+                        tip: "Added to every vehicle altitude in the 3D view, to line it up with the terrain model. Not remembered"
                         CfgInput {
+                            id: altOffset
+                            objectName: "altOffset"
                             width: parent.width
-                            text: "0"
-                            ToolTip.text: "Added to every vehicle altitude in the 3D view, to line it up with the terrain model. Not remembered"
+                            numeric: true
+                            // The one in use: a log loaded or closed clears it
+                            readonly property string inUse: String(Math.round(Vehicle.altOffset * 100) / 100)
+                            text: inUse
+                            onInUseChanged: if (!activeFocus) text = inUse
+                            onCommitted: (t) => { SysConfig.setAltitudeOffset(t); text = Qt.binding(() => inUse) }
                         }
                     }
                     SysRow {
+                        // Not remembered: the clock again at the next start
                         label: "TIME OF DAY (DEBUG)"
-                        CfgSlider {
+                        Row {
                             width: parent.width
-                            from: 0; to: 1440; stepSize: 1; value: 720
-                            valueText: String(Math.floor(value / 60)).padStart(2, "0") + ":" + String(Math.round(value) % 60).padStart(2, "0")
+                            spacing: 6
+                            CfgSlider {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - clockBtn.width - 6
+                                from: 0; to: 1440; stepSize: 1
+                                bound: true
+                                value: SysConfig.timeOfDay >= 0 ? SysConfig.timeOfDay : SysConfig.clockMinutes
+                                valueText: String(Math.floor(value / 60)).padStart(2, "0") + ":" + String(Math.round(value) % 60).padStart(2, "0")
+                                onMoved: (v) => SysConfig.timeOfDay = Math.round(v)
+                            }
+                            GcsButton {
+                                id: clockBtn
+                                width: 52
+                                text: "CLOCK"
+                                enabled: SysConfig.timeOfDay >= 0
+                                tip: "The sun follows the clock again"
+                                onClicked: SysConfig.timeOfDay = -1
+                            }
                         }
                     }
                     SysRow {
@@ -319,11 +358,18 @@ Item {
                         visible: !(page.scene && page.scene.sunlight && !page.scene.schematic)
                         height: visible ? implicitHeight : 0
                         label: "MAP BRIGHTNESS"
-                        CfgSlider { width: parent.width; from: 0.3; to: 1.6; stepSize: 0.01; value: 0.85 }
+                        CfgSlider {
+                            width: parent.width
+                            from: 0.3; to: 1.6; stepSize: 0.01
+                            bound: true
+                            value: SysConfig.mapBrightness
+                            onMoved: (v) => SysConfig.mapBrightness = v
+                        }
                     }
                     SysRow { sub: "QUALITY & RANGE" }
                     SysRow {
                         label: "FRAME RATE"
+                        tip: "30 FPS halves the rendering and compositing work — use it on battery"
                         CfgSelect {
                             width: parent.width
                             options: [{ value: "60", label: "60 FPS" }, { value: "30", label: "30 FPS (ECO)" }]
@@ -333,15 +379,17 @@ Item {
                     }
                     SysRow {
                         label: "RESOLUTION"
+                        tip: "Reduce 3D rendering resolution to save GPU work. HUD and text keep their display resolution"
                         CfgSelect {
                             width: parent.width
                             options: [{ value: "native", label: "NATIVE" }, { value: "balanced", label: "BALANCED (DEFAULT)" }, { value: "eco", label: "ECO" }]
-                            value: SysConfig.value("renderQuality", "balanced")
-                            onPicked: (v) => SysConfig.setValue("renderQuality", v)
+                            value: SysConfig.renderQuality
+                            onPicked: (v) => SysConfig.renderQuality = v
                         }
                     }
                     SysRow {
                         label: "SATELLITE DETAIL"
+                        tip: "Sharpest satellite imagery drawn around the aircraft in the 3D view (resolution at mid latitudes). Each step doubles the detail, and the tiles downloaded when flying low"
                         CfgSelect {
                             width: parent.width
                             options: [{ value: "16", label: "ZOOM 16 · 1.6 m (OFF)" }, { value: "17", label: "ZOOM 17 · 0.8 m" },
@@ -353,6 +401,7 @@ Item {
                     }
                     SysRow {
                         label: "SATELLITE RADIUS"
+                        tip: "How far around the aircraft the 3D terrain gets satellite imagery; beyond it the terrain is coloured by height. A wider radius downloads more tiles and draws more"
                         CfgSelect {
                             width: parent.width
                             options: [{ value: "5000", label: "5 KM" }, { value: "10000", label: "10 KM (DEFAULT)" }, { value: "15000", label: "15 KM" },
@@ -363,6 +412,7 @@ Item {
                     }
                     SysRow {
                         label: "TERRAIN RADIUS"
+                        tip: "How far around the aircraft the 3D terrain is built. The haze follows it: a farther edge, thinner haze. A wider radius loads more elevation data and draws more"
                         CfgSelect {
                             width: parent.width
                             options: [{ value: "35000", label: "35 KM (DEFAULT)" }, { value: "50000", label: "50 KM" }, { value: "70000", label: "70 KM" }]
@@ -405,7 +455,7 @@ Item {
                                     width: 56
                                     leftPadding: 4; rightPadding: 4
                                     horizontalAlignment: TextInput.AlignHCenter
-                                    placeholderText: "unit"
+                                    placeholderText: qsTr("unit")
                                     text: cellRow.cell ? cellRow.cell.unitLabel : ""
                                     onCommitted: (t) => SysConfig.setHudCellUnit(cellRow.index, t)
                                 }
@@ -436,7 +486,15 @@ Item {
                         label: "TARGET FPS"
                         NumField { text: page.jsonNum("fpv-settings", "fps", 30); onCommitted: (t) => { const v = parseInt(t); if (!isNaN(v)) SysConfig.setJsonField("fpv-settings", "fps", Math.max(1, Math.min(60, v))) } }
                     }
-                    SysRow { note: "Network adapter: static IP in the 192.168.144.x subnet. ffmpeg must be in PATH." }
+                    SysRow { label: "ADDRESS"; stack: true; Val { text: Fpv.url } }
+                    SysRow {
+                        label: "STREAM"
+                        Val {
+                            text: Theme.tr(!Fpv.available ? "this build has no video decoder"
+                                : Fpv.connected ? Fpv.streamInfo : Fpv.connecting ? "connecting…" : "off")
+                        }
+                    }
+                    SysRow { note: "Opened by the FPV button at the top right. Network adapter: static IP in the 192.168.144.x subnet. TARGET FPS is the most frames shown a second: a stream that sends more is decoded in full and thinned out." }
                 }
             }
 
@@ -444,7 +502,7 @@ Item {
             Column {
                 width: 360
                 spacing: 20
-                ColumnTitle { text: "DATA & TOOLS" }
+                ColumnTitle { text: qsTr("DATA & TOOLS") }
 
                 SysPanel {
                     title: "AIRSPACE"
@@ -465,21 +523,21 @@ Item {
                     }
                     SysRow {
                         label: "IN REACH"
-                        Val { text: !GeoZones.enabled ? "Off" : GeoZones.inReach + " zones" + (GeoZones.pending ? " (" + GeoZones.pending + " loading)" : "") }
+                        Val { text: !GeoZones.enabled ? qsTr("Off") : GeoZones.inReach + qsTr(" zones") + (GeoZones.pending ? " (" + GeoZones.pending + qsTr(" loading)") : "") }
                     }
-                    SysRow { label: "SOURCES"; Val { text: GeoZones.enabled ? (GeoZones.sourcesText || "--") : "--"; wrapMode: Text.Wrap } }
+                    SysRow { label: "SOURCES"; Val { text: Theme.tr(GeoZones.enabled ? (GeoZones.sourcesText || "--") : "--"); wrapMode: Text.Wrap } }
                     SysRow {
                         label: "IMPORTED FILES"
                         Column {
                             width: parent.width
                             spacing: 2
-                            Val { visible: GeoZones.imports.length === 0; text: "none" }
+                            Val { visible: GeoZones.imports.length === 0; text: qsTr("none") }
                             Repeater {
                                 model: GeoZones.imports
                                 delegate: Row {
                                     required property var modelData
                                     spacing: 6
-                                    Val { width: implicitWidth; text: modelData.name + " · " + modelData.count + " zones · " + modelData.date }
+                                    Val { width: implicitWidth; text: modelData.name + " · " + modelData.count + qsTr(" zones · ") + modelData.date }
                                     Text {
                                         text: "✕"
                                         color: "#ff6b6b"
@@ -569,7 +627,7 @@ Item {
                         Text {
                             width: parent.width
                             wrapMode: Text.Wrap
-                            text: offline.estimate()
+                            text: Theme.tr(offline.estimate())
                             color: Theme.textMutedBright
                             font.family: Theme.fontData
                             font.pixelSize: 10
@@ -607,7 +665,7 @@ Item {
                     }
                     SysRow {
                         full: true
-                        Status { text: SysConfig.offlineStatus }
+                        Status { text: Theme.tr(SysConfig.offlineStatus) }
                     }
                 }
 
@@ -615,6 +673,7 @@ Item {
                     title: "FFT FROM LOGS"
                     SysRow {
                         label: "FFT SIZE"
+                        tip: "Samples in each FFT. The frequency step is the log's sample rate divided by this: more points separate closer lines, but each spectrum covers a longer stretch of the log"
                         CfgSelect {
                             width: parent.width
                             options: [{ value: "256", label: "256 POINTS" }, { value: "512", label: "512 POINTS" }, { value: "1024", label: "1024 POINTS (DEFAULT)" },
@@ -625,6 +684,7 @@ Item {
                     }
                     SysRow {
                         label: "AVERAGING"
+                        tip: "Welch averaging: the spectra of several windows, each overlapping the next by half, averaged into one. A steadier noise floor and clearer weak lines, from a longer stretch of the log"
                         CfgSelect {
                             width: parent.width
                             options: [{ value: "1", label: "NONE (DEFAULT)" }, { value: "2", label: "2 WINDOWS" }, { value: "4", label: "4 WINDOWS" }, { value: "8", label: "8 WINDOWS" }]
@@ -634,6 +694,7 @@ Item {
                     }
                     SysRow {
                         label: "TIME STEP"
+                        tip: "A new spectrum for every step of log time: the columns of the waterfall"
                         CfgSelect {
                             width: parent.width
                             options: [{ value: "100", label: "0.1 s" }, { value: "250", label: "0.25 s (DEFAULT)" }, { value: "500", label: "0.5 s" }, { value: "1000", label: "1 s" }]
@@ -641,7 +702,7 @@ Item {
                             onPicked: (v) => SysConfig.setJsonField("log-fft-cfg", "stepMs", parseInt(v))
                         }
                     }
-                    SysRow { label: "LOG IN REPLAY"; Val { text: Fft.logStatus; textFormat: Text.StyledText } }
+                    SysRow { label: "LOG IN REPLAY"; Val { text: Theme.tr(Fft.logStatus); textFormat: Text.StyledText } }
                     SysRow { note: "For a DataFlash log (.bin) in LOG REPLAY the GCS computes the vibration spectra of the FFT bar from the IMU samples in the log: GYR / ACC at the sensor rate (LOG_BITMASK IMU_RAW, INS_RAW_LOG_OPT), the batch sampler (INS_LOG_BAT_MASK) or IMU at the loop rate, whichever is there; the FFT bar picks the stream. Frequency step = sample rate ÷ FFT size (a 2 kHz gyro: 1024 points → 1.95 Hz, 0.5 s of log). A batch is INS_LOG_BAT_CNT samples long, and the FFT never spans more. The spectrum the vehicle sends live (HPF_FFT_ENABLE = 1) is the firmware's and does not change: 256 points at 800 Hz, 3.125 Hz, every 0.25 s." }
                 }
 
@@ -652,8 +713,19 @@ Item {
                         CfgSelect {
                             width: parent.width
                             options: [{ value: "en", label: "English" }, { value: "zh", label: "中文 (Chinese)" }]
-                            value: SysConfig.value("gcs-lang", "en")
-                            onPicked: (v) => SysConfig.setValue("gcs-lang", v)
+                            value: SysConfig.language
+                            onPicked: (v) => SysConfig.language = v
+                        }
+                    }
+                    SysRow {
+                        label: "SETTINGS OF 1.x"
+                        visible: SysConfig.legacySettings.length > 0
+                        tip: "Copies the settings of CORV GCS 1.x found on this computer: HUD fields, models, views, joystick, LiDAR, ROS, RTK, radio, battery, parameter favourites. The cellular key is not among them: it was encrypted for the old program"
+                        GcsButton {
+                            width: parent.width
+                            text: "IMPORT…"
+                            tip: SysConfig.legacySettings
+                            onClicked: SysConfig.importLegacySettings()
                         }
                     }
                     SysRow {
@@ -718,7 +790,10 @@ Item {
                             }
                         }
                     }
-                    SysRow { note: (Updates.message.length > 0 ? Updates.message + ". " : "") + "The GCS asks GitHub (" + Updates.repo + ") for the list of releases, without an account, a few seconds after start. Nothing is downloaded until INSTALL in the update dialog (UPDATE at the top right): then only the package for this system, checked against its SHA-256." }
+                    SysRow {
+                        note: (Updates.message.length > 0 ? Updates.message + ". " : "")
+                              + qsTr("The GCS asks GitHub (%1) for the list of releases, without an account, a few seconds after start. Nothing is downloaded until INSTALL in the update dialog (UPDATE at the top right): then only the package for this system, checked against its SHA-256.").arg(Updates.repo)
+                    }
                 }
             }
         }

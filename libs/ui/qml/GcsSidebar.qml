@@ -21,7 +21,7 @@ Rectangle {
         Text {
             x: 14
             anchors.verticalCenter: parent.verticalCenter
-            text: sh.title
+            text: Theme.tr(sh.title)
             color: Theme.accentCyan
             font.family: Theme.fontUi
             font.pixelSize: Theme.fsMd
@@ -69,7 +69,7 @@ Rectangle {
         border.color: Theme.borderInput
         Text {
             anchors.centerIn: parent
-            text: gb.text
+            text: Theme.tr(gb.text)
             color: gb.accent
             font.family: Theme.fontUi
             font.pixelSize: Theme.fsMd
@@ -83,16 +83,18 @@ Rectangle {
         property string v
         width: parent ? parent.width : 206
         height: 17
-        Text { text: parent.k; color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: Theme.fsSm; font.letterSpacing: 1; anchors.verticalCenter: parent.verticalCenter }
-        Text { anchors.right: parent.right; text: parent.v; color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: Theme.fsSm; anchors.verticalCenter: parent.verticalCenter }
+        Text { text: Theme.tr(parent.k); color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: Theme.fsSm; font.letterSpacing: 1; anchors.verticalCenter: parent.verticalCenter }
+        Text { anchors.right: parent.right; text: Theme.tr(parent.v); color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: Theme.fsSm; anchors.verticalCenter: parent.verticalCenter }
     }
     component Check: Item {
         id: ck
         property string text
         property bool checked: false
+        property string tip: ""
         signal toggled(bool on)
         width: parent ? parent.width : 206
         height: 27
+        HoverTip { text: ck.tip }
         Rectangle {
             x: 4
             anchors.verticalCenter: parent.verticalCenter
@@ -105,7 +107,7 @@ Rectangle {
         Text {
             x: 26
             anchors.verticalCenter: parent.verticalCenter
-            text: ck.text
+            text: Theme.tr(ck.text)
             color: Theme.textMain
             font.family: Theme.fontUi
             font.pixelSize: Theme.fsMd
@@ -113,15 +115,26 @@ Rectangle {
         MouseArea { anchors.fill: parent; onClicked: { ck.checked = !ck.checked; ck.toggled(ck.checked) } }
     }
     component Field: Item {
+        id: fld
         property string k
         property alias text: f.text
+        property alias placeholder: f.placeholderText
+        property string tip: ""
+        property real fieldWidth: 70
         width: parent ? parent.width : 206
         height: 21
-        Text { text: parent.k; color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: Theme.fsSm; anchors.verticalCenter: parent.verticalCenter }
+        opacity: enabled ? 1 : 0.4
+        Text { text: Theme.tr(parent.k); color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: Theme.fsSm; anchors.verticalCenter: parent.verticalCenter }
         TextField {
             id: f
             anchors.right: parent.right
-            width: 70; height: 21
+            width: fld.fieldWidth; height: 21
+            selectByMouse: true
+            placeholderTextColor: Theme.textDim
+            HoverHandler { id: fh }
+            ToolTip.visible: fh.hovered && fld.tip.length > 0
+            ToolTip.delay: 600
+            ToolTip.text: Theme.tr(fld.tip)
             padding: 2; rightPadding: 6
             horizontalAlignment: Text.AlignRight
             color: Theme.textMain
@@ -145,8 +158,8 @@ Rectangle {
             Section {
                 title: "VEHICLE"
                 Kv { k: "TYPE"; v: Vehicle.connected ? Vehicle.vehicleTypeName : "--" }
-                Kv { k: "SYS ID"; v: Vehicle.systemId }
-                Kv { k: "FW"; v: "--" }
+                Kv { k: "SYS ID"; v: Vehicle.connected ? Vehicle.systemId : "--" }
+                Kv { k: "FW"; v: Vehicle.connected && Vehicle.firmwareVersion.length > 0 ? Vehicle.firmwareVersion : "--" }
             }
             Section {
                 title: "ACTIONS"
@@ -155,10 +168,11 @@ Rectangle {
             }
             Section {
                 title: "MISSION"
-                GcsButton { text: "READ MISSION" }
+                // The vehicle's mission into FLIGHT PLAN, and so on the maps and in 3D (a route there is asked about first)
+                GcsButton { text: Plan.readText === "READ" ? "READ MISSION" : Plan.readText; enabled: Vehicle.connected; opacity: enabled ? 1 : 0.4; onClicked: Plan.read() }
                 Row {
                     spacing: 6
-                    Text { text: "WPT:"; color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: Theme.fsSm }
+                    Text { text: qsTr("WPT:"); color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: Theme.fsSm }
                     Text { text: Vehicle.missionSeq + "/" + Vehicle.missionCount; color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: Theme.fsMd }
                 }
             }
@@ -187,33 +201,54 @@ Rectangle {
                 // The cell rows of the position panel (lte-cell-map.table)
                 Check {
                     text: "LTE OVERLAY"
+                    tip: "LTE cell rows in the position panel, on the cellular link"
                     checked: !!Lte.cellMap.table
                     onToggled: (on) => Lte.setCellMap("table", on)
                 }
                 Check {
                     text: "RESTRICTED ZONES"
+                    tip: "UAS geographical zones within 50 km of the vehicle and the mission, on the maps and the 3D terrain, with height warnings (120 m in Europe, 400 ft in the US)"
                     checked: GeoZones.enabled
                     onToggled: (on) => GeoZones.enabled = on
                 }
-                GcsButton { text: "CLEAR TRAIL"; onClicked: side.clearTrail() }
+                GcsButton { text: "CLEAR TRAIL"; onClicked: { side.clearTrail(); Gcs.notify("Trail cleared") } }
             }
             Section {
                 title: "RTL OPTIONS"
-                Field { k: "RTL ALT (m)" }
-                Field { k: "RTL ALT FINAL (m)" }
-                Field { k: "RTL SPEED (m/s)" }
-                Text { text: "SMART RTL"; color: Theme.accentCyan; font.family: Theme.fontUi; font.pixelSize: Theme.fsSm; topPadding: 6 }
-                Field { k: "SRTL POINTS" }
-                Field { k: "SRTL ACCURACY (m)" }
-                GcsButton { text: "READ FROM VEHICLE" }
-                GcsButton { text: "WRITE TO VEHICLE" }
+                // A field the vehicle has no parameter for stays greyed; the tip names the parameter
+                Repeater {
+                    id: rtlFields
+                    model: Rtl.fields
+                    delegate: Column {
+                        id: rf
+                        required property var modelData
+                        required property int index
+                        readonly property string key: modelData.key
+                        property alias text: rtlField.text
+                        width: parent ? parent.width : 206
+                        spacing: 6
+                        Text { visible: rf.index === 3; text: qsTr("SMART RTL"); color: Theme.accentCyan; font.family: Theme.fontUi; font.pixelSize: Theme.fsSm; topPadding: 6 }
+                        Field { id: rtlField; k: rf.modelData.label; text: rf.modelData.text; tip: rf.modelData.param; enabled: rf.modelData.available }
+                    }
+                }
+                GcsButton { text: Rtl.reading ? "READING..." : "READ FROM VEHICLE"; enabled: Vehicle.connected && !Rtl.reading; opacity: enabled ? 1 : 0.4; onClicked: Rtl.read() }
+                GcsButton {
+                    text: "WRITE TO VEHICLE"
+                    enabled: Vehicle.connected
+                    opacity: enabled ? 1 : 0.4
+                    onClicked: {
+                        const v = {}
+                        for (let i = 0; i < rtlFields.count; ++i) v[rtlFields.itemAt(i).key] = rtlFields.itemAt(i).text
+                        Rtl.write(v)
+                    }
+                }
             }
             Section {
                 title: "TARGET"
-                Field { k: "LAT" }
-                Field { k: "LON" }
-                GcsButton { text: "SET TARGET" }
-                GcsButton { text: "CLEAR" }
+                Field { id: targetLat; k: "LAT"; fieldWidth: 110; placeholder: "47.2603" }
+                Field { id: targetLon; k: "LON"; fieldWidth: 110; placeholder: "11.3439" }
+                GcsButton { text: "SET TARGET"; onClicked: Target.set(targetLat.text, targetLon.text) }
+                GcsButton { text: "CLEAR"; enabled: Target.active; opacity: enabled ? 1 : 0.4; onClicked: Target.clear() }
             }
             Section {
                 title: "MESSAGE LOG"
@@ -224,16 +259,31 @@ Rectangle {
                     border.color: Theme.borderSection
                     border.width: Theme.hairline
                     radius: 3
+                    // Selectable; it follows the newest message unless it was scrolled up to read
                     Flickable {
+                        id: logView
                         anchors.fill: parent
                         anchors.margins: 5
+                        contentWidth: width
                         contentHeight: log.implicitHeight
                         clip: true
-                        Text {
+                        boundsBehavior: Flickable.StopAtBounds
+                        property bool atEnd: true
+                        onMovementEnded: atEnd = contentY >= contentHeight - height - 4
+                        onContentHeightChanged: if (atEnd) contentY = Math.max(0, contentHeight - height)
+                        onHeightChanged: if (atEnd) contentY = Math.max(0, contentHeight - height)
+                        ScrollBar.vertical: ScrollBar { width: 6; onPressedChanged: if (!pressed) logView.atEnd = logView.contentY >= logView.contentHeight - logView.height - 4 }
+                        TextEdit {
                             id: log
-                            width: parent.width
+                            objectName: "messageLog"
+                            width: logView.width - 8
                             text: Gcs.messageLog
-                            wrapMode: Text.Wrap
+                            readOnly: true
+                            selectByMouse: true
+                            selectionColor: Theme.accentCyan
+                            selectedTextColor: "black"
+                            wrapMode: TextEdit.Wrap
+                            textFormat: TextEdit.PlainText
                             color: Theme.textMain
                             font.family: Theme.fontData
                             font.pixelSize: Theme.fsSm
@@ -270,13 +320,13 @@ Rectangle {
                                 required property var modelData
                                 width: info.width
                                 height: 14
-                                Text { text: parent.modelData[0]; color: Theme.textDim; font.family: Theme.fontData; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1 }
+                                Text { text: Theme.tr(parent.modelData[0]); color: Theme.textDim; font.family: Theme.fontData; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1 }
                                 Text {
                                     anchors.right: parent.right
                                     width: Math.min(implicitWidth, 130)
                                     horizontalAlignment: Text.AlignRight
                                     elide: Text.ElideMiddle
-                                    text: parent.modelData[1]
+                                    text: Theme.tr(parent.modelData[1])
                                     color: Theme.textMain
                                     font.family: Theme.fontData; font.pixelSize: 10
                                 }

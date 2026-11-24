@@ -8,6 +8,7 @@ qt_add_qml_module(corv_gpu
         OutlineRenderer.h OutlineRenderer.cpp
         PointCloudRenderer.h PointCloudRenderer.cpp
         RosSurfaceRenderer.h RosSurfaceRenderer.cpp
+        VideoRenderer.h VideoRenderer.cpp
         FrameTicker.h FrameTicker.cpp
         FrameStats.h FrameStats.cpp
         TouchGesture.h TouchGesture.cpp
@@ -40,4 +41,6 @@ corv_add_shaders(corv_gpu "/shaders" ${CMAKE_SOURCE_DIR}/shaders
     ${CMAKE_SOURCE_DIR}/shaders/rosmesh.vert
     ${CMAKE_SOURCE_DIR}/shaders/rosmesh.frag
     ${CMAKE_SOURCE_DIR}/shaders/rosvolume.vert
-    ${CMAKE_SOURCE_DIR}/shaders/rosvolume.frag)
+    ${CMAKE_SOURCE_DIR}/shaders/rosvolume.frag
+    ${CMAKE_SOURCE_DIR}/shaders/video.vert
+    ${CMAKE_SOURCE_DIR}/shaders/video.frag)

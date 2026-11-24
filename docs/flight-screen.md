@@ -476,10 +476,13 @@ The flight buttons do nothing with no vehicle connected or on a CORV binary link
 ## FPV video
 
 The FPV button shows an RTSP camera stream (SIYI HM30 / A8 and similar; address, port, path and frame
-rate in [SYS CONFIG → SIYI CAMERA STREAM](sys-config.md#siyi-camera-stream)), decoded in hardware when
-the PC can; `ffmpeg` must be installed and in the PATH. A status line in the middle says when the
-stream is starting or cannot be reached. In AR mode the 3D view is blended over the camera image with
-the terrain hidden, so the route and the HUD overlay the real picture.
+rate in [SYS CONFIG → SIYI CAMERA STREAM](sys-config.md#siyi-camera-stream)), H.264 or H.265, decoded
+in hardware when the PC can and by the program itself when it cannot. RTP comes over TCP, or over UDP
+when the camera refuses that. A status line in the middle says when the stream is starting, cannot be
+reached or has ended; a click while it is connecting gives up. In AR mode the schematic 3D view —
+ridges, isolines, the route, home, traffic — is blended over the camera image (its black lets the
+picture through), so the route and the HUD overlay the real picture. The button is cyan with the
+camera alone and amber in AR.
 
 ## Logs and replay
 

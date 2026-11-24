@@ -39,6 +39,6 @@ Rectangle {
     HoverHandler { id: hover; cursorShape: b.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
     TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; enabled: b.enabled; onTapped: b.clicked() }
     ToolTip.visible: tip.length > 0 && hover.hovered
-    ToolTip.text: tip
+    ToolTip.text: Theme.tr(tip)
     ToolTip.delay: 600
 }

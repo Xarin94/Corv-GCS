@@ -44,7 +44,7 @@ Rectangle {
     Text {
         id: label
         anchors.centerIn: parent
-        text: b.text
+        text: Theme.tr(b.text)
         color: b.enabled ? b.tone : Theme.textMain
         font.family: Theme.fontUi
         font.pixelSize: 11
@@ -54,6 +54,6 @@ Rectangle {
     HoverHandler { id: hover; cursorShape: b.enabled ? Qt.PointingHandCursor : Qt.ForbiddenCursor }
     TapHandler { enabled: b.enabled; onTapped: b.clicked() }
     ToolTip.visible: tip.length > 0 && hover.hovered
-    ToolTip.text: tip
+    ToolTip.text: Theme.tr(tip)
     ToolTip.delay: 600
 }

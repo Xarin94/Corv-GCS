@@ -23,7 +23,7 @@ Rectangle {
     Text {
         id: lbl
         anchors.centerIn: parent
-        text: b.text
+        text: Theme.tr(b.text)
         color: b.accent
         font.family: Theme.fontUi
         font.pixelSize: b.fontSize
@@ -39,5 +39,5 @@ Rectangle {
     }
     ToolTip.visible: tooltip.length > 0 && mouse.containsMouse
     ToolTip.delay: 600
-    ToolTip.text: tooltip
+    ToolTip.text: Theme.tr(tooltip)
 }

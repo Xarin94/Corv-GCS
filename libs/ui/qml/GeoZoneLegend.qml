@@ -39,9 +39,9 @@ Rectangle {
         x: 8
         y: 6
         spacing: 4
-        Text { text: "UAS ZONES"; color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: Theme.fsXs; font.weight: Font.DemiBold; font.letterSpacing: 1 }
-        Row { spacing: 6; Banded { tone: "#e8231d" } Lbl { text: "No-fly / authorisation" } }
-        Row { spacing: 6; Banded { tone: "#b060ff" } Lbl { text: "Conditions apply" } }
+        Text { text: qsTr("UAS ZONES"); color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: Theme.fsXs; font.weight: Font.DemiBold; font.letterSpacing: 1 }
+        Row { spacing: 6; Banded { tone: "#e8231d" } Lbl { text: qsTr("No-fly / authorisation") } }
+        Row { spacing: 6; Banded { tone: "#b060ff" } Lbl { text: qsTr("Conditions apply") } }
         Row {
             spacing: 6
             Row {
@@ -51,11 +51,11 @@ Rectangle {
                         required property var modelData
                         width: 22; height: 12
                         color: modelData[1]
-                        Text { anchors.centerIn: parent; text: parent.modelData[0]; color: "black"; font.family: Theme.fontData; font.pixelSize: 8 }
+                        Text { anchors.centerIn: parent; text: Theme.tr(parent.modelData[0]); color: "black"; font.family: Theme.fontData; font.pixelSize: 8 }
                     }
                 }
             }
-            Lbl { text: "max m AGL" }
+            Lbl { text: qsTr("max m AGL") }
         }
     }
 }

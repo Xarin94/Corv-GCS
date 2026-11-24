@@ -69,7 +69,7 @@ Flickable {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 leftPadding: 10
-                text: SetupCfg.status["PID TUNING"] ? SetupCfg.status["PID TUNING"].text : ""
+                text: Theme.tr(SetupCfg.status["PID TUNING"] ? SetupCfg.status["PID TUNING"].text : "")
                 color: SetupCfg.status["PID TUNING"] && SetupCfg.status["PID TUNING"].ok ? Theme.accentGreen : Theme.textDim
                 font.family: Theme.fontUi
                 font.pixelSize: Theme.fsSm
@@ -94,7 +94,7 @@ Flickable {
                             spacing: 6
                             Text {
                                 visible: grp.modelData.name !== ""
-                                text: grp.modelData.name
+                                text: Theme.tr(grp.modelData.name)
                                 color: Theme.groupAmber
                                 font.family: Theme.fontUi; font.pixelSize: Theme.fsXs; font.weight: Font.Bold; font.letterSpacing: 2
                             }

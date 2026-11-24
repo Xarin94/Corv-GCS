@@ -69,6 +69,7 @@ Flickable {
                 id: rwChk
                 visible: page.protocol === "mavlink"
                 text: "WRITE ACCESS (BIDIRECTIONAL)"
+                tip: "Packets received from this endpoint are injected into the vehicle link (a secondary GCS can send commands)"
             }
             GcsButton {
                 width: parent.width; height: 29
@@ -83,7 +84,7 @@ Flickable {
             CfgValue {
                 width: parent.width
                 horizontalAlignment: Text.AlignLeft
-                text: TelForward.addStatus
+                text: Theme.tr(TelForward.addStatus)
                 color: TelForward.addError ? "#ff3333" : Theme.accentCyan
                 visible: text.length > 0
             }
@@ -93,7 +94,7 @@ Flickable {
             title: "ACTIVE OUTPUTS"
             Text {
                 visible: TelForward.outputs.length === 0
-                text: "No outputs configured"
+                text: qsTr("No outputs configured")
                 opacity: 0.5
                 color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 11
             }
@@ -111,7 +112,7 @@ Flickable {
                             anchors.verticalCenter: parent.verticalCenter
                             width: parent.width - 110
                             elide: Text.ElideRight
-                            text: parent.parent.modelData.label
+                            text: Theme.tr(parent.parent.modelData.label)
                             color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: 11
                         }
                         Rectangle {
@@ -134,7 +135,7 @@ Flickable {
                     Text {
                         width: parent.width
                         wrapMode: Text.Wrap
-                        text: parent.modelData.stats
+                        text: Theme.tr(parent.modelData.stats)
                         color: Theme.textDim; font.family: Theme.fontData; font.pixelSize: 10
                     }
                     Rectangle { width: parent.width; height: 1; color: Theme.borderSubtle }

@@ -4,6 +4,7 @@ add_library(corv_core STATIC
     LruCache.h
     DataRoot.h DataRoot.cpp
     Settings.h Settings.cpp
+    ElectronSettings.h ElectronSettings.cpp
     DebugLog.h DebugLog.cpp
     Inflate.h Inflate.cpp
     Clock.h

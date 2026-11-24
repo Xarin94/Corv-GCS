@@ -41,7 +41,7 @@ LeftBar {
                 Text {
                     id: peakLbl
                     width: 34
-                    text: peak.modelData.label
+                    text: Theme.tr(peak.modelData.label)
                     color: "#c3c2b7"
                     font.family: Theme.fontUi; font.pixelSize: Theme.fsXs; font.weight: Font.Bold; font.letterSpacing: 0.12 * Theme.fsXs
                 }
@@ -52,7 +52,7 @@ LeftBar {
                     Text {
                         width: parent.width
                         visible: !!peak.modelData.none
-                        text: peak.modelData.none || ""
+                        text: Theme.tr(peak.modelData.none || "")
                         wrapMode: Text.Wrap
                         color: "#898781"
                         font.family: Theme.fontUi; font.pixelSize: Theme.fsXs; font.letterSpacing: 0.06 * Theme.fsXs
@@ -61,7 +61,7 @@ LeftBar {
                         width: parent.width
                         visible: !!peak.modelData.main
                         textFormat: Text.StyledText
-                        text: peak.modelData.main || ""
+                        text: Theme.tr(peak.modelData.main || "")
                         wrapMode: Text.Wrap
                         color: "#f0efec"
                         font.family: Theme.fontData; font.pixelSize: Theme.fsSm
@@ -69,7 +69,7 @@ LeftBar {
                     Text {
                         width: parent.width
                         visible: !!peak.modelData.more
-                        text: peak.modelData.more || ""
+                        text: Theme.tr(peak.modelData.more || "")
                         wrapMode: Text.Wrap
                         color: peak.modelData.moreDim ? "#898781" : "#c3c2b7"
                         font.family: peak.modelData.moreDim ? Theme.fontUi : Theme.fontData
@@ -84,7 +84,7 @@ LeftBar {
     Rule { }
     RowLayout {
         Layout.fillWidth: true
-        SectionTitle { text: "SPECTRUM · NOW" }
+        SectionTitle { text: qsTr("SPECTRUM · NOW") }
         Item { Layout.fillWidth: true }
         // .spec-seg: GYRO | ACC
         Rectangle {
@@ -109,7 +109,7 @@ LeftBar {
                         Text {
                             id: segText
                             anchors.centerIn: parent
-                            text: parent.modelData[1]
+                            text: Theme.tr(parent.modelData[1])
                             color: parent.active || segMouse.containsMouse ? "#f0efec" : "#898781"
                             font.family: Theme.fontUi; font.pixelSize: Theme.fsXs; font.weight: Font.Bold; font.letterSpacing: 0.1 * Theme.fsXs
                         }
@@ -123,7 +123,7 @@ LeftBar {
         Layout.fillWidth: true
         spacing: 8
         Text {
-            text: Fft.sourceText
+            text: Theme.tr(Fft.sourceText)
             color: "#c3c2b7"
             font.family: Theme.fontData; font.pixelSize: Theme.fsXs
         }
@@ -134,6 +134,7 @@ LeftBar {
             width: Math.min(bar.width - 24, 220)
             implicitHeight: 20
             fontSize: 9
+            tip: "IMU samples of the log the spectrum is computed from"
             options: Fft.streams
             value: Fft.stream
             onPicked: (v) => Fft.selectStream(v)
@@ -141,7 +142,7 @@ LeftBar {
     }
     Text {
         Layout.fillWidth: true
-        text: Fft.unit
+        text: Theme.tr(Fft.unit)
         color: "#898781"
         font.family: Theme.fontUi; font.pixelSize: Theme.clamp(9, 0.6 * Theme.vw, 12)
     }
@@ -154,17 +155,17 @@ LeftBar {
     RowLayout {
         Layout.fillWidth: true
         spacing: 12
-        Row { spacing: 4; Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 10; height: 2; color: "#3987e5" } Small { text: "NOW" } }
-        Row { spacing: 4; Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 10; height: 2; color: "#c98500" } Small { text: "PEAK 10 s" } }
+        Row { spacing: 4; Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 10; height: 2; color: "#3987e5" } Small { text: qsTr("NOW") } }
+        Row { spacing: 4; Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 10; height: 2; color: "#c98500" } Small { text: qsTr("PEAK 10 s") } }
         Item { Layout.fillWidth: true }
         Text { text: live.readout; color: "#f0efec"; font.family: Theme.fontData; font.pixelSize: Theme.fsXs }
     }
 
     // ── Waterfall ──
     Rule { }
-    SectionTitle { text: "WATERFALL · LAST 60 s" }
+    SectionTitle { text: qsTr("WATERFALL · LAST 60 s") }
     Text {
-        text: "frequency down, time to the right, colour = level"
+        text: qsTr("frequency down, time to the right, colour = level")
         color: "#898781"
         font.family: Theme.fontUi; font.pixelSize: Theme.clamp(9, 0.6 * Theme.vw, 12)
     }

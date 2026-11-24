@@ -26,7 +26,7 @@ Rectangle {
         border.color: Theme.borderInput
         Text {
             anchors.centerIn: parent
-            text: b.label
+            text: Theme.tr(b.label)
             color: m.containsMouse ? Theme.accentCyan : Theme.textMain
             font.pixelSize: b.labelSize
         }
@@ -45,7 +45,7 @@ Rectangle {
         spacing: 8
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: "REPLAY"
+            text: qsTr("REPLAY")
             color: Theme.accentCyan
             opacity: 0.75
             font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.5
@@ -91,6 +91,7 @@ Rectangle {
         width: 24
         label: "×"
         labelSize: 16
+        HoverTip { text: "Unload log" }
         onClicked: Replay.unload()
     }
 }

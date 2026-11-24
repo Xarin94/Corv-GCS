@@ -28,6 +28,7 @@ class RosController;
 class SitlController;
 class CalibrationController;
 class EkfController;
+class FpvController;
 class FftController;
 class LogReplay;
 class ReplayController;
@@ -41,6 +42,8 @@ class LinkManager;
 class MessageBus;
 class PlanController;
 class SysConfig;
+class TargetController;
+class RtlOptions;
 class TerrainFeeder;
 class VehicleHub;
 class VehicleModel;
@@ -89,6 +92,9 @@ public:
     Q_INVOKABLE void setHomeHere();
     Q_INVOKABLE void rebootAutopilot();
     Q_INVOKABLE void setMissionSpeed(double speed);
+    /// A line for the HUD message list from the interface (CLEAR TRAIL).
+    Q_INVOKABLE void notify(const QString &text, const QString &level = QStringLiteral("info")) { emit hudMessage(text, level); }
+    Q_INVOKABLE void clearMessageLog();
     QString messageLog() const { return m_log.join(QLatin1Char('\n')); }
     QString terrainFeed() const { return m_terrainText; }
 
@@ -132,6 +138,7 @@ private:
     CalibrationController *m_calibration = nullptr;
     EkfController *m_ekf = nullptr;
     FftController *m_fft = nullptr;
+    FpvController *m_fpv = nullptr;
     AnnunciatorController *m_annun = nullptr;
     GeoZoneController *m_geo = nullptr;
     AdsbClient *m_adsb = nullptr;
@@ -144,6 +151,8 @@ private:
     LidarController *m_lidar = nullptr;
     RosController *m_ros = nullptr;
     SitlController *m_sitl = nullptr;
+    TargetController *m_target = nullptr;
+    RtlOptions *m_rtl = nullptr;
     QThread m_logThread;
     LogReplay *m_replayEngine = nullptr;
     ReplayController *m_replay = nullptr;

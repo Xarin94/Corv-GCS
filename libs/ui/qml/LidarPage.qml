@@ -20,15 +20,17 @@ Flickable {
         default property alias content: slot.data
         width: parent ? parent.width : 320
         spacing: 5
-        CfgLabel { width: parent.width; text: parent.label; wrapMode: Text.Wrap; visible: text.length > 0 }
+        CfgLabel { width: parent.width; text: Theme.tr(parent.label); wrapMode: Text.Wrap; visible: text.length > 0 }
         Row { id: slot; spacing: 6 }
     }
     component Num: CfgInput {
         property string key
+        property string tip
         numeric: true
         width: 96
         text: String(page.c[key])
         onCommitted: (t) => Lidar.setField(key, t)
+        HoverTip { text: parent.tip }
     }
 
     Flow {
@@ -72,7 +74,7 @@ Flickable {
             }
             Field {
                 label: "TELEMETRY LAG (ms)"
-                Num { key: "lagMs"; ToolTip.text: "How much later than the point packets the telemetry reaches the GCS"; ToolTip.visible: hovered; ToolTip.delay: 600 }
+                Num { key: "lagMs"; tip: "How much later than the point packets the telemetry reaches the GCS" }
             }
             Field {
                 label: "ACCUMULATE ONLY WITH"
@@ -87,10 +89,10 @@ Flickable {
                     }
                     Row {
                         spacing: 6
-                        CfgLabel { anchors.verticalCenter: parent.verticalCenter; text: "SATS ≥" }
-                        Num { key: "minSats"; width: 70 }
-                        CfgLabel { anchors.verticalCenter: parent.verticalCenter; text: "HDOP ≤" }
-                        Num { key: "maxHdop"; width: 70 }
+                        CfgLabel { anchors.verticalCenter: parent.verticalCenter; text: qsTr("SATS ≥") }
+                        Num { key: "minSats"; width: 70; tip: "Minimum satellites" }
+                        CfgLabel { anchors.verticalCenter: parent.verticalCenter; text: qsTr("HDOP ≤") }
+                        Num { key: "maxHdop"; width: 70; tip: "Maximum HDOP" }
                     }
                     CfgCheck {
                         width: 300
@@ -102,7 +104,7 @@ Flickable {
             }
             Field {
                 label: "LIVE POINTS (NOT GEOREFERENCED) FADE AFTER (s)"
-                Num { key: "liveSeconds"; ToolTip.text: "Without a usable position the scan is still shown around the aircraft, then fades"; ToolTip.visible: hovered; ToolTip.delay: 600 }
+                Num { key: "liveSeconds"; ToolTip.text: qsTr("Without a usable position the scan is still shown around the aircraft, then fades"); ToolTip.visible: hovered; ToolTip.delay: 600 }
             }
             Field {
                 label: "RECORD RAW POINTS (.PLY)"
@@ -122,7 +124,7 @@ Flickable {
                 label: "STATUS"
                 Text {
                     width: 320
-                    text: Lidar.statusText
+                    text: Theme.tr(Lidar.statusText)
                     textFormat: Text.StyledText
                     wrapMode: Text.Wrap
                     color: Theme.textMutedBright
@@ -133,7 +135,7 @@ Flickable {
             CfgNote {
                 opacity: 0.6
                 font.pixelSize: 11
-                text: "Livox SDK2 over UDP: the LiDAR must reach this host on ports 56101 / 56201 / 56301 / 56401 through the LAN bridge. Raise SR_POSITION and SR_EXTRA1 to 10 Hz for a sharper map."
+                text: qsTr("Livox SDK2 over UDP: the LiDAR must reach this host on ports 56101 / 56201 / 56301 / 56401 through the LAN bridge. Raise SR_POSITION and SR_EXTRA1 to 10 Hz for a sharper map.")
             }
         }
 
@@ -161,9 +163,9 @@ Flickable {
             }
             Field {
                 label: "LEVER ARM IMU → LIDAR (X FWD / Y RIGHT / Z DOWN, m)"
-                Num { id: lX; key: "leverX" }
-                Num { id: lY; key: "leverY" }
-                Num { id: lZ; key: "leverZ" }
+                Num { id: lX; key: "leverX"; tip: "X forward" }
+                Num { id: lY; key: "leverY"; tip: "Y right" }
+                Num { id: lZ; key: "leverZ"; tip: "Z down" }
             }
             Field {
                 label: "MOUNT PREVIEW"
@@ -173,6 +175,7 @@ Flickable {
                     color: Qt.rgba(0, 0, 0, 0.28)
                     border.color: Qt.rgba(0, 210 / 255, 1, 0.12)
                     border.width: Theme.hairline
+                    HoverTip { text: "The vehicle (nose forward, fin on top), the LiDAR at its lever arm with its axes (X red, Y green, Z blue) and the zone it scans" }
                     // From the inputs as they are typed, before they are applied
                     MountPreview {
                         anchors.fill: parent
@@ -186,17 +189,17 @@ Flickable {
             }
             Field {
                 label: "MIN RANGE — DISCARD CLOSER THAN (m)"
-                Num { key: "minRange" }
-                CfgNote { width: 200; anchors.verticalCenter: parent.verticalCenter; text: "rudder, landing gear, antennas in the field of view" }
+                Num { key: "minRange"; tip: "Returns closer than this are false echoes from the airframe" }
+                CfgNote { width: 200; anchors.verticalCenter: parent.verticalCenter; text: qsTr("rudder, landing gear, antennas in the field of view") }
             }
             Field {
                 label: "MAX RANGE (m)"
-                Num { key: "maxRange" }
+                Num { key: "maxRange"; tip: "Maximum range" }
             }
             Field {
                 label: "VOXEL SIZE (m) / MAX POINTS"
-                Num { key: "voxel" }
-                Num { key: "maxPoints"; width: 120 }
+                Num { key: "voxel"; tip: "One point kept per voxel" }
+                Num { key: "maxPoints"; width: 120; tip: "Map capacity" }
             }
             Field {
                 label: "NOISE FILTER"
@@ -219,7 +222,7 @@ Flickable {
                             value: page.c.colorMode
                             onPicked: (v) => Lidar.setField("colorMode", v)
                         }
-                        Num { key: "pointSize"; width: 70 }
+                        Num { key: "pointSize"; width: 70; tip: "Point size in pixels" }
                     }
                     CfgCheck {
                         width: 300
@@ -232,7 +235,7 @@ Flickable {
             CfgNote {
                 opacity: 0.6
                 font.pixelSize: 11
-                text: "Angles are ZYX Euler of the LiDAR body relative to the aircraft body (FRD). The Mid-360 sees 360° × (−7°…+52°): mounted flat under the belly it is blind straight down, tilt it to close the gap."
+                text: qsTr("Angles are ZYX Euler of the LiDAR body relative to the aircraft body (FRD). The Mid-360 sees 360° × (−7°…+52°): mounted flat under the belly it is blind straight down, tilt it to close the gap.")
             }
         }
     }

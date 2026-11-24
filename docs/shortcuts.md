@@ -8,10 +8,17 @@ description: Every key and mouse action on the flight screen, in the mission pla
 
 Keys act on the page in view and never while you are typing in a field.
 
+## Everywhere
+
+| Key | |
+|-----|---|
+| **Ctrl + 1 … Ctrl + 4** | FLIGHT DATA, FLIGHT PLAN, SETUP, SYS CONFIG |
+
 ## Flight screen (FLIGHT DATA)
 
 | Key | |
 |-----|---|
+| **C** | First / third person |
 | **M** | Satellite imagery on / off (schematic chart) |
 | **L** | Realistic sunlight on / off |
 | **T** | Horizon lock (first-person view keeps the horizon level) |

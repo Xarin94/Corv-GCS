@@ -5,7 +5,7 @@ import QtQuick
 Text {
     property var result: ({})
     width: parent ? parent.width : 320
-    text: result && result.text ? result.text : ""
+    text: Theme.tr(result && result.text ? result.text : "")
     visible: text.length > 0
     wrapMode: Text.Wrap
     color: !result ? Theme.textDim : result.kind === "running" ? Theme.accentOrange

@@ -46,7 +46,7 @@ Item {
             }
             OutlinedText {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: a.modelData.label
+                text: Theme.tr(a.modelData.label)
                 color: a.tone
                 font.family: Theme.fontUi; font.pixelSize: Theme.fsSm; font.weight: Font.Bold; font.letterSpacing: 0.08 * Theme.fsSm
             }
@@ -54,7 +54,7 @@ Item {
                 anchors.horizontalCenter: parent.horizontalCenter
                 visible: text.length > 0
                 horizontalAlignment: Text.AlignHCenter
-                text: a.modelData.value
+                text: Theme.tr(a.modelData.value)
                 color: Theme.hudText
                 lineHeight: 1.15
                 font.family: Theme.fontData; font.pixelSize: Theme.fsSm
@@ -68,7 +68,7 @@ Item {
             onClicked: Annunciators.silence(a.modelData.id)
         }
         ToolTip.visible: am.containsMouse
-        ToolTip.text: modelData.title
+        ToolTip.text: Theme.tr(modelData.title)
         ToolTip.delay: 500
     }
 

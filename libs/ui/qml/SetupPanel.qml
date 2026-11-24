@@ -16,7 +16,7 @@ Rectangle {
     Text {
         x: 17
         y: 17
-        text: panel.title
+        text: Theme.tr(panel.title)
         color: Theme.accentCyan
         font.family: Theme.fontUi
         font.pixelSize: 12

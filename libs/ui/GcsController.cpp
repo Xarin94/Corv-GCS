@@ -19,12 +19,14 @@
 #include "gpu/SceneItem.h"
 #include "terrain/Hgt.h"
 #include "terrain/HgtDownloader.h"
+#include "terrain/TileStore.h"
 #include "services/LogReplay.h"
 #include "ui/AnnunciatorController.h"
 #include "ui/GeoZoneController.h"
 #include "ui/CalibrationController.h"
 #include "ui/EkfController.h"
 #include "ui/FftController.h"
+#include "ui/FpvController.h"
 #include "ui/ReplayController.h"
 #include "ui/DialogHub.h"
 #include "ui/HudItem.h"
@@ -32,7 +34,9 @@
 #include "ui/LogsController.h"
 #include "ui/ParamsController.h"
 #include "ui/PlanController.h"
+#include "ui/RtlOptions.h"
 #include "ui/SysConfig.h"
+#include "ui/TargetController.h"
 #include "ui/VehicleModel.h"
 #include "vehicle/CommandSender.h"
 #include "vehicle/ConnectionManager.h"
@@ -86,6 +90,11 @@ void GcsController::startLink()
     }
     // GCS output muted as it was left (gcs-muted, as Electron kept it)
     if (Settings::instance().value(u"gcs-muted"_s).toString() == "1"_L1) m_link->setGcsMuted(true);
+    // What a sub's depth is measured from: the lake or the sea there, else the ground
+    m_hub->setSurface([](double lat, double lon) -> std::optional<double> {
+        if (const auto w = HgtStore::instance().waterAt(lat, lon)) return w->level;
+        return HgtStore::instance().elevation(lat, lon);
+    });
     // No link: the demo racetrack around the scene origin, on the real terrain
     m_hub->startDemo([](double lat, double lon) { return HgtStore::instance().elevation(lat, lon); });
     // Battery range when the vehicle reports no percentage (SYS CONFIG; localStorage bat-vmin / bat-vmax)
@@ -137,6 +146,11 @@ void GcsController::createViewModels()
     connect(&m_logThread, &QThread::finished, m_replayEngine, &QObject::deleteLater);
     m_logThread.start();
     m_replay = new ReplayController(m_replayEngine, m_fft, this);
+    // GCS OPTIONS: the reference point and the RTL parameters (QML singletons Target, Rtl)
+    m_target = new TargetController(m_vehicle, this);
+    m_rtl = new RtlOptions(m_params, m_hub, this);
+    // FPV camera: the RTSP stream on the video thread (QML singleton Fpv)
+    m_fpv = new FpvController(this);
     // The update check at start and the one-click install (QML singleton Updates)
     m_updates = new UpdateController(m_hub, this);
 }
@@ -190,12 +204,20 @@ void GcsController::wireViewModels()
         m_adsb->setEnabled(on);
         emit hudMessage(on ? u"ADS-B traffic enabled"_s : u"ADS-B traffic disabled"_s, u"info"_s);
     });
+    // No answer from the tile servers: only the cached imagery until they are back (enterCacheOnlyMode)
+    connect(&TileStore::instance(), &TileStore::networkLost, this, [this] {
+        emit hudMessage(u"[WARNING] CONNECTION LOST — satellite from offline cache only, uncached areas shown without imagery"_s, u"warning"_s);
+    });
+    connect(&TileStore::instance(), &TileStore::networkRestored, this, [this] {
+        emit hudMessage(u"Connection restored — satellite maps back online"_s, u"info"_s);
+    });
     // One bar at a time on the left: opening one closes the other (FFT wins at start, as in Electron)
     if (m_ekf->enabled() && m_fft->enabled()) m_ekf->setEnabled(false);
     connect(m_ekf, &EkfController::enabledChanged, this, [this] { if (m_ekf->enabled()) m_fft->setEnabled(false); });
     connect(m_fft, &FftController::enabledChanged, this, [this] { if (m_fft->enabled()) m_ekf->setEnabled(false); });
     connect(m_sysConfig, &SysConfig::jsonFieldChanged, this, [this](const QString &key) {
         if (key == "log-fft-cfg"_L1) m_replay->applyFftConfig();
+        if (key == "fpv-settings"_L1) m_fpv->settingsChanged();
     });
 }
 
@@ -231,8 +253,8 @@ void GcsController::wireLink()
     });
     connect(m_hub, &VehicleHub::statusText, this, [this](int sev, const QString &t) {
         emit hudMessage(t, sev <= 3 ? u"error"_s : sev <= 4 ? u"warning"_s : u"info"_s);
-        m_log << QTime::currentTime().toString(u"HH:mm:ss "_s) + t;
-        while (m_log.size() > 200) m_log.removeFirst();
+        m_log << QTime::currentTime().toString(u"HH:mm:ss "_s) + (sev <= 3 ? u"[ERR] "_s : sev <= 4 ? u"[WRN] "_s : QString()) + t;
+        while (m_log.size() > 2000) m_log.removeFirst();
         emit messageLogChanged();
     });
     connect(m_hub, &VehicleHub::lastHomeChanged, this, [](double lat, double lon) {
@@ -259,6 +281,13 @@ void GcsController::setGcsMuted(bool m)
     m_link->setGcsMuted(m);
     Settings::instance().setValue(u"gcs-muted"_s, m ? u"1"_s : u"0"_s);
     emit gcsMutedChanged();
+    emit hudMessage(m ? u"GCS output MUTED — no messages will be sent"_s : u"GCS output UNMUTED"_s, m ? u"warning"_s : u"info"_s);
+}
+
+void GcsController::clearMessageLog()
+{
+    m_log.clear();
+    emit messageLogChanged();
 }
 
 QVariantList GcsController::serialPorts() const

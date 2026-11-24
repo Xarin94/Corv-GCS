@@ -22,6 +22,8 @@ QList<QPair<int, QString>> available(int vehicleType, const QString &connectionT
 
 QString vehicleTypeName(int vehicleType);   // Plane, Rover, Sub, Copter
 QString gpsFixName(int fixType);
+/// AUTOPILOT_VERSION.flight_sw_version: "4.7.0", "4.8.0-dev", "4.7.0-beta2".
+QString firmwareVersion(std::uint32_t flightSwVersion);
 
 bool isPlaneType(int t);
 bool isRoverType(int t);

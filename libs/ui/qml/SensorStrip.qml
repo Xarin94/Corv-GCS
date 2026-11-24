@@ -48,14 +48,14 @@ Rectangle {
         }
         Text {
             anchors.verticalCenter: parent.verticalCenter
-            text: strip.title
+            text: Theme.tr(strip.title)
             color: Theme.hudText
             font.family: Theme.fontUi; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 3
         }
         Text {
             anchors.verticalCenter: parent.verticalCenter
             width: Math.max(90, implicitWidth)
-            text: strip.label
+            text: Theme.tr(strip.label)
             color: strip.stateColor
             font.family: Theme.fontUi; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 1.5
         }
@@ -63,7 +63,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             width: Math.max(80, implicitWidth)
             horizontalAlignment: Text.AlignRight
-            text: strip.count
+            text: Theme.tr(strip.count)
             color: Theme.textMutedBright
             font.family: Theme.fontData; font.pixelSize: 11; font.weight: Font.Medium; font.letterSpacing: 0.5
         }
@@ -89,14 +89,14 @@ Rectangle {
                 Text {
                     id: btnText
                     anchors.centerIn: parent
-                    text: btn.modelData.text
+                    text: Theme.tr(btn.modelData.text)
                     color: btn.modelData.on || btn.modelData.rough || btnHover.hovered ? "white" : strip.green
                     font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.5
                 }
                 HoverHandler { id: btnHover; cursorShape: Qt.PointingHandCursor }
                 TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: strip.clicked(btn.index) }
                 ToolTip.visible: !!btn.modelData.tip && btnHover.hovered
-                ToolTip.text: btn.modelData.tip || ""
+                ToolTip.text: Theme.tr(btn.modelData.tip || "")
                 ToolTip.delay: 600
             }
         }

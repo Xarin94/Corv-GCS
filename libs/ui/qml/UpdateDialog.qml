@@ -34,7 +34,7 @@ Rectangle {
         Text {
             id: bt
             anchors.centerIn: parent
-            text: b.text
+            text: Theme.tr(b.text)
             color: b.primary ? "#000000" : "#cccccc"
             font.family: Theme.fontUi
             font.pixelSize: 12
@@ -64,7 +64,7 @@ Rectangle {
             spacing: 10
 
             Text {
-                text: Updates.state === "ready" ? "UPDATE DOWNLOADED" : "UPDATE AVAILABLE"
+                text: Theme.tr(Updates.state === "ready" ? "UPDATE DOWNLOADED" : "UPDATE AVAILABLE")
                 color: Theme.accentCyan
                 font.family: Theme.fontUi
                 font.pixelSize: 18
@@ -74,7 +74,7 @@ Rectangle {
             Text {
                 width: parent.width
                 wrapMode: Text.Wrap
-                text: "CORV GCS " + Updates.latest + "   ·   installed " + Updates.version
+                text: "CORV GCS " + Updates.latest + qsTr("   ·   installed ") + Updates.version
                       + (Updates.packageSize > 0 ? "   ·   " + (Updates.packageSize / 1048576).toFixed(0) + " MB" : "")
                 color: "#e0e0e0"
                 font.family: Theme.fontData
@@ -114,7 +114,7 @@ Rectangle {
             Text {
                 width: parent.width
                 wrapMode: Text.Wrap
-                text: Updates.installText
+                text: Theme.tr(Updates.installText)
                 color: Theme.textDim
                 font.family: Theme.fontData
                 font.pixelSize: 12

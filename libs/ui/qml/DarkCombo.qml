@@ -21,7 +21,7 @@ ComboBox {
     contentItem: Text {
         leftPadding: 10
         rightPadding: 20
-        text: cb.displayText
+        text: Theme.tr(cb.displayText)
         font: cb.font
         color: cb.enabled ? cb.textColor : Theme.textDim
         verticalAlignment: Text.AlignVCenter
@@ -53,7 +53,7 @@ ComboBox {
         topPadding: 0; bottomPadding: 0; leftPadding: 0; rightPadding: 0
         contentItem: Text {
             leftPadding: 8
-            text: cb.textRole && opt.modelData !== null && typeof opt.modelData === "object" ? String(opt.modelData[cb.textRole]) : String(opt.modelData)
+            text: Theme.tr(cb.textRole && opt.modelData !== null && typeof opt.modelData === "object" ? String(opt.modelData[cb.textRole]) : String(opt.modelData))
             font.family: cb.itemFamily
             font.pixelSize: cb.itemPixelSize
             font.weight: cb.currentIndex === opt.index ? Font.DemiBold : Font.Normal

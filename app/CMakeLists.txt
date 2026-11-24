@@ -20,10 +20,12 @@ file(GLOB CORV_ICONS ${CMAKE_SOURCE_DIR}/resources/icons/*.png)
 file(GLOB CORV_SITL ${CMAKE_SOURCE_DIR}/resources/sitl-defaults/*)
 # Vehicle models of the 3D view (models/ next to the installation still wins)
 file(GLOB CORV_MODELS ${CMAKE_SOURCE_DIR}/resources/models/*.glb)
+# The dictionaries of the interface (Language): a JSON per language, English text -> translation
+file(GLOB CORV_I18N ${CMAKE_SOURCE_DIR}/resources/i18n/*.json)
 qt_add_resources(corv-gcs "corv_assets"
     PREFIX "/"
     BASE ${CMAKE_SOURCE_DIR}/resources
-    FILES ${CORV_FONTS} ${CORV_ICONS} ${CORV_SITL} ${CORV_MODELS})
+    FILES ${CORV_FONTS} ${CORV_ICONS} ${CORV_SITL} ${CORV_MODELS} ${CORV_I18N})
 
 target_link_libraries(corv-gcs PRIVATE corv_ui corv_uiplugin corv_gpu corv_gpuplugin Qt6::Quick Qt6::QuickControls2 Qt6::Svg Qt6::Network)
 

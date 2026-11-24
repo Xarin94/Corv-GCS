@@ -10,6 +10,8 @@ ComboBox {
     property var options: []
     property string value: ""
     property real popupMinWidth: 120
+    property string tip: ""
+    HoverTip { text: cb.tip }
     signal picked(string value)
 
     implicitHeight: 25
@@ -27,7 +29,7 @@ ComboBox {
     contentItem: Text {
         leftPadding: 6
         rightPadding: 18
-        text: cb.displayText
+        text: Theme.tr(cb.displayText)
         font: cb.font
         color: cb.enabled ? Theme.textMain : Theme.textDim
         verticalAlignment: Text.AlignVCenter
@@ -61,7 +63,7 @@ ComboBox {
         enabled: !off
         contentItem: Text {
             leftPadding: 6
-            text: opt.modelData
+            text: Theme.tr(opt.modelData)
             font.family: Theme.fontUi
             font.pointSize: (cb.fontSize + 1) * 0.75
             color: opt.off ? Theme.textDim : Theme.textMain
@@ -73,7 +75,7 @@ ComboBox {
         }
         highlighted: cb.highlightedIndex === index
         ToolTip.visible: off && hovered && o.title !== undefined && o.title.length > 0
-        ToolTip.text: off && o.title !== undefined ? o.title : ""
+        ToolTip.text: Theme.tr(off && o.title !== undefined ? o.title : "")
         ToolTip.delay: 400
     }
     popup: Popup {

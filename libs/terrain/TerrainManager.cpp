@@ -80,6 +80,18 @@ double TerrainManager::distanceTo(const ChunkKey &k, double lat, double lon)
     return flatDistance(lat, lon, k.latBase + 1 - (k.cy + 0.5) * step, k.lonBase + (k.cx + 0.5) * step);
 }
 
+bool TerrainManager::covers(double lat, double lon) const
+{
+    constexpr double step = 1.0 / kChunksPerTileAxis;
+    const int yi = int(std::floor(lat / step)), xi = int(std::floor(lon / step));
+    ChunkKey k;
+    k.latBase = int(std::floor(yi * step + 1e-9));
+    k.lonBase = int(std::floor(xi * step + 1e-9));
+    k.cx = xi - k.lonBase * kChunksPerTileAxis;
+    k.cy = kChunksPerTileAxis - 1 - (yi - k.latBase * kChunksPerTileAxis);
+    return m_active.contains(k.packed());
+}
+
 void TerrainManager::built(const std::vector<std::shared_ptr<ChunkData>> &chunks, int epoch)
 {
     if (epoch != m_epoch) return;   // the scene origin moved meanwhile: they are being built again

@@ -48,7 +48,7 @@ Rectangle {
             Text {
                 width: parent.width
                 wrapMode: Text.Wrap
-                text: dlg.disarm ? "DISARM the vehicle?" : "ARM the vehicle?"
+                text: Theme.tr(dlg.disarm ? "DISARM the vehicle?" : "ARM the vehicle?")
                 color: Theme.textMain
                 font.family: Theme.fontUi; font.pixelSize: 14; font.weight: Font.DemiBold
             }
@@ -57,10 +57,10 @@ Rectangle {
                 wrapMode: Text.Wrap
                 lineHeight: 1.2
                 text: dlg.disarm
-                      ? "Sends MAV_CMD_COMPONENT_ARM_DISARM (400) with param1=0. The autopilot refuses a normal disarm while the vehicle is flying or not landed."
-                        + (dlg.flying ? " The vehicle currently looks airborne — a normal disarm will most likely be rejected." : "")
-                      : "Ensure the area is clear. Sends MAV_CMD_COMPONENT_ARM_DISARM (400) with param1=1. The autopilot runs all pre-arm checks (GPS, EKF, compass, battery, safety switch) and refuses if any fails."
-                        + (dlg.prearmOk ? "" : " Pre-arm checks are currently NOT passing.")
+                      ? qsTr("Sends MAV_CMD_COMPONENT_ARM_DISARM (400) with param1=0. The autopilot refuses a normal disarm while the vehicle is flying or not landed.")
+                        + (dlg.flying ? qsTr(" The vehicle currently looks airborne — a normal disarm will most likely be rejected.") : "")
+                      : qsTr("Ensure the area is clear. Sends MAV_CMD_COMPONENT_ARM_DISARM (400) with param1=1. The autopilot runs all pre-arm checks (GPS, EKF, compass, battery, safety switch) and refuses if any fails.")
+                        + (dlg.prearmOk ? "" : qsTr(" Pre-arm checks are currently NOT passing."))
                 color: "#cccccc"
                 font.family: Theme.fontUi; font.pixelSize: 12
             }
@@ -68,9 +68,9 @@ Rectangle {
                 width: parent.width
                 wrapMode: Text.Wrap
                 lineHeight: 1.2
-                text: dlg.disarm
+                text: Theme.tr(dlg.disarm
                       ? "FORCE DISARM sends param2=21196: it bypasses the disarm checks and cuts the motors immediately, in flight too. The vehicle will fall."
-                      : "FORCE ARM sends param2=21196: it skips every pre-arm check. The props can spin with a bad EKF, no GPS fix or a failing sensor. Use only if you know exactly which check is failing and why."
+                      : "FORCE ARM sends param2=21196: it skips every pre-arm check. The props can spin with a bad EKF, no GPS fix or a failing sensor. Use only if you know exactly which check is failing and why.")
                 color: "#ff9f43"
                 font.family: Theme.fontUi; font.pixelSize: 11
             }
@@ -90,9 +90,9 @@ Rectangle {
                     Text { id: t; anchors.centerIn: parent; color: parent.ink; font.family: Theme.fontUi; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 0.5 }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked() }
                 }
-                DlgButton { text: "CANCEL"; color: "#333333"; ink: "#cccccc"; onClicked: dlg.close(null) }
-                DlgButton { id: okBtn; text: dlg.disarm ? "DISARM" : "ARM"; color: Theme.accentCyan; ink: "black"; onClicked: dlg.close("confirm") }
-                DlgButton { text: dlg.disarm ? "FORCE DISARM" : "FORCE ARM"; color: "#c0392b"; onClicked: dlg.close("force") }
+                DlgButton { text: qsTr("CANCEL"); color: "#333333"; ink: "#cccccc"; onClicked: dlg.close(null) }
+                DlgButton { id: okBtn; text: Theme.tr(dlg.disarm ? "DISARM" : "ARM"); color: Theme.accentCyan; ink: "black"; onClicked: dlg.close("confirm") }
+                DlgButton { text: Theme.tr(dlg.disarm ? "FORCE DISARM" : "FORCE ARM"); color: "#c0392b"; onClicked: dlg.close("force") }
             }
         }
     }

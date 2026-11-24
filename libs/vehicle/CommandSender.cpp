@@ -165,6 +165,7 @@ void CommandSender::setHome(std::optional<double> lat, std::optional<double> lon
 }
 
 void CommandSender::requestHomePosition() { commandLong(MAV_CMD_REQUEST_MESSAGE, MAVLINK_MSG_ID_HOME_POSITION); }
+void CommandSender::requestAutopilotVersion() { commandLong(MAV_CMD_REQUEST_MESSAGE, MAVLINK_MSG_ID_AUTOPILOT_VERSION); }
 void CommandSender::rebootAutopilot() { commandLong(MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN, 1); }
 
 

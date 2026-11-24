@@ -8,6 +8,7 @@
 
 #include <QNativeGestureEvent>
 #include <QPainter>
+#include <QFontMetricsF>
 #include <QPainterPath>
 #include <algorithm>
 #include <cmath>
@@ -19,6 +20,8 @@ namespace corv {
 VehicleHub *MapItem::s_hub = nullptr;
 std::vector<LatLon> MapItem::s_frozen;
 int MapItem::s_frozenEpoch = 0;
+std::vector<MapItem::MissionPoint> MapItem::s_mission;
+std::optional<LatLon> MapItem::s_target;
 
 void MapItem::setFrozenTrail(std::vector<LatLon> points)
 {
@@ -26,9 +29,13 @@ void MapItem::setFrozenTrail(std::vector<LatLon> points)
     ++s_frozenEpoch;
 }
 
+void MapItem::setMission(std::vector<MissionPoint> points) { s_mission = std::move(points); }
+void MapItem::setTarget(std::optional<LatLon> target) { s_target = target; }
+
 namespace {
 constexpr int kTile = 256;
 constexpr std::size_t kTrailMax = 3000;
+constexpr double kTrailMaxJumpM = 2000;
 constexpr double kMinZoom = 2, kMaxZoom = 20;
 constexpr int kMaxTileZoom = 19;
 constexpr double kMouseSlopPx = 4;
@@ -39,6 +46,7 @@ MapItem::MapItem(QQuickItem *parent) : QQuickPaintedItem(parent)
 {
     setAcceptedMouseButtons(Qt::LeftButton);
     setAcceptTouchEvents(true);
+    setAcceptHoverEvents(true);
     setAntialiasing(true);
     setFillColor(Qt::black);
     m_timer.setInterval(100);
@@ -105,11 +113,18 @@ void MapItem::sample()
     if (!s_hub) return;
     const auto s = s_hub->snapshot();
     const LatLon here{s->lat, s->lon};
+    // Relative navigation starts a track of its own, and so does leaving it
+    if (s->relativeMode != m_wasRelative) {
+        m_wasRelative = s->relativeMode;
+        m_trail.clear();
+    }
     // LOG REPLAY: the recorded flight replaces the trail; unloaded, it starts again
     if (m_frozenEpoch != s_frozenEpoch) {
         m_frozenEpoch = s_frozenEpoch;
         m_trail.assign(s_frozen.begin(), s_frozen.end());
     }
+    // A jump is no flight: a new connection after the demo, another vehicle
+    if (s_frozen.empty() && !m_trail.empty() && flatDistance(m_trail.back().lat, m_trail.back().lon, here.lat, here.lon) > kTrailMaxJumpM) m_trail.clear();
     if (!s_frozen.empty()) {
         // frozen: the live samples do not add to it
     } else if (m_trail.empty() || flatDistance(m_trail.back().lat, m_trail.back().lon, here.lat, here.lon) > 2) {
@@ -123,17 +138,21 @@ void MapItem::sample()
 void MapItem::paint(QPainter *p)
 {
     const QPointF origin = project(m_center.lat, m_center.lon) - QPointF(width() / 2, height() / 2);
-    drawTiles(p, origin);
-    if (!s_hub) return;
-    const auto s = s_hub->snapshot();
+    const auto s = s_hub ? s_hub->snapshot() : nullptr;
+    // Relative navigation: metres from a synthetic origin, a real map around them would lie
+    const bool relative = s && s->relativeMode;
+    if (!relative) drawTiles(p, origin);
+    if (!s) return;
     auto toScreen = [&](double lat, double lon) { return project(lat, lon) - origin; };
 
     // UAS geographical zones under the track and the markers
-    if (const GeoZonesPtr zones = GeoZoneController::shownZones(); zones && !zones->empty()) {
+    if (const GeoZonesPtr zones = GeoZoneController::shownZones(); !relative && zones && !zones->empty()) {
         const LatLon nw = unproject(origin), se = unproject(origin + QPointF(width(), height()));
         geozone::paintZones(p, *zones, {nw.lon, se.lat, se.lon, nw.lat}, toScreen);
     }
     drawCells(p, *s, toScreen);
+
+    if (!relative) drawMission(p, toScreen);
 
     // Trail: red polyline
     if (m_trail.size() > 1) {
@@ -157,12 +176,17 @@ void MapItem::paint(QPainter *p)
         p->setFont(f);
         p->drawText(QRectF(h.x() - 6, h.y() - 6, 12, 12), Qt::AlignCenter, u"H"_s);
     }
-    // ADS-B traffic
-    for (const TrafficEntry &t : s->traffic) {
-        p->setPen(Qt::NoPen);
-        p->setBrush(QColor(255, 170, 0));
-        p->drawEllipse(toScreen(t.lat, t.lon), 4, 4);
+    // Target (GCS OPTIONS -> TARGET): a red dot in a ring
+    if (s_target && !relative) {
+        const QPointF t = toScreen(s_target->lat, s_target->lon);
+        p->setPen(QPen(QColor(255, 0, 0, 128), 2));
+        p->setBrush(QColor(255, 0, 0, 38));
+        p->drawEllipse(t, 14, 14);
+        p->setPen(QPen(QColor(255, 0, 0), 2));
+        p->setBrush(QColor(255, 0, 0, 230));
+        p->drawEllipse(t, 6, 6);
     }
+    if (!relative) drawTraffic(p, *s, toScreen);
     drawVehicle(p, toScreen(s->lat, s->lon), s->yaw);
 
     // Attribution and zoom
@@ -236,6 +260,63 @@ void MapItem::drawCells(QPainter *p, const VehicleState &s, const std::function<
     p->setPen(QPen(cells->linkColor, 2));
     p->setBrush(fill);
     p->drawEllipse(mast, 7, 7);
+}
+
+void MapItem::drawMission(QPainter *p, const std::function<QPointF(double, double)> &toScreen)
+{
+    // updateMissionOverlay of MapEngine.js: a thin dashed line, a dot on every point, home in orange
+    if (s_mission.empty()) return;
+    const QColor green(0x44, 0xff, 0x44);
+    if (s_mission.size() >= 2) {
+        QPolygonF line;
+        for (const MissionPoint &m : s_mission) line << toScreen(m.at.lat, m.at.lon);
+        QPen pen(QColor(green.red(), green.green(), green.blue(), 128), 1);
+        pen.setDashPattern({4, 4});
+        p->setPen(pen);
+        p->setBrush(Qt::NoBrush);
+        p->drawPolyline(line);
+    }
+    const QRectF view(-8, -8, width() + 16, height() + 16);
+    for (const MissionPoint &m : s_mission) {
+        const QPointF at = toScreen(m.at.lat, m.at.lon);
+        if (!view.contains(at)) continue;
+        const QColor c = m.home ? QColor(0xff, 0x88, 0x00) : green;
+        p->setPen(QPen(c, 1));
+        p->setBrush(QColor(c.red(), c.green(), c.blue(), m.home ? 230 : 204));
+        p->drawEllipse(at, m.home ? 5 : 3, m.home ? 5 : 3);
+    }
+}
+
+void MapItem::drawTraffic(QPainter *p, const VehicleState &s, const std::function<QPointF(double, double)> &toScreen)
+{
+    const TrafficEntry *under = nullptr;
+    double best = 10;   // px
+    for (const TrafficEntry &t : s.traffic) {
+        const QPointF at = toScreen(t.lat, t.lon);
+        p->setPen(QPen(QColor(255, 0, 0), 1));
+        p->setBrush(QColor(255, 0, 0, 230));
+        p->drawEllipse(at, 5, 5);
+        if (!m_hover || t.callsign.trimmed().isEmpty()) continue;
+        if (const double d = std::hypot(at.x() - m_hover->x(), at.y() - m_hover->y()); d < best) {
+            best = d;
+            under = &t;
+        }
+    }
+    if (!under) return;
+    // The callsign over the aircraft under the mouse (traffic-tooltip)
+    const QPointF at = toScreen(under->lat, under->lon);
+    QFont f = p->font();
+    f.setPixelSize(11);
+    f.setBold(true);
+    p->setFont(f);
+    const QString text = under->callsign.trimmed();
+    const double w = QFontMetricsF(f).horizontalAdvance(text) + 12, h = 18;
+    const QRectF box(std::clamp(at.x() - w / 2, 0.0, std::max(0.0, width() - w)), std::max(0.0, at.y() - h - 8), w, h);
+    p->setPen(QPen(QColor(255, 0, 0, 200), 1));
+    p->setBrush(QColor(0, 0, 0, 210));
+    p->drawRoundedRect(box, 3, 3);
+    p->setPen(QColor(255, 90, 90));
+    p->drawText(box, Qt::AlignCenter, text);
 }
 
 void MapItem::drawVehicle(QPainter *p, QPointF at, double yaw)
@@ -331,6 +412,18 @@ void MapItem::mouseReleaseEvent(QMouseEvent *e)
 void MapItem::mouseDoubleClickEvent(QMouseEvent *)
 {
     setFollow(true);
+}
+
+void MapItem::hoverMoveEvent(QHoverEvent *e)
+{
+    m_hover = e->position();
+    e->ignore();   // the panel and its buttons see it too
+}
+
+void MapItem::hoverLeaveEvent(QHoverEvent *e)
+{
+    m_hover.reset();
+    e->ignore();
 }
 
 void MapItem::touchDragBegin(QPointF press) { panFrom(press); }

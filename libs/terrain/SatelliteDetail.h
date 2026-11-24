@@ -31,6 +31,7 @@
 #include <QElapsedTimer>
 #include <QImage>
 #include <QObject>
+#include <QTimer>
 #include <QVector3D>
 #include <QVector4D>
 #include <array>
@@ -97,6 +98,7 @@ private:
 
     void release(Level &l, std::vector<DetailOp> &ops);
     void placeWindow(Level &l, double lat, double lon, std::vector<DetailOp> &ops);
+    void retryMissing();
     void request(Level &l, int slot);
     void onTile(const QString &provider, int z, int x, int y, bool ok);
     void writeUniforms(const Level &l, LatLon origin, DetailFrame &frame) const;
@@ -104,6 +106,7 @@ private:
 
     std::array<Level, kLevels> m_levels;
     std::vector<Copy> m_copies;
+    QTimer m_retryTimer;
     int m_maxZoom = kDefaultMaxZoom;
     QString m_provider = QStringLiteral("satellite");
     QElapsedTimer m_statsClock;

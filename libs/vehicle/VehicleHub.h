@@ -37,6 +37,10 @@ public:
     void setMode(const QString &mode);
     void setAdsbEnabled(bool on);
     void setBatteryRange(double vmin, double vmax);
+    /// SYS CONFIG -> ALTITUDE OFFSET: added to every altitude drawn (m). A log loaded or closed clears it.
+    void setAltitudeOffset(double metres);
+    /// What a sub's depth is measured from: the water (else the ground) at a point. Before the first message.
+    void setSurface(std::function<std::optional<double>(double lat, double lon)> fn);
     void setRelativeNav(const RelativeNav::Settings &s);
     /// SYS CONFIG → RESET ESTIMATE: the relative position and the dead-reckoned track start again from zero.
     void resetRelativeNav();
@@ -63,6 +67,7 @@ private:
 
     LinkManager *m_link;
     StateMapper m_mapper;
+    StateMapper::Hooks m_hooks;
     VehicleState m_state;
     mutable QMutex m_snapLock;
     std::shared_ptr<const VehicleState> m_snapshot;

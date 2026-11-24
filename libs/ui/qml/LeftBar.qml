@@ -22,13 +22,13 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             Text {
-                text: bar.title
+                text: Theme.tr(bar.title)
                 color: Theme.accentCyan
                 font.family: Theme.fontUi; font.pixelSize: Theme.fsSm; font.weight: Font.Bold; font.letterSpacing: 0.16 * Theme.fsSm
             }
             Item { Layout.fillWidth: true }
             Text {
-                text: bar.window
+                text: Theme.tr(bar.window)
                 color: "#898781"
                 font.family: Theme.fontUi; font.pixelSize: Theme.fsXs; font.weight: Font.DemiBold; font.letterSpacing: 0.12 * Theme.fsXs
             }

@@ -38,6 +38,10 @@ qt_add_qml_module(corv_ui
         MountPreviewItem.h MountPreviewItem.cpp
         SitlController.h SitlController.cpp
         UpdateController.h UpdateController.cpp
+        FpvController.h FpvController.cpp
+        Language.h Language.cpp
+        TargetController.h TargetController.cpp
+        RtlOptions.h RtlOptions.cpp
     QML_FILES
         qml/Main.qml
         qml/Theme.qml
@@ -61,6 +65,8 @@ qt_add_qml_module(corv_ui
         qml/DarkCombo.qml
         qml/CfgInput.qml
         qml/CfgCheck.qml
+        qml/HoverTip.qml
+        qml/LoadingOverlay.qml
         qml/CfgSlider.qml
         qml/GcsButton.qml
         qml/SysPanel.qml
@@ -115,7 +121,7 @@ qt_add_qml_module(corv_ui
         qml/SimulationPage.qml
 )
 target_include_directories(corv_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
-target_link_libraries(corv_ui PUBLIC corv_mission corv_vehicle corv_services corv_gpu corv_input corv_sensors Qt6::Quick Qt6::Qml Qt6::QuickControls2 Qt6::Network Qt6::Sql Qt6::Concurrent)
+target_link_libraries(corv_ui PUBLIC corv_mission corv_vehicle corv_services corv_gpu corv_input corv_sensors corv_video Qt6::Quick Qt6::Qml Qt6::QuickControls2 Qt6::Network Qt6::Sql Qt6::Concurrent)
 # Development fallback for the 3D models: <source>/resources/models
 target_compile_definitions(corv_ui PRIVATE CORV_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 

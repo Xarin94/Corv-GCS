@@ -7,6 +7,7 @@ Item {
     property bool checked: false
     property string text: ""
     property real fontSize: 11
+    property string tip: ""
     signal toggled(bool checked)
 
     implicitHeight: Math.max(26, label.implicitHeight)
@@ -33,7 +34,7 @@ Item {
         x: 22
         width: c.width - 22
         anchors.verticalCenter: parent.verticalCenter
-        text: c.text
+        text: Theme.tr(c.text)
         wrapMode: Text.Wrap
         color: Theme.textMain
         font.family: Theme.fontUi
@@ -47,4 +48,5 @@ Item {
         cursorShape: Qt.PointingHandCursor
         onClicked: { c.checked = !c.checked; c.toggled(c.checked) }
     }
+    HoverTip { text: c.tip }
 }

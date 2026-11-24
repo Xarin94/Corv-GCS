@@ -38,7 +38,7 @@ Flickable {
                                 opacity: 0.8
                             }
                         }
-                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: parent.v; color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: 9 }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: Theme.tr(parent.v); color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: 9 }
                     }
                 }
             }

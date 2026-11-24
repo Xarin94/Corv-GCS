@@ -3,6 +3,7 @@
 #include "core/DebugLog.h"
 #include "vehicle/FlightModes.h"
 
+#include <QRegularExpression>
 #include <algorithm>
 #include <cmath>
 
@@ -218,6 +219,14 @@ void StateMapper::reports(const mavlink_message_t &m, VehicleState &s, std::int6
         s.statusText = mav::fieldString(t.text, 50);
         s.statusSeverity = t.severity;
         s.statusTextTime = now;
+        // ArduPilot says "PreArm: <check>" for what fails; some firmwares say when all is well
+        if (s.statusText.startsWith("PreArm"_L1, Qt::CaseInsensitive)) {
+            // (whole words: "PreArm: Compass not calibrated" has a "pass" in it)
+            static const QRegularExpression passed(u"\\b(good|ok|pass|passed)\\b"_s, QRegularExpression::CaseInsensitiveOption);
+            const bool good = passed.match(s.statusText).hasMatch();
+            s.preArmReport = good ? VehicleState::PreArm::Passed : VehicleState::PreArm::Failed;
+            s.preArmText = s.statusText;
+        }
         if (m_hooks.statusText) m_hooks.statusText(t.severity, s.statusText);
         break;
     }
@@ -227,6 +236,12 @@ void StateMapper::reports(const mavlink_message_t &m, VehicleState &s, std::int6
         // 0-254 are valid RSSI counts; 255 = invalid / unknown
         s.rssi = r.rssi < 255 ? std::optional<int>(r.rssi) : std::nullopt;
         s.remRssi = r.remrssi < 255 ? std::optional<int>(r.remrssi) : std::nullopt;
+        break;
+    }
+    case MAVLINK_MSG_ID_AUTOPILOT_VERSION: {
+        mavlink_autopilot_version_t v;
+        mavlink_msg_autopilot_version_decode(&m, &v);
+        if (m.compid == 1 && v.flight_sw_version) s.firmwareVersion = modes::firmwareVersion(v.flight_sw_version);
         break;
     }
     case MAVLINK_MSG_ID_MAG_CAL_PROGRESS: s.magCalTime = now; break;
@@ -516,11 +531,34 @@ void StateMapper::cellInfo(const mavlink_message_t &m, VehicleState &s, std::int
 void StateMapper::finish(VehicleState &s, std::int64_t now)
 {
     m_relNav.apply(s, now);
+    subSurface(s, now);
     if (now - m_lastTrafficPurge > 1000) {
         m_lastTrafficPurge = now;
         s.traffic.erase(std::remove_if(s.traffic.begin(), s.traffic.end(),
                                        [&](const TrafficEntry &t) { return now - t.ts >= kAdsbMaxAgeMs; }),
                         s.traffic.end());
+    }
+}
+
+/// The surface a sub's depth is measured from (updateSubSurface of main.js): ArduSub
+/// puts its origin, on the surface, at 0 m. It is the lake or the sea at home, else the
+/// ground there (a quarry the elevation data does not flatten). Again when home moves.
+void StateMapper::subSurface(VehicleState &s, std::int64_t now)
+{
+    if (!modes::isSubType(s.vehicleType) || m_relNav.isRelative() || !m_hooks.surface) {
+        s.subSurfaceAlt.reset();
+        m_subSurfaceKey.clear();
+        return;
+    }
+    const double lat = s.homeLat.value_or(s.lat), lon = s.homeLon.value_or(s.lon);
+    if (lat == 0 && lon == 0) return;
+    const QString key = QString::number(lat, 'f', 6) + ','_L1 + QString::number(lon, 'f', 6);
+    if (key == m_subSurfaceKey && s.subSurfaceAlt) return;
+    if (now - m_subSurfaceTried < 250) return;   // the tile is being read
+    m_subSurfaceTried = now;
+    if (const auto level = m_hooks.surface(lat, lon)) {
+        s.subSurfaceAlt = *level;
+        m_subSurfaceKey = key;
     }
 }
 
@@ -540,6 +578,7 @@ void StateMapper::resetTelemetry(VehicleState &s)
     s = fresh;
     m_lastGlobalPosTs = 0;
     m_imuPrimaryActive = false;
+    m_subSurfaceKey.clear();
 }
 
 } // namespace corv

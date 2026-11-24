@@ -1,5 +1,6 @@
 // .cfg-slider-wrap: a 2 px track with a square thumb, the live value beside it
-// (11 px Roboto Mono, at least 38 px, right-aligned).
+// (11 px Roboto Mono, at least 38 px, right-aligned). bound: the value is a
+// binding that follows what onMoved sets, so a move must not replace it.
 import QtQuick
 import QtQuick.Controls.Basic
 
@@ -10,6 +11,7 @@ Item {
     property real stepSize: 0.01
     property real value: 0
     property string valueText: value.toFixed(2)
+    property bool bound: false
     signal moved(real value)
 
     implicitHeight: 14
@@ -26,7 +28,7 @@ Item {
         stepSize: s.stepSize
         value: s.value
         padding: 0
-        onMoved: { s.value = value; s.moved(value) }
+        onMoved: { if (!s.bound) s.value = value; s.moved(value) }
         background: Rectangle {
             x: 0
             y: (sl.height - height) / 2

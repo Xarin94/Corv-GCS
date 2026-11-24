@@ -72,6 +72,7 @@ struct VehicleState {
     // Position
     double lat = kDefaultOrigin.lat, lon = kDefaultOrigin.lon;
     double rawAlt = 0, offsetAlt = 0;
+    /// The water a sub dives in, m: the height its depth is measured from (none: no elevation data yet).
     std::optional<double> subSurfaceAlt;
 
     // Speeds
@@ -95,6 +96,12 @@ struct VehicleState {
     int systemId = 1, componentId = 1;
     std::int64_t heartbeatCount = 0;
     std::int64_t lastHeartbeatTime = 0;
+    QString firmwareVersion;   // AUTOPILOT_VERSION: "4.7.0", "4.8.0-dev"
+
+    // Pre-arm checks: the last "PreArm: ..." of the vehicle (STATUSTEXT)
+    enum class PreArm { Unknown, Passed, Failed };
+    PreArm preArmReport = PreArm::Unknown;
+    QString preArmText;
 
     // Battery
     double batteryVoltage = 0, batteryCurrent = 0;
@@ -177,6 +184,18 @@ struct VehicleState {
     QString relativeSource;   // "local", "dead-reckoning", empty outside the mode
     QString relativeVelSource;  // what dead reckoning integrates: air, ground, ekf (empty before any)
 
+    /// The pre-arm checks as the vehicle sees them: the SYS_STATUS bit where it has
+    /// one (ArduPilot), else its last PreArm message, else the health of its sensors.
+    PreArm preArm() const
+    {
+        constexpr std::uint32_t kPreArmBit = 0x10000000;   // MAV_SYS_STATUS_PREARM_CHECK
+        if (armed) return PreArm::Passed;
+        if (sysStatusTime && (sensorsPresent & sensorsEnabled & kPreArmBit))
+            return sensorsHealth & kPreArmBit ? PreArm::Passed : PreArm::Failed;
+        if (preArmReport != PreArm::Unknown) return preArmReport;
+        if (!sysStatusTime) return PreArm::Unknown;
+        return (sensorsPresent & sensorsEnabled & ~sensorsHealth) ? PreArm::Failed : PreArm::Passed;
+    }
     /// Total G (signed by the normal axis, NED az = -9.81 at rest -> +1 G).
     double gLoad() const
     {

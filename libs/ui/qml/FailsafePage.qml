@@ -45,6 +45,6 @@ Flickable {
                 }, "FAILSAFE", "Written %1 failsafe parameters")
             }
         }
-        CfgNote { width: 460; text: SetupCfg.status["FAILSAFE"] ? SetupCfg.status["FAILSAFE"].text : "" }
+        CfgNote { width: 460; text: Theme.tr(SetupCfg.status["FAILSAFE"] ? SetupCfg.status["FAILSAFE"].text : "") }
     }
 }

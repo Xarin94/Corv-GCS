@@ -32,9 +32,10 @@ not obvious from the name.
 | Field | |
 |-------|---|
 | **ENVIRONMENT** | *ArduPilot · Copter / Plane / Rover*, *INAV · waypoint missions over MSP*, *Betaflight · acro, no navigation*. Decides the link protocol suggested, which SETUP pages are available and which mission features can be planned. |
-| **SUGGESTED LINK** | The connection type and baud rate that go with it (MAVLink serial 57 600, MSP serial 115 200). |
+| **SUGGESTED LINK** | The connection type and baud rate that go with it (MAVLink serial 57 600, MSP serial 115 200). Choosing a stack pre-sets them on SETUP → CONNECTION; a live link is never touched. |
 
-The note underneath says what changes. Details in
+The note underneath says what changes: the SETUP pages the stack cannot use are greyed out, with the
+reason in their tooltip, and on Betaflight, which has no navigation, the FLIGHT PLAN tab too. Details in
 [Getting started → choose the flight stack](getting-started.md#choose-the-flight-stack).
 
 ## NAVIGATION
@@ -43,7 +44,7 @@ The note underneath says what changes. Details in
 
 | Field | |
 |-------|---|
-| **POSITION** | *GPS · absolute, map and terrain* (default) or *Relative · no GPS, plane at zero* — for a vehicle that has never had a GPS: a ROV, a flight with no GNSS. |
+| **POSITION** | *GPS · absolute, map and terrain* (default) or *Relative · no GPS, plane at zero* — for a vehicle that has never had a GPS: a ROV, a flight with no GNSS. The 3D view then shows no terrain, imagery or traffic but a grid on zero, the mini-map no map, and the position box the velocity (VX · VY · VZ) instead of latitude and longitude. |
 | **VELOCITY SOURCE** | What the GCS dead-reckons on when the vehicle sends no local position of its own: *Auto*, *Airspeed + heading*, *Ground speed + heading*, *EKF velocity*. |
 | **WATER (DEPTH SENSOR)** | *Fresh* (997 kg/m³) or *Sea* (1 025 kg/m³) water, to turn a sub's pressure into depth. |
 | **ESTIMATE** + **RESET ESTIMATE** | Where the position comes from right now; RESET ESTIMATE starts the relative position and its track again from zero. |
@@ -74,7 +75,8 @@ centre of gravity off to that side, a weak motor or a twisted arm.
 ## MAVLINK STREAM RATES
 
 How many times a second the vehicle sends each group of messages (`SR0_*`, the rates of the
-autopilot's SERIAL0 port, normally its USB):
+autopilot's first MAVLink port, normally its USB; from firmware 4.7 on the same parameters are called
+`MAV1_*`, and the GCS uses whichever the vehicle has):
 
 | Field | Parameter | Default | Carries |
 |-------|-----------|---------|---------|
@@ -96,7 +98,7 @@ surfaces, which place every point with the telemetry pose.
 WRITE also applies the rates to the link in use, whatever port of the autopilot it arrives on (a
 radio or the cellular module on TELEM1 or TELEM2): it requests each group at the new rate and pins
 ATTITUDE, ATTITUDE_QUATERNION, VFR_HUD, RAW_IMU and VIBRATION to it. These link rates last until the
-autopilot restarts; to keep them, set that port's `SR1_*` or `SR2_*` in
+autopilot restarts; to keep them, set that port's `SR1_*` or `SR2_*` (`MAV2_*`, `MAV3_*`) in
 [PARAMETERS](setup.md#parameters) as well. The autopilot refuses a rate above what its main loop
 allows (STATUSTEXT *Requested rate … too fast. Increase SCHED_LOOP_RATE*). On the
 [cellular link](setup.md#cellular-link) the GCS asks for the rates again whenever the module
@@ -112,15 +114,15 @@ Three groups: the model, the terrain and its light, the rendering quality and ra
 |-------|---------|---|
 | MODEL · **3D MODEL** | follows the vehicle | The aircraft model drawn in 3D: the `.glb` / `.gltf` files in the `models/` folder (quadcopter, hexa, octo, tricopter, plane, flying wing, quadplane VTOL, helicopter, rover, boat, ROV, submarine, airship, antenna tracker), plus your own. When a vehicle connects, the model switches to its type; choose another here to override. |
 | **MODEL SCALE** | 1.0 | 0.1 to 5×: makes the model larger to find it at a distance, or true to size. |
-| **GROUND CLAMP** — *Keep the model on the terrain* | on | Never draws the vehicle under the terrain model: where its altitude is below the ground (SRTM is ±5 m, barometers drift) it is lifted onto the surface, so a landed vehicle sits on the ground. Over water it does not apply (a ROV dives). Untick to see the raw altitude. |
-| **MOTION SMOOTHING** | 0.15 | 0 to 0.5. Telemetry arrives at 25 Hz or less while the 3D view draws 60 frames a second. Above 0, the 3D view and the HUD carry the aircraft forward between samples (for at most 0.5 s after the last one, then it holds) on its reported velocity, acceleration and rotation rates, and blend each new sample in over the slider value × 0.5 s (75 ms at the default) instead of jumping to it. 0 = drawn exactly as received (moves in steps, most visible low and fast). |
+| **TERRAIN CLIPPING** | Vehicle, camera, trail, mission | What is never drawn under the terrain model: where an altitude is below the ground (SRTM is ±5 m, barometers drift) it is lifted onto the surface, so a landed vehicle sits on the ground. *Vehicle and camera only* leaves the trail and the route where they are; *Off* shows the true altitudes. Over water it does not apply (a ROV dives). |
+| **MOTION SMOOTHING** | 0.15 | 0 to 0.5. Telemetry arrives at 25 Hz or less while the 3D view draws 60 frames a second. Above 0, the 3D view and the HUD carry the aircraft forward between samples (for at most 0.5 s after the last one, then it holds): the position on the reported velocity and acceleration, the attitude on the reported **angular velocity** and on how fast it is changing. Each new sample is blended in over the slider value × 0.5 s (75 ms at the default) instead of jumped to — the position, the angles and the angular velocity with them, so the horizon does not change pace at every sample. More of it is smoother and later: at 0.5 a hard manoeuvre reads a few degrees behind on a slow link. 0 = drawn exactly as received, with no propagation at all (moves in steps, most visible low and fast). |
 | TERRAIN & LIGHT · **TERRAIN (HGT FOLDER)** → **SELECT HGT FOLDER** | | Load SRTM `.hgt` elevation tiles from a folder of your own (offline, or a better DEM). The line under it shows what is loaded (`NO DATA` before any terrain). Tiles are otherwise downloaded automatically — see [terrain and imagery](getting-started.md#terrain-and-imagery). |
 | TERRAIN & LIGHT · **VEHICLE TERRAIN DATA** | | Read only: the blocks of terrain sent to an autopilot that keeps its own database (`TERRAIN_ENABLE`), and what it reports pending and loaded — see [terrain following](mission-planning.md). |
 | **ALTITUDE OFFSET (M)** | 0 | Added to every vehicle altitude in the 3D view and the altitude cell, to line the reported altitude up with the terrain model when they disagree (a barometer drift, a different geoid). Not remembered: it is a correction for the flight at hand. |
-| **TIME OF DAY (DEBUG)** | the clock | Moves the sun to any time (00:00–24:00) for the sunlight shading — to check a shadow or simply see better. |
+| **TIME OF DAY (DEBUG)** | the clock | Moves the sun to any time (00:00–24:00) for the sunlight shading — to check a shadow or simply see better. **CLOCK** goes back to the time of the computer. Not remembered. |
 | **MAP BRIGHTNESS** | 0.85 | 0.3 to 1.6. Shown only when the sunlight is off or the satellite imagery is off: the brightness of the flat-lit imagery, or of the whole schematic chart. |
 | QUALITY & RANGE · **FRAME RATE** | 60 FPS | *60 FPS* or *30 FPS (ECO)*: 30 halves the rendering work — use it on battery or on a weak GPU. |
-| **RESOLUTION** | BALANCED | *NATIVE*, *BALANCED* or *ECO*: the resolution the 3D scene is rendered at. HUD and text keep the display's resolution whatever is chosen. |
+| **RESOLUTION** | BALANCED | *NATIVE*, *BALANCED* (at most 1.5 pixels per point) or *ECO* (1): the resolution the 3D scene is rendered at. HUD and text keep the display's resolution whatever is chosen. On a display at 100 % scaling the three are the same. |
 | **SATELLITE DETAIL** | zoom 18 · 0.4 m | The sharpest imagery drawn around the aircraft: zoom 16 (off) to 20 (0.1 m per pixel). Each step doubles the detail and the download — see [satellite detail](flight-screen.md#satellite-detail). |
 | **SATELLITE RADIUS** | 10 km | How far around the aircraft the 3D terrain has satellite imagery: 5, 10, 15, 20 or 30 km. Beyond it the terrain is coloured by height. A wider radius downloads more tiles (for offline flights, make the [offline download](#offline-data-download) box cover it) and asks more of the computer: on a weak one stay at 10–15 km. See [terrain range and haze](flight-screen.md#terrain-range-and-haze). |
 | **TERRAIN RADIUS** | 35 km | How far around the aircraft the 3D terrain is built: 35, 50 or 70 km. The haze follows it: a farther edge, thinner haze. 50 km builds about twice the terrain of 35 km and 70 km four times, with more elevation tiles in memory (25 MB each). |
@@ -147,11 +149,13 @@ The RTSP video for the [FPV button](flight-screen.md#fpv-video):
 | **IP ADDRESS** | 192.168.144.25 |
 | **RTSP PORT** | 8554 |
 | **STREAM PATH** | /main.264 |
-| **TARGET FPS** | 30 (1–60) |
+| **TARGET FPS** | 30 (1–60): the most frames shown a second. A stream that sends more is decoded in full and thinned out. |
+| **ADDRESS** | The address the fields make: `rtsp://IP:PORT/PATH`. |
+| **STREAM** | *off*, *connecting…*, or the size, codec and decoder in use, e.g. `1920×1080 · H265 · VAAPI`. |
 
 The PC's network adapter needs a static IP in the camera's subnet (for SIYI 192.168.144.x, e.g.
-192.168.144.100), and `ffmpeg` must be installed and in the PATH. Any RTSP camera works with its
-own address and path (`rtsp://IP:PORT/PATH`).
+192.168.144.100). Nothing else has to be installed: the program decodes H.264 and H.265 itself. Any
+RTSP camera without a password works with its own address and path.
 
 ---
 
@@ -198,14 +202,13 @@ Downloads an area ahead of a flight without network.
 | Field | |
 |-------|---|
 | **LATITUDE N · S** / **LONGITUDE W · E** | The box, in whole degrees: north and south edge, west and east edge. |
-| **SATELLITE ZOOM MAX** | The sharpest imagery to keep, 1–19 (16 ≈ 2 m per pixel; every level up is four times the tiles). |
+| **SATELLITE ZOOM MAX** | The sharpest imagery to keep, 11–17 (16 ≈ 2 m per pixel; every level up is four times the tiles). |
 | **CONTENT** — *Satellite tiles* / *SRTM1 elevation* | What to download: imagery, 30 m elevation tiles, or both. |
 | **ESTIMATE** | How many tiles and how much data the choice means — check it before starting; *AREA TOO LARGE* asks for a smaller box or zoom. |
 | **DOWNLOAD** / **CANCEL** | Start / stop; a progress bar and a status line follow. |
 
 Tiles go to the same cache the GCS fills while flying, so they are used automatically. For a
-mission area, a box of 1° × 1° at zoom 16 is a good start; add zoom 18–19 only for the few square
-kilometres you will fly low over.
+mission area, a box of 1° × 1° at zoom 16 is a good start.
 
 ## FFT FROM LOGS
 
@@ -243,7 +246,7 @@ accelerometer, three axes summed), so the same line reads the same live and from
 
 | Field | Default | |
 |-------|---------|---|
-| **LANGUAGE** | English | English or 中文 (Simplified Chinese), for the whole interface. |
+| **LANGUAGE** | English | English or 中文 (Simplified Chinese), for the whole interface, changed at once. The HUD, the parameter documentation and this guide stay in English. |
 | **DEVTOOLS** → **OPEN DEVTOOLS** | | 1.x only: 2.x has no developer tools, the debug log below has the same record. |
 | **DEBUG LOG (LAST 5 MIN)** → **SAVE COPY…** | | Saves one file with the last 5 minutes of this session and of the previous one (connections, errors, autopilot messages, commands sent): **send it to support** when reporting a problem. The path saved to is shown underneath. |
 | **SHOW FILE** | | Shows the live debug log file in the file manager (`data/debug/corv-gcs-debug.log`, rewritten every few seconds). |

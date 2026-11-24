@@ -59,7 +59,7 @@ Flickable {
                 }
                 GcsButton { width: 90; height: 29; text: "STOP"; onClicked: Sitl.stop() }
             }
-            CfgValue { width: parent.width; horizontalAlignment: Text.AlignLeft; wrapMode: Text.Wrap; text: Sitl.status }
+            CfgValue { width: parent.width; horizontalAlignment: Text.AlignLeft; wrapMode: Text.Wrap; text: Theme.tr(Sitl.status) }
         }
         SetupPanel {
             title: "SITL MANUAL CONNECTION"

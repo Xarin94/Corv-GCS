@@ -1,6 +1,7 @@
 // Global header (60 px: brand, FPS counter) and the tab bar under it (32 px:
 // tabs on the left, the square view buttons on the right).
 import QtQuick
+import QtQuick.Controls.Basic
 
 Item {
     id: header
@@ -13,8 +14,6 @@ Item {
     property bool firstPerson: true
     property bool horizonLock: false
     property bool trajectory: false
-    property bool fpvOn: false
-    signal toggleFpv()
     signal toggleSatellite()
     signal toggleSunlight()
     signal toggleCamera()
@@ -25,12 +24,25 @@ Item {
 
     height: 93
 
+    function openTab(i) { if (i !== 1 || Plan.missionsSupported) currentTab = i }
+    Connections {
+        target: Plan
+        function onPlatformChanged() { if (!Plan.missionsSupported && header.currentTab === 1) header.currentTab = 0 }
+    }
+    Component.onCompleted: if (!Plan.missionsSupported && currentTab === 1) currentTab = 0
+    // Ctrl+1 … Ctrl+4: the tabs
+    Shortcut { sequence: "Ctrl+1"; onActivated: header.openTab(0) }
+    Shortcut { sequence: "Ctrl+2"; onActivated: header.openTab(1) }
+    Shortcut { sequence: "Ctrl+3"; onActivated: header.openTab(2) }
+    Shortcut { sequence: "Ctrl+4"; onActivated: header.openTab(3) }
+
     // ── Global header ──
     Item {
         id: global
         width: parent.width
         height: 60
         Row {
+            id: brand
             x: 24
             y: 15
             height: 30
@@ -53,6 +65,12 @@ Item {
                 font.letterSpacing: 4
             }
         }
+        Item {
+            anchors.fill: brand
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: Qt.openUrlExternally("https://www.corvsystems.com") }
+            HoverTip { text: "www.corvsystems.com" }
+        }
         // A newer version on GitHub (Updates): opens the update dialog
         Rectangle {
             id: updateBtn
@@ -69,8 +87,8 @@ Item {
             Text {
                 id: updText
                 anchors.centerIn: parent
-                text: (Updates.state === "downloading" ? "DOWNLOADING " + (Updates.progress * 100).toFixed(0) + " %"
-                       : "UPDATE " + Updates.latest)
+                text: (Updates.state === "downloading" ? qsTr("DOWNLOADING ") + (Updates.progress * 100).toFixed(0) + " %"
+                       : qsTr("UPDATE ") + Updates.latest)
                 color: Theme.accentCyan
                 font.family: Theme.fontUi
                 font.pixelSize: 12
@@ -117,13 +135,19 @@ Item {
                     required property string modelData
                     required property int index
                     readonly property bool active: header.currentTab === index
+                    // FLIGHT PLAN on a stack that cannot fly missions: greyed, the reason in the tooltip
+                    readonly property bool off: index === 1 && !Plan.missionsSupported
+                    opacity: off ? 0.4 : 1
+                    ToolTip.visible: off && tabMouse.containsMouse
+                    ToolTip.text: Theme.tr(Plan.noMissionReason)
+                    ToolTip.delay: 400
                     width: label.implicitWidth + 28
                     height: 32
                     color: active ? Qt.rgba(0, 210 / 255, 1, 0.06) : "transparent"
                     Text {
                         id: label
                         anchors.centerIn: parent
-                        text: parent.modelData
+                        text: Theme.tr(parent.modelData)
                         color: parent.active ? Theme.accentCyan : (tabMouse.containsMouse ? Theme.textMutedBright : Theme.textDim)
                         font.family: Theme.fontUi
                         font.pixelSize: Theme.fsMd
@@ -140,7 +164,7 @@ Item {
                         id: tabMouse
                         anchors.fill: parent
                         hoverEnabled: true
-                        onClicked: header.currentTab = parent.index
+                        onClicked: header.openTab(parent.index)
                     }
                 }
             }
@@ -151,7 +175,16 @@ Item {
             anchors.rightMargin: 8
             y: 1
             spacing: 2
-            SquareButton { icon: Icons.fpv; active: header.fpvOn; tooltip: "FPV Camera (enable/disable stream)"; onClicked: header.toggleFpv() }
+            SquareButton {
+                objectName: "btnFpv"
+                icon: Icons.fpv
+                active: Fpv.active || Fpv.connecting
+                // Amber in AR, to tell it from the camera alone (#btn-fpv.ar-active)
+                accent: Fpv.mode === 2 ? "#ffaa00" : Theme.accentCyan
+                opacity: Fpv.connecting ? 0.6 : 1
+                tooltip: Fpv.tip
+                onClicked: Fpv.click()
+            }
             SquareButton { icon: Icons.satellite; active: header.satellite; tooltip: "Satellite imagery (M) — off: schematic isoline view"; onClicked: header.toggleSatellite() }
             SquareButton { icon: Icons.sun; active: header.sunlight; tooltip: "Toggle realistic sunlight (L)"; onClicked: header.toggleSunlight() }
             SquareButton { label: header.firstPerson ? "1P" : "3P"; tooltip: "Toggle 1st/3rd person camera"; onClicked: header.toggleCamera() }

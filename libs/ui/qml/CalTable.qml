@@ -28,7 +28,7 @@ Column {
                 width: t.colW(index) - 12
                 height: 24
                 verticalAlignment: Text.AlignVCenter
-                text: modelData[0]
+                text: Theme.tr(modelData[0])
                 elide: Text.ElideRight
                 color: Theme.textDim
                 font.family: Theme.fontUi; font.pixelSize: 9; font.weight: Font.Bold; font.letterSpacing: 1
@@ -63,7 +63,7 @@ Column {
                     width: (r.span && last ? t.width - t.colX(index) : t.colW(index)) - 12
                     height: 24
                     verticalAlignment: Text.AlignVCenter
-                    text: modelData
+                    text: Theme.tr(modelData)
                     elide: Text.ElideRight
                     color: r.warn && last ? Theme.accentOrange : Theme.textMain
                     font.family: Theme.fontData; font.pointSize: 7.875

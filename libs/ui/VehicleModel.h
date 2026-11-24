@@ -67,7 +67,16 @@ class VehicleModel : public QObject
     Q_PROPERTY(double linkQuality READ linkQuality NOTIFY updated)
     Q_PROPERTY(QString flightTime READ flightTime NOTIFY updated)
     Q_PROPERTY(int rssi READ rssi NOTIFY updated)
+    Q_PROPERTY(int remRssi READ remRssi NOTIFY updated)
+    /// The RSSI in dBm (the SiK scale, which the cellular module uses too); NaN without a reading.
+    Q_PROPERTY(double rssiDbm READ rssiDbm NOTIFY updated)
+    /// Signal bars lit, 0 to 5; -1 without a reading.
+    Q_PROPERTY(int signalBars READ signalBars NOTIFY updated)
     Q_PROPERTY(bool sensorsOk READ sensorsOk NOTIFY updated)
+    /// Pre-arm checks: 0 unknown, 1 pass (or armed), 2 fail; what the vehicle last said about them.
+    Q_PROPERTY(int preArm READ preArm NOTIFY updated)
+    Q_PROPERTY(QString preArmText READ preArmText NOTIFY updated)
+    Q_PROPERTY(QString firmwareVersion READ firmwareVersion NOTIFY updated)
     Q_PROPERTY(double gLoad READ gLoad NOTIFY updated)
     Q_PROPERTY(double terrainAgl READ terrainAgl NOTIFY updated)
     Q_PROPERTY(double rangefinder READ rangefinder NOTIFY updated)
@@ -86,6 +95,11 @@ class VehicleModel : public QObject
     // ADS-B traffic table: the 4 nearest, {callsign, alt, dist} (getNearestTraffic)
     Q_PROPERTY(QVariantList nearestTraffic READ nearestTraffic NOTIFY updated)
     Q_PROPERTY(double altOffset READ altOffset NOTIFY updated)
+    /// Relative navigation: the velocity (NED, m/s) is shown instead of a synthetic latitude and longitude
+    Q_PROPERTY(bool relativeMode READ relativeMode NOTIFY updated)
+    Q_PROPERTY(double vn READ vn NOTIFY updated)
+    Q_PROPERTY(double ve READ ve NOTIFY updated)
+    Q_PROPERTY(double vd READ vd NOTIFY updated)
 
 public:
     explicit VehicleModel(VehicleHub *hub, QObject *parent = nullptr);
@@ -130,6 +144,12 @@ public:
     QString flightTime() const;
 
     int rssi() const { return m_s->rssi ? *m_s->rssi : -1; }
+    int remRssi() const { return m_s->remRssi ? *m_s->remRssi : -1; }
+    double rssiDbm() const { return m_s->rssi ? *m_s->rssi / 1.9 - 127 : std::numeric_limits<double>::quiet_NaN(); }
+    int signalBars() const;
+    int preArm() const { return heartbeatAlive() || m_s->armed ? int(m_s->preArm()) : 0; }
+    QString preArmText() const { return m_s->preArmText; }
+    QString firmwareVersion() const { return m_s->firmwareVersion; }
     /// Present and enabled sensors all healthy (the pre-arm dot)
     bool sensorsOk() const { return (m_s->sensorsPresent & m_s->sensorsEnabled & ~m_s->sensorsHealth) == 0; }
     double gLoad() const { return m_s->gLoad(); }
@@ -148,6 +168,10 @@ public:
     double rtkBaseline() const { return m_s->rtkBaseline; }
     double rtkAccuracy() const { return m_s->rtkAccuracy; }
     double altOffset() const { return m_s->offsetAlt; }
+    bool relativeMode() const { return m_s->relativeMode; }
+    double vn() const { return m_s->vn; }
+    double ve() const { return m_s->ve; }
+    double vd() const { return m_s->vd; }
 
     std::shared_ptr<const VehicleState> state() const { return m_s; }
 

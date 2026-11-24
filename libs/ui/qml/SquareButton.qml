@@ -7,13 +7,14 @@ Rectangle {
     property var icon: null
     property string label: ""
     property bool active: false
+    property color accent: Theme.accentActive   // while active
     property string tooltip: ""
     signal clicked()
 
-    readonly property color fg: active ? Theme.accentActive : Theme.accentCyan
+    readonly property color fg: active ? accent : Theme.accentCyan
     width: 30
     height: 30
-    color: active ? Qt.rgba(1, 153 / 255, 0, 0.2) : (mouse.containsMouse ? Qt.rgba(0, 40 / 255, 60 / 255, 0.9) : Theme.squareBg)
+    color: active ? Qt.rgba(accent.r, accent.g, accent.b, 0.2) : (mouse.containsMouse ? Qt.rgba(0, 40 / 255, 60 / 255, 0.9) : Theme.squareBg)
     border.color: fg
     border.width: Theme.hairline
 
@@ -28,7 +29,7 @@ Rectangle {
     Text {
         visible: b.label.length > 0
         anchors.centerIn: parent
-        text: b.label
+        text: Theme.tr(b.label)
         color: b.fg
         font.family: Theme.fontUi
         font.pixelSize: Theme.fsMd
@@ -43,5 +44,5 @@ Rectangle {
     }
     ToolTip.visible: tooltip.length > 0 && mouse.containsMouse
     ToolTip.delay: 600
-    ToolTip.text: tooltip
+    ToolTip.text: Theme.tr(tooltip)
 }

@@ -141,6 +141,19 @@ if (Select-String -Path $exe -Pattern "SDL3.dll" -SimpleMatch -Quiet) {
     Write-Warning "built without SDL3: the package has no joystick input"
 }
 
+# FFmpeg when the build links it (FPV video): the DLLs it was built against
+$ffmpegNotice = ""
+$exeText = Select-String -Path $exe -Pattern "avcodec-[0-9]+\.dll" -Quiet
+if ($exeText) {
+    $ffmpeg = if ($env:FFMPEG_ROOT) { $env:FFMPEG_ROOT } else { Join-Path $tools "ffmpeg" }
+    $dlls = Get-ChildItem (Join-Path $ffmpeg "bin") -Filter "*.dll" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^(avcodec|avutil|swresample)-" }
+    if (-not $dlls) { throw "the build links FFmpeg but its DLLs were not found in $ffmpeg\bin" }
+    $dlls | ForEach-Object { Copy-Item $_.FullName $stage }
+    $ffmpegNotice = "FFmpeg (LGPLv2.1), avcodec-*.dll and avutil-*.dll, dynamically linked and replaceable: https://ffmpeg.org/download.html"
+} else {
+    Write-Warning "built without FFmpeg: the package has no FPV video"
+}
+
 Copy-Item (Join-Path $root "LICENSE") $stage
 # The bundled LTE cells (CC BY-SA 4.0, see celldb\README.md)
 Copy-Item -Recurse (Join-Path $root "resources\celldb") (Join-Path $stage "celldb")
@@ -157,6 +170,7 @@ OpenSSL 3 libcrypto (Apache License 2.0), libcrypto-3-x64.dll: https://www.opens
 MAVLink C library, generated headers (MIT): https://github.com/mavlink/c_library_v2
 Rajdhani fonts (SIL Open Font License 1.1), Roboto Mono fonts (Apache License 2.0)
 SDL 3 (zlib license), SDL3.dll: https://github.com/libsdl-org/SDL
+$ffmpegNotice
 LTE cells in celldb\: OpenCelliD (https://opencellid.org, CC BY-SA 4.0) and the Mozilla Location
 Service (public domain); the merged file is distributed under CC BY-SA 4.0 (celldb\README.md).
 Microsoft Visual C++ runtime (msvcp140*.dll, vcruntime140*.dll, concrt140.dll): redistributed

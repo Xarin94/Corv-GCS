@@ -119,7 +119,7 @@ Item {
                             }
                             HoverHandler { id: statusHover }
                             ToolTip.visible: statusHover.hovered
-                            ToolTip.text: Plan.statusTitle
+                            ToolTip.text: Theme.tr(Plan.statusTitle)
                         }
                         TextField {
                             id: nameField
@@ -131,7 +131,7 @@ Item {
                             topPadding: 2
                             bottomPadding: 2
                             text: Plan.routeName
-                            placeholderText: "Untitled route"
+                            placeholderText: qsTr("Untitled route")
                             placeholderTextColor: Theme.textDim
                             color: Theme.textMain
                             font.family: Theme.fontUi
@@ -187,7 +187,7 @@ Item {
                                 Text {
                                     anchors.horizontalCenter: parent.horizontalCenter
                                     y: 22
-                                    text: parent.modelData
+                                    text: Theme.tr(parent.modelData)
                                     color: Theme.textDim
                                     font.family: Theme.fontUi
                                     font.pixelSize: 8
@@ -221,7 +221,7 @@ Item {
                                 Text {
                                     id: chipText
                                     anchors.centerIn: parent
-                                    text: parent.modelData.text
+                                    text: Theme.tr(parent.modelData.text)
                                     color: parent.tone
                                     font.family: Theme.fontData
                                     font.pixelSize: 9
@@ -255,7 +255,7 @@ Item {
                                     width: parent.width - 14
                                     wrapMode: Text.Wrap
                                     textFormat: Text.StyledText
-                                    text: (parent.modelData.where ? "<font face=\"Roboto Mono\" color=\"#ffffff\"><b>" + parent.modelData.where + "</b></font> " : "") + parent.modelData.text
+                                    text: (parent.modelData.where ? "<font face=\"Roboto Mono\" color=\"#ffffff\"><b>" + parent.modelData.where + "</b></font> " : "") + Theme.tr(parent.modelData.text)
                                     color: parent.err ? "#ff9a9a" : parent.wrn ? "#ffd28a" : Theme.textMuted
                                     font.family: Theme.fontUi
                                     font.pointSize: 7.875
@@ -308,7 +308,7 @@ Item {
                     x: 12
                     y: 13
                     spacing: 0
-                    Text { text: "SEGMENTS "; color: Theme.accentCyan; font.family: Theme.fontUi; font.pixelSize: 11; font.weight: Font.Bold; font.letterSpacing: 2 }
+                    Text { text: qsTr("SEGMENTS "); color: Theme.accentCyan; font.family: Theme.fontUi; font.pixelSize: 11; font.weight: Font.Bold; font.letterSpacing: 2 }
                     Text { text: Plan.segmentCount ? "(" + Plan.segmentCount + ")" : ""; color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 11; font.weight: Font.Bold }
                 }
                 Row {
@@ -327,13 +327,13 @@ Item {
                 y: listHead.y + listHead.height + 18
                 width: 320 - 36
                 spacing: 6
-                Text { text: "No segments yet"; color: Theme.textMain; font.family: Theme.fontUi; font.pixelSize: 13; font.weight: Font.Bold; font.letterSpacing: 1 }
+                Text { text: qsTr("No segments yet"); color: Theme.textMain; font.family: Theme.fontUi; font.pixelSize: 13; font.weight: Font.Bold; font.letterSpacing: 1 }
                 Text {
                     width: parent.width
                     wrapMode: Text.Wrap
                     textFormat: Text.StyledText
                     lineHeight: 1.5
-                    text: "Pick a tool on the map: a <font color=\"#cfd8dd\"><b>waypoint</b></font>, a <font color=\"#cfd8dd\"><b>circle</b></font>, a <font color=\"#cfd8dd\"><b>perimeter</b></font> to fly around, an <font color=\"#cfd8dd\"><b>area</b></font> to scan, a <font color=\"#cfd8dd\"><b>corridor</b></font> to map, a <font color=\"#cfd8dd\"><b>POI</b></font> for the camera, a <font color=\"#cfd8dd\"><b>landing</b></font>."
+                    text: qsTr("Pick a tool on the map: a <font color=\"#cfd8dd\"><b>waypoint</b></font>, a <font color=\"#cfd8dd\"><b>circle</b></font>, a <font color=\"#cfd8dd\"><b>perimeter</b></font> to fly around, an <font color=\"#cfd8dd\"><b>area</b></font> to scan, a <font color=\"#cfd8dd\"><b>corridor</b></font> to map, a <font color=\"#cfd8dd\"><b>POI</b></font> for the camera, a <font color=\"#cfd8dd\"><b>landing</b></font>.")
                     color: Theme.textMuted
                     font.family: Theme.fontUi
                     font.pointSize: 8.625
@@ -343,7 +343,7 @@ Item {
                     width: parent.width
                     wrapMode: Text.Wrap
                     textFormat: Text.StyledText
-                    text: "The route is calculated as you draw. Open <font color=\"#cfd8dd\"><b>⚙ Route settings</b></font> for altitude mode, speed, take-off and what happens at the end."
+                    text: qsTr("The route is calculated as you draw. Open <font color=\"#cfd8dd\"><b>⚙ Route settings</b></font> for altitude mode, speed, take-off and what happens at the end.")
                     color: Theme.textDim
                     font.family: Theme.fontUi
                     font.pointSize: 7.875
@@ -417,8 +417,8 @@ Item {
                             x: segIcon.x + 15 + 7
                             anchors.verticalCenter: parent.verticalCenter
                             width: delBtn.x - x - 7 - (badge.visible ? 20 : 0)
-                            Text { width: parent.width; elide: Text.ElideRight; text: seg.segLabel; color: Theme.textMain; font.family: Theme.fontUi; font.pixelSize: 12; font.weight: Font.Bold; font.letterSpacing: 0.8 }
-                            Text { width: parent.width; elide: Text.ElideRight; text: seg.summary; color: Theme.textMuted; font.family: Theme.fontData; font.pixelSize: 9 }
+                            Text { width: parent.width; elide: Text.ElideRight; text: Theme.tr(seg.segLabel); color: Theme.textMain; font.family: Theme.fontUi; font.pixelSize: 12; font.weight: Font.Bold; font.letterSpacing: 0.8 }
+                            Text { width: parent.width; elide: Text.ElideRight; text: Theme.tr(seg.summary); color: Theme.textMuted; font.family: Theme.fontData; font.pixelSize: 9 }
                         }
                         SvgIcon {
                             id: badge
@@ -430,7 +430,7 @@ Item {
                             color: seg.worst === "error" ? "#ff3b3b" : Theme.accentOrange
                             HoverHandler { id: badgeHover }
                             ToolTip.visible: badgeHover.hovered
-                            ToolTip.text: seg.issuesText
+                            ToolTip.text: Theme.tr(seg.issuesText)
                         }
                         // Head clicks: open / close (double click also pans), drag to reorder
                         MouseArea {
@@ -504,7 +504,7 @@ Item {
                                             x: 8; y: 3
                                             width: parent.width - 14
                                             wrapMode: Text.Wrap
-                                            text: parent.modelData.text
+                                            text: Theme.tr(parent.modelData.text)
                                             color: parent.err ? "#ff9a9a" : "#ffd28a"
                                             font.family: Theme.fontUi; font.pointSize: 7.875; font.weight: Font.DemiBold; font.letterSpacing: 0.3
                                         }
@@ -548,7 +548,7 @@ Item {
                                             delegate: Text {
                                                 required property string modelData
                                                 textFormat: Text.StyledText
-                                                text: page.boldify(modelData)
+                                                text: Theme.tr(page.boldify(modelData))
                                                 color: Theme.textDim
                                                 font.family: Theme.fontData
                                                 font.pixelSize: 9
@@ -570,7 +570,7 @@ Item {
                                     height: 22
                                     Text {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        text: "ACTIONS"
+                                        text: qsTr("ACTIONS")
                                         color: Theme.accentCyan
                                         font.family: Theme.fontUi; font.pointSize: 7.125; font.weight: Font.Bold; font.letterSpacing: 1.5
                                     }
@@ -611,7 +611,7 @@ Item {
                                                     height: 18
                                                     Text {
                                                         anchors.verticalCenter: parent.verticalCenter
-                                                        text: act.modelData.label
+                                                        text: Theme.tr(act.modelData.label)
                                                         color: Theme.textMutedBright
                                                         font.family: Theme.fontUi; font.pointSize: 7.875; font.weight: Font.DemiBold
                                                     }
@@ -619,7 +619,7 @@ Item {
                                                         anchors.right: actDel.left
                                                         anchors.rightMargin: 6
                                                         anchors.verticalCenter: parent.verticalCenter
-                                                        text: act.modelData.summary
+                                                        text: Theme.tr(act.modelData.summary)
                                                         color: Theme.textDim
                                                         font.family: Theme.fontData; font.pixelSize: 9
                                                         font.italic: act.modelData.unsupported
@@ -652,7 +652,7 @@ Item {
                                             }
                                             HoverHandler { id: actHover }
                                             ToolTip.visible: actHover.hovered && act.modelData.title.length > 0
-                                            ToolTip.text: act.modelData.title
+                                            ToolTip.text: Theme.tr(act.modelData.title)
                                         }
                                     }
                                 }
@@ -701,15 +701,15 @@ Item {
                     width: parent.width - 20
                     topPadding: 8
                     bottomPadding: 10
-                    Text { text: "TAKE-OFF POINT"; color: Theme.accentCyan; font.family: Theme.fontUi; font.pointSize: 7.125; font.weight: Font.Bold; font.letterSpacing: 1.5 }
-                    Text { topPadding: 3; bottomPadding: 4; width: parent.width; wrapMode: Text.Wrap; text: Plan.homeDesc; color: Theme.textMutedBright; font.family: Theme.fontData; font.pixelSize: 10 }
+                    Text { text: qsTr("TAKE-OFF POINT"); color: Theme.accentCyan; font.family: Theme.fontUi; font.pointSize: 7.125; font.weight: Font.Bold; font.letterSpacing: 1.5 }
+                    Text { topPadding: 3; bottomPadding: 4; width: parent.width; wrapMode: Text.Wrap; text: Theme.tr(Plan.homeDesc); color: Theme.textMutedBright; font.family: Theme.fontData; font.pixelSize: 10 }
                     Row {
                         topPadding: 6
                         spacing: 6
                         GcsButton { width: (parent.parent.width - 6) / 2; height: 27; fontSize: 10.5; spacing: 0.8; text: "VEHICLE"; tip: "Use the vehicle's current position"; onClicked: Plan.setHomeVehicle() }
                         GcsButton { width: (parent.parent.width - 6) / 2; height: 27; fontSize: 10.5; spacing: 0.8; text: "AUTO"; tip: "Follow the vehicle's home position"; onClicked: Plan.resetHome() }
                     }
-                    Text { topPadding: 6; width: parent.width; wrapMode: Text.Wrap; text: "Drag the H marker on the map to move it"; color: Theme.textDim; font.family: Theme.fontUi; font.pointSize: 7.125 }
+                    Text { topPadding: 6; width: parent.width; wrapMode: Text.Wrap; text: qsTr("Drag the H marker on the map to move it"); color: Theme.textDim; font.family: Theme.fontUi; font.pointSize: 7.125 }
                 }
             }
 
@@ -733,7 +733,7 @@ Item {
                             onEdited: (key, value) => Plan.setField("camera", "", -1, key, value)
                         }
                     }
-                    Text { topPadding: 8; text: "GIMBAL"; color: Theme.accentCyan; font.family: Theme.fontUi; font.pointSize: 7.125; font.weight: Font.Bold; font.letterSpacing: 1.5 }
+                    Text { topPadding: 8; text: qsTr("GIMBAL"); color: Theme.accentCyan; font.family: Theme.fontUi; font.pointSize: 7.125; font.weight: Font.Bold; font.letterSpacing: 1.5 }
                     Repeater {
                         model: page.popover === "camera" ? Plan.gimbalForm : []
                         delegate: FpField {
@@ -757,7 +757,7 @@ Item {
                         spacing: 10
                         Repeater {
                             model: Plan.cameraDerived
-                            delegate: Text { required property string modelData; textFormat: Text.StyledText; text: page.boldify(modelData); color: Theme.textDim; font.family: Theme.fontData; font.pixelSize: 9; bottomPadding: 3 }
+                            delegate: Text { required property string modelData; textFormat: Text.StyledText; text: Theme.tr(page.boldify(modelData)); color: Theme.textDim; font.family: Theme.fontData; font.pixelSize: 9; bottomPadding: 3 }
                         }
                     }
                 }
@@ -769,7 +769,7 @@ Item {
                     topPadding: 14
                     bottomPadding: 10
                     wrapMode: Text.Wrap
-                    text: "A red dot on the route marks every photo (trigger-by-distance along survey lanes, single shots). Hover a dot to see the ground footprint at the planned height, heading and camera pitch. While a POI is active, hover a waypoint to see the wedge the camera is looking through."
+                    text: qsTr("A red dot on the route marks every photo (trigger-by-distance along survey lanes, single shots). Hover a dot to see the ground footprint at the planned height, heading and camera pitch. While a POI is active, hover a waypoint to see the wedge the camera is looking through.")
                     color: Theme.textDim
                     font.family: Theme.fontUi
                     font.pointSize: 7.125
@@ -785,15 +785,15 @@ Item {
                     width: parent.width - 20
                     topPadding: 8
                     bottomPadding: 8
-                    Text { text: "OPERATOR POSITION"; color: Theme.accentCyan; font.family: Theme.fontUi; font.pointSize: 7.125; font.weight: Font.Bold; font.letterSpacing: 1.5 }
-                    Text { topPadding: 3; bottomPadding: 4; width: parent.width; wrapMode: Text.Wrap; text: Plan.operatorDesc; color: Theme.textMutedBright; font.family: Theme.fontData; font.pixelSize: 10 }
+                    Text { text: qsTr("OPERATOR POSITION"); color: Theme.accentCyan; font.family: Theme.fontUi; font.pointSize: 7.125; font.weight: Font.Bold; font.letterSpacing: 1.5 }
+                    Text { topPadding: 3; bottomPadding: 4; width: parent.width; wrapMode: Text.Wrap; text: Theme.tr(Plan.operatorDesc); color: Theme.textMutedBright; font.family: Theme.fontData; font.pixelSize: 10 }
                     Row {
                         topPadding: 6
                         spacing: 6
                         GcsButton { width: (parent.parent.width - 6) / 2; height: 27; fontSize: 10.5; spacing: 0.8; text: "PLACE ON MAP"; tip: "Click on the map to place the ground antenna (O)"; onClicked: { page.popover = ""; Plan.placeOperator() } }
                         GcsButton { width: (parent.parent.width - 6) / 2; height: 27; fontSize: 10.5; spacing: 0.8; text: "TAKE-OFF"; enabled: Plan.operatorPlaced; tip: "Put the operator back at the take-off point"; onClicked: Plan.resetOperator() }
                     }
-                    Text { topPadding: 6; width: parent.width; wrapMode: Text.Wrap; text: "Drag the antenna marker on the map to move it"; color: Theme.textDim; font.family: Theme.fontUi; font.pointSize: 7.125 }
+                    Text { topPadding: 6; width: parent.width; wrapMode: Text.Wrap; text: qsTr("Drag the antenna marker on the map to move it"); color: Theme.textDim; font.family: Theme.fontUi; font.pointSize: 7.125 }
                     Item { width: 1; height: 8 }
                     FpField {
                         width: parent.width
@@ -832,7 +832,7 @@ Item {
                         spacing: 10
                         Repeater {
                             model: Plan.radioDerived
-                            delegate: Text { required property string modelData; textFormat: Text.StyledText; text: page.boldify(modelData); color: Theme.textDim; font.family: Theme.fontData; font.pixelSize: 9; bottomPadding: 3 }
+                            delegate: Text { required property string modelData; textFormat: Text.StyledText; text: Theme.tr(page.boldify(modelData)); color: Theme.textDim; font.family: Theme.fontData; font.pixelSize: 9; bottomPadding: 3 }
                         }
                     }
                 }
@@ -854,7 +854,7 @@ Item {
                                 required property var modelData
                                 spacing: 5
                                 Rectangle { width: 14; height: 8; radius: 1; anchors.verticalCenter: parent.verticalCenter; color: parent.modelData[1]; border.color: Qt.rgba(1, 1, 1, 0.15); border.width: Theme.hairline }
-                                Text { text: parent.modelData[0]; color: Theme.textMuted; font.family: Theme.fontUi; font.pointSize: 7.125 }
+                                Text { text: Theme.tr(parent.modelData[0]); color: Theme.textMuted; font.family: Theme.fontUi; font.pointSize: 7.125 }
                             }
                         }
                     }
@@ -862,7 +862,7 @@ Item {
                         topPadding: 6
                         width: parent.width
                         wrapMode: Text.Wrap
-                        text: "Line of sight and first Fresnel zone are checked against the elevation model between the ground antenna and the aircraft. Green: clear zone and margin above the safety budget. Orange: the terrain intrudes into the Fresnel zone or blocks the line of sight (diffraction path). Red: link possible but below the safety budget. The map overlay is computed at the route default altitude; the route band and the profile use the planned altitude of every point. Preset figures are typical datasheet values — verify them against your radio and air rate."
+                        text: qsTr("Line of sight and first Fresnel zone are checked against the elevation model between the ground antenna and the aircraft. Green: clear zone and margin above the safety budget. Orange: the terrain intrudes into the Fresnel zone or blocks the line of sight (diffraction path). Red: link possible but below the safety budget. The map overlay is computed at the route default altitude; the route band and the profile use the planned altitude of every point. Preset figures are typical datasheet values — verify them against your radio and air rate.")
                         color: Theme.textDim
                         font.family: Theme.fontUi
                         font.pointSize: 7.125
@@ -938,7 +938,7 @@ Item {
                 onClickedAway: { ctxMenu.visible = false; page.menuOpen = false }
                 HoverHandler { id: mapHoverZ }
                 ToolTip.visible: map.zoneTip.length > 0 && mapHoverZ.hovered
-                ToolTip.text: map.zoneTip
+                ToolTip.text: Theme.tr(map.zoneTip)
                 ToolTip.delay: 300
             }
             // UAS zones key while they are on (GeoZoneLayer.js legend)
@@ -995,7 +995,7 @@ Item {
                             HoverHandler { id: th; cursorShape: tb.modelData.disabled ? Qt.ForbiddenCursor : Qt.PointingHandCursor }
                             TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds; onTapped: Plan.setTool(tb.modelData.id) }
                             ToolTip.visible: th.hovered
-                            ToolTip.text: tb.modelData.title
+                            ToolTip.text: Theme.tr(tb.modelData.title)
                             ToolTip.delay: 500
                         }
                     }
@@ -1016,7 +1016,7 @@ Item {
                 Text {
                     id: hintText
                     anchors.centerIn: parent
-                    text: Plan.hint
+                    text: Theme.tr(Plan.hint)
                     color: Theme.accentCyan
                     font.family: Theme.fontUi; font.pixelSize: 11; font.weight: Font.DemiBold; font.letterSpacing: 0.5
                 }
@@ -1052,7 +1052,7 @@ Item {
                             Text {
                                 id: lbText
                                 anchors.centerIn: parent
-                                text: lb.modelData[0]
+                                text: Theme.tr(lb.modelData[0])
                                 color: lb.active ? Theme.accentCyan : lh.hovered ? Theme.textMain : Theme.textMuted
                                 font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1
                             }
@@ -1075,7 +1075,7 @@ Item {
                                 }
                             }
                             ToolTip.visible: lh.hovered
-                            ToolTip.text: lb.modelData[1]
+                            ToolTip.text: Theme.tr(lb.modelData[1])
                             ToolTip.delay: 600
                         }
                     }
@@ -1156,7 +1156,7 @@ Item {
                             Text {
                                 x: 14
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: parent.modelData[1]
+                                text: Theme.tr(parent.modelData[1])
                                 color: parent.modelData[2] ? (ch.hovered ? "#ff9090" : "#ff7070") : (ch.hovered ? Theme.accentCyan : Theme.textMain)
                                 font.family: Theme.fontUi; font.pointSize: 8.625; font.weight: Font.DemiBold; font.letterSpacing: 0.5
                             }
@@ -1203,7 +1203,7 @@ Item {
                 id: tipText
                 x: 8; y: 4
                 textFormat: Text.StyledText
-                text: profile.tipText.replace(/<b>/g, "<font color=\"#ffffff\">").replace(/<\/b>/g, "</font>")
+                text: Theme.tr(profile.tipText.replace(/<b>/g, "<font color=\"#ffffff\">").replace(/<\/b>/g, "</font>"))
                 color: Theme.textMutedBright
                 font.family: Theme.fontData
                 font.pointSize: 7.125

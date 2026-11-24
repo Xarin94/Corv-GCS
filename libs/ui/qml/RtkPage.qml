@@ -47,7 +47,7 @@ Flickable {
             CfgValue {
                 width: parent.width
                 horizontalAlignment: Text.AlignLeft
-                text: Rtk.connStatus
+                text: Theme.tr(Rtk.connStatus)
                 color: Rtk.connStatusActive ? Theme.accentCyan : Theme.textMain
             }
         }
@@ -130,19 +130,19 @@ Flickable {
 
         SetupPanel {
             title: "RTK STREAM STATUS"
-            CfgRow { label: "STATUS"; CfgValue { text: Rtk.streamStatus; color: Rtk.streaming ? "#00ff7f" : Theme.textMain } }
-            CfgRow { label: "SOURCE"; CfgValue { text: Rtk.activeSource } }
+            CfgRow { label: "STATUS"; CfgValue { text: Theme.tr(Rtk.streamStatus); color: Rtk.streaming ? "#00ff7f" : Theme.textMain } }
+            CfgRow { label: "SOURCE"; CfgValue { text: Theme.tr(Rtk.activeSource) } }
             CfgRow { label: "MSG RATE"; CfgValue { text: Rtk.msgPerSec + " msg/s" } }
             CfgRow { label: "TOTAL MSGS"; CfgValue { text: String(Rtk.msgCount) } }
             CfgRow { label: "BYTES RX"; CfgValue { text: Rtk.bytesText } }
             CfgRow { label: "GGA SENT"; CfgValue { text: Rtk.ggaSent } }
             CfgRow { label: "RECONNECTS"; CfgValue { text: Rtk.reconnects } }
-            Text { text: "RTCM MESSAGE TYPES"; color: Theme.accentCyan; font.family: Theme.fontUi; font.pixelSize: 12; font.weight: Font.Bold; font.letterSpacing: 2; topPadding: 8 }
+            Text { text: qsTr("RTCM MESSAGE TYPES"); color: Theme.accentCyan; font.family: Theme.fontUi; font.pixelSize: 12; font.weight: Font.Bold; font.letterSpacing: 2; topPadding: 8 }
             Column {
                 width: parent.width
                 Text {
                     visible: Rtk.msgTypes.length === 0
-                    text: "No messages yet"; opacity: 0.5
+                    text: qsTr("No messages yet"); opacity: 0.5
                     color: Theme.textDim; font.family: Theme.fontData; font.pixelSize: 11
                 }
                 Repeater {
@@ -152,7 +152,7 @@ Flickable {
                         spacing: 8
                         leftPadding: 4
                         Text { width: 40; text: parent.modelData.id; color: "#00d2ff"; font.family: Theme.fontData; font.pixelSize: 11 }
-                        Text { text: parent.modelData.name; color: Theme.textDim; font.family: Theme.fontData; font.pixelSize: 11 }
+                        Text { text: Theme.tr(parent.modelData.name); color: Theme.textDim; font.family: Theme.fontData; font.pixelSize: 11 }
                     }
                 }
             }
@@ -160,7 +160,7 @@ Flickable {
 
         SetupPanel {
             title: "DRONE RTK STATUS"
-            CfgRow { label: "GPS FIX"; CfgValue { text: Rtk.droneFix; color: Rtk.droneFixColor || Theme.textMain; font.weight: Font.Bold } }
+            CfgRow { label: "GPS FIX"; CfgValue { text: Theme.tr(Rtk.droneFix); color: Rtk.droneFixColor || Theme.textMain; font.weight: Font.Bold } }
             CfgRow { label: "SATELLITES"; CfgValue { text: Rtk.droneSat } }
             CfgRow { label: "HDOP"; CfgValue { text: Rtk.droneHdop } }
             CfgRow { label: "BASELINE"; CfgValue { text: Rtk.droneBaseline } }

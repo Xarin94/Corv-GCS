@@ -54,6 +54,7 @@ Window {
             windowTop: content.y
         }
         FlightPlanPage {
+            objectName: "planPage"
             anchors.fill: parent
             visible: header.currentTab === 1
             shown: visible && !library.visible
@@ -76,7 +77,7 @@ Window {
         width: parent.width
         // DISARM in the air is normally refused: the dialog says so when the vehicle looks airborne
         onArmRequested: armDialog.show(Vehicle.armed, (Vehicle.homeSet && Vehicle.altRel > 2) || Vehicle.groundspeed > 1.5 || Vehicle.airspeed > 1.5,
-                                       Vehicle.sensorsOk)
+                                       Vehicle.preArm === 1)
     }
     // LOG REPLAY timeline: bottom-right, above the command bar, while a log is loaded
     ReplayTimeline {
@@ -106,6 +107,16 @@ Window {
         objectName: "armDialog"
         anchors.fill: parent
         z: 96
+    }
+
+    LoadingOverlay {
+        objectName: "loadingOverlay"
+        anchors.fill: parent
+        z: 99
+        load: flightView.scene.load
+        relative: Vehicle.relativeMode
+        satellite: !flightView.scene.schematic
+        onDoneChanged: flightView.loaded = done
     }
 
     TitleBar {

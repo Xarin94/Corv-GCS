@@ -14,13 +14,15 @@ Rectangle {
     border.color: Theme.borderPanel
     border.width: Theme.hairline
     property string selected: ""
+    function editBits(name) { selected = name; bitmask.openFor(name) }
+    function closeBits() { bitmask.close() }
     onVisibleChanged: if (visible) Params.pageShown()
 
     BitmaskEditor { id: bitmask; parent: Overlay.overlay }
 
     Text {
         x: 17; y: 17
-        text: "PARAMETERS"
+        text: qsTr("PARAMETERS")
         color: Theme.accentCyan
         font.family: Theme.fontUi; font.pixelSize: 12; font.weight: Font.Bold; font.letterSpacing: 2
     }
@@ -49,14 +51,14 @@ Rectangle {
                 spacing: 8
                 Item {
                     width: parent.width; height: 16
-                    Text { text: "PARAM LIST"; color: Theme.accentCyan; font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.5 }
+                    Text { text: qsTr("PARAM LIST"); color: Theme.accentCyan; font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.5 }
                     Text { anchors.right: parent.right; text: Params.catalogCount; color: Theme.textDim; font.family: Theme.fontData; font.pixelSize: 10 }
                 }
                 CfgInput {
                     id: catSearch
                     width: parent.width
                     numeric: false
-                    placeholderText: "Type a parameter name..."
+                    placeholderText: qsTr("Type a parameter name...")
                     font.family: Theme.fontUi
                     onTextEdited: catDebounce.restart()
                     // Enter reads the typed name directly
@@ -68,6 +70,7 @@ Rectangle {
                     spacing: 6
                     CfgSelect {
                         width: (catHead.width - 6) * 0.6
+                        tip: "Filter by parameter group"
                         options: [{ value: "", label: "All groups" }].concat(Params.groups.map(g => ({ value: g, label: g })))
                         value: Params.catalogGroup
                         onPicked: (v) => Params.catalogGroup = v
@@ -77,7 +80,7 @@ Rectangle {
                         options: [{ value: "2000", label: "2 s" }, { value: "4000", label: "4 s" }, { value: "8000", label: "8 s" }, { value: "15000", label: "15 s" }]
                         value: String(Params.fetchTimeout)
                         onPicked: (v) => Params.fetchTimeout = parseInt(v)
-                        ToolTip.visible: hovered; ToolTip.text: "Per-request timeout — raise it on high-latency links"
+                        ToolTip.visible: hovered; ToolTip.text: qsTr("Per-request timeout — raise it on high-latency links")
                     }
                 }
             }
@@ -157,7 +160,7 @@ Rectangle {
                     visible: catList.count === 0
                     anchors.centerIn: parent
                     horizontalAlignment: Text.AlignHCenter
-                    text: "No matching parameter.\nType a full name to read it anyway."
+                    text: qsTr("No matching parameter.\nType a full name to read it anyway.")
                     color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 11
                 }
             }
@@ -175,7 +178,7 @@ Rectangle {
                 }
                 Text {
                     width: parent.width
-                    text: Params.queueText
+                    text: Theme.tr(Params.queueText)
                     visible: text.length > 0
                     elide: Text.ElideRight
                     color: Params.queueBusy ? Theme.accentCyan : Params.queueError ? "#ff8844" : Theme.textDim
@@ -208,7 +211,7 @@ Rectangle {
                         color: Qt.rgba(1, 1, 1, 0.08)
                         Rectangle { width: parent.width * Params.readFraction; height: parent.height; radius: 3; color: Theme.accentCyan }
                     }
-                    Text { anchors.verticalCenter: parent.verticalCenter; text: Params.readText; color: Theme.textMuted; font.family: Theme.fontData; font.pixelSize: 10 }
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: Theme.tr(Params.readText); color: Theme.textMuted; font.family: Theme.fontData; font.pixelSize: 10 }
                 }
                 CfgInput {
                     id: tableSearch
@@ -216,7 +219,7 @@ Rectangle {
                     width: Math.max(180, main.width - 420 - (readRow.visible ? readRow.width + 10 : 0))
                     height: 30
                     font.family: Theme.fontUi
-                    placeholderText: "Filter loaded parameters..."
+                    placeholderText: qsTr("Filter loaded parameters...")
                     onTextEdited: tableDebounce.restart()
                     Timer { id: tableDebounce; interval: 200; onTriggered: Params.tableFilter = tableSearch.text }
                 }
@@ -255,7 +258,7 @@ Rectangle {
                                 width: modelData[1]; height: 30
                                 leftPadding: 12
                                 verticalAlignment: Text.AlignVCenter
-                                text: modelData[0]
+                                text: Theme.tr(modelData[0])
                                 elide: Text.ElideRight
                                 color: Theme.accentCyan
                                 font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.5
@@ -401,7 +404,7 @@ Rectangle {
                         visible: table.count === 0
                         anchors.centerIn: parent
                         horizontalAlignment: Text.AlignHCenter
-                        text: Params.loadedCount === 0 ? "No parameters loaded.\nREAD ALL, or pick names in the PARAM LIST." : "No parameter matches the filter."
+                        text: Theme.tr(Params.loadedCount === 0 ? "No parameters loaded.\nREAD ALL, or pick names in the PARAM LIST." : "No parameter matches the filter.")
                         color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 12
                     }
                 }
@@ -435,7 +438,7 @@ Rectangle {
                 Text {
                     visible: !detail.info
                     anchors.centerIn: parent
-                    text: "Click a parameter, here or in the PARAM LIST, to see what it does, its range and what each value or bit means."
+                    text: qsTr("Click a parameter, here or in the PARAM LIST, to see what it does, its range and what each value or bit means.")
                     color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 12
                 }
 
@@ -451,15 +454,15 @@ Rectangle {
                         Text { anchors.verticalCenter: parent.verticalCenter; text: detail.info ? detail.info.name : ""; color: Theme.accentCyan; font.family: Theme.fontData; font.pixelSize: 12; font.weight: Font.Bold }
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: detail.info && detail.info.title ? detail.info.title : (detail.info && !detail.info.known ? "Not documented for this firmware" : "")
+                            text: Theme.tr(detail.info && detail.info.title ? detail.info.title : (detail.info && !detail.info.known ? "Not documented for this firmware" : ""))
                             color: detail.info && detail.info.known ? Theme.textMain : Theme.textDim
                             font.family: Theme.fontUi; font.pixelSize: 13; font.weight: Font.DemiBold
                         }
-                        Badge { visible: !!detail.info && !!detail.info.reboot; text: "REBOOT REQUIRED" }
-                        Badge { visible: !!detail.info && !!detail.info.readOnly; text: "READ ONLY"; tint: Theme.statusRed }
-                        Badge { visible: !!detail.info && detail.info.user === "Advanced"; text: "ADVANCED"; tint: Theme.textNav }
-                        Badge { visible: !!detail.info && !!detail.info.outOfRange; text: "OUT OF RANGE"; tint: Theme.statusRed }
-                        Badge { visible: !!detail.info && !!detail.info.lastRelease; text: detail.info ? "UP TO FIRMWARE " + detail.info.lastRelease : ""; tint: Theme.textNav }
+                        Badge { visible: !!detail.info && !!detail.info.reboot; text: qsTr("REBOOT REQUIRED") }
+                        Badge { visible: !!detail.info && !!detail.info.readOnly; text: qsTr("READ ONLY"); tint: Theme.statusRed }
+                        Badge { visible: !!detail.info && detail.info.user === "Advanced"; text: qsTr("ADVANCED"); tint: Theme.textNav }
+                        Badge { visible: !!detail.info && !!detail.info.outOfRange; text: qsTr("OUT OF RANGE"); tint: Theme.statusRed }
+                        Badge { visible: !!detail.info && !!detail.info.lastRelease; text: detail.info ? qsTr("UP TO FIRMWARE ") + detail.info.lastRelease : ""; tint: Theme.textNav }
                     }
                     Text {
                         width: parent.width
@@ -485,10 +488,10 @@ Rectangle {
                                 required property var modelData
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 6
-                                Text { anchors.verticalCenter: parent.verticalCenter; text: parent.modelData[0]; color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.2 }
+                                Text { anchors.verticalCenter: parent.verticalCenter; text: Theme.tr(parent.modelData[0]); color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.2 }
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: parent.modelData[1]
+                                    text: Theme.tr(parent.modelData[1])
                                     width: Math.min(implicitWidth, 420)
                                     elide: Text.ElideRight
                                     color: Theme.accentCyan; font.family: Theme.fontData; font.pixelSize: 11
@@ -540,7 +543,7 @@ Rectangle {
                                     x: 7
                                     anchors.verticalCenter: parent.verticalCenter
                                     spacing: 6
-                                    Text { text: chip.bit ? "bit " + chip.modelData.bit : chip.modelData.value; color: Theme.accentCyan; font.family: Theme.fontData; font.pixelSize: 10; font.weight: Font.Bold }
+                                    Text { text: chip.bit ? qsTr("bit ") + chip.modelData.bit : chip.modelData.value; color: Theme.accentCyan; font.family: Theme.fontData; font.pixelSize: 10; font.weight: Font.Bold }
                                     Text { text: chip.modelData.label; color: chip.on ? Theme.textMain : Theme.textMutedBright; font.family: Theme.fontUi; font.pixelSize: 11 }
                                 }
                                 HoverHandler { id: chipHover; cursorShape: chip.canSet ? Qt.PointingHandCursor : Qt.ArrowCursor }
@@ -549,7 +552,7 @@ Rectangle {
                                     onTapped: chip.bit ? Params.toggleBit(page.selected, chip.modelData.bit) : Params.setEdit(page.selected, chip.modelData.value)
                                 }
                                 ToolTip.visible: chip.bit && chipHover.hovered
-                                ToolTip.text: chip.bit ? "adds " + chip.modelData.value : ""
+                                ToolTip.text: chip.bit ? qsTr("adds ") + chip.modelData.value : ""
                                 ToolTip.delay: 400
                             }
                         }
@@ -563,7 +566,7 @@ Rectangle {
                     spacing: 8
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Params.metaSource
+                        text: Theme.tr(Params.metaSource)
                         color: Theme.textDim; font.family: Theme.fontData; font.pixelSize: 9
                     }
                     GcsButton {

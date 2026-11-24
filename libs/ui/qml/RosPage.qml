@@ -20,7 +20,7 @@ Flickable {
         default property alias content: slot.data
         width: parent ? parent.width : 320
         spacing: 5
-        CfgLabel { width: parent.width; text: parent.label; wrapMode: Text.Wrap; visible: text.length > 0 }
+        CfgLabel { width: parent.width; text: Theme.tr(parent.label); wrapMode: Text.Wrap; visible: text.length > 0 }
         Row { id: slot; spacing: 6 }
     }
     component Num: CfgInput {
@@ -30,7 +30,7 @@ Flickable {
         width: 96
         text: String(page.c[key])
         onCommitted: (t) => Ros.setField(key, t)
-        ToolTip.text: tip
+        ToolTip.text: Theme.tr(tip)
         ToolTip.visible: tip.length > 0 && hovered
         ToolTip.delay: 600
     }
@@ -57,6 +57,7 @@ Flickable {
                 CfgInput { width: 210; text: page.c.url; placeholderText: "ws://companion:9090"; onCommitted: (t) => Ros.setField("url", t) }
                 CfgSelect {
                     width: 90
+                    tip: "CBOR sends binary arrays as they are; JSON inflates them by a third (base64)"
                     options: [{ value: "cbor", label: "CBOR" }, { value: "json", label: "JSON" }]
                     value: page.c.transport
                     onPicked: (v) => Ros.setField("transport", v)
@@ -69,7 +70,7 @@ Flickable {
                     options: Ros.topicOptions
                     value: page.c.topic || ""
                     onPicked: (v) => Ros.selectTopic(v)
-                    ToolTip.text: Ros.topicTip
+                    ToolTip.text: Theme.tr(Ros.topicTip)
                     ToolTip.visible: Ros.topicTip.length > 0 && hovered
                     ToolTip.delay: 600
                 }
@@ -79,6 +80,7 @@ Flickable {
                 label: "SENSOR"
                 CfgSelect {
                     width: 306
+                    tip: "Choosing one fills in its usual mount, range, sampling and cell size"
                     options: [{ value: "aerial", label: "Aerial LiDAR · terrain under the aircraft" },
                               { value: "seabed", label: "Sea bed · echo sounder or sonar on a boat / ROV" },
                               { value: "sector", label: "Sector sonar · mechanical scanning head, one beam per ping" }]
@@ -90,6 +92,7 @@ Flickable {
                 label: "SURFACES"
                 CfgSelect {
                     width: 306
+                    tip: "A height per cell holds one surface: right for terrain and sea bed. In a cave the returns are fused into a 3D volume and meshed where it meets the rock"
                     options: [{ value: "floor", label: "Floor only (terrain, sea bed)" },
                               { value: "cave", label: "3D: caves, shafts, overhangs (signed-distance volume)" }]
                     value: page.c.layers
@@ -117,7 +120,7 @@ Flickable {
                 label: "STATUS"
                 Text {
                     width: 320
-                    text: Ros.statusText
+                    text: Theme.tr(Ros.statusText)
                     textFormat: Text.StyledText
                     wrapMode: Text.Wrap
                     color: Theme.textMutedBright
@@ -128,7 +131,7 @@ Flickable {
             CfgNote {
                 opacity: 0.6
                 font.pixelSize: 11
-                text: "sensor_msgs PointCloud2, LaserScan and Range, ROS 1 or ROS 2, through rosbridge_server with rosapi (ros2 launch rosbridge_server rosbridge_websocket_launch.xml). Points are not kept: each message moves the mean height of the cells it falls in."
+                text: qsTr("sensor_msgs PointCloud2, LaserScan and Range, ROS 1 or ROS 2, through rosbridge_server with rosapi (ros2 launch rosbridge_server rosbridge_websocket_launch.xml). Points are not kept: each message moves the mean height of the cells it falls in.")
             }
         }
 
@@ -156,8 +159,8 @@ Flickable {
             }
             Field {
                 label: "LEVER ARM IMU → SENSOR (X FWD / Y RIGHT / Z DOWN, m)"
-                Num { id: lX; key: "leverX" }
-                Num { id: lY; key: "leverY" }
+                Num { id: lX; key: "leverX"; tip: "X forward" }
+                Num { id: lY; key: "leverY"; tip: "Y right" }
                 Num { id: lZ; key: "leverZ"; tip: "Z down (a transducer's draft)" }
             }
             Field {
@@ -168,6 +171,7 @@ Flickable {
                     color: Qt.rgba(0, 0, 0, 0.28)
                     border.color: Qt.rgba(0, 210 / 255, 1, 0.12)
                     border.width: Theme.hairline
+                    HoverTip { text: "The vehicle (nose forward, fin on top), the sensor at its lever arm with its axes (X red, Y green, Z blue) and the zone it collects from" }
                     MountPreview {
                         anchors.fill: parent
                         ink: Theme.textMutedBright
@@ -184,6 +188,7 @@ Flickable {
                 Num { key: "maxRange"; width: 70; tip: "Maximum range" }
                 CfgSelect {
                     width: 154
+                    tip: "Drops returns far off their neighbours along the scan (aeration under the hull, fish, particles); only on ordered scans (a sonar's beams, a LaserScan, a lidar's rings), never on clouds without order"
                     options: [{ value: "on", label: "Spikes dropped" }, { value: "off", label: "Every return" }]
                     value: page.c.despike
                     onPicked: (v) => Ros.setField("despike", v)
@@ -193,6 +198,7 @@ Flickable {
                 label: "TIME OF THE POINTS / LAG (ms)"
                 CfgSelect {
                     width: 210
+                    tip: "The pose is projected to this time with the gyro rates and the velocity"
                     options: [{ value: "arrival", label: "Arrival − lag" }, { value: "stamp", label: "header.stamp + lag (clocks synced)" }]
                     value: page.c.timeBase
                     onPicked: (v) => Ros.setField("timeBase", v)
@@ -203,6 +209,7 @@ Flickable {
                 label: "VERTICAL REFERENCE"
                 CfgSelect {
                     width: 306
+                    tip: "The height the sensor is placed at: the vehicle's altitude, or — for a boat — the water surface at home (the altitude it was armed at), so the EKF's barometric drift does not lift or sink the bed"
                     options: [{ value: "vehicle", label: "Vehicle altitude (EKF)" }, { value: "water", label: "Water surface at home · a boat" }]
                     value: page.c.vertical
                     onPicked: (v) => Ros.setField("vertical", v)
@@ -219,6 +226,7 @@ Flickable {
                 label: "FILL HOLES UP TO"
                 CfgSelect {
                     width: 306
+                    tip: "Empty cells between data are interpolated from the cells around them up to this size (at most 16 cells), never past the edge of the data or across a jump; the coverage of a planned area is counted the same way"
                     options: [{ value: "0", label: "4 cells (1.2 m at 30 cm)" }, { value: "2", label: "2 m" }, { value: "4", label: "4 m" },
                               { value: "8", label: "8 m · sensors that sample in lines (sector sonar, echo sounder)" }]
                     value: String(page.c.fillM)
@@ -241,7 +249,7 @@ Flickable {
             CfgNote {
                 opacity: 0.6
                 font.pixelSize: 11
-                text: "Mount angles are ZYX Euler of the sensor frame (REP-103: x forward, y left, z up; Range and LaserScan measure along x) relative to the vehicle body (FRD). The surface is kept in tiles of 30×30 cells, made where data arrive; the mesh is as fine as MIN CELL where cells have MIN SAMPLES, coarser where they do not. The pose is projected to the time of the points with the gyro rates and the velocity."
+                text: qsTr("Mount angles are ZYX Euler of the sensor frame (REP-103: x forward, y left, z up; Range and LaserScan measure along x) relative to the vehicle body (FRD). The surface is kept in tiles of 30×30 cells, made where data arrive; the mesh is as fine as MIN CELL where cells have MIN SAMPLES, coarser where they do not. The pose is projected to the time of the points with the gyro rates and the velocity.")
             }
         }
     }

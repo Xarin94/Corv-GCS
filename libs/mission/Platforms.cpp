@@ -22,6 +22,7 @@ QHash<QString, QString> mspSetupLimits(const QString &configurator)
         {u"radio-cal"_s, u"RC calibration lives in the %1"_s.arg(configurator)},
         {u"joystick"_s, u"The gamepad override sends MAVLink RC_CHANNELS_OVERRIDE"_s},
         {u"flight-modes"_s, u"Mode switches are set in the %1"_s.arg(configurator)},
+        {u"log-download"_s, u"DataFlash logs are listed over MAVLink LOG_REQUEST_LIST — the %1 reads the board's own"_s.arg(configurator)},
         {u"failsafe"_s, u"Failsafe is configured in the %1"_s.arg(configurator)},
         {u"servo-relay"_s, u"Outputs are configured in the %1"_s.arg(configurator)},
         {u"pid-tuning"_s, u"PID tuning lives in the %1"_s.arg(configurator)},

@@ -55,6 +55,9 @@ public:
     bool missing(int latBase, int lonBase) const;
     /// True while the tile is being read from disk.
     bool loading(int latBase, int lonBase) const;
+    /// Tiles being read from disk now, and in memory (the loading screen).
+    int loadingCount() const;
+    int loadedCount() const;
     /// A tile that was missing may exist now (just downloaded): look again next time.
     void forget(int latBase, int lonBase);
     /// SYS CONFIG → SELECT HGT FOLDER: one more folder to search.

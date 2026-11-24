@@ -48,7 +48,7 @@ Flickable {
             CfgRow {
                 label: "STATUS"
                 Text {
-                    text: Joystick.status
+                    text: Theme.tr(Joystick.status)
                     color: Joystick.statusKind === "active" ? "#3dff6e" : Joystick.statusKind === "warning" ? "#ffaa00" : Theme.textMain
                     font.family: Theme.fontData
                     font.pixelSize: 11
@@ -59,7 +59,7 @@ Flickable {
             CfgNote {
                 visible: !Joystick.available
                 color: "#ff3333"
-                text: "This build has no SDL3: gamepads and joysticks are not available."
+                text: qsTr("This build has no SDL3: gamepads and joysticks are not available.")
             }
         }
 
@@ -67,7 +67,7 @@ Flickable {
             title: "RC INPUT MAPPING (" + Joystick.inputs.length + " AXES)"
             width: Math.min(700, flow.width)
             CfgNote {
-                text: "Choose a physical axis or an analog button/trigger for each input. Button: released = 1000, pressed = 2000 PWM. INV reverses the range. Unavailable inputs release their channel."
+                text: qsTr("Choose a physical axis or an analog button/trigger for each input. Button: released = 1000, pressed = 2000 PWM. INV reverses the range. Unavailable inputs release their channel.")
             }
             Repeater {
                 model: Joystick.inputs
@@ -172,7 +172,7 @@ Flickable {
                 onToggled: (c) => Joystick.setServoButtons(c)
             }
             CfgNote {
-                text: "Each press sends the chosen position once; release leaves it there. Works independently of RC override while connected. 0–100% = 1000–2000 µs. Use an output configured to accept servo commands."
+                text: qsTr("Each press sends the chosen position once; release leaves it there. Works independently of RC override while connected. 0–100% = 1000–2000 µs. Use an output configured to accept servo commands.")
             }
             Repeater {
                 model: Joystick.servos
@@ -182,7 +182,7 @@ Flickable {
                     required property int index
                     spacing: 6
                     height: 30
-                    Text { width: 46; anchors.verticalCenter: parent.verticalCenter; text: "CMD " + (srow.index + 1); color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 11 }
+                    Text { width: 46; anchors.verticalCenter: parent.verticalCenter; text: qsTr("CMD ") + (srow.index + 1); color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 11 }
                     CfgSelect {
                         width: 110
                         options: Joystick.buttonOptions
@@ -206,14 +206,14 @@ Flickable {
             }
             CfgRow {
                 label: "STATUS"
-                Text { text: Joystick.servoStatus; color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: 11; width: 240; wrapMode: Text.Wrap }
+                Text { text: Theme.tr(Joystick.servoStatus); color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: 11; width: 240; wrapMode: Text.Wrap }
             }
         }
 
         SetupPanel {
             title: "FPV LOOK BUTTONS"
             CfgNote {
-                text: "Hold to look around, release to return to center, like the arrow keys. Active in the Flight Data first-person view, also with RC override disabled."
+                text: qsTr("Hold to look around, release to return to center, like the arrow keys. Active in the Flight Data first-person view, also with RC override disabled.")
             }
             Repeater {
                 model: ["up", "down", "left", "right"]
@@ -230,7 +230,7 @@ Flickable {
             }
             CfgRow {
                 label: "PRESSED BUTTONS"
-                Text { text: Joystick.pressed + "  (numbers match the selectors)"; color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: 11 }
+                Text { text: Joystick.pressed + qsTr("  (numbers match the selectors)"); color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: 11 }
             }
         }
     }

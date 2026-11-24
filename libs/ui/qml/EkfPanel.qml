@@ -34,7 +34,7 @@ LeftBar {
 
     Text {
         Layout.fillWidth: true
-        text: Ekf.sourceText
+        text: Theme.tr(Ekf.sourceText)
         elide: Text.ElideRight
         color: "#c3c2b7"
         font.family: Theme.fontUi; font.pixelSize: Theme.fsXs; font.weight: Font.DemiBold; font.letterSpacing: 0.12 * Theme.fsXs
@@ -66,7 +66,7 @@ LeftBar {
                 Layout.topMargin: 3
                 spacing: 8
                 Text {
-                    text: card.info.title
+                    text: Theme.tr(card.info.title)
                     color: "#f0efec"
                     font.family: Theme.fontUi; font.pixelSize: Theme.fsXs; font.weight: Font.Bold; font.letterSpacing: 0.12 * Theme.fsXs
                 }
@@ -115,13 +115,13 @@ LeftBar {
                         spacing: 4
                         Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 10; height: 2; radius: 1; color: parent.modelData.color }
                         Text {
-                            text: parent.modelData.name
+                            text: Theme.tr(parent.modelData.name)
                             color: "#c3c2b7"
                             font.family: Theme.fontUi; font.pixelSize: Theme.fsXs; font.weight: Font.DemiBold; font.letterSpacing: 0.06 * Theme.fsXs
                         }
                         Text {
                             width: Math.max(implicitWidth, 3.5 * Theme.fsXs)
-                            text: parent.modelData.value
+                            text: Theme.tr(parent.modelData.value)
                             color: "#f0efec"
                             font.family: Theme.fontData; font.pixelSize: Theme.fsXs
                         }

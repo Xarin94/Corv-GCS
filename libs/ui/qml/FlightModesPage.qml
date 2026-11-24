@@ -43,7 +43,7 @@ Flickable {
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: page.bands[parent.index]
+                        text: Theme.tr(page.bands[parent.index])
                         color: Theme.textDim
                         font.family: Theme.fontData
                         font.pixelSize: 10
@@ -68,7 +68,7 @@ Flickable {
                     }
                 }
             }
-            CfgNote { text: SetupCfg.status["FLIGHT MODES"] ? SetupCfg.status["FLIGHT MODES"].text : "" }
+            CfgNote { text: Theme.tr(SetupCfg.status["FLIGHT MODES"] ? SetupCfg.status["FLIGHT MODES"].text : "") }
         }
     }
 }

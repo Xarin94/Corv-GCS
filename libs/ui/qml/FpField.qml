@@ -23,7 +23,7 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         width: Math.min(implicitWidth, f.width - ctl.width - 8)
         elide: Text.ElideRight
-        text: String(f.field.label || "").toUpperCase()
+        text: Theme.tr(String(f.field.label || "")).toUpperCase()
         color: Theme.textDim
         font.family: Theme.fontUi
         font.pixelSize: 10
@@ -94,7 +94,7 @@ Item {
             anchors.leftMargin: 4
             anchors.verticalCenter: parent.verticalCenter
             width: f.field.unit ? Math.max(22, implicitWidth) : 0
-            text: f.field.unit || ""
+            text: Theme.tr(f.field.unit || "")
             color: Theme.textDim
             font.family: Theme.fontData
             font.pixelSize: 9
@@ -103,6 +103,6 @@ Item {
 
     HoverHandler { id: hov }
     ToolTip.visible: hov.hovered && !!f.field.title
-    ToolTip.text: f.field.title || ""
+    ToolTip.text: Theme.tr(f.field.title || "")
     ToolTip.delay: 700
 }

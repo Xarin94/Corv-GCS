@@ -12,6 +12,10 @@ QtObject {
     readonly property real vw: winW / 100
     readonly property real vh: winH / 100
     function clamp(lo, v, hi) { return Math.max(lo, Math.min(hi, v)) }
+    // A text composed elsewhere (view models, component properties) in the language of
+    // the interface: the dictionary entry of exactly that text, or the text (Language.h).
+    // qsTr() runs inside the caller's binding, which is evaluated again on a change
+    function tr(s) { return typeof s === "string" && s.length > 0 ? qsTr(s) : s }
 
     // --fs-* type scale
     readonly property real fs2xs: clamp(8, Math.min(0.55 * vw, 1.05 * vh), 12)

@@ -83,6 +83,18 @@ QString vehicleTypeName(int t)
     return u"Copter"_s;
 }
 
+QString firmwareVersion(std::uint32_t v)
+{
+    // FIRMWARE_VERSION_TYPE starts at 0, 64, 128, 192; the rest up to the next one counts (beta2 = 129)
+    const int type = v & 0xff;
+    QString out = u"%1.%2.%3"_s.arg((v >> 24) & 0xff).arg((v >> 16) & 0xff).arg((v >> 8) & 0xff);
+    if (type == 255) return out;
+    const char *names[] = {"dev", "alpha", "beta", "rc"};
+    out += '-'_L1 + QLatin1String(names[type / 64]);
+    if (type / 64 > 0 && type % 64 > 0) out += QString::number(type % 64);
+    return out;
+}
+
 QString gpsFixName(int f)
 {
     static const char *names[] = {"No GPS", "No Fix", "2D Fix", "3D Fix", "DGPS", "RTK Float", "RTK Fixed"};

@@ -10,11 +10,16 @@
 #include "gpu/PointCloudRenderer.h"
 #include "gpu/RosSurfaceRenderer.h"
 #include "gpu/TerrainRenderer.h"
+#include "gpu/VideoRenderer.h"
 #include "scene/CellOverlay.h"
+#include "scene/Mission3D.h"
 #include "scene/PointCloudData.h"
+#include "scene/RenderQuality.h"
 #include "scene/RosSurfaceData.h"
 #include "scene/ModelData.h"
+#include "scene/TrafficTrails.h"
 #include "terrain/Hgt.h"
+#include "terrain/HgtDownloader.h"
 #include "vehicle/VehicleHub.h"
 
 #include <QDateTime>
@@ -88,19 +93,33 @@ constexpr double kCellPoleM = 10;
 constexpr std::size_t kMaxMissionLabels = 60;
 constexpr float kMissionLabelPx = 17, kTrafficLabelPx = 22, kHomeLabelPx = 26;
 
+// Target (Scene3D.setTargetMarker3D)
+constexpr double kTargetPoleM = 100, kTargetSphereM = 10, kTargetRingM = 15;
+
+// Traffic (Traffic3D.js): the nearest aircraft, circles sized by their distance
+constexpr std::size_t kMaxTraffic = 8;
+constexpr double kTrafficMaxM = 60000;
+constexpr double kTrafficNearM = 1000, kTrafficFarM = 25000;
+constexpr double kTrafficNearPx = 19, kTrafficFarPx = 10;   // radius
+constexpr qint64 kTrailRefreshMs = 100;                     // the circle moves every frame, the trail at 10 Hz
+
 // Water (main.js / Water3D.js)
 constexpr double kWaterPlaneRadius = 500, kWaterPlaneCell = 25;
+// Relative navigation: the plane at zero is the view's only reference
+constexpr double kZeroPlaneRadius = 3000, kZeroPlaneCell = 50;
+constexpr float kZeroPlaneOpacity = 0.45f;
+const QColor kZeroPlaneColour(0x8f, 0xb4, 0xc4);
 
 struct Palette {
-    QColor trail, route, activeLeg, home, ownship, traffic, circle, area, corridor, perimeter;
+    QColor trail, route, activeLeg, home, ownship, traffic, circle, area, corridor, perimeter, poi;
     QColor label;        // every label in this colour (invalid: the colour of its symbol)
     QColor labelHalo;
     float labelHaloPx;
 };
 const Palette kDark{QColor(0xff3b30), QColor(0x44ff44), QColor(0xd8ffd0), QColor(0xff8800), QColor(0xffffff), QColor(0xff2a2a),
-                    QColor(0x4488ff), QColor(0xff6600), QColor(0xcc44ff), QColor(0xffaa00), QColor(), QColor(0, 0, 0, 217), 3.5f};
+                    QColor(0x4488ff), QColor(0xff6600), QColor(0xcc44ff), QColor(0xffaa00), QColor(0xff66aa), QColor(), QColor(0, 0, 0, 217), 3.5f};
 const Palette kLight{QColor(0xe3261c), QColor(0x0a8f2a), QColor(0x05561b), QColor(0xd96a00), QColor(0x10324a), QColor(0xe3261c),
-                     QColor(0x1c5fd8), QColor(0xd65400), QColor(0x9a2ccc), QColor(0xb87800), QColor(0x0a37a6), QColor(0, 0, 0, 153), 1.6f};
+                     QColor(0x1c5fd8), QColor(0xd65400), QColor(0x9a2ccc), QColor(0xb87800), QColor(0xd02c78), QColor(0x0a37a6), QColor(0, 0, 0, 153), 1.6f};
 
 QColor segmentColour(const Palette &pal, const QString &segType)
 {
@@ -108,12 +127,14 @@ QColor segmentColour(const Palette &pal, const QString &segType)
     if (segType == "corridor"_L1) return pal.corridor;
     if (segType == "perimeter"_L1) return pal.perimeter;
     if (segType == "circle"_L1) return pal.circle;
+    if (segType == "poi"_L1) return pal.poi;
     return pal.route;
 }
 
 QMutex g_missionLock;
-std::vector<MissionPoint3D> g_mission;
+Mission3DInput g_mission;
 int g_missionEpoch = 0;
+std::optional<LatLon> g_target;
 
 GeoZonesPtr g_zones;
 int g_zonesVersion = 0;
@@ -267,21 +288,52 @@ struct LabelSpec {
     float offset = 18;     // px from the point to the label
 };
 
-std::vector<QPointF> shapePx(const QString &kind, double r)
+std::vector<QPointF> shapePx(mission3d::Shape shape, double r)
 {
-    if (kind == "takeoff"_L1) return {{0, r}, {-0.87 * r, -0.5 * r}, {0.87 * r, -0.5 * r}};
-    if (kind == "land"_L1) return {{0, r}, {r, 0}, {0, -r}, {-r, 0}};
-    if (kind == "loiter"_L1) return circlePx(r, 20);
+    switch (shape) {
+    case mission3d::Shape::Triangle: return {{0, r}, {-0.87 * r, -0.5 * r}, {0.87 * r, -0.5 * r}};
+    case mission3d::Shape::Diamond: return {{0, r}, {r, 0}, {0, -r}, {-r, 0}};
+    case mission3d::Shape::Circle:
+    case mission3d::Shape::Target: return circlePx(r, 20);
+    default: break;
+    }
     const double h = r * 0.8;
     return {{-h, -h}, {h, -h}, {h, h}, {-h, h}};
 }
+
+/// An open stroke of pixel offsets around a world point.
+void stroke(std::vector<LineSeg> &out, const QVector3D &c, QPointF a, QPointF b, const QColor &col, float width, float ghostOpacity = 0.45f)
+{
+    LineSeg s = LineSeg::make(c, c, col, width, ghostOpacity, width * 0.7f);
+    s.off[0] = float(a.x()); s.off[1] = float(a.y()); s.off[2] = float(b.x()); s.off[3] = float(b.y());
+    out.push_back(s);
+}
+
+/// The symbol of a mission mark; the one being flown larger and bolder.
+void markSymbol(std::vector<LineSeg> &out, const mission3d::Mark &m, const QColor &col, bool active)
+{
+    if (m.shape == mission3d::Shape::None) return;
+    const double r = active ? 9.5 : 7;
+    const float w = active ? 4.5f : 2.5f;
+    symbol(out, m.at, shapePx(m.shape, r), col, w);
+    if (m.shape == mission3d::Shape::Target) {
+        stroke(out, m.at, {-1.5 * r, 0}, {1.5 * r, 0}, col, w);
+        stroke(out, m.at, {0, -1.5 * r}, {0, 1.5 * r}, col, w);
+    }
+}
 } // namespace
 
-void SceneItem::setMission(std::vector<MissionPoint3D> points)
+void SceneItem::setMission(Mission3DInput mission)
 {
     QMutexLocker l(&g_missionLock);
-    g_mission = std::move(points);
+    g_mission = std::move(mission);
     ++g_missionEpoch;
+}
+
+void SceneItem::setTarget(std::optional<LatLon> target)
+{
+    QMutexLocker l(&g_missionLock);
+    g_target = target;
 }
 
 namespace {
@@ -352,6 +404,7 @@ public:
             m_outline = std::make_unique<OutlineRenderer>(rhi());
             m_points = std::make_unique<PointCloudRenderer>(rhi());
             m_ros = std::make_unique<RosSurfaceRenderer>(rhi());
+            m_video = std::make_unique<VideoRenderer>(rhi());
             m_api = QString::fromLatin1(rhi()->backendName());
             LOG_I("gpu") << "3D view on" << m_api << rhi()->driverInfo().deviceName;
         }
@@ -367,20 +420,31 @@ public:
         const auto s = SceneItem::s_hub->snapshot();
         const std::int64_t now = wallMs();
         // The pose of the vblank the frame is shown at, the instant the HUD took it for (paced)
-        const Pose pose = it->m_smoother.update(PoseSmoother::fromState(*s), SceneItem::frameTimeMs(), 0.075);
+        const Pose pose = it->m_smoother.update(PoseSmoother::fromState(*s), SceneItem::frameTimeMs(), it->m_tau);
         const LatLon origin = s->sceneOrigin;
         const int epoch = s->sceneOriginEpoch;
-        const bool light = it->m_lightTheme && it->m_schematic;
+        // AR draws the schematic view in its dark colours, whatever is chosen (setARMode)
+        m_videoMode = it->m_videoMode;
+        // Relative navigation (SYS CONFIG -> NAVIGATION): positions are metres from a synthetic
+        // origin, so no terrain, imagery, traffic or zones, but a plane at zero (applyRelativeFrame)
+        const bool relative = s->relativeMode;
+        m_relative = relative;
+        const bool ar = m_videoMode == 2, schematic = it->m_schematic || ar || relative;
+        const bool light = it->m_lightTheme && schematic && !ar;
         const Palette &pal = light ? kLight : kDark;
-        const int clamp = it->m_clamp;
+        const int clamp = relative ? 0 : it->m_clamp;
         HgtStore &hgt = HgtStore::instance();
+        auto ground = [&hgt, relative](double lat, double lon) { return relative ? std::optional<double>() : hgt.elevation(lat, lon); };
+        auto waterAt = [&hgt, relative](double lat, double lon) { return relative ? std::optional<HgtStore::Water>() : hgt.waterAt(lat, lon); };
 
-        m_dpr = it->window() ? float(it->window()->effectiveDevicePixelRatio()) : 1.f;
+        // Pixels of the target per point: the display's, or fewer (RESOLUTION)
+        m_dpr = float(it->m_pixelRatio);
+        m_frame.brightness = float(it->m_brightness);
         m_frame.fovDeg = float(it->m_fov);
-        m_frame.schematic = it->m_schematic;
+        m_frame.schematic = schematic;
         m_frame.sunlight = it->m_sunlight;
-        m_frame.lightTheme = it->m_lightTheme;
-        m_frame.fogDensity = float(1.75 / it->m_terrain.radius());
+        m_frame.lightTheme = it->m_lightTheme && !ar;
+        m_frame.fogDensity = ar ? 0.f : float(1.75 / it->m_terrain.radius());
         m_changes = &it->m_terrain.changes();
         if (m_terrain && !m_formatReported) {
             it->m_terrain.imagery().setCompressed(m_terrain->bc1Supported());
@@ -390,11 +454,11 @@ public:
         // ── The vehicle: where it is drawn ──
         const GroundMeters gm = latLonToMeters(pose.lat, pose.lon, origin);
         double alt = pose.alt + s->offsetAlt;
-        const auto terr = hgt.elevation(pose.lat, pose.lon);
-        auto water = hgt.waterAt(pose.lat, pose.lon);
+        const auto terr = ground(pose.lat, pose.lon);
+        auto water = waterAt(pose.lat, pose.lon);
         bool synthetic = false;
         // A sub on water the elevation data does not show: the surface it started on
-        if (!water && s->vehicleType == 12 && s->subSurfaceAlt) {
+        if (!relative && !water && s->vehicleType == 12 && s->subSurfaceAlt) {
             water = HgtStore::Water{*s->subSurfaceAlt, std::nullopt};
             synthetic = true;
         }
@@ -402,7 +466,7 @@ public:
         const std::optional<double> floor = water ? water->bed : terr;
         if (clamp >= 1 && floor && alt < *floor + 0.5) alt = *floor + 0.5;
         // Above land the camera and the model never go below 1 m MSL
-        if (!water) alt = std::max(alt, 1.0);
+        if (!water && !relative) alt = std::max(alt, 1.0);
         const QVector3D P(float(gm.x), float(alt), float(gm.z));
         const double agl = terr ? alt - *terr : 1e9;
         m_frame.triGrid = float(agl <= kTriGridFullAgl ? 1.0 : agl >= kTriGridMaxAgl ? 0.0 : (kTriGridMaxAgl - agl) / (kTriGridMaxAgl - kTriGridFullAgl));
@@ -427,8 +491,8 @@ public:
                                 float(o.distance * std::cos(o.pitch) * std::cos(o.yaw)));
             // Orbiting far out of a valley put the camera inside the mountains: keep it over the ground
             const LatLon cll = metersToLatLon(cam.x(), cam.z(), origin);
-            const auto camWater = hgt.waterAt(cll.lat, cll.lon);
-            const auto camGround = camWater ? camWater->bed : hgt.elevation(cll.lat, cll.lon);
+            const auto camWater = waterAt(cll.lat, cll.lon);
+            const auto camGround = camWater ? camWater->bed : ground(cll.lat, cll.lon);
             if (camGround && cam.y() < *camGround + kChaseCamClearanceM) cam.setY(float(*camGround + kChaseCamClearanceM));
             m_view.lookAt(cam, P + QVector3D(0, float(lift * 0.2), 0), QVector3D(0, 1, 0));
         } else {
@@ -477,10 +541,9 @@ public:
 
         // ── Satellite imagery at full resolution around the aircraft ──
         {
-            const qreal dpr = it->window() ? it->window()->effectiveDevicePixelRatio() : 1.0;
-            const double viewportPx = std::max(1.0, it->height() * dpr);
+            const double viewportPx = std::max(1.0, it->height() * m_dpr);
             const double pixelAngle = it->m_fov * kDeg / viewportPx;
-            it->m_detail.update(pose.lat, pose.lon, origin, cam, P, terr, pixelAngle, !it->m_schematic, m_detailOps, m_frame.detail);
+            it->m_detail.update(pose.lat, pose.lon, origin, cam, P, terr, pixelAngle, !schematic, m_detailOps, m_frame.detail);
         }
 
         // ── Trail ──
@@ -502,11 +565,16 @@ public:
             m_corridorFill.clear();
         }
 
-        // Home: a pole from the ground, a ring on it and the symbol on top
-        if (s->homeLat && s->homeLon) {
-            const auto hg = hgt.elevation(*s->homeLat, *s->homeLon);
-            const double ground = hg ? *hg : s->homeAlt.value_or(0);
-            const QVector3D base = world(*s->homeLat, *s->homeLon, ground + 0.5, origin);
+        // Mission route
+        syncMission(*s, origin, epoch, clamp, pal);
+
+        // Home: a pole from the ground, a ring on it and the symbol on top. Before the vehicle
+        // has reported it (while planning), the mission's take-off point
+        m_homeBase.reset();
+        if (s->homeLat && s->homeLon) m_homeBase = homeBase(*s->homeLat, *s->homeLon, s->homeAlt.value_or(0) + s->offsetAlt, relative, origin);
+        else if (m_missionHome && !relative) m_homeBase = homeBase(m_missionHome->lat, m_missionHome->lon, m_missionHome->altMsl + s->offsetAlt, relative, origin);
+        if (m_homeBase) {
+            const QVector3D base = *m_homeBase;
             const QVector3D top = base + QVector3D(0, float(kHomePoleM), 0);
             L.push_back(LineSeg::make(base, top, pal.home, 3, 0.4f, 2));
             const int n = 48;
@@ -520,33 +588,53 @@ public:
             symbol(L, top, {{-5, -4}, {0, 4}, {5, -4}}, pal.home, 2.5f);
         }
 
-        // Mission route
-        syncMission(it, *s, origin, epoch, clamp, pal);
         L.insert(L.end(), m_missionLines.begin(), m_missionLines.end());
-        if (!m_missionPts.empty()) {
-            // The leg being flown, towards MISSION_CURRENT
-            for (std::size_t i = 1; i < m_missionPts.size(); ++i) {
-                if (m_missionPts[i].seq != s->missionCurrentSeq || m_missionPts[i].derived) continue;
-                std::size_t j = i;
-                while (j > 0) {
-                    L.push_back(LineSeg::make(m_missionWorld[j - 1], m_missionWorld[j], pal.activeLeg, 4.5f));
-                    --j;
-                    if (!m_missionPts[j].derived) break;
-                }
-                break;
-            }
+        if (!m_missionDraw.lines.empty()) {
+            // The item being flown (MISSION_CURRENT): the path that leads to it, and its symbol
+            for (const mission3d::Line &l : m_missionDraw.lines)
+                if (l.seq == s->missionCurrentSeq) L.push_back(LineSeg::make(l.a, l.b, pal.activeLeg, 4.5f));
+            for (const mission3d::Mark &m : m_missionDraw.marks)
+                if (m.seq == s->missionCurrentSeq) markSymbol(L, m, segmentColour(pal, m.segType), true);
         }
 
-        // ADS-B traffic: a diamond on each contact and a line along its track
-        if (s->adsbEnabled) {
-            for (const TrafficEntry &t : s->traffic) {
-                const QVector3D p = world(t.lat, t.lon, t.alt, origin);
-                if ((p - cam).length() > 60000) continue;
-                symbol(L, p, {{0, 8}, {8, 0}, {0, -8}, {-8, 0}}, pal.traffic, 2.5f, 0.5f);
-                const double h = t.heading * kDeg;
-                const QVector3D ahead = p + QVector3D(float(std::sin(h) * 400), 0, float(-std::cos(h) * 400));
-                L.push_back(LineSeg::make(p, ahead, pal.traffic, 2, 0.3f, 1.5f));
-            }
+        // Target (GCS OPTIONS -> TARGET): a pole, a sphere on it and a ring
+        std::optional<LatLon> target;
+        {
+            QMutexLocker lock(&g_missionLock);
+            target = g_target;
+        }
+        if (target && !relative) {
+            const double y = ground(target->lat, target->lon).value_or(0);
+            const QVector3D base = world(target->lat, target->lon, y, origin);
+            const QVector3D top = base + QVector3D(0, float(kTargetPoleM), 0), ball = top + QVector3D(0, float(kTargetSphereM / 2), 0);
+            const QColor red(0xff0000), ringRed(0xff4444);
+            L.push_back(LineSeg::make(base, top, red, 4, 0.5f, 2.5f));
+            const int n = 32;
+            auto circle = [&](double r, const QVector3D &u, const QVector3D &v, const QColor &c, float w) {
+                for (int i = 0; i < n; ++i) {
+                    const double a0 = 2 * kPi * i / n, a1 = 2 * kPi * (i + 1) / n;
+                    L.push_back(LineSeg::make(ball + (u * float(std::cos(a0)) + v * float(std::sin(a0))) * float(r),
+                                              ball + (u * float(std::cos(a1)) + v * float(std::sin(a1))) * float(r), c, w, 0.4f, w * 0.6f));
+                }
+            };
+            const QVector3D ex(1, 0, 0), ey(0, 1, 0), ez(0, 0, 1);
+            circle(kTargetSphereM, ex, ey, red, 2.5f);
+            circle(kTargetSphereM, ez, ey, red, 2.5f);
+            circle(kTargetSphereM, ex, ez, red, 2.5f);
+            circle(kTargetRingM, ex, ez, ringRed, 4);
+            symbol(L, ball, circlePx(6), red, 6);   // what is left of it far away
+        }
+
+        // ADS-B traffic: a circle on each aircraft, larger the closer it is, dead-reckoned
+        // between its reports and trailing the path it flew
+        syncTraffic(*s, cam, origin, relative, pal, now);
+        L.insert(L.end(), m_trafficLines.begin(), m_trafficLines.end());
+        for (const TrafficMark &t : m_trafficMarks) {
+            const double d = std::clamp(double((t.at - cam).length()), kTrafficNearM, kTrafficFarM);
+            const double k = std::log(d / kTrafficNearM) / std::log(kTrafficFarM / kTrafficNearM);
+            const double r = kTrafficNearPx + (kTrafficFarPx - kTrafficNearPx) * k;
+            symbol(L, t.at, circlePx(r), pal.traffic, 3, 0.5f);
+            symbol(L, t.at, circlePx(2, 8), pal.traffic, 4, 0.5f);
         }
 
         // LTE cell sites (Cell3D.js): a thin red pole 10 m tall on the terrain at each site
@@ -576,10 +664,10 @@ public:
 
         // ── Water ──
         m_overlayFrame.water = false;
-        if (water && it->m_schematic) {
+        if (water && schematic) {
             const double strength = lowAltGridStrength(alt - water->level);
             const LatLon cll = metersToLatLon(cam.x(), cam.z(), origin);
-            const auto camW = hgt.waterAt(cll.lat, cll.lon);
+            const auto camW = waterAt(cll.lat, cll.lon);
             const bool camUnder = camW && cam.y() < camW->level;
             if (strength > 0 && (camUnder || water->bed || synthetic)) {
                 m_overlayFrame.water = true;
@@ -593,9 +681,22 @@ public:
                 m_overlayFrame.waterOpacity = float(0.6 * strength);
             }
         }
-        {
+        if (relative) {
+            // Squares of 50 m on zero, 3 km around the camera; specks below it
+            m_overlayFrame.water = true;
+            m_overlayFrame.waterX = cam.x();
+            m_overlayFrame.waterZ = cam.z();
+            m_overlayFrame.waterLevel = float(s->offsetAlt);
+            m_overlayFrame.waterRadius = float(kZeroPlaneRadius);
+            m_overlayFrame.waterCell = float(kZeroPlaneCell);
+            m_overlayFrame.waterTriangles = false;
+            m_overlayFrame.waterColor = kZeroPlaneColour;
+            m_overlayFrame.waterOpacity = kZeroPlaneOpacity;
+            m_overlayFrame.underwater = cam.y() < s->offsetAlt;
+            m_overlayFrame.underwaterLevel = float(s->offsetAlt);
+        } else {
             const LatLon cll = metersToLatLon(cam.x(), cam.z(), origin);
-            auto camW = hgt.waterAt(cll.lat, cll.lon);
+            auto camW = waterAt(cll.lat, cll.lon);
             if (!camW && synthetic) camW = water;
             m_overlayFrame.underwater = camW && cam.y() < camW->level;
             m_overlayFrame.underwaterLevel = camW ? float(camW->level) : 0.f;
@@ -608,7 +709,14 @@ public:
             m_modelPending = true;
         }
 
-        m_sky = skyColour(it);
+        m_sky = ar ? QColor(0, 0, 0) : skyColour(it, schematic);
+
+        // FPV camera image
+        if (m_video) {
+            quint64 serial = 0;
+            VideoFramePtr f = m_videoMode ? VideoMailbox::instance().latest(&serial) : nullptr;
+            m_video->sync(std::move(f), serial);
+        }
 
         // UAS zones on the terrain: the raster's window in today's world metres
         if (it->m_zoneRasterSerial != m_zoneSerial) {
@@ -617,7 +725,7 @@ public:
             m_zonesPending = true;
         }
         const auto &zr = it->m_zoneRaster;
-        m_frame.zonesOn = zr && !zr->empty;
+        m_frame.zonesOn = zr && !zr->empty && !relative;
         if (zr) {
             const GroundMeters nw = latLonToMeters(zr->lat1, zr->lon0, origin);
             const double mPerLon = kMetersPerDegLat * std::cos(origin.lat * kDeg);
@@ -673,6 +781,15 @@ public:
         m_frame.viewportHeight = float(out.height());
         // The schematic view outlines its ridges and skyline (OutlineRenderer): the
         // terrain goes into a target of its own first
+        m_video->prepare(out, m_videoMode == 2, renderTarget()->renderPassDescriptor(), renderTarget()->sampleCount(), u);
+        // The camera alone: drawing the 3D under it would be thrown away
+        if (m_videoMode == 1) {
+            cb->beginPass(renderTarget(), QColor(0, 0, 0), {1.0f, 0}, u);
+            m_video->draw(cb, out);
+            cb->endPass();
+            endFrame(renderStart);
+            return;
+        }
         const bool outlines = m_frame.schematic && m_outline->supported();
         QRhiTextureRenderTarget *terrainTarget = outlines ? m_outline->target(out) : nullptr;
         if (outlines) {
@@ -696,13 +813,13 @@ public:
 
         if (outlines) {
             cb->beginPass(terrainTarget, QColor(0, 0, 0), {1.0f, 0}, u);
-            m_terrain->draw(cb, out);
+            if (!m_relative) m_terrain->draw(cb, out);
             cb->endPass();
             cb->beginPass(renderTarget(), m_sky, {1.0f, 0});
             m_outline->draw(cb, out);
         } else {
             cb->beginPass(renderTarget(), m_sky, {1.0f, 0}, u);
-            m_terrain->draw(cb, out);
+            if (!m_relative) m_terrain->draw(cb, out);
         }
         // The solid ROS surface before the vehicle, so the vehicle stays in front of the bed it floats over
         m_ros->drawOpaque(cb, out);
@@ -710,7 +827,14 @@ public:
         m_ros->drawTranslucent(cb, out);
         m_points->draw(cb, out);
         m_overlay->drawTranslucent(cb, out);
+        if (m_videoMode == 2) m_video->draw(cb, out);   // AR: the camera shows through the black
         cb->endPass();
+        endFrame(renderStart);
+    }
+
+private:
+    void endFrame(double renderStart)
+    {
         const double drawn = monoMs();
         FrameStats::instance().frame(renderStart, m_syncMs, drawn - renderStart);
         // Keep rendering, the pose moves every frame: the next frame at once or on the cap's schedule
@@ -721,10 +845,9 @@ public:
             }, Qt::QueuedConnection);
     }
 
-private:
-    QColor skyColour(const SceneItem *it) const
+    QColor skyColour(const SceneItem *it, bool schematic) const
     {
-        if (it->m_schematic) return it->m_lightTheme ? QColor::fromRgbF(0.78f, 0.86f, 0.93f) : QColor(0, 0, 0);
+        if (schematic) return it->m_lightTheme ? QColor::fromRgbF(0.78f, 0.86f, 0.93f) : QColor(0, 0, 0);
         const QColor day = QColor::fromRgbF(0.62f, 0.74f, 0.86f);
         if (!it->m_sunlight) return day;
         // Realistic sunlight: the sky follows the sun down through dusk to night
@@ -739,30 +862,20 @@ private:
     {
         std::vector<LabelSpec> specs;
         HgtStore &hgt = HgtStore::instance();
-        if (s.homeLat && s.homeLon) {
-            const auto hg = hgt.elevation(*s.homeLat, *s.homeLon);
-            const double ground = hg ? *hg : s.homeAlt.value_or(0);
-            specs.push_back({world(*s.homeLat, *s.homeLon, ground + 0.5 + kHomePoleM, origin), u"HOME"_s, {},
-                             pal.label.isValid() ? pal.label : pal.home, kHomeLabelPx});
-        }
+        if (m_homeBase)
+            specs.push_back({*m_homeBase + QVector3D(0, float(kHomePoleM), 0), u"HOME"_s, {}, pal.label.isValid() ? pal.label : pal.home, kHomeLabelPx});
         // Mission items: built with the route
         specs.insert(specs.end(), m_missionLabels.begin(), m_missionLabels.end());
         // Traffic: callsign, height relative to us in steps of 10 m and a trend arrow (Traffic3D.updateLabel)
-        if (s.adsbEnabled) {
-            for (const TrafficEntry &t : s.traffic) {
-                const QVector3D p = world(t.lat, t.lon, t.alt, origin);
-                if ((p - cam).length() > 60000) continue;
-                QString main = t.callsign.trimmed();
-                if (main.isEmpty()) main = t.icao24.toUpper();
-                const int rel = int(std::lround((t.alt - vehicleAlt) / 10.0)) * 10;
-                QString sub = (rel >= 0 ? u"+"_s : u"\u2212"_s) + QString::number(std::abs(rel)) + u" m"_s;
-                if (t.vertRate > 2) sub += u" \u2191"_s;
-                else if (t.vertRate < -2) sub += u" \u2193"_s;
-                specs.push_back({p, main, sub, pal.traffic, kTrafficLabelPx});
-            }
+        for (const TrafficMark &t : m_trafficMarks) {
+            const int rel = int(std::lround((t.alt - vehicleAlt) / 10.0)) * 10;
+            QString sub = (rel >= 0 ? u"+"_s : u"\u2212"_s) + QString::number(std::abs(rel)) + u" m"_s;
+            if (t.vertRate > 2) sub += u" \u2191"_s;
+            else if (t.vertRate < -2) sub += u" \u2193"_s;
+            specs.push_back({t.at, t.name, sub, pal.label.isValid() ? pal.label : pal.traffic, kTrafficLabelPx});
         }
 
-        const qreal dpr = it->window() ? it->window()->effectiveDevicePixelRatio() : 1.0;
+        const qreal dpr = m_dpr;
         auto resolve = [&] {
             m_overlayFrame.labels.clear();
             for (const LabelSpec &sp : specs) {
@@ -886,100 +999,149 @@ private:
         }
     }
 
-    void syncMission(SceneItem *, const VehicleState &, LatLon origin, int epoch, int clamp, const Palette &pal)
+    /// The foot of the home marker: on the terrain where it is known.
+    static QVector3D homeBase(double lat, double lon, double fallback, bool relative, LatLon origin)
     {
-        int missionEpoch;
+        const auto hg = relative ? std::optional<double>() : HgtStore::instance().elevation(lat, lon);
+        return world(lat, lon, hg.value_or(fallback) + 0.5, origin);
+    }
+
+    void syncMission(const VehicleState &s, LatLon origin, int epoch, int clamp, const Palette &pal)
+    {
+        // A fixed wing, and the VTOL types, fly NAV_LAND down a slope
+        const bool glide = s.vehicleType == 1 || (s.vehicleType >= 19 && s.vehicleType <= 25);
         {
             QMutexLocker l(&g_missionLock);
-            missionEpoch = g_missionEpoch;
-            if (missionEpoch == m_missionEpoch && epoch == m_missionOriginEpoch && clamp == m_missionClamp && pal.route == m_missionColour
-                && !m_missionWaitingGround)
+            if (g_missionEpoch == m_missionEpoch && epoch == m_missionOriginEpoch && clamp == m_missionClamp && pal.route == m_missionColour
+                && s.offsetAlt == m_missionOffset && s.relativeMode == m_missionRelative && glide == m_missionGlide && !m_missionWaitingGround)
                 return;
-            m_missionPts = g_mission;
+            m_mission = g_mission;
+            m_missionEpoch = g_missionEpoch;
         }
-        m_missionEpoch = missionEpoch;
         m_missionOriginEpoch = epoch;
         m_missionClamp = clamp;
+        m_missionOffset = s.offsetAlt;
+        m_missionRelative = s.relativeMode;
+        m_missionGlide = glide;
         m_missionColour = pal.route;
         m_missionWaitingGround = false;
-        m_missionLines.clear();
-        m_missionWorld.clear();
+        m_missionHome.reset();
         HgtStore &hgt = HgtStore::instance();
-        for (const MissionPoint3D &p : m_missionPts) {
-            std::optional<double> ground = p.ground ? p.ground : hgt.elevation(p.lat, p.lon);
-            if (!ground) m_missionWaitingGround = true;   // try again when the tile is in
-            double y = p.altMsl;
-            if (clamp >= 2 && ground && y < *ground + 1) y = *ground + 1;
-            m_missionWorld.push_back(world(p.lat, p.lon, y, origin));
-        }
-        m_missionLabels.clear();
-        struct Mark {
-            std::size_t i;
-            QString main, sub;
-            QColor color;
-            bool plain;
+        auto groundOf = [&](const std::optional<double> &stated, double lat, double lon) {
+            const std::optional<double> g = s.relativeMode ? std::optional<double>() : stated ? stated : hgt.elevation(lat, lon);
+            if (!g && !s.relativeMode) m_missionWaitingGround = true;   // try again when the tile is in
+            return g ? std::optional<float>(float(*g)) : std::nullopt;
         };
-        std::vector<Mark> marks;
-        for (std::size_t i = 0; i < m_missionPts.size(); ++i) {
-            const MissionPoint3D &p = m_missionPts[i];
-            const QVector3D &w = m_missionWorld[i];
-            if (i > 0) m_missionLines.push_back(LineSeg::make(m_missionWorld[i - 1], w, pal.route, 3, 0.35f, 2));
-            if (p.derived || p.kind == "home"_L1) continue;
-            if (p.segPos == 2) continue;   // inside a pattern only its ends are marked
-            // The label (Mission3D.js marks)
-            {
-                const QString seq = QString::number(p.seq);
-                const QString alt = u"%1 m"_s.arg(qRound(p.alt));
-                Mark m{i, {}, {}, pal.route, false};
-                if (p.kind == "loiter"_L1 && p.loiterRadius > 0) {
-                    m.color = pal.circle;
-                    m.main = seq + u" CIRC"_s;
-                    m.sub = alt + (p.turns > 1 ? u" \u00b7 %1\u00d7"_s.arg(p.turns) : QString());
-                } else if (!p.segType.isEmpty()) {
-                    m.color = segmentColour(pal, p.segType);
-                    static const QHash<QString, QString> tags{{u"area"_s, u"AREA"_s},
-                                                              {u"corridor"_s, u"CORR"_s},
-                                                              {u"perimeter"_s, u"PERIM"_s},
-                                                              {u"circle"_s, u"CIRC"_s}};
-                    m.main = p.segPos == 1 ? (seq + ' '_L1 + tags.value(p.segType)).trimmed() : seq;
-                    if (p.segPos == 1) m.sub = alt;
-                } else {
-                    const QString tag = p.kind == "takeoff"_L1 ? u"T/O"_s
-                                      : p.kind == "land"_L1    ? u"LAND"_s
-                                      : p.kind == "loiter"_L1  ? u"LOIT"_s
-                                                                           : QString();
-                    m.main = tag.isEmpty() ? seq : seq + ' '_L1 + tag;
-                    if (p.kind != "land"_L1)
-                        m.sub = alt + (p.hold > 0 ? u" \u00b7 %1 s"_s.arg(qRound(p.hold)) : QString());
-                    m.plain = p.kind == "wp"_L1;
-                }
-                marks.push_back(m);
-            }
-            const QColor col = marks.back().color;
-            // Drop line to the ground and the symbol of the item
-            const auto ground = p.ground ? p.ground : hgt.elevation(p.lat, p.lon);
-            if (ground) m_missionLines.push_back(LineSeg::make(world(p.lat, p.lon, *ground, origin), w, col, 1.5f, 0, 0, 0.5f));
-            symbol(m_missionLines, w, shapePx(p.segType.isEmpty() ? p.kind : u"wp"_s, 7), col, 2.5f);
-            if (p.kind == "loiter"_L1 && p.loiterRadius > 0) {
-                const int n = 72;
-                for (int k = 0; k < n; ++k) {
-                    const double a0 = 2 * kPi * k / n, a1 = 2 * kPi * (k + 1) / n;
-                    const QVector3D q0 = w + QVector3D(float(p.loiterRadius * std::cos(a0)), 0, float(p.loiterRadius * std::sin(a0)));
-                    const QVector3D q1 = w + QVector3D(float(p.loiterRadius * std::cos(a1)), 0, float(p.loiterRadius * std::sin(a1)));
-                    m_missionLines.push_back(LineSeg::make(q0, q1, pal.circle, 2.5f, 0.35f, 1.5f));
-                }
-            }
+        std::vector<mission3d::Point> pts;
+        pts.reserve(m_mission.points.size());
+        for (const MissionPoint3D &p : m_mission.points) {
+            if (p.kind == "home"_L1 && !m_missionHome) m_missionHome = p;
+            mission3d::Point q;
+            q.ground = groundOf(p.ground, p.lat, p.lon);
+            double y = p.altMsl + s.offsetAlt;   // ALTITUDE OFFSET: the route stays with the vehicle flying it
+            if (clamp >= 2 && q.ground && y < *q.ground + 1) y = *q.ground + 1;
+            q.pos = world(p.lat, p.lon, y, origin);
+            q.seq = p.seq;
+            q.kind = p.kind;
+            q.derived = p.derived;
+            q.segId = p.segId;
+            q.segType = p.segType;
+            q.loiterRadius = p.loiterRadius;
+            q.turns = p.turns;
+            q.ccw = p.ccw;
+            q.glide = p.navLand && glide;
+            q.alt = p.alt;
+            q.hold = p.hold;
+            pts.push_back(q);
         }
-        // A long list of plain waypoints gets every n-th label (and the last) so the screen stays legible
-        const int plainCount = int(std::count_if(marks.begin(), marks.end(), [](const Mark &m) { return m.plain; }));
+        std::vector<mission3d::Poi> pois;
+        for (const MissionPoi3D &p : m_mission.pois) {
+            mission3d::Poi q;
+            q.ground = groundOf(p.ground, p.lat, p.lon);
+            q.pos = world(p.lat, p.lon, p.altMsl + s.offsetAlt, origin);
+            q.seq = p.seq;
+            pois.push_back(q);
+        }
+        m_missionDraw = mission3d::build(pts, pois, m_mission.rtlSeq);
+
+        m_missionLines.clear();
+        for (const mission3d::Line &l : m_missionDraw.lines) {
+            LineSeg seg;
+            switch (l.style) {
+            case mission3d::Style::Route: seg = LineSeg::make(l.a, l.b, pal.route, 3, 0.35f, 2); break;
+            case mission3d::Style::Pattern: seg = LineSeg::make(l.a, l.b, segmentColour(pal, l.segType), 2, 0.3f, 1.5f); break;
+            case mission3d::Style::Ring: seg = LineSeg::make(l.a, l.b, pal.circle, 2.5f, 0.35f, 1.5f); break;
+            case mission3d::Style::Return: seg = LineSeg::make(l.a, l.b, pal.route, 2, 0.3f, 1.5f); break;
+            }
+            if (l.style == mission3d::Style::Pattern || l.style == mission3d::Style::Return) seg.style[3] = 9;   // dashes of 9 px
+            m_missionLines.push_back(seg);
+        }
+        for (const mission3d::Mark &m : m_missionDraw.marks) {
+            const QColor col = segmentColour(pal, m.segType);
+            // A drop line to a dot on the ground, the shadow of the point
+            if (m.ground && m.at.y() - *m.ground >= 1 && !s.relativeMode) {
+                const QVector3D foot(m.at.x(), *m.ground, m.at.z());
+                m_missionLines.push_back(LineSeg::make(foot, m.at, col, 1.5f, 0, 0, 0.5f));
+                symbol(m_missionLines, foot, circlePx(1.6, 8), col, 3);
+            }
+            markSymbol(m_missionLines, m, col, false);
+        }
+        // Labels: a long list of plain waypoints gets every n-th one (and the last) so the screen stays legible
+        m_missionLabels.clear();
+        const int plainCount = int(std::count_if(m_missionDraw.marks.begin(), m_missionDraw.marks.end(), [](const mission3d::Mark &m) { return m.plain; }));
         const int every = std::max(1, (plainCount + int(kMaxMissionLabels) - 1) / int(kMaxMissionLabels));
         int plainIdx = 0;
-        for (const Mark &m : marks) {
+        for (const mission3d::Mark &m : m_missionDraw.marks) {
             if (m.plain) {
                 const int idx = plainIdx++;
                 if (idx % every != 0 && idx != plainCount - 1) continue;
             }
-            m_missionLabels.push_back({m_missionWorld[m.i], m.main, m.sub, pal.label.isValid() ? pal.label : m.color, kMissionLabelPx});
+            m_missionLabels.push_back({m.at, m.main, m.sub, pal.label.isValid() ? pal.label : segmentColour(pal, m.segType), kMissionLabelPx});
+        }
+    }
+
+    void syncTraffic(const VehicleState &s, const QVector3D &cam, LatLon origin, bool relative, const Palette &pal, std::int64_t now)
+    {
+        m_trafficMarks.clear();
+        if (!s.adsbEnabled || relative || s.traffic.empty()) {
+            m_trails.clear();
+            m_trafficLines.clear();
+            return;
+        }
+        // The nearest ones
+        std::vector<const TrafficEntry *> near;
+        for (const TrafficEntry &t : s.traffic) near.push_back(&t);
+        auto dist = [&](const TrafficEntry *t) { return flatDistance(s.lat, s.lon, t->lat, t->lon); };
+        std::sort(near.begin(), near.end(), [&](auto *a, auto *b) { return dist(a) < dist(b); });
+        if (near.size() > kMaxTraffic) near.resize(kMaxTraffic);
+        std::vector<TrafficTrails::Report> reports;
+        for (const TrafficEntry *t : near)
+            reports.push_back({t->icao24, t->lat, t->lon, t->alt, t->velocity, t->heading, t->vertRate, t->posTs ? t->posTs : t->ts});
+        m_trails.update(reports);
+
+        const bool trailDue = now - m_trafficTrailAt >= kTrailRefreshMs || pal.traffic != m_trafficColour || origin.lat != m_trafficOrigin.lat
+                           || origin.lon != m_trafficOrigin.lon;
+        if (trailDue) {
+            m_trafficTrailAt = now;
+            m_trafficColour = pal.traffic;
+            m_trafficOrigin = origin;
+            m_trafficLines.clear();
+        }
+        for (const TrafficEntry *t : near) {
+            double lat = 0, lon = 0, alt = 0;
+            if (!m_trails.head(t->icao24, double(now), &lat, &lon, &alt)) continue;
+            const QVector3D p = world(lat, lon, alt + s.offsetAlt, origin);
+            if ((p - cam).length() > kTrafficMaxM) continue;
+            const QString name = t->callsign.trimmed();
+            m_trafficMarks.push_back({p, alt, t->vertRate, name.isEmpty() ? t->icao24.toUpper() : name});
+            if (!trailDue) continue;
+            const auto trail = m_trails.trail(t->icao24, double(now));
+            for (std::size_t i = 1; i < trail.size(); ++i) {
+                const float a = float((trail[i - 1].alpha + trail[i].alpha) / 2);
+                if (a < 0.01f) continue;
+                m_trafficLines.push_back(LineSeg::make(world(trail[i - 1].lat, trail[i - 1].lon, trail[i - 1].alt + s.offsetAlt, origin),
+                                                       world(trail[i].lat, trail[i].lon, trail[i].alt + s.offsetAlt, origin), pal.traffic, 2.5f, 0.3f, 1.5f, a));
+            }
         }
     }
 
@@ -988,6 +1150,9 @@ private:
     std::unique_ptr<OutlineRenderer> m_outline;
     std::unique_ptr<PointCloudRenderer> m_points;
     std::unique_ptr<RosSurfaceRenderer> m_ros;
+    std::unique_ptr<VideoRenderer> m_video;
+    int m_videoMode = 0;
+    bool m_relative = false;
     float m_dpr = 1;
     TerrainChanges *m_changes = nullptr;
     TerrainFrame m_frame;
@@ -1021,12 +1186,29 @@ private:
     std::vector<FillVertex> m_corridorFill;
     // Mission
     int m_missionEpoch = -1, m_missionOriginEpoch = -1, m_missionClamp = -1;
+    double m_missionOffset = 0;
+    bool m_missionRelative = false;
     bool m_missionWaitingGround = false;
+    bool m_missionGlide = false;
     QColor m_missionColour;
-    std::vector<MissionPoint3D> m_missionPts;
-    std::vector<QVector3D> m_missionWorld;
+    Mission3DInput m_mission;
+    mission3d::Drawing m_missionDraw;
+    std::optional<MissionPoint3D> m_missionHome;   // its take-off point
+    std::optional<QVector3D> m_homeBase;           // foot of the home marker, this frame
     std::vector<LineSeg> m_missionLines;
     std::vector<LabelSpec> m_missionLabels;
+    // Traffic
+    struct TrafficMark {
+        QVector3D at;
+        double alt = 0, vertRate = 0;
+        QString name;
+    };
+    TrafficTrails m_trails;
+    std::vector<TrafficMark> m_trafficMarks;
+    std::vector<LineSeg> m_trafficLines;
+    std::int64_t m_trafficTrailAt = 0;
+    QColor m_trafficColour;
+    LatLon m_trafficOrigin;
     // Labels
     LabelAtlas m_atlas;
     // Satellite detail: operations from synchronize to render
@@ -1130,7 +1312,9 @@ void SceneItem::clearTrail()
 void SceneItem::itemChange(ItemChange change, const ItemChangeData &value)
 {
     QQuickRhiItem::itemChange(change, value);
+    if (change == ItemDevicePixelRatioHasChanged) updateResolution();
     if (change != ItemSceneChange) return;
+    updateResolution();
     if (m_window) {
         m_window->removeEventFilter(this);
         disconnect(m_window, nullptr, this, nullptr);
@@ -1141,6 +1325,53 @@ void SceneItem::itemChange(ItemChange change, const ItemChangeData &value)
         connect(m_window, &QQuickWindow::frameSwapped, this, [] { FrameStats::instance().swapped(monoMs()); }, Qt::DirectConnection);
         connect(m_window, &QWindow::activeChanged, this, [this] { if (m_window && !m_window->isActive()) releaseKeys(); });
     }
+}
+
+void SceneItem::geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry)
+{
+    QQuickRhiItem::geometryChange(newGeometry, oldGeometry);
+    updateResolution();
+}
+
+void SceneItem::setQuality(const QString &q)
+{
+    const QString n = renderQuality::normalize(q);
+    if (n == m_quality) return;
+    m_quality = n;
+    updateResolution();
+    emit settingsChanged();
+}
+
+// The target of its own size while the scene has fewer pixels than its rectangle on the display
+void SceneItem::updateResolution()
+{
+    const double dpr = window() ? window()->effectiveDevicePixelRatio() : 1.0;
+    // The camera image has no reason to lose detail: at the display's resolution when it is alone
+    m_pixelRatio = m_videoMode == 1 ? dpr : renderQuality::pixelRatio(m_quality, dpr);
+    const bool fixed = m_pixelRatio < dpr - 1e-6;
+    setFixedColorBufferWidth(fixed ? std::max(1, qRound(width() * m_pixelRatio)) : 0);
+    setFixedColorBufferHeight(fixed ? std::max(1, qRound(height() * m_pixelRatio)) : 0);
+    update();
+}
+
+void SceneItem::setVideoMode(int mode)
+{
+    mode = std::clamp(mode, 0, 2);
+    if (mode == m_videoMode) return;
+    m_videoMode = mode;
+    updateResolution();
+    emit settingsChanged();
+    update();
+}
+
+void SceneItem::setTimeOfDay(int minutes)
+{
+    minutes = minutes < 0 ? -1 : std::min(minutes, 24 * 60);
+    if (minutes == m_timeOfDay) return;
+    m_timeOfDay = minutes;
+    updateSun();   // at once: tick() only moves it once a second
+    emit settingsChanged();
+    update();
 }
 
 bool SceneItem::eventFilter(QObject *o, QEvent *e)
@@ -1234,7 +1465,7 @@ void SceneItem::orbitBy(QPointF pos)
 {
     const QPointF step = pos - m_last;
     m_last = pos;
-    if (!m_thirdPerson) return;
+    if (!m_thirdPerson || m_videoMode == 1) return;
     m_orbit.yaw -= step.x() * kOrbitRotateSpeed;
     m_orbit.pitch = std::clamp(m_orbit.pitch - step.y() * kOrbitRotateSpeed, kOrbitMinPitch, kOrbitMaxPitch);
     update();
@@ -1242,7 +1473,7 @@ void SceneItem::orbitBy(QPointF pos)
 
 void SceneItem::orbitZoom(double factor)
 {
-    if (!m_thirdPerson) return;
+    if (!m_thirdPerson || m_videoMode == 1) return;
     m_orbit.distance = std::clamp(m_orbit.distance * factor, kOrbitMinDistance, kOrbitMaxDistance);
     update();
 }
@@ -1313,9 +1544,19 @@ void SceneItem::tick()
 {
     if (!s_hub) return;
     const auto s = s_hub->snapshot();
-    m_terrain.update(s->lat, s->lon, s->gs, s->sceneOrigin, s->sceneOriginEpoch);
-    if (const auto h = HgtStore::instance().elevation(s->lat, s->lon)) m_agl = s->rawAlt - *h;
-    refreshZoneRaster(s->lat, s->lon);
+    // The trail of one frame means nothing in the other
+    if (s->relativeMode != m_wasRelative) {
+        m_wasRelative = s->relativeMode;
+        clearTrail();
+    }
+    if (s->relativeMode) {
+        m_agl = s->rawAlt;   // the ground is the plane at zero: no terrain is loaded for a synthetic position
+    } else {
+        m_terrain.update(s->lat, s->lon, s->gs, s->sceneOrigin, s->sceneOriginEpoch);
+        if (const auto h = HgtStore::instance().elevation(s->lat, s->lon)) m_agl = s->rawAlt - *h;
+        refreshZoneRaster(s->lat, s->lon);
+    }
+    updateLoad(s->lat, s->lon);
 
     // SYS CONFIG -> 3D VIEW: terrain clipping, model and scale
     Settings &st = Settings::instance();
@@ -1344,8 +1585,38 @@ void SceneItem::tick()
     // The sun for the time of day, once a second is plenty
     if (m_sunClock.isValid() && m_sunClock.elapsed() < 1000) return;
     m_sunClock.restart();
+    updateSun();
+}
+
+void SceneItem::updateLoad(double lat, double lon)
+{
+    // What the loading screen and RELOADING MAP wait for
+    HgtStore &hgt = HgtStore::instance();
+    const int la = int(std::floor(lat)), lo = int(std::floor(lon));
+    const bool coming = hgt.loading(la, lo) || HgtDownloader::instance().busy(la, lo);
+    const ChunkImagery &img = m_terrain.imagery();
+    const QVariantMap load{{u"hgtLoading"_s, hgt.loadingCount()},
+                           {u"hgtLoaded"_s, hgt.loadedCount()},
+                           {u"hgtMissing"_s, hgt.missing(la, lo) && !coming},
+                           {u"chunks"_s, m_terrain.activeChunks()},
+                           {u"building"_s, m_terrain.buildingChunks()},
+                           {u"images"_s, img.images()},
+                           {u"imagesPending"_s, img.pending()},
+                           {u"imagesDone"_s, m_schematic || img.firstPassDone()},
+                           {u"covered"_s, m_wasRelative || m_terrain.covers(lat, lon)}};
+    if (load == m_load) return;
+    m_load = load;
+    emit loadChanged();
+}
+
+void SceneItem::updateSun()
+{
+    if (!s_hub) return;
+    const auto s = s_hub->snapshot();
+    // TIME OF DAY holds today's sun at a chosen local time
+    const QDateTime when = m_timeOfDay >= 0 ? QDate::currentDate().startOfDay().addSecs(m_timeOfDay * 60) : QDateTime::currentDateTime();
     double az = 0, el = 0;
-    sunPosition(QDateTime::currentDateTimeUtc(), s->lat, s->lon, &az, &el);
+    sunPosition(when.toUTC(), s->lat, s->lon, &az, &el);
     m_sunEl = el;
     // X east, Y up, Z south; a sun under the horizon still lights a little from above
     const double e = std::max(el, 0.05);

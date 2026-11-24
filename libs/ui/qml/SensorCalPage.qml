@@ -11,7 +11,7 @@ Item {
         spacing: 20
         SetupPanel {
             title: "GYROSCOPES"
-            CfgNote { text: "Measures the gyro offsets. Keep the vehicle completely still for a few seconds. ArduPilot also does this at every boot unless INS_GYR_CAL is 0." }
+            CfgNote { text: qsTr("Measures the gyro offsets. Keep the vehicle completely still for a few seconds. ArduPilot also does this at every boot unless INS_GYR_CAL is 0.") }
             CalButton {
                 width: parent.width
                 text: "CALIBRATE GYROS"
@@ -22,7 +22,7 @@ Item {
         }
         SetupPanel {
             title: "BAROMETER"
-            CfgNote { text: "Takes the current pressure as ground level: the altitude reads zero here. Vehicle still, out of the wind and the prop wash." }
+            CfgNote { text: qsTr("Takes the current pressure as ground level: the altitude reads zero here. Vehicle still, out of the wind and the prop wash.") }
             CalButton {
                 width: parent.width
                 text: "CALIBRATE BARO"

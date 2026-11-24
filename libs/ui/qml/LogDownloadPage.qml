@@ -38,13 +38,13 @@ Rectangle {
         spacing: 12
         Text {
             id: pageTitle
-            text: "LOG DOWNLOAD"
+            text: qsTr("LOG DOWNLOAD")
             color: Theme.accentCyan
             font.family: Theme.fontUi; font.pixelSize: 12; font.weight: Font.Bold; font.letterSpacing: 2
         }
         Text {
             anchors.baseline: pageTitle.baseline
-            text: "DataFlash logs on the vehicle's SD card · MAVLink LOG_REQUEST_DATA"
+            text: qsTr("DataFlash logs on the vehicle's SD card · MAVLink LOG_REQUEST_DATA")
             color: Theme.textDim
             font.family: Theme.fontUi; font.pixelSize: 11
         }
@@ -95,7 +95,7 @@ Rectangle {
                 spacing: 8
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "FOLDER"
+                    text: qsTr("FOLDER")
                     color: Theme.textDim
                     font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.5
                 }
@@ -130,14 +130,14 @@ Rectangle {
                 }
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: Logs.statusText
+                    text: Theme.tr(Logs.statusText)
                     color: Logs.statusError ? "#ff8844" : Logs.downloading || Logs.listing ? Theme.accentCyan : Theme.textMuted
                     font.family: Theme.fontData; font.pixelSize: 11
                 }
             }
             Text {
                 visible: Logs.armed
-                text: "Vehicle armed: ArduPilot lists and sends logs only when disarmed."
+                text: qsTr("Vehicle armed: ArduPilot lists and sends logs only when disarmed.")
                 color: Theme.accentOrange
                 font.family: Theme.fontUi; font.pixelSize: 12; font.weight: Font.DemiBold
             }
@@ -183,7 +183,7 @@ Rectangle {
                             width: modelData[1]; height: 30
                             leftPadding: 8
                             verticalAlignment: Text.AlignVCenter
-                            text: modelData[0]
+                            text: Theme.tr(modelData[0])
                             color: Theme.accentCyan
                             font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.5
                         }
@@ -261,7 +261,7 @@ Rectangle {
                         }
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: row.logState === "saved" ? "SAVED" : row.logState === "failed" ? "FAILED" : row.logState === "queued" ? "QUEUED"
+                            text: row.logState === "saved" ? qsTr("SAVED") : row.logState === "failed" ? qsTr("FAILED") : row.logState === "queued" ? qsTr("QUEUED")
                                 : row.logState === "downloading" ? Math.round(row.progress * 100) + " %" : ""
                             color: row.logState === "saved" ? Theme.accentGreen : row.logState === "failed" ? "#ff6666" : Theme.accentCyan
                             font.family: Theme.fontUi; font.pixelSize: 11; font.weight: Font.Bold; font.letterSpacing: 1
@@ -269,7 +269,7 @@ Rectangle {
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
                             width: parent.width - x
-                            text: row.detail
+                            text: Theme.tr(row.detail)
                             elide: Text.ElideMiddle
                             color: row.logState === "failed" ? "#ff8888" : Theme.textDim
                             font.family: Theme.fontData; font.pixelSize: 10
@@ -300,9 +300,9 @@ Rectangle {
                     visible: list.count === 0
                     anchors.centerIn: parent
                     horizontalAlignment: Text.AlignHCenter
-                    text: Logs.listing ? "Reading the list…"
+                    text: Theme.tr(Logs.listing ? "Reading the list…"
                         : Logs.linkReady ? "LIST LOGS asks the vehicle for the logs on its SD card.\nArduPilot answers only while disarmed."
-                        : "Connect to a vehicle to list its logs."
+                        : "Connect to a vehicle to list its logs.")
                     color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 12
                 }
             }

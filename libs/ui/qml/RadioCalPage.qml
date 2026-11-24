@@ -40,7 +40,7 @@ Flickable {
                             opacity: 0.8
                         }
                     }
-                    Text { width: 40; anchors.verticalCenter: parent.verticalCenter; horizontalAlignment: Text.AlignRight; text: parent.modelData.value || 0; color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: 11 }
+                    Text { width: 40; anchors.verticalCenter: parent.verticalCenter; horizontalAlignment: Text.AlignRight; text: Theme.tr(parent.modelData.value || 0); color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: 11 }
                     Text { anchors.verticalCenter: parent.verticalCenter; text: SetupCfg.rcCalibrating || parent.modelData.min < parent.modelData.max ? parent.modelData.min + "/" + parent.modelData.max : "--/--"; color: Theme.textDim; font.family: Theme.fontData; font.pixelSize: 10 }
                 }
             }
@@ -55,7 +55,7 @@ Flickable {
                 GcsButton { width: 190; height: 29; primary: true; text: "SAVE CALIBRATION"; onClicked: SetupCfg.rcCalSave() }
                 GcsButton { width: 100; height: 29; text: "RESET"; onClicked: SetupCfg.rcCalReset() }
             }
-            CfgNote { text: SetupCfg.rcStatus }
+            CfgNote { text: Theme.tr(SetupCfg.rcStatus) }
         }
     }
 }

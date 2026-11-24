@@ -31,6 +31,8 @@ public:
         std::function<void(int command, int result)> commandAck;
         /// STATUSTEXT, for the HUD message list.
         std::function<void(int severity, const QString &text)> statusText;
+        /// The water a point is on, else the ground there (elevation data); none while it is not in. Any thread.
+        std::function<std::optional<double>(double lat, double lon)> surface;
     };
 
     StateMapper();
@@ -68,6 +70,7 @@ private:
     void sensors(const mavlink_message_t &m, VehicleState &s, std::int64_t now);
     void reports(const mavlink_message_t &m, VehicleState &s, std::int64_t now);
     void firstFix(VehicleState &s);
+    void subSurface(VehicleState &s, std::int64_t now);
 
     Hooks m_hooks;
     SceneOrigin m_origin;
@@ -77,6 +80,8 @@ private:
     bool m_imuPrimaryActive = false;
     std::int64_t m_imuPrimaryLastTime = 0;
     std::int64_t m_lastTrafficPurge = 0;
+    QString m_subSurfaceKey;
+    std::int64_t m_subSurfaceTried = 0;
 };
 
 } // namespace corv

@@ -7,10 +7,12 @@
 #include "TestDriver.h"
 #include "core/DataRoot.h"
 #include "core/DebugLog.h"
+#include "core/ElectronSettings.h"
 #include "core/Settings.h"
 #include "terrain/TileStore.h"
 #include "ui/ReplayController.h"
 #include "ui/GcsController.h"
+#include "ui/Language.h"
 #include "ui/PlanController.h"
 
 #include <QCommandLineParser>
@@ -92,7 +94,12 @@ int main(int argc, char *argv[])
     p.process(app);
 
     DebugLog::init();
+    // The very first start: the settings of CORV GCS 1.x, if it was used on this computer
+    const bool firstStart = qEnvironmentVariableIsEmpty("CORV_DATA_ROOT") && !QFile::exists(DataRoot::root() + u"/settings.json"_s);
     Settings::instance().load();
+    int imported = 0;
+    if (firstStart)
+        if (const QString old = electronSettings::findStore(); !old.isEmpty()) imported = electronSettings::importInto(electronSettings::read(old));
     LOG_I("app") << "CORV GCS" << CORV_VERSION << "starting, data root" << DataRoot::root();
 
     // Fonts of the Electron UI (Rajdhani for labels, Roboto Mono for data)
@@ -137,8 +144,11 @@ int main(int argc, char *argv[])
     // The tile store belongs to the GUI thread: create it here, before a map paints on the render thread
     TileStore::instance();
 
+    // The interface's language as it was left (gcs-lang); SYS CONFIG changes it while running
+    Language::instance().set(Settings::instance().value(u"gcs-lang"_s).toString());
     GcsController gcs(nullptr);
     QQmlApplicationEngine engine;
+    QObject::connect(&Language::instance(), &Language::changed, &engine, &QQmlApplicationEngine::retranslate);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app, [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.loadFromModule("Corv.Ui", "Main");
 
@@ -152,6 +162,9 @@ int main(int argc, char *argv[])
                                                  {QSGRendererInterface::Software, u"software"_s}};
         DebugLog::setHeader(u"Graphics"_s, names.value(api, u"other"_s));
     }
+
+    if (imported)
+        QTimer::singleShot(2000, &gcs, [&gcs, imported] { gcs.notify(u"Settings of CORV GCS 1.x imported (%1)"_s.arg(imported)); });
 
     if (p.isSet(connectOpt)) {
         const QStringList parts = p.value(connectOpt).split(':'_L1);

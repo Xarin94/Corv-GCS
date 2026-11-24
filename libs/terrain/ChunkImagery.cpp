@@ -34,6 +34,7 @@ constexpr int kTile = 256;
 constexpr int kMaxActiveJobs = 6;     // jobs asking for tiles at the same time, nearest first
 constexpr int kMaxComposing = 2;      // the two compression workers of the Electron version
 constexpr qint64 kTileWaitMs = 10000;
+constexpr qint64 kPartialRetryMs = 60000;   // an image with tiles missing for now is built again
 constexpr int kChunksPerTileAxis = 30;
 
 int bandFor(double dist)
@@ -78,6 +79,9 @@ struct ComposeInput {
 /// Thread pool: tile mosaic -> the chunk's lat/lon rectangle at size x size -> mips -> BC1.
 std::shared_ptr<ChunkImage> compose(const ComposeInput &in)
 {
+    // Nothing at all (no network, not in the cache): the chunk keeps its height palette
+    auto have = [](const std::vector<QImage> &v) { return std::any_of(v.begin(), v.end(), [](const QImage &i) { return !i.isNull(); }); };
+    if (!have(in.tiles) && !have(in.parents)) return nullptr;
     QImage mosaic(in.tilesX * kTile, in.tilesY * kTile, QImage::Format_RGB32);
     // Missing tiles show a neutral patch, not a black hole
     mosaic.fill(QColor(128, 128, 128));
@@ -163,6 +167,12 @@ ChunkImagery::ChunkImagery(TerrainChanges &changes, QObject *parent) : QObject(p
     TileStore &store = TileStore::instance();
     connect(&store, &TileStore::tileReady, this, [this](const QString &p, int z, int x, int y) { onTile(p, z, x, y, true); });
     connect(&store, &TileStore::tileFailed, this, [this](const QString &p, int z, int x, int y) { onTile(p, z, x, y, false); });
+    // The network is back: the images built without some of their tiles, now
+    connect(&store, &TileStore::networkRestored, this, [this] {
+        for (auto &[chunk, r] : m_resident)
+            if (r.retryAt) r.retryAt = 1;
+        m_force = true;
+    });
 }
 
 ChunkImagery::~ChunkImagery()
@@ -265,6 +275,8 @@ void ChunkImagery::refresh(double lat, double lon, double groundSpeed, const QHa
             const int band = bandFor(dist);
             if (res == m_resident.end()) {
                 load.append({dist, {it.value(), m_initialDone ? band : std::max(band, kBaseBand)}});
+            } else if (res->second.retryAt && m_clock.elapsed() >= res->second.retryAt) {
+                load.append({dist, {it.value(), res->second.band}});
             } else if (m_initialDone) {
                 const int current = res->second.band;
                 if (bandFor(dist * (1 + kHysteresis)) < current) upgrade.append({dist, {it.value(), band}});
@@ -405,6 +417,8 @@ void ChunkImagery::pumpCompose()
         for (int ty = 0; ty < pick->tilesY; ++ty)
             for (int tx = 0; tx < pick->tilesX; ++tx) {
                 const std::size_t i = std::size_t(ty) * pick->tilesX + tx;
+                if (in.tiles[i].isNull() && TileStore::instance().failedForNow(m_provider, pick->zoom, pick->tx0 + tx, pick->ty0 + ty))
+                    pick->partial = true;
                 if (in.tiles[i].isNull() && pick->zoom > 0)
                     in.parents[i] = TileStore::instance().cached(m_provider, pick->zoom - 1, (pick->tx0 + tx) / 2, (pick->ty0 + ty) / 2);
             }
@@ -424,6 +438,7 @@ void ChunkImagery::finished(quint64 chunk, quint64 generation, std::shared_ptr<C
     if (!m_initialDone && m_firstPassQueued && m_jobs.size() <= 1 && m_queue.isEmpty()) m_force = true;
     auto it = m_jobs.find(chunk);
     if (it != m_jobs.end() && it->second->generation == generation) {
+        const bool partial = it->second->partial;
         m_jobs.erase(it);
         if (m_enabled && img) {
             Resident &r = m_resident[chunk];
@@ -431,6 +446,7 @@ void ChunkImagery::finished(quint64 chunk, quint64 generation, std::shared_ptr<C
             r.band = img->band;
             r.bytes = img->bytes();
             r.image = img;
+            r.retryAt = partial ? m_clock.elapsed() + kPartialRetryMs : 0;
             m_changes.addImage(img);
         }
     }

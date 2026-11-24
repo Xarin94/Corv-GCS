@@ -8,6 +8,7 @@ import Corv.Ui
 
 Item {
     id: host
+    objectName: "dialogs"   // the test commands answer a question with close(true)
     anchors.fill: parent
 
     property int token: -1
@@ -75,7 +76,7 @@ Item {
                     width: Math.min(460, implicitWidth)
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
-                    text: t.text
+                    text: Theme.tr(t.text)
                     color: "#e0e0e0"
                     font.family: Theme.fontUi
                     font.pixelSize: 13
@@ -117,7 +118,7 @@ Item {
                     width: parent.width
                     wrapMode: Text.Wrap
                     horizontalAlignment: host.mode === "prompt" ? Text.AlignLeft : Text.AlignHCenter
-                    text: host.message
+                    text: Theme.tr(host.message)
                     color: "#e0e0e0"
                     font.family: Theme.fontData
                     font.pixelSize: 13
@@ -151,7 +152,7 @@ Item {
                         color: "#2a2a3e"
                         border.color: "#555555"
                         border.width: 1
-                        Text { id: cancelText; anchors.centerIn: parent; text: "Cancel"; color: "#cccccc"; font.pixelSize: 12 }
+                        Text { id: cancelText; anchors.centerIn: parent; text: qsTr("Cancel"); color: "#cccccc"; font.pixelSize: 12 }
                         TapHandler { onTapped: host.close(false) }
                         HoverHandler { cursorShape: Qt.PointingHandCursor }
                     }
@@ -166,7 +167,7 @@ Item {
                         Keys.onReturnPressed: host.close(true)
                         Keys.onEnterPressed: host.close(true)
                         Keys.onEscapePressed: host.close(false)
-                        Text { id: okText; anchors.centerIn: parent; text: "OK"; color: "#000000"; font.pixelSize: 12; font.bold: true }
+                        Text { id: okText; anchors.centerIn: parent; text: qsTr("OK"); color: "#000000"; font.pixelSize: 12; font.bold: true }
                         TapHandler { onTapped: host.close(true) }
                         HoverHandler { cursorShape: Qt.PointingHandCursor }
                     }

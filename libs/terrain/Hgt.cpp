@@ -113,6 +113,18 @@ bool HgtStore::loading(int latBase, int lonBase) const
     return m_loading.contains(key(latBase, lonBase));
 }
 
+int HgtStore::loadingCount() const
+{
+    QMutexLocker l(&m_lock);
+    return int(m_loading.size());
+}
+
+int HgtStore::loadedCount() const
+{
+    QMutexLocker l(&m_lock);
+    return int(m_tiles.size());
+}
+
 void HgtStore::forget(int latBase, int lonBase)
 {
     QMutexLocker l(&m_lock);

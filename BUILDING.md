@@ -18,7 +18,7 @@ to use it in the [wiki](https://xarin94.github.io/Corv-GCS/).
 | 4 Flight screen | HUD as separate instruments (HUDRenderer.js port, GPU tint, repaint on a pixel of change: 0.1-0.3 ms mean, under 1.5 ms worst per frame), command bar, connection sidebar, telemetry cells, mini-map, annunciator column (warnings / cautions, STATUSTEXT holds, silence on click, demo sequencer), EKF STATUS bar (ArduPilot EKF3 charts, flags, 5 Hz rates while open), FFT bar (strongest lines, live spectrum with peak hold, 60 s waterfall, logarithmic frequency axis), ROTOR LOAD schematic (per-motor PWM gauges on the airframe layout, built from the SERVOn_FUNCTION assignments: MotorN on the ring, a quadplane's pusher or a twin's engines in the middle; SAIL · RUDDER dials for a sailboat; FLAPS indicator over it for flap / flaperon outputs, Airbus EIS style, −10° to +30°; servo parameters read only while it is enabled), mode change banner, ADS-B traffic table (OpenSky every 30 s and ADSB_VEHICLE), LTE cell rows of the position box (LTE OVERLAY) | A full SITL flight |
 | 5 Mission | RouteModel, RouteCompiler (INAV too), MissionTransfer, MissionStore v2, Platforms, RadioLink, FLIGHT PLAN page with undo/redo, layered map, profile with radio band, mission library, upload / read (MAVLink, and INAV over MSP); mission in 3D; UAS geozones (EU ED-269 / ED-318 files, FAA, DFS DIPUL, IGN, ENAIRE, BAZL) on the map with legend, tooltips and annunciators | Parity tests with missions saved by Electron, transfer on SITL |
 | 6 Setup | SETUP → CONNECTION, SETUP → PARAMETERS (name catalog with favourites, READ ALL over FTP with PARAM_REQUEST_LIST fallback, queued single reads, in-place edit and WRITE CHANGED, .param files; ArduPilot documentation of every parameter from apm.pdef.json bundled per firmware by `tools/gen-param-meta.py` and updatable from autotest.ardupilot.org: description, units, range, value lists as selects, bitmask editor), SETUP → LOG DOWNLOAD (DataFlash logs on the SD card over LOG_REQUEST_LIST / LOG_REQUEST_DATA with gap filling, download queue, erase, open in LOG REPLAY), SETUP → ACCELEROMETER / COMPASS / GYRO / BARO (six positions following ACCELCAL_VEHICLE_POS, level, simple accel, onboard mag cal with the 80-section 3D sphere, large-vehicle magcal, stored calibration and compass tables), SYS CONFIG (every section, Electron keys in `settings.json`); SETUP → CELLULAR LINK, TELEMETRY FORWARD, RTK / GPS INJECT, FLIGHT MODES (the vehicle's own mode table), FAILSAFE, PID TUNING (panels of the vehicle class), EXT TUNING, RADIO CAL, VIBRATIONS, SERVO / RELAY, CORV SETUP (SystemConfig v9 over 0x10 / 0x11), SIMULATION (SITL launcher, WSL on Windows) | Calibrations tried on SITL up to what a still vehicle allows (a compass run to SUCCESS needs the `calibration` SITL model); JOYSTICK / RC (SDL3: gamepads in the standard layout, other joysticks raw; 8 or more inputs to RC channels with deadzone and expo, RC_CHANNELS_OVERRIDE at 10 / 25 / 50 Hz with the ArduPilot parameters saved and restored, 500 ms failsafe, servo and look buttons) | LIDAR and ROS pages done; the joystick tried without a device only |
-| 7 Sensors and video | ADS-B: OpenSky polling, the traffic table, contacts on the mini-map and in 3D; LTE cell of the module on the flight screen and in CELLULAR LINK; LTE cell database (user CSV files, the cells of Italy, San Marino and Vatican City in `celldb/`, the 2024 OpenCelliD PMTiles copy read by blocks with HTTP ranges, online lookup on beaconDB / the OpenCelliD API) and the mast map: sites within 10 km and the serving one on the mini-map and in 3D, mast and distance in CELLULAR LINK and on the flight screen; Livox Mid-360 point cloud, ROS surfaces | FPV |
+| 7 Sensors and video | ADS-B: OpenSky polling, the traffic table, contacts on the mini-map and in 3D; LTE cell of the module on the flight screen and in CELLULAR LINK; LTE cell database (user CSV files, the cells of Italy, San Marino and Vatican City in `celldb/`, the 2024 OpenCelliD PMTiles copy read by blocks with HTTP ranges, online lookup on beaconDB / the OpenCelliD API) and the mast map: sites within 10 km and the serving one on the mini-map and in 3D, mast and distance in CELLULAR LINK and on the flight screen; Livox Mid-360 point cloud, ROS surfaces; FPV video (RTSP over TCP or UDP, H.264 / H.265 decoded by libavcodec on the GPU, CAMERA and AR with the synthetic view over the picture) | Done; the FPV tried against a fake camera (`tools/rtsp-sim.py`), not on a SIYI |
 | 8 Logs and services | Rolling debug log, offline SRTM and tile download, SQLite tile store, LOG REPLAY of .tlog (memory-mapped, offsets only) and .bin (DataFlash → real MAVLink frames) on its own thread with timeline, seek and sticky messages, vibration spectra from the log's IMU samples (GYR / ACC, batch sampler, IMU; Welch, SYS CONFIG → FFT FROM LOGS) | Done for now; SITL launcher in SETUP → SIMULATION |
 | 9 Release | | Not started |
 
@@ -35,11 +35,14 @@ libs/services log replay (.tlog / .bin index, replay engine on the log thread), 
               geozones, LTE cell database (CellDb)
 libs/scene    renderer-neutral data (TerrainData, models, geozones, cell overlay)
 libs/gpu      QRhi renderer and the SceneItem (the only code that includes QRhi)
+libs/video    FPV: RTSP client, RTP, decoder (FFmpeg, optional)
 libs/ui       QML module Corv.Ui: HUD instruments, view models, windows
 app/          main.cpp, TestDriver (test commands), DebugServer (--debug-port)
 shaders/      Vulkan-style GLSL, baked by qsb at build time
-tools/        corv-link-cli, MAVLink generator (corv.xml), build and package scripts, debug-client.py
-resources/    fonts, icons, vehicle models, SITL defaults, celldb/ (the bundled LTE cells)
+tools/        corv-link-cli, MAVLink generator (corv.xml), build and package scripts, debug-client.py,
+              rtsp-sim.py (a fake RTSP camera)
+resources/    fonts, icons, vehicle models, SITL defaults, i18n/ (the Chinese interface),
+              celldb/ (the bundled LTE cells)
 tests/        Qt Test ports of the scripts/test-*.js suites
 ```
 
@@ -58,7 +61,9 @@ them from there (packaging copies the libraries next to the executable).
 OpenSSL (libcrypto, for the cellular link) comes from `OPENSSL_DIR` or
 `build\tools\openssl-*`; without it the build has no LTE link. SDL3 (joystick
 input) comes from `SDL3_DIR` or `build\tools\sdl3\SDL3-*`; without it the build
-has no joystick. `tools\package-windows.ps1` fetches both when missing.
+has no joystick. `tools\package-windows.ps1` fetches both when missing. FFmpeg (the FPV
+video; libavcodec and libavutil, an LGPL build) comes from `FFMPEG_ROOT` or `build\tools\ffmpeg`;
+without it the build has no video and the FPV button says so.
 
 Installer: `powershell -ExecutionPolicy Bypass -File tools\package-windows.ps1 [-Zip]`
 builds, stages (windeployqt, VC++ runtime app-local, libcrypto, notices) and makes
@@ -84,7 +89,7 @@ sends one request.
 Test hooks: `--replay FILE` (a .tlog or .bin into LOG REPLAY), `--grab FILE --grab-after MS`,
 `--quit-after MS`, and `--grab-script FILE` with lines `MS tab N`, `MS grab FILE`, `MS key Left` / `MS keyup Left` (arrow keys),
 `MS emit toggleSatellite` (any header button signal), `MS call Params.readAll`
-(a view-model method of `Params`, `Plan`, `Gcs`, `Calibration`, `Ekf`, `Fft`, `Replay`, `Annunciators`, `Rtk`, `TelForward`, `Lte`, `SetupCfg`, `Sitl`, `GeoZones`, `Lidar` or `Ros`), `MS set setupPage current PARAMETERS` (a property of a
+(a view-model method of `Params`, `Plan`, `Gcs`, `Calibration`, `Ekf`, `Fft`, `Replay`, `Annunciators`, `Rtk`, `TelForward`, `Lte`, `SetupCfg`, `Sitl`, `GeoZones`, `Lidar`, `Ros`, `Fpv`, `Vehicle` or `DialogHub`, or of a named QML item), `MS set setupPage current PARAMETERS` (a property of a
 named QML item or of a view model, e.g. `set flightView swapped true`, `set scene orbitPitch -0.7`), `MS size WxH`.
 Grabs a few tenths of a second apart keep the GUI thread busy and stop the 3D view from
 syncing while they last: grab seldom. Direct3D 11 renders no frames while the window is
@@ -109,6 +114,10 @@ cmake --build --preset linux-release
 QT_QPA_PLATFORM=offscreen ctest --preset linux-release
 LD_LIBRARY_PATH=~/Qt/6.12.0/gcc_64/lib build/linux-release/app/corv-gcs --connect tcp:127.0.0.1:5760
 ```
+
+FFmpeg for the FPV video is the system's (`libavcodec-dev`, `libavutil-dev`), or the LGPL build in
+`FFMPEG_ROOT`. The AppImage carries only the latter: without `FFMPEG_ROOT` it has no video decoder,
+since it would not start where the system's library is missing.
 
 SITL on Linux listens on TCP 5760 directly (`arduplane --model plane -I0 ...`).
 

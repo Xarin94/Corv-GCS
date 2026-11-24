@@ -20,7 +20,7 @@ Rectangle {
         width: parent.width - 33.33
         height: 26
         Text {
-            text: panel.title
+            text: Theme.tr(panel.title)
             color: Theme.accentCyan
             font.family: Theme.fontUi
             font.pixelSize: 12

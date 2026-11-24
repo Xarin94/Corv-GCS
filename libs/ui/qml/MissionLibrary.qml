@@ -31,14 +31,14 @@ Rectangle {
         Text {
             id: sbText
             anchors.centerIn: parent
-            text: sb.text
+            text: Theme.tr(sb.text)
             color: sh.hovered ? (sb.danger ? "#ff4444" : Theme.accentCyan) : Theme.textMain
             font.family: Theme.fontUi; font.pixelSize: 9; font.letterSpacing: 0.5
         }
         HoverHandler { id: sh; cursorShape: Qt.PointingHandCursor }
         TapHandler { onTapped: sb.clicked() }
         ToolTip.visible: sh.hovered && tip.length > 0
-        ToolTip.text: tip
+        ToolTip.text: Theme.tr(tip)
         ToolTip.delay: 600
     }
 
@@ -50,7 +50,7 @@ Rectangle {
         Text {
             x: 24
             anchors.verticalCenter: parent.verticalCenter
-            text: "MISSION LIBRARY"
+            text: qsTr("MISSION LIBRARY")
             color: Theme.accentCyan
             font.family: Theme.fontUi; font.pixelSize: 14; font.weight: Font.Bold; font.letterSpacing: 3
         }
@@ -65,7 +65,7 @@ Rectangle {
             HoverHandler { id: closeHover; cursorShape: Qt.PointingHandCursor }
             TapHandler { onTapped: lib.visible = false }
             ToolTip.visible: closeHover.hovered
-            ToolTip.text: "Close"
+            ToolTip.text: qsTr("Close")
         }
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: Theme.hairline; color: Theme.borderAccent }
     }
@@ -92,15 +92,15 @@ Rectangle {
                 font.family: Theme.fontData; font.pixelSize: 10
                 HoverHandler { id: rootHover }
                 ToolTip.visible: rootHover.hovered
-                ToolTip.text: Plan.libraryPortable ? "Stored inside the installation folder (portable)"
-                                                   : "Installation folder is not writable — stored in the user data folder instead"
+                ToolTip.text: Theme.tr(Plan.libraryPortable ? "Stored inside the installation folder (portable)"
+                                                   : "Installation folder is not writable — stored in the user data folder instead")
             }
         }
 
         Text {
             id: missionsTitle
             y: toolbar.height + 10
-            text: "SAVED MISSIONS"
+            text: qsTr("SAVED MISSIONS")
             color: Theme.accentCyan
             font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.5
         }
@@ -119,7 +119,7 @@ Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: 16
                 horizontalAlignment: Text.AlignHCenter
-                text: "No saved missions yet.\nBuild a plan and press SAVE."
+                text: qsTr("No saved missions yet.\nBuild a plan and press SAVE.")
                 color: Theme.textDim
                 font.family: Theme.fontUi; font.pixelSize: 10
                 lineHeight: 1.6
@@ -167,7 +167,7 @@ Rectangle {
         Text {
             id: logsTitle
             y: missionsBox.y + missionsBox.height + 10
-            text: "FLIGHT LOGS"
+            text: qsTr("FLIGHT LOGS")
             color: Theme.accentCyan
             font.family: Theme.fontUi; font.pixelSize: 10; font.weight: Font.Bold; font.letterSpacing: 1.5
         }
@@ -184,7 +184,7 @@ Rectangle {
                 visible: Plan.libraryLogs.length === 0
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: 16
-                text: "No flight logs recorded yet."
+                text: qsTr("No flight logs recorded yet.")
                 color: Theme.textDim
                 font.family: Theme.fontUi; font.pixelSize: 10
             }
@@ -199,8 +199,8 @@ Rectangle {
                     width: ListView.view.width
                     height: 30
                     Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: Theme.hairline; color: Qt.rgba(1, 1, 1, 0.04) }
-                    Text { x: 10; anchors.verticalCenter: parent.verticalCenter; text: parent.modelData.name; color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: 12 }
-                    Text { anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter; text: parent.modelData.meta; color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 10 }
+                    Text { x: 10; anchors.verticalCenter: parent.verticalCenter; text: Theme.tr(parent.modelData.name); color: Theme.textMain; font.family: Theme.fontData; font.pixelSize: 12 }
+                    Text { anchors.right: parent.right; anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter; text: Theme.tr(parent.modelData.meta); color: Theme.textDim; font.family: Theme.fontUi; font.pixelSize: 10 }
                 }
             }
         }

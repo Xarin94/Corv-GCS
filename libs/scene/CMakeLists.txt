@@ -11,6 +11,10 @@ add_library(corv_scene STATIC
     SurfaceVolume.h SurfaceVolume.cpp
     RosSurfaceData.h RosSurfaceData.cpp
     FramePacer.h FramePacer.cpp
+    Mission3D.h Mission3D.cpp
+    TrafficTrails.h TrafficTrails.cpp
+    RenderQuality.h
+    VideoFrame.h
 )
 target_include_directories(corv_scene PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_link_libraries(corv_scene PUBLIC corv_core Qt6::Core Qt6::Gui)

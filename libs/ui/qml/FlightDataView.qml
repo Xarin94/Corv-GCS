@@ -12,6 +12,8 @@ Item {
     property alias scene: scene
     property alias hud: hud
     property bool sidebarOpen: false
+    // The loading screen is gone: from now on a missing terrain is said on the view
+    property bool loaded: false
     // The 2D map is the main view and the 3D the corner panel (body.minimap-swapped)
     property bool swapped: false
     // TERR ALT flashes while a UAS zone ceiling or the general height limit is broken
@@ -129,7 +131,7 @@ Item {
                     required property int index
                     width: tr.width * (index === 0 ? 0.5 : 0.25)
                     horizontalAlignment: index === 0 ? Text.AlignLeft : Text.AlignRight
-                    text: tr.cells[index]
+                    text: tr.header ? Theme.tr(tr.cells[index]) : tr.cells[index]
                     elide: Text.ElideRight
                     font.family: tr.header ? Theme.fontUi : Theme.fontData
                     font.pixelSize: Theme.fsXs
@@ -188,6 +190,13 @@ Item {
             fovDeg: hud.fovDeg
             terrainRadius: SysConfig.terrainRadius
             satelliteRadius: SysConfig.satelliteRadius
+            // SYS CONFIG → 3D VIEW; the HUD draws its attitude with the same blend
+            smoothing: SysConfig.smoothingTau
+            brightness: SysConfig.mapBrightness
+            timeOfDay: SysConfig.timeOfDay
+            quality: SysConfig.renderQuality
+            // FPV camera: alone, or with the 3D blended over it
+            videoMode: Fpv.mode
             horizonLock: hud.pitchLocked
             // The arrow keys turn the view where it is the main one
             lookKeys: !view.swapped
@@ -278,7 +287,7 @@ Item {
                         }
                     }
                     ToolTip.visible: mzHover.hovered && mz.index === 2
-                    ToolTip.text: "Centre on the vehicle"
+                    ToolTip.text: qsTr("Centre on the vehicle")
                     ToolTip.delay: 500
                 }
             }
@@ -301,8 +310,9 @@ Item {
             anchors.fill: parent
             z: 1
             // Third person shows the model, not the glass (setCameraMode)
-            visible: !scene.thirdPerson
+            visible: !scene.thirdPerson || Fpv.mode === 1
             messagesBottom: miniFrame.height + Theme.gutter + 28
+            smoothing: SysConfig.smoothingTau
             lightScene: scene.schematic && scene.lightTheme
             // The HUD is the glass in front of the nose: when the arrow keys turn the
             // view it slides out of frame with the scene (applyHudLookTransform)
@@ -356,7 +366,7 @@ Item {
                         Text {
                             id: bannerText
                             anchors.centerIn: parent
-                            text: Vehicle.demo ? "DEMO" : "DISARMED"
+                            text: Theme.tr(Vehicle.demo ? "DEMO" : "DISARMED")
                             color: Vehicle.demo ? Theme.hudGreen : "#ff2a2a"
                             font.family: Theme.fontData
                             font.pixelSize: Theme.fsLg
@@ -434,7 +444,7 @@ Item {
                 OutlinedText {
                     visible: rotor.flapShown
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "FLAPS"
+                    text: qsTr("FLAPS")
                     color: Theme.hudTextLbl
                     font.family: Theme.fontUi
                     font.pixelSize: Theme.fsXs
@@ -451,7 +461,7 @@ Item {
                 }
                 OutlinedText {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: rotor.sail ? "SAIL · RUDDER" : "ROTOR LOAD"
+                    text: Theme.tr(rotor.sail ? "SAIL · RUDDER" : "ROTOR LOAD")
                     color: Theme.hudTextLbl
                     font.family: Theme.fontUi
                     font.pixelSize: Theme.fsXs
@@ -493,8 +503,14 @@ Item {
                     readonly property var cr: Lte.cellRows
                     readonly property bool cellLive: !!cr.live
                     readonly property color cellColor: cr.changed ? "#ffaa00" : Theme.textMain
+                    // In the relative navigation mode lat/lon are synthetic (metres around the
+                    // scene origin): the velocity instead, north / east / down
+                    function velocity(v) { return (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(2) }
                     Repeater {
-                        model: [["LATITUDE", Vehicle.lat.toFixed(5), "", Theme.textMain], ["LONGITUDE", Vehicle.lon.toFixed(5), "", Theme.textMain]]
+                        model: (Vehicle.relativeMode
+                                ? [["VX · NORTH", posCol.velocity(Vehicle.vn), "m/s", Theme.textMain], ["VY · EAST", posCol.velocity(Vehicle.ve), "m/s", Theme.textMain],
+                                   ["VZ · DOWN", posCol.velocity(Vehicle.vd), "m/s", Theme.textMain]]
+                                : [["LATITUDE", Vehicle.lat.toFixed(5), "", Theme.textMain], ["LONGITUDE", Vehicle.lon.toFixed(5), "", Theme.textMain]])
                                .concat(posCol.cellLive ? [["LTE CELL", posCol.cr.cell, "", posCol.cellColor],
                                                           ["FREQ · PCI", posCol.cr.band, "", posCol.cellColor],
                                                           ["RSSI", posCol.cr.rssi, "dBm", posCol.cellColor],
@@ -507,14 +523,14 @@ Item {
                             spacing: 0
                             Text {
                                 width: 83
-                                text: parent.modelData[0]
+                                text: Theme.tr(parent.modelData[0])
                                 color: Theme.textDim
                                 font.family: Theme.fontUi
                                 font.pixelSize: Theme.fsXs
                                 font.letterSpacing: 0.09 * Theme.fsXs
                             }
                             Text {
-                                width: posCol.cellLive ? 130 : 51
+                                width: posCol.cellLive ? 130 : Vehicle.relativeMode ? 75 : 51
                                 horizontalAlignment: Text.AlignRight
                                 textFormat: Text.StyledText
                                 text: parent.modelData[1] + (parent.modelData[2] ? "<font color='" + Theme.textDim + "' size='1'> " + parent.modelData[2] + "</font>" : "")
@@ -592,19 +608,20 @@ Item {
                 Text {
                     id: zaTitle
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: zoneArm.a.title || ""
+                    text: Theme.tr(zoneArm.a.title || "")
                     color: "white"
                     font.family: Theme.fontUi; font.pixelSize: Theme.fsLg; font.weight: Font.Bold; font.letterSpacing: 1.5
                 }
                 Text {
                     id: zaDetail
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: zoneArm.a.detail || ""
+                    text: Theme.tr(zoneArm.a.detail || "")
                     color: "#f0f0f0"
                     font.family: Theme.fontUi; font.pixelSize: Theme.fsSm
                 }
             }
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: GeoZones.closeArmAlert() }
+            HoverTip { text: "Click to close" }
         }
 
         // LiDAR map and ROS surface strips (#lidar-strip, #ros-strip): bottom centre of
@@ -640,6 +657,59 @@ Item {
             onClicked: (i) => i === 0 ? Ros.cycleColor() : i === 1 ? Ros.toggleView() : Ros.clearSurface()
         }
 
+        // RELOADING MAP (#reload-indicator): the terrain under the vehicle is being built
+        // again, after a jump (another connection, a log loaded)
+        Rectangle {
+            z: 9
+            objectName: "reloadIndicator"
+            readonly property var l: scene.load
+            readonly property bool wanted: view.loaded && !Vehicle.relativeMode && l.covered === false && !l.hgtMissing
+            property bool shown: false
+            onWantedChanged: reloadTimer.restart()
+            // Not for a blink; and it stays half a second, as it did
+            Timer { id: reloadTimer; interval: parent.wanted ? 250 : 500; onTriggered: parent.shown = parent.wanted }
+            visible: shown
+            anchors.centerIn: parent
+            width: reloadText.implicitWidth + 80
+            height: reloadText.implicitHeight + 40
+            color: Theme.bg
+            border.color: Theme.accentCyan
+            border.width: 1
+            Text {
+                id: reloadText
+                anchors.centerIn: parent
+                text: qsTr("RELOADING MAP...")
+                color: Theme.accentCyan
+                font.family: Theme.fontUi
+                font.pixelSize: 14
+                font.letterSpacing: 2
+            }
+        }
+
+        // FPV stream status (#fpv-status-msg): what the stream is doing, for 4 s
+        Rectangle {
+            z: 9
+            objectName: "fpvStatus"
+            visible: Fpv.status.length > 0
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: 80
+            width: fpvText.implicitWidth + 40
+            height: fpvText.implicitHeight + 16
+            color: Qt.rgba(0, 20 / 255, 0, 0.85)
+            border.color: Fpv.statusError ? Qt.rgba(1, 68 / 255, 68 / 255, 0.6) : Qt.rgba(0, 210 / 255, 1, 0.6)
+            border.width: 1
+            Text {
+                id: fpvText
+                anchors.centerIn: parent
+                text: Theme.tr(Fpv.status)
+                color: Fpv.statusError ? "#ff4444" : "#00ff7f"
+                font.family: Theme.fontUi
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+                font.letterSpacing: 1
+            }
+        }
+
         // Mode change banner, centred 80 px from the top of #hud-wrapper
         ModeBanner {
             z: 8
@@ -666,6 +736,7 @@ Item {
         x: view.leftBarOpen ? Theme.ekfBarW : 0
         y: view.windowHeight / 2 - view.windowTop - height - 3
         label: "EKF STATUS"
+        tip: Ekf.enabled ? "Close EKF STATUS" : "Open EKF STATUS"
         open: Ekf.enabled
         onClicked: Ekf.enabled = !Ekf.enabled
         Behavior on x { NumberAnimation { duration: 300; easing.type: Easing.OutQuad } }
@@ -674,6 +745,7 @@ Item {
         x: view.leftBarOpen ? Theme.ekfBarW : 0
         y: view.windowHeight / 2 - view.windowTop + 3
         label: "FFT"
+        tip: Fft.enabled ? "Close FFT" : "Open FFT"
         open: Fft.enabled
         onClicked: Fft.enabled = !Fft.enabled
         Behavior on x { NumberAnimation { duration: 300; easing.type: Easing.OutQuad } }
@@ -684,6 +756,7 @@ Item {
         x: flight.x + flight.width - width
         y: view.windowHeight / 2 - view.windowTop - height / 2
         label: "GCS OPTIONS"
+        tip: "Toggle GCS Controls"
         rightEdge: true
         open: view.sidebarOpen
         onClicked: view.sidebarOpen = !view.sidebarOpen

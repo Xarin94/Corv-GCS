@@ -34,7 +34,7 @@ Flickable {
         SetupPanel {
             title: "ACCELEROMETER CALIBRATION"
             width: page.fullW
-            CfgNote { text: "Six positions, disarmed. When a position lights up, hold the vehicle that way and still on a flat surface, then press CONTINUE. The gyros are measured first: keep it still when you start." }
+            CfgNote { text: qsTr("Six positions, disarmed. When a position lights up, hold the vehicle that way and still on a flat surface, then press CONTINUE. The gyros are measured first: keep it still when you start.") }
             Row {
                 id: steps
                 width: parent.width
@@ -85,7 +85,7 @@ Flickable {
                                     }
                                 }
                                 Text {
-                                    text: step.modelData.title
+                                    text: Theme.tr(step.modelData.title)
                                     color: step.lit ? Theme.textMain : Theme.textDim
                                     font.family: Theme.fontUi; font.pixelSize: 11; font.weight: Font.Bold; font.letterSpacing: 1
                                 }
@@ -94,7 +94,7 @@ Flickable {
                                 width: parent.width
                                 horizontalAlignment: Text.AlignHCenter
                                 wrapMode: Text.Wrap
-                                text: step.modelData.caption + (step.modelData.view === "rear" ? " · seen from behind" : "")
+                                text: step.modelData.caption + (step.modelData.view === "rear" ? qsTr(" · seen from behind") : "")
                                 color: step.lit ? Theme.textMain : Theme.textDim
                                 opacity: 0.75
                                 font.family: Theme.fontUi; font.pixelSize: 9
@@ -125,7 +125,7 @@ Flickable {
             Text {
                 width: parent.width
                 visible: text.length > 0
-                text: Calibration.accelLog
+                text: Theme.tr(Calibration.accelLog)
                 wrapMode: Text.Wrap
                 color: Theme.textDim
                 font.family: Theme.fontData; font.pixelSize: 10
@@ -138,7 +138,7 @@ Flickable {
             spacing: 20
             SetupPanel {
                 title: "LEVEL"
-                CfgNote { text: "Sets AHRS_TRIM so that the attitude reads level when the vehicle sits level. Place it level and still, as it flies." }
+                CfgNote { text: qsTr("Sets AHRS_TRIM so that the attitude reads level when the vehicle sits level. Place it level and still, as it flies.") }
                 CalButton {
                     width: parent.width
                     text: "CALIBRATE LEVEL"
@@ -149,7 +149,7 @@ Flickable {
             }
             SetupPanel {
                 title: "SIMPLE ACCEL CAL"
-                CfgNote { text: "One position only, for vehicles too large to turn over: level and still. Less accurate than the six positions; Copter firmware." }
+                CfgNote { text: qsTr("One position only, for vehicles too large to turn over: level and still. Less accurate than the six positions; Copter firmware.") }
                 CalButton {
                     width: parent.width
                     text: "SIMPLE ACCEL CAL"
