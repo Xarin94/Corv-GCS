@@ -21,12 +21,14 @@ folds on a click on its title (▼), so you can keep open only what you use.
 | [MESSAGE LOG](#message-log) | every autopilot message of the session |
 | [LOG REPLAY](#log-replay) | replay a `.tlog` or `.bin` flight log |
 
+<p align="center"><img src="images/side-panel.png" width="260" alt="The side panel"/></p>
+
 ## VEHICLE
 
 | | |
 |---|---|
 | **TYPE** | The vehicle family from its heartbeat: Copter (multirotors and helicopters), Plane (fixed wing and VTOL), Rover (rovers and boats) or Sub |
-| **SYS ID** | Its MAVLink system ID (1 unless changed with `SYSID_THISMAV`) |
+| **SYS ID** | Its MAVLink system ID (1 unless changed with `SYSID_THISMAV`, `MAV_SYSID` from firmware 4.7) |
 | **FW** | The firmware version it reports |
 
 `--` everywhere means no vehicle is connected.
@@ -35,7 +37,7 @@ folds on a click on its title (▼), so you can keep open only what you use.
 
 | Button | What it does |
 |--------|--------------|
-| **SET HOME** | After a confirmation, makes the vehicle's **current position** its new home (`MAV_CMD_DO_SET_HOME`): RTL and the relative altitudes then refer to it. The autopilot needs a 3D GPS fix and a healthy EKF; if it refuses, the reason is shown. Useful when the vehicle was armed somewhere else than where it should return, e.g. a boat launched from a pier. |
+| **SET HOME** | After a confirmation, makes the vehicle's **current position** its new home (`MAV_CMD_DO_SET_HOME`): RTL and the relative altitudes then refer to it. A message says whether the autopilot took it; it needs a 3D GPS fix and a healthy EKF. Useful when the vehicle was armed somewhere else than where it should return, e.g. a boat launched from a pier. |
 | **REBOOT FC** | After a confirmation, reboots the autopilot (`MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN`) — needed after some parameter changes (a new frame, a serial port protocol, a calibration that asks for it). **Greyed out while armed.** The link drops and comes back when the autopilot has restarted. |
 
 ## MISSION
@@ -63,15 +65,15 @@ centimetres ArduPilot stores):
 
 | Field | Parameter | |
 |-------|-----------|---|
-| **RTL ALT (m)** | `RTL_ALT` | Height above home the vehicle climbs to (if lower) before flying back. 0 = return at the current height. |
-| **RTL ALT FINAL (m)** | `RTL_ALT_FINAL` | Height it descends to over home at the end: 0 = land; above 0 = hover there. |
-| **RTL SPEED (m/s)** | `RTL_SPEED` | Horizontal speed on the way back; 0 = the waypoint speed (`WPNAV_SPEED`). |
+| **RTL ALT (m)** | `RTL_ALT`, `RTL_ALT_M` from 4.7; Plane `RTL_ALTITUDE` | Height above home the vehicle climbs to (if lower) before flying back. 0 = return at the current height. |
+| **RTL ALT FINAL (m)** | `RTL_ALT_FINAL`, `RTL_ALT_FINAL_M` from 4.7 | Height it descends to over home at the end: 0 = land; above 0 = hover there. |
+| **RTL SPEED (m/s)** | `RTL_SPEED`, `RTL_SPEED_MS` from 4.7 | Horizontal speed on the way back; 0 = the waypoint speed (`WPNAV_SPEED`). |
 | **SRTL POINTS** | `SRTL_POINTS` | Smart RTL: how many points of the path flown the vehicle remembers to retrace (0 disables Smart RTL; needs a reboot). |
 | **SRTL ACCURACY (m)** | `SRTL_ACCURACY` | Smart RTL: how closely the remembered path follows the real one. |
 
-**READ FROM VEHICLE** fills the fields from the parameters the GCS already holds — load them first
-with **READ ALL** (or **READ LISTED**) on [SETUP → PARAMETERS](setup.md#parameters). **WRITE TO
-VEHICLE** sends only the fields you changed. These are Copter parameter names; ArduPilot:
+**READ FROM VEHICLE** asks the vehicle for the ones the GCS does not hold yet, by the names its
+firmware uses; a field the vehicle has no parameter for stays greyed (a plane has no Smart RTL).
+**WRITE TO VEHICLE** sends only the fields you changed. ArduPilot:
 [RTL mode](https://ardupilot.org/copter/docs/rtl-mode.html),
 [Smart RTL](https://ardupilot.org/copter/docs/smartrtl-mode.html).
 

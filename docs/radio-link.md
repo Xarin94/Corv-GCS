@@ -52,7 +52,7 @@ link along the whole flight.
 The **LINK PROFILE** cut shows the terrain between the antenna and the point under the cursor — or
 the worst point of the route — with the Earth's bulge, the first **Fresnel zone** and its 60 % core,
 the ground that intrudes into it in red, and the loss at the worst ridge. In the picture a mountain
-between operator and aircraft costs 46.7 dB and the link is lost.
+between operator and aircraft costs 48.1 dB and the link is lost.
 
 ## The model
 

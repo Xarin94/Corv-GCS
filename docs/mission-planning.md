@@ -273,9 +273,11 @@ signal, the margin and the distance from the ground station.
 ## Upload, read, save
 
 - **UPLOAD** sends the calculated mission to the autopilot (MAVLink mission protocol, or MSP on INAV).
-  Errors block it; warnings do not.
+  Errors block it; warnings do not. On a slow or lossy radio lost items are sent again, and at the end
+  the GCS checks that the vehicle holds as many items as it sent.
 - **READ** brings back the mission stored on the autopilot, turned into segments — one waypoint per
-  navigation command, loiters as circles, the rest as actions.
+  navigation command, loiters as circles, the rest as actions; a speed change goes to the leg it
+  acts on. Lost items are asked for again.
 - **SAVE** keeps the route, with its segments, in the [mission library](#mission-library), so it can
   be edited again.
 - The **⋯** menu exports a Mission Planner `.waypoints` file and imports `.waypoints`, `.txt` or `.json`.

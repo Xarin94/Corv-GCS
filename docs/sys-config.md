@@ -11,6 +11,8 @@ opposed to [SETUP](setup.md), which configures the vehicle. Everything here is r
 sessions on this computer, except where noted. One panel writes to the vehicle: **MAVLINK STREAM
 RATES**.
 
+![SYS CONFIG](images/sysconfig.jpg)
+
 The page is three columns, one theme each, read top to bottom:
 
 | VEHICLE & LINK | DISPLAY | DATA & TOOLS |
@@ -53,6 +55,8 @@ Everything about the relative mode — what it draws, the dead reckoning, what A
 GPS — is in [navigation without GPS](3D-NAVIGATION.md#5-navigation-without-gps).
 
 ## ROTOR LOAD
+
+<p align="center"><img src="images/syscfg-rotor-load.png" width="300" alt="The ROTOR LOAD panel"/></p>
 
 The schematic at the bottom right of the flight screen, each motor coloured by its output, and the
 FLAPS indicator over it when the vehicle has flaps or flaperons. On a sailboat, the wing and rudder dials (see [flight screen](flight-screen.md#bottom-right-rotor-load-position-traffic)).
@@ -260,6 +264,7 @@ accelerometer, three axes summed), so the same line reads the same live and from
 | Field | Default | |
 |-------|---------|---|
 | **LANGUAGE** | English | English or 中文 (Simplified Chinese), for the whole interface, changed at once. The HUD, the parameter documentation and this guide stay in English. |
+| **SETTINGS OF 1.x** → **IMPORT…** | | Shown when CORV GCS 1.x is found on this computer: copies its settings (HUD fields, models, views, joystick, LiDAR, ROS, RTK, radio, battery, parameter favourites). The cellular key is not among them. |
 | **DEVTOOLS** → **OPEN DEVTOOLS** | | 1.x only: 2.x has no developer tools, the debug log below has the same record. |
 | **DEBUG LOG (LAST 5 MIN)** → **SAVE COPY…** | | Saves one file with the last 5 minutes of this session and of the previous one (connections, errors, autopilot messages, commands sent): **send it to support** when reporting a problem. The path saved to is shown underneath. |
 | **SHOW FILE** | | Shows the live debug log file in the file manager (`data/debug/corv-gcs-debug.log`, rewritten every few seconds). |

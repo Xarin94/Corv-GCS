@@ -19,7 +19,8 @@ Download from the [Releases](https://github.com/Xarin94/Corv-GCS/releases/latest
 
 Version 2.x installs next to 1.x, so the two can stay side by side: on Windows in its own
 folder (`%LOCALAPPDATA%\Programs\CORV Systems\CORV GCS`) with its own uninstaller, and the
-*CORV GCS* shortcuts start 2.x. Its settings start from the defaults. Over a copy installed as
+*CORV GCS* shortcuts start 2.x. Its settings start from the defaults; **SYS CONFIG → APPLICATION →
+SETTINGS OF 1.x** copies those of 1.x found on the computer. Over a copy installed as
 *CORV GCS 2* (the first 2.0.x installers), the installer keeps that folder and its data and
 renames the shortcuts and the entry in the installed apps.
 
@@ -105,7 +106,6 @@ go to the per-user data folder. Custom aircraft models (`.glb` / `.gltf`) go in 
 | MAVLink TCP | SITL, also through WSL on Windows | `127.0.0.1:5760` |
 | MSP Serial (INAV / Betaflight) | The flight controller's USB or a telemetry UART | 115 200 baud; *Slow link* polling for long-range radios |
 | MSP TCP (INAV SITL) | INAV's simulator | |
-| CORV Binary (Legacy) | The onboard CORV autopilot over USB | 460 800 baud |
 
 **SCAN** lists the serial ports; **CONNECT** opens the link and requests the data streams. The
 **FIRMWARE INFO** panel shows what answered. A cellular module (LTEtelem) is connected from

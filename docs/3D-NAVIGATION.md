@@ -7,8 +7,8 @@ description: The mission in 3D, the low-altitude grid, lakes and seas, ROVs, and
 # 3D view: missions, low flying, water, ROVs and navigation without GPS
 
 What the 3D view draws for a mission, for an aircraft close to the ground, for a vehicle on or under
-water, and what the GCS does when the vehicle has no GPS at all. Everything here is in CORV GCS
-1.7.5; the measurements quoted come from ArduPilot SITL runs and from real BlueROV2 logs.
+water, and what the GCS does when the vehicle has no GPS at all. The measurements quoted come from
+ArduPilot SITL runs and from real BlueROV2 logs.
 
 | | |
 |---|---|
@@ -30,7 +30,7 @@ is where a grid, a water surface and a zero plane can be drawn without hiding an
 The 3D view draws the mission the way the Flight Plan page does, in the same colours, so the two
 read alike. A survey is one figure, not three hundred waypoints.
 
-![Mission in the 3D view](images/3d-mission.jpg)
+![A survey with its circle, corridor and perimeter in the 3D view](images/3d-mission.jpg)
 
 | Item | Drawn as |
 |------|----------|
@@ -61,7 +61,7 @@ screen says how high the aircraft is. Below 200 m above the ground the schematic
 grid of **equilateral triangles, 25 m a side**, on the terrain within **500 m of the aircraft**.
 Triangles of a fixed size grow on the screen as the aircraft descends — the height cue.
 
-![Triangle grid, first person at 40 m AGL](images/low-alt-grid.jpg)
+![Triangle grid, first person at 40 m over the take-off point](images/low-alt-grid.jpg)
 
 - In full up to **150 m** above the ground, fading out to nothing at **200 m**, with the same
   height the AGL readout shows.
@@ -105,7 +105,7 @@ goes down to −4 900 m). There the terrain drawn is the bed and the surface is 
 
 ![A ROV under Lake Garda, seen from above the surface](images/underwater-chase.jpg)
 
-![First person, 7 m under the surface](images/underwater-fpv.jpg)
+![First person under the surface](images/underwater-fpv.jpg)
 
 ### Limitations
 
@@ -148,7 +148,7 @@ What the vehicle sent over 1 h 40 min:
   (`SCALED_PRESSURE2`) went from 1 017 to 3 131 hPa — 21.6 m of fresh water.
 - A downward sonar altimeter (`DISTANCE_SENSOR`, orientation 25) read 0.3–34 m.
 
-In the picture the red trail is the EKF position, aided by the USBL.
+In the picture, taken with version 1.x, the red trail is the EKF position, aided by the USBL.
 
 ## 5. Navigation without GPS
 
@@ -184,7 +184,7 @@ The settings are kept between sessions.
 
 ### Relative mode
 
-![Relative mode: ROV with a DVL and no GPS, back up to 124 m after a dive to 150 m](images/relative-mode.jpg)
+![Relative mode: a simulated ROV with no GPS, its track under the plane at zero](images/relative-mode.jpg)
 
 - **Position**: `LOCAL_POSITION_NED` when the vehicle sends one — its EKF already integrates a DVL,
   a USBL or visual odometry; otherwise dead-reckoned by the GCS from the chosen velocity.
@@ -197,7 +197,7 @@ The settings are kept between sessions.
   50 m squares marks **zero**, 3 km around the camera. Home is the zero of the frame; the trail is
   drawn from the derived position. Below zero the particles appear.
 - **The position table** (bottom right) shows **VX · NORTH, VY · EAST, VZ · DOWN** in m/s instead of
-  latitude, longitude and radar altitude.
+  latitude and longitude.
 - Works the same on a live link and on a replayed `.tlog` / `.bin`.
 
 ### Dead reckoning
@@ -224,8 +224,6 @@ What to expect: a sub without DVL has no real horizontal velocity at all — its
 drift, so the position is only indicative; a plane on airspeed drifts with the wind.
 
 ## 6. ROV in the simulator
-
-<p align="center"><img src="images/sitl-rov.png" width="350" alt="SITL launcher with the ROV"/></p>
 
 **SETUP → SIMULATION → VEHICLE TYPE** offers two ROVs, both ArduSub on the vectored BlueROV2 frame
 (the binary is downloaded on first launch):

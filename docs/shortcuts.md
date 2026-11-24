@@ -27,6 +27,7 @@ Keys act on the page in view and never while you are typing in a field.
 
 | Mouse | |
 |-------|---|
+| Drag on the first-person view | Look around, as with the arrow keys; letting go returns to the nose |
 | Drag / wheel on the 3D view | Orbit and zoom the chase view (3P), 50 m to 2.5 km; on a touch screen one finger orbits, a pinch zooms |
 | Hover the mini-map | Enlarge it |
 | Click the mini-map | Swap it with the 3D view; click the 3D view to swap back |

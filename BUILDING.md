@@ -13,7 +13,7 @@ to use it in the [wiki](https://xarin94.github.io/Corv-GCS/).
 | Phase | Content | State |
 | --- | --- | --- |
 | 1 Foundations | CMake, presets, frameless QML window, CI on three systems (Qt for Windows installed by `tools/ci/install-qt-windows.py`: aqtinstall 3.3 does not know the 6.12 repository layout), Linux AppImage (`tools/build-appimage.sh`), Windows NSIS installer (`tools/package-windows.ps1`: per user, choice of folder, VC++ runtime app-local, 35 MB with the bundled LTE cells and SDL3) and portable zip, macOS DMG (bundle, macdeployqt, universal, ad-hoc signed), all three built by CI and attached to the GitHub release of a `v*` tag (the tag is the version the program reports); update check at start against the public repository's releases, one-click install (Windows setup `/UPDATE`, AppImage replaced in place, DMG opened) | Done; signed / notarized packages not yet |
-| 2 Link and state | MAVLink (ardupilotmega + development + CORV_CELL_INFO), serial / UDP / TCP, CORV-2 binary, demux, tlog, trace, StateMapper, PoseSmoother, commands, connection manager, `corv-link-cli`; MAVLink FTP and @PARAM/param.pck (READ ALL in 0.08 s on SITL); cellular link to an LTEtelem module through the relay (TLS, CRV3 Ed25519 access, AES-256-GCM end to end, replay window, reconnection; OpenSSL libcrypto); RTK / GPS inject (NTRIP caster with sourcetable and GGA, serial base, GPS_RTCM_DATA); telemetry forward (MAVLink mirror over UDP client / server / serial with write access, LTM); MSP v1 / v2 over serial and TCP (INAV / Betaflight state, INAV mission read and write) | Done, tried on SITL and against independent fakes of caster, relay, module and an MSP board; MSP on a real board to try |
+| 2 Link and state | MAVLink (ardupilotmega + development + CORV_CELL_INFO), serial / UDP / TCP, demux, tlog, trace, StateMapper, PoseSmoother, commands, connection manager, `corv-link-cli`; MAVLink FTP and @PARAM/param.pck (READ ALL in 0.08 s on SITL); cellular link to an LTEtelem module through the relay (TLS, CRV3 Ed25519 access, AES-256-GCM end to end, replay window, reconnection; OpenSSL libcrypto); RTK / GPS inject (NTRIP caster with sourcetable and GGA, serial base, GPS_RTCM_DATA); telemetry forward (MAVLink mirror over UDP client / server / serial with write access, LTM); MSP v1 / v2 over serial and TCP (INAV / Betaflight state, INAV mission read and write) | Done, tried on SITL and against independent fakes of caster, relay, module and an MSP board; MSP on a real board to try |
 | 3 Terrain 3D | HGT store with automatic SRTM1 download of the missing tiles (AWS, saved to `<data>/terrain`), 1/30 degree chunks, QRhi renderer with texture-array heights, screen-space LOD, schematic shader, fog, satellite imagery on the chunks (zoom bands by distance, BC1 texture arrays with mips; RGBA8 on the OpenGL backend, where BC1 arrays sample black on Mesa); overlays in screen-space thick lines with a ghost pass (trail, predicted trajectory corridor, home, mission route with symbols and loiter rings, ADS-B contacts, ownship ring); vehicle models (GLB of the vehicle type, model scale); first person with arrow-key look-around and horizon lock, third person orbit (drag, wheel); terrain clipping (off / vehicle / all); water surface grid and underwater specks; sun for the time and place; text labels (HOME, mission items, traffic) from a glyph atlas; SatelliteDetail (four clipmap textures of zoom 17-20 around the vehicle, SYS CONFIG → SATELLITE DETAIL); outlines of the schematic view (ridges and skyline found in the depth, three passes); UAS geozones painted on the terrain; LTE cell poles and the dashed link to the serving mast; debug server (`--debug-port`) | Image parity measurements; the vehicle model is not outlined (it was in Electron) |
 | 4 Flight screen | HUD as separate instruments (HUDRenderer.js port, GPU tint, repaint on a pixel of change: 0.1-0.3 ms mean, under 1.5 ms worst per frame), command bar, connection sidebar, telemetry cells, mini-map, annunciator column (warnings / cautions, STATUSTEXT holds, silence on click, demo sequencer), EKF STATUS bar (ArduPilot EKF3 charts, flags, 5 Hz rates while open), FFT bar (strongest lines, live spectrum with peak hold, 60 s waterfall, logarithmic frequency axis), ROTOR LOAD schematic (per-motor PWM gauges on the airframe layout, built from the SERVOn_FUNCTION assignments: MotorN on the ring, a quadplane's pusher or a twin's engines in the middle; SAIL · RUDDER dials for a sailboat; FLAPS indicator over it for flap / flaperon outputs, Airbus EIS style, −10° to +30°; servo parameters read only while it is enabled), mode change banner, ADS-B traffic table (OpenSky every 30 s and ADSB_VEHICLE), LTE cell rows of the position box (LTE OVERLAY) | A full SITL flight |
 | 5 Mission | RouteModel, RouteCompiler (INAV too), MissionTransfer, MissionStore v2, Platforms, RadioLink, FLIGHT PLAN page with undo/redo, layered map, profile with radio band, mission library, upload / read (MAVLink, and INAV over MSP); mission in 3D; UAS geozones (EU ED-269 / ED-318 files, FAA, DFS DIPUL, IGN, ENAIRE, BAZL) on the map with legend, tooltips and annunciators | Parity tests with missions saved by Electron, transfer on SITL |
@@ -26,7 +26,7 @@ to use it in the [wiki](https://xarin94.github.io/Corv-GCS/).
 
 ```
 libs/core     geodesy, ring buffers, LRU, data root, settings, rolling debug log
-libs/link     transports, MAVLink parser, CORV-2, demux, tlog, trace, LinkManager (link thread)
+libs/link     transports, MAVLink parser, demux, tlog, trace, LinkManager (link thread)
 libs/vehicle  VehicleState, StateMapper, modes, SceneOrigin, RelativeNav, PoseSmoother,
               VehicleHub (snapshots), CommandSender, ConnectionManager
 libs/input    gamepads and joysticks (SDL3, optional) and the RC mapping of the joystick
@@ -43,7 +43,7 @@ tools/        corv-link-cli, MAVLink generator (corv.xml), build and package scr
               rtsp-sim.py (a fake RTSP camera)
 resources/    fonts, icons, vehicle models, SITL defaults, i18n/ (the Chinese interface),
               celldb/ (the bundled LTE cells)
-tests/        Qt Test ports of the scripts/test-*.js suites
+tests/        Qt Test suites (the ones of 1.x ported, and new ones)
 ```
 
 ## Build (Windows)
@@ -62,8 +62,9 @@ OpenSSL (libcrypto, for the cellular link) comes from `OPENSSL_DIR` or
 `build\tools\openssl-*`; without it the build has no LTE link. SDL3 (joystick
 input) comes from `SDL3_DIR` or `build\tools\sdl3\SDL3-*`; without it the build
 has no joystick. `tools\package-windows.ps1` fetches both when missing. FFmpeg (the FPV
-video; libavcodec and libavutil, an LGPL build) comes from `FFMPEG_ROOT` or `build\tools\ffmpeg`;
-without it the build has no video and the FPV button says so.
+video; libavcodec and libavutil, an LGPL build) comes from `FFMPEG_ROOT` or `build\tools\ffmpeg`,
+where the same script fetches a pinned LGPL 7.1 build and checks its SHA-256; without it the build has
+no video and the FPV button says so.
 
 Installer: `powershell -ExecutionPolicy Bypass -File tools\package-windows.ps1 [-Zip]`
 builds, stages (windeployqt, VC++ runtime app-local, libcrypto, notices) and makes
@@ -75,14 +76,15 @@ whole). Missing NSIS / OpenSSL are fetched into `build\tools` (NSIS 3.11
 portable, OpenSSL 3.5 for MSVC) unless `-NoDownload`.
 
 Link checks without the interface: `corv-link-cli serial COM5 57600`,
-`corv-link-cli corv COM7 460800`, `corv-link-cli lte HOST 5765 --module ID --key HEX [--cert SHA256]`
+`corv-link-cli tcp 127.0.0.1 5760`, `corv-link-cli lte HOST 5765 --module ID --key HEX [--cert SHA256]`
 print the vehicle state once a second and warn when bytes arrive but no MAVLink
-or CORV-2 frame checks out (wrong baud rate or protocol).
+frame checks out (wrong baud rate or protocol).
 
 Debug server: `--debug-port PORT` starts a JSON-RPC 2.0 server on 127.0.0.1 only
 (one request per line): `set` / `get` {object, property, value} on a view model or a
 named QML item, `call` {target: "Gcs.setMode", args: [...]} with the return value,
-`stats` (what the 3D views report), `screenshot` {file} (no file: base64 PNG) and
+`stats` (what the 3D views report), `state` (the vehicle state), `props` {object}, `rows` {object,
+property} of a model, `events` {since} (toasts, questions and HUD messages), `quit`, `screenshot` {file} (no file: base64 PNG) and
 `script` {line} for any of the commands below. `python tools/debug-client.py PORT METHOD [JSON]`
 sends one request.
 

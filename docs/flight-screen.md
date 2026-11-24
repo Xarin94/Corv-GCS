@@ -136,6 +136,10 @@ CONFIG**:
 
 ## Schematic chart
 
+![The drawn chart, dark theme](images/flight-synthetic.jpg)
+
+![The drawn chart, light theme](images/flight-synthetic-light.jpg)
+
 With the satellite imagery off (**M**) the terrain becomes a chart, in the style of the mission
 simulations in *Top Gun: Maverick*: black sky, near-black ground with a fixed north-west hillshade,
 contour lines every 10 m with brighter ones every 50 m and amber ones every 250 m (each level fades
@@ -313,6 +317,8 @@ NOTAM (most US TFRs) are not included.
 
 ## EKF status
 
+![EKF status](images/ekf-status.jpg)
+
 The **EKF STATUS** tab on the left edge of the flight view (▶) slides a black bar out down the left
 side, as the side panel's GCS OPTIONS tab does on the right; its ◀ closes it again. The bar is
 reopened at the next start if it was open. The 3D view, the HUD and the mini-map move right to make room. It
@@ -331,6 +337,8 @@ GPS_RAW_INT at 5 Hz (2 Hz otherwise) and puts the default rates back when it clo
 | **ATTITUDE EKF vs DCM** | Roll, pitch and yaw of the estimator flying the aircraft minus the backup one (AHRS2): the DCM while the EKF is active, the EKF after a fall back to DCM. VIBE (m/s² on x/y/z, amber over 30, red over 60) and CLIP (accelerometer clipping) above. | Within a degree or two. Several degrees in a sustained turn usually means the DCM is the one off; a step when the autopilot says *AHRS: DCM active*. |
 
 ## Vibration FFT
+
+![Vibration spectrum](images/fft.jpg)
 
 The **FFT** tab, under EKF STATUS on the left edge, opens a bar in the same place: opening one
 closes the other. It shows the vibration spectrum of the IMU, the three axes summed; **GYRO** or
@@ -384,6 +392,8 @@ Two thin strips at the top centre, shown only while their feature is on:
   **CLEAR**. See [ROS surface](ROS.md#3-on-the-flight-screen-the-ros-strip).
 
 ## Mini-map
+
+![The map as the main view](images/flight-map.jpg)
 
 Bottom left: the vehicle, its track, home, the mission, ADS-B traffic, the target and, when on, the
 [restricted zones](#restricted-zones) on satellite imagery. It grows when the mouse is over it. **Click it** to swap it with the 3D view (the map
@@ -474,6 +484,8 @@ Left to right:
 | **SPD … SET** | Target speed in m/s, sent as `MAV_CMD_DO_CHANGE_SPEED` with **SET** or Enter; the label flashes *SET* when sent. Changes the speed of the mission being flown (or of GUIDED). |
 | **Home / WP** | Straight-line distance to home; active waypoint / number of mission items. |
 
+<p align="center"><img src="images/dialog-arm.png" width="360" alt="ARM asks first"/> <img src="images/dialog-takeoff.png" width="360" alt="TAKEOFF asks for the height"/></p>
+
 The flight buttons do nothing with no vehicle connected. A mode the vehicle does not have says so instead of being sent.
 
 ## FPV video
@@ -488,6 +500,8 @@ picture through), so the route and the HUD overlay the real picture. The button 
 camera alone and amber in AR.
 
 ## Logs and replay
+
+![Log replay](images/replay.jpg)
 
 Every connection is recorded as a MAVLink `.tlog` from the moment the link comes up, in `data/logs`;
 the [mission library](mission-planning.md#mission-library) lists them. In the

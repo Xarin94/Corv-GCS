@@ -12,7 +12,7 @@ works against it: missions, modes, parameters, failsafes, logs. ArduPilot:
 [SITL](https://ardupilot.org/dev/docs/sitl-simulator-software-in-the-loop.html),
 [using SITL for testing](https://ardupilot.org/dev/docs/using-sitl-for-ardupilot-testing.html).
 
-<p align="center"><img src="images/sitl-rov.png" width="350" alt="SITL launcher"/></p>
+![SITL launcher](images/setup-simulation.jpg)
 
 ## Launch
 
@@ -91,7 +91,7 @@ neither ROV dives deeper.
 
 Driving a ROV: a gamepad in [SETUP → Joystick / RC](setup.md#joystick--rc), or `MANUAL_CONTROL` from another
 program on the simulator's second port (TCP 5762). ArduSub only takes pilot input from its own GCS
-system ID (`SYSID_MYGCS`, 255), and reacts when that input stops for a few seconds
+system ID (`SYSID_MYGCS`, `MAV_GCS_SYSID` from 4.7; 255), and reacts when that input stops for a few seconds
 ([pilot control failsafe](https://ardupilot.org/sub/docs/pilot-control-failsafe.html)) — in the
 simulator it disarmed the vehicle.
 

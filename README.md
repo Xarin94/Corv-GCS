@@ -158,8 +158,8 @@ connection.
 ### Coming from 1.x
 
 2.x is a rewrite, not an update of the Electron version. On Windows it installs next to 1.x, in its
-own folder. Missions, logs, terrain and LTE cells keep the 1.x formats; the settings start again
-and the map tiles are downloaded again. From 2.0.1 on, the program checks these releases at start
+own folder. Missions, logs, terrain and LTE cells keep the 1.x formats; SYS CONFIG → APPLICATION
+imports the settings of 1.x, and the map tiles are downloaded again. From 2.0.1 on, the program checks these releases at start
 and installs a newer version in one click (SYS CONFIG → UPDATES). The 1.x sources stay at tag
 `v1.8.8`.
 

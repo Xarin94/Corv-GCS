@@ -31,21 +31,24 @@ vehicle.
 
 ### Connection
 
+![Connection](images/setup-connection.jpg)
+
 **CONNECTION** panel:
 
 | Field | |
 |-------|---|
-| **CONNECTION TYPE** | MAVLink Serial, MAVLink UDP, MAVLink TCP, CORV Binary (Legacy), MSP Serial (INAV / Betaflight), MSP TCP (INAV SITL). A hint under it says what each is for. Only the fields of the chosen type are shown. |
+| **CONNECTION TYPE** | MAVLink Serial, MAVLink UDP, MAVLink TCP, MSP Serial (INAV / Betaflight), MSP TCP (INAV SITL). A hint under it says what each is for. Only the fields of the chosen type are shown. |
 | **POLL RATE** (MSP) | MSP is request / response, so the poll rate is the telemetry rate: *Normal* for USB or 115 200 baud, *Slow link* for a long-range radio. |
 | **SERIAL PORT** + **SCAN** | SCAN lists the serial ports of the PC (USB telemetry radio, the autopilot's USB). |
-| **BAUD RATE** | 9 600 to 921 600. 57 600 for SiK / RFD radios, 115 200 on the autopilot's USB, 460 800 for CORV. |
+| **BAUD RATE** | 9 600 to 921 600. 57 600 for SiK / RFD radios, 115 200 on the autopilot's USB. |
 | **UDP HOST / UDP PORT** | `127.0.0.1:14550` by default: the GCS listens on that port for MAVProxy, mavlink-router, a companion computer, Herelink. |
 | **TCP HOST / TCP PORT** | `127.0.0.1:5760`: a SITL, also on another PC or in WSL. |
 | **CONNECT / DISCONNECT** | Opens the link and requests the data streams; closes it. |
 
 **FIRMWARE INFO** shows what answered: **AUTOPILOT** (ArduPilot, INAV…), **VEHICLE TYPE** and
 **SYSTEM ID**. The connection types in detail are in
-[Getting started](getting-started.md#connect-a-vehicle).
+[Getting started](getting-started.md#connect-a-vehicle). Every connection starts clean: the pre-arm
+state, the servo outputs, the RPM and the rest of the vehicle connected before are forgotten.
 
 ### Cellular link
 
@@ -59,9 +62,8 @@ key derived from it, and the relay pairs them by that key. A wrong key is theref
 GCS simply never meets the module, which stays *offline on the relay*. The MODULE line then shows the
 key fingerprint, to compare with `e2e_key_fp` on the module (`~cfg GET`).
 
-The flight controller behind the module may speak MAVLink (ArduPilot) or CORV-2 binary (CORV
-board): the GCS tells them apart by themselves, packet by packet, and keeps the module's own MAVLink
-(signal and LTE cell) apart from the vehicle's telemetry. A CORV board is shown as on the USB link.
+The flight controller behind the module speaks MAVLink; the GCS keeps the module's own MAVLink
+(signal and LTE cell) apart from the vehicle's telemetry.
 
 | Panel / field | |
 |---------------|---|
@@ -180,6 +182,8 @@ Live bars of every RC input channel (the PWM the receiver delivers).
 
 ### Joystick / RC
 
+![Joystick](images/setup-joystick.jpg)
+
 Fly with a gamepad through RC override (`RC_CHANNELS_OVERRIDE`): the GCS sends the stick positions as
 RC channels.
 
@@ -199,7 +203,7 @@ its channel between 1000 and 2000. The mapping is kept; override and servo butto
 again at every start.
 
 ArduPilot: [joystick](https://ardupilot.org/copter/docs/common-joystick.html). A sub only takes pilot
-input from its own GCS system ID (`SYSID_MYGCS`, 255), and reacts when the input stops for a few
+input from its own GCS system ID (`SYSID_MYGCS`, `MAV_GCS_SYSID` from firmware 4.7; 255), and reacts when the input stops for a few
 seconds ([pilot control failsafe](https://ardupilot.org/sub/docs/pilot-control-failsafe.html)).
 
 ### Flight modes
