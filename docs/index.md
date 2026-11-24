@@ -24,7 +24,71 @@ vehicle does with it.
 [Download the latest release](https://github.com/Xarin94/Corv-GCS/releases/latest){: .btn .btn-primary .mr-2 }
 [Source on GitHub](https://github.com/Xarin94/Corv-GCS){: .btn }
 
-![Flight screen](images/flight-hud.jpg)
+![First person over Innsbruck, satellite imagery on the terrain](images/flight-hud.jpg)
+
+## What it looks like
+
+The pictures are the program itself, flying ArduPilot in simulation: a plane at 1500 m over
+Innsbruck, a copter surveying a slope above Lake Garda. Each links to the chapter that explains it.
+
+### First person with synthetic vision
+
+Contour lines, ridges and the horizon drawn from the elevation model, in the dark and in the light
+theme: [Flight screen](flight-screen.md), [3D view](3D-NAVIGATION.md).
+
+![Synthetic vision, dark theme](images/flight-synthetic.jpg)
+
+![Synthetic vision, light theme](images/flight-synthetic-light.jpg)
+
+### 3D view
+
+Third person around the vehicle, with the route, the heights above ground and the trail flown:
+[3D view, water and ROVs](3D-NAVIGATION.md).
+
+![The mission in the 3D view over the satellite imagery](images/view-3d.jpg)
+
+![The survey in the 3D view, synthetic](images/view-3d-survey.jpg)
+
+![Close behind the vehicle](images/view-3d-chase.jpg)
+
+### Map and flight data
+
+The mini-map swaps with the 3D view, and the EKF STATUS bar opens beside it:
+[Mini-map](flight-screen.md#mini-map), [EKF status](flight-screen.md#ekf-status).
+
+![The map as the main view](images/flight-map.jpg)
+
+![EKF status](images/ekf-status.jpg)
+
+### Mission plan and radio link
+
+[Mission planning](mission-planning.md), [Radio link planning](radio-link.md).
+
+![Mission planning](images/mission-planning.jpg)
+
+![Radio link coverage](images/radio-link.jpg)
+
+### Parameters and bitmasks
+
+[Vehicle setup → Parameters](setup.md#parameters).
+
+![Parameters](images/parameters.jpg)
+
+![Bitmask editor](images/parameters-bitmask.jpg)
+
+### Vibration FFT and log replay
+
+[Vibration FFT](flight-screen.md#vibration-fft), [log replay](side-panel.md#log-replay).
+
+![Vibration spectrum from a log](images/fft.jpg)
+
+![Log replay](images/replay.jpg)
+
+### Settings
+
+[GCS settings](sys-config.md).
+
+![SYS CONFIG](images/sysconfig.jpg)
 
 ## Chapters
 
@@ -70,5 +134,5 @@ version wins.
 Questions, bug reports and feature requests: the
 [issues](https://github.com/Xarin94/Corv-GCS/issues) on GitHub, or the
 [CORV GCS thread](https://discuss.ardupilot.org/t/corv-gcs-open-source-3d-ground-control-station-for-ardupilot/142922)
-on the ArduPilot forum. Developers: [ARCHITECTURE.md](https://github.com/Xarin94/Corv-GCS/blob/main/ARCHITECTURE.md)
-describes every module and data flow.
+on the ArduPilot forum. Developers: [BUILDING.md](https://github.com/Xarin94/Corv-GCS/blob/main/BUILDING.md)
+has the build, the layout of the sources and the state of each part.

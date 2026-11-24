@@ -260,8 +260,9 @@ SITL port (TCP 5762). ArduSub only accepts `MANUAL_CONTROL` from its own GCS sys
 | Trail | restarts on a jump of more than 2 km (a new connection, a log loaded) |
 | GPS in the command bar | a fix older than 5 s is shown as no GPS |
 
-The modules are described in [ARCHITECTURE.md](https://github.com/Xarin94/Corv-GCS/blob/main/ARCHITECTURE.md): `Mission3D.js`, `Water3D.js`,
-`RelativeNav.js`, and the water and grid parts of `TerrainManager.js`.
+The code is in `libs/gpu` (`SceneItem`, `OverlayRenderer`: the mission, the water, the grids) and
+`libs/vehicle` (`RelativeNav`); the layout of the sources is in
+[BUILDING.md](https://github.com/Xarin94/Corv-GCS/blob/main/BUILDING.md).
 
 ## ArduPilot references
 

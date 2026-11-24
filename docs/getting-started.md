@@ -38,8 +38,8 @@ on macOS the disk image opens for the drag to Applications. Never while the vehi
 **SKIP THIS VERSION** stops the reminders for that version; [SYS CONFIG →
 UPDATES](sys-config.md#updates) switches the check off or runs it now.
 
-To build from source (C++, Qt 6.12, CMake) see the
-[README](https://github.com/Xarin94/Corv-GCS#readme).
+To build from source (C++, Qt 6.12, CMake) see
+[BUILDING.md](https://github.com/Xarin94/Corv-GCS/blob/main/BUILDING.md).
 
 A serial telemetry radio on Linux needs your user in the `dialout` group
 (`sudo usermod -aG dialout $USER`, then log in again).
