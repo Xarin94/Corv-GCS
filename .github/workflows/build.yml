@@ -1,25 +1,30 @@
-# Build and test on the three systems at every push; on a v* tag the packages
-# of the three go to the GitHub release of the tag: Windows setup and portable
-# zip, Linux AppImage (built on the oldest Ubuntu LTS supported), macOS DMG
-# (universal, ad-hoc signed, not notarized). The tag is the version the
-# program reports and the update check compares (CORV_VERSION_LABEL).
+# Only the macOS DMG (universal, ad-hoc signed, not notarized): Windows and Linux are
+# built locally. On a v* tag the DMG goes to the GitHub release of the tag; started by
+# hand for a tag it stays an artifact of the run. The tag is the version the program
+# reports and the update check compares (CORV_VERSION_LABEL). The Windows and Linux
+# steps below are kept: they run again when their row returns to the matrix, with the
+# push to main and the pull requests among the triggers.
 # (guide, "Build, pacchetti e CI").
 name: build
 
 on:
   push:
-    branches: [main]
     tags: ['v*']
-  pull_request:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build, e.g. v2.0.4'
+        required: true
 
 # A newer push to the same branch or tag stops the run it supersedes
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ inputs.tag || github.ref }}
   cancel-in-progress: true
 
 env:
   QT_VERSION: '6.12.0'
   QT_MODULES: 'qtserialport qtshadertools qtwebsockets qtimageformats'
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   build:
@@ -27,20 +32,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-2022
-            preset: windows-release
-            qt_arch: win64_msvc2022_64
           - os: macos-15
             preset: macos-release
             qt_arch: clang_64
-          - os: ubuntu-22.04
-            preset: linux-release
-            qt_arch: linux_gcc_64
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write   # the packages go to the GitHub release of a tag
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
 
       # Qt 6.12 for Windows sits in a repository layout aqtinstall 3.3 does not
       # know (one repository per toolchain): tools/ci/install-qt-windows.py
@@ -90,7 +91,8 @@ jobs:
           echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
 
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }} "-DCORV_VERSION_LABEL=${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}"
+        shell: bash
+        run: cmake --preset ${{ matrix.preset }} "-DCORV_VERSION_LABEL=$TAG"
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
@@ -123,7 +125,7 @@ jobs:
       # ad-hoc signature (arm64 runs nothing unsigned), the bundle as "CORV GCS"
       # next to a link to Applications
       - name: Package (macOS)
-        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/')
+        if: runner.os == 'macOS'
         run: |
           APP=build/macos-release/app/corv-gcs.app
           macdeployqt "$APP" -qmldir=libs/ui/qml
@@ -131,10 +133,9 @@ jobs:
           cp -R "$APP" "build/dmg/CORV GCS.app"
           codesign --force --deep --sign - "build/dmg/CORV GCS.app"
           ln -s /Applications build/dmg/Applications
-          hdiutil create -volname "CORV GCS" -srcfolder build/dmg -ov -format UDZO "dist/CORV-GCS-${GITHUB_REF_NAME#v}-macos-universal.dmg"
+          hdiutil create -volname "CORV GCS" -srcfolder build/dmg -ov -format UDZO "dist/CORV-GCS-${TAG#v}-macos-universal.dmg"
 
       - name: Upload
-        if: startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v4
         with:
           name: corv-gcs-${{ matrix.os }}
@@ -145,14 +146,24 @@ jobs:
             dist/*.dmg
           if-no-files-found: ignore
 
+      # The packaged bundle: both architectures, a valid signature, nothing from the
+      # runner's Homebrew, and it starts
+      - name: Check (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 5
+        run: |
+          APP="build/dmg/CORV GCS.app"
+          BIN="$APP/Contents/MacOS/corv-gcs"
+          lipo -archs "$BIN"
+          lipo "$BIN" -verify_arch arm64 x86_64
+          codesign --verify --deep --strict "$APP"
+          if otool -L "$BIN" | grep -E '/opt/homebrew|/usr/local'; then exit 1; fi
+          CORV_DATA_ROOT="$RUNNER_TEMP/data" "$BIN" --quit-after 8000
+
       - name: Release assets
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/*-setup-x64.exe
-            dist/*.zip
-            dist/*.AppImage
-            dist/*.dmg
+          files: dist/*.dmg
           fail_on_unmatched_files: false
           prerelease: ${{ contains(github.ref_name, '-') }}
