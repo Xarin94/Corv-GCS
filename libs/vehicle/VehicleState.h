@@ -106,11 +106,14 @@ struct VehicleState {
     // Battery
     double batteryVoltage = 0, batteryCurrent = 0;
     int batteryRemaining = -1;
+    int batteryCells = 0;         // the pack's cells, 0 = not known (StateMapper::batteryCells)
+    int batteryCellsSource = 0;   // 0 counted from the voltage, 1 from the vehicle's cells, 2 set in SYS CONFIG
 
-    // GPS
+    // GPS: the better of the two receivers (GpsReceivers)
     int gpsFix = 0, gpsNumSat = 0;
     double gpsHdop = 99.9;
     std::int64_t gpsDataTime = 0;
+    int gpsReceiver = 0;          // 1 GPS_RAW_INT, 2 GPS2_RAW; 0 none yet
 
     // Radio
     double linkQuality = 0;

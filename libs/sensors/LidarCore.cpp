@@ -213,12 +213,14 @@ void LidarCore::onMavlink(const mavlink_message_t &msg, qint64 now)
         if (m_pos.n < PoseRing::kCap) ++m_pos.n;
         break;
     }
-    case MAVLINK_MSG_ID_GPS_RAW_INT: {
-        mavlink_gps_raw_int_t g;
-        mavlink_msg_gps_raw_int_decode(&msg, &g);
-        m_nav.fix = g.fix_type;
-        m_nav.sats = g.satellites_visible == 255 ? 0 : g.satellites_visible;
-        m_nav.hdop = g.eph != 65535 ? g.eph / 100.0 : 99;
+    case MAVLINK_MSG_ID_GPS_RAW_INT:
+    case MAVLINK_MSG_ID_GPS2_RAW: {
+        const int rx = m_gps.feed(msg, now);
+        if (rx < 0 || m_gps.best(now) != rx) break;
+        const GpsReading &g = m_gps.at(rx);
+        m_nav.fix = g.fix;
+        m_nav.sats = g.sats;
+        m_nav.hdop = g.hdop < 99 ? g.hdop : 99;
         m_nav.gpsTime = now;
         break;
     }
@@ -714,6 +716,7 @@ void LidarCore::resetPose()
     m_att.n = m_att.head = 0;
     m_pos.n = m_pos.head = 0;
     m_nav = {};
+    m_gps.reset();
 }
 
 void LidarCore::setConnectedForTest(bool v)

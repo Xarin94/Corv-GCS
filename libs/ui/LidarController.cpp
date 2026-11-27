@@ -122,7 +122,8 @@ LidarController::LidarController(MessageBus *bus, VehicleHub *hub, QObject *pare
     connect(m_core, &LidarCore::statusChanged, this, &LidarController::onStatus);
     // The pose messages of the vehicle link (not of a replay), on the client's thread
     if (m_bus)
-        for (uint32_t id : {MAVLINK_MSG_ID_GPS_RAW_INT, MAVLINK_MSG_ID_ATTITUDE, MAVLINK_MSG_ID_GLOBAL_POSITION_INT, MAVLINK_MSG_ID_EKF_STATUS_REPORT})
+        for (uint32_t id : {MAVLINK_MSG_ID_GPS_RAW_INT, MAVLINK_MSG_ID_GPS2_RAW, MAVLINK_MSG_ID_ATTITUDE, MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
+                            MAVLINK_MSG_ID_EKF_STATUS_REPORT})
             m_bus->subscribe(id, m_core, [core = m_core](const MavMessage &m) {
                 if (!m.replay) core->onMavlink(m.msg, m.arrivalMs);
             });

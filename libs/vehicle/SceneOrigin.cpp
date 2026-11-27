@@ -29,6 +29,10 @@ bool SceneOrigin::fix(double lat, double lon)
 
 void SceneOrigin::home(double lat, double lon)
 {
+    if (!std::isfinite(lat) || !std::isfinite(lon)) return;
+    // A home re-set where the vehicle stands keeps the origin (and the terrain built on it)
+    const bool near = haversine(m_origin.lat, m_origin.lon, lat, lon) < kHomeKeepM;
+    if (near && !m_awaitingFix) return;
     m_awaitingFix = false;
     set(lat, lon);
 }

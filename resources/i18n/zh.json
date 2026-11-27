@@ -1214,5 +1214,13 @@
  "· installed": "· 已安装",
  "· seen from behind": "· 从后方看",
  "— connect to list the topics —": "— 连接后列出话题 —",
- "中文 (Chinese)": "中文 (Chinese)"
+ "中文 (Chinese)": "中文 (Chinese)",
+ "CELLS": "电芯数",
+ "IN USE": "当前使用",
+ "EMPTY PER CELL (V)": "单体空电电压 (V)",
+ "FULL PER CELL (V)": "单体满电电压 (V)",
+ "from the voltage": "由电压推算",
+ "from the vehicle": "来自飞行器",
+ "set here": "此处设定",
+ "cell": "单体"
 }

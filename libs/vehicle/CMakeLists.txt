@@ -2,6 +2,7 @@ add_library(corv_vehicle STATIC
     VehicleState.h
     FlightModes.h FlightModes.cpp
     SceneOrigin.h SceneOrigin.cpp
+    GpsReceivers.h GpsReceivers.cpp
     RelativeNav.h RelativeNav.cpp
     StateMapper.h StateMapper.cpp
     PoseSmoother.h PoseSmoother.cpp

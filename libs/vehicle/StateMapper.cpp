@@ -42,7 +42,9 @@ void StateMapper::apply(const MavMessage &mm, VehicleState &s)
     switch (m.msgid) {
     case MAVLINK_MSG_ID_HEARTBEAT: heartbeat(m, s); break;
     case MAVLINK_MSG_ID_SYS_STATUS: sysStatus(m, s, now); break;
-    case MAVLINK_MSG_ID_GPS_RAW_INT: gpsRawInt(mm, s, now); break;
+    case MAVLINK_MSG_ID_GPS_RAW_INT:
+    case MAVLINK_MSG_ID_GPS2_RAW: gpsRaw(mm, s, now); break;
+    case MAVLINK_MSG_ID_BATTERY_STATUS: batteryStatus(m, s); break;
     case MAVLINK_MSG_ID_SCALED_IMU:
     case MAVLINK_MSG_ID_RAW_IMU: scaledImu(m, s, true, now); break;
     case MAVLINK_MSG_ID_SCALED_IMU2:
@@ -172,8 +174,20 @@ void StateMapper::sensors(const mavlink_message_t &m, VehicleState &s, std::int6
 {
     switch (m.msgid) {
     case MAVLINK_MSG_ID_GPS_RTK: {
+        // The RTK state of the receiver shown (GPS2_RTK when it is the second)
+        if (s.gpsReceiver == 2) break;
         mavlink_gps_rtk_t r;
         mavlink_msg_gps_rtk_decode(&m, &r);
+        s.rtkIar = r.iar_num_hypotheses;
+        s.rtkBaseline = std::sqrt(double(r.baseline_a_mm) * r.baseline_a_mm + double(r.baseline_b_mm) * r.baseline_b_mm
+                                  + double(r.baseline_c_mm) * r.baseline_c_mm);
+        s.rtkAccuracy = r.accuracy;
+        break;
+    }
+    case MAVLINK_MSG_ID_GPS2_RTK: {
+        if (s.gpsReceiver != 2) break;
+        mavlink_gps2_rtk_t r;
+        mavlink_msg_gps2_rtk_decode(&m, &r);
         s.rtkIar = r.iar_num_hypotheses;
         s.rtkBaseline = std::sqrt(double(r.baseline_a_mm) * r.baseline_a_mm + double(r.baseline_b_mm) * r.baseline_b_mm
                                   + double(r.baseline_c_mm) * r.baseline_c_mm);
@@ -321,13 +335,15 @@ void StateMapper::sysStatus(const mavlink_message_t &m, VehicleState &s, std::in
     mavlink_msg_sys_status_decode(&m, &st);
     if (st.voltage_battery != UINT16_MAX) s.batteryVoltage = st.voltage_battery / 1000.0;
     if (st.current_battery >= 0) s.batteryCurrent = st.current_battery / 100.0;
+    batteryCells(s);
     const int rawPct = st.battery_remaining;
     if (rawPct < 0 || rawPct > 100) {
-        // No percentage from the vehicle: from the voltage in the configured range
-        double vmin = m_batVMin, vmax = m_batVMax;
-        if (!(vmax > vmin)) { vmin = 9.6; vmax = 12.6; }
+        // No percentage from the vehicle: from the voltage, between the cells' empty and full
         const double v = s.batteryVoltage;
-        s.batteryRemaining = v > 0 ? std::clamp(int(std::lround((v - vmin) / (vmax - vmin) * 100)), 0, 100) : -1;
+        const int n = s.batteryCells;
+        double lo = m_cellEmpty, hi = m_cellFull;
+        if (!(hi > lo)) { lo = kCellEmptyV; hi = kCellFullV; }
+        s.batteryRemaining = n > 0 && v >= kNoPackV ? std::clamp(int(std::lround((v / n - lo) / (hi - lo) * 100)), 0, 100) : -1;
     } else {
         s.batteryRemaining = rawPct;
     }
@@ -347,14 +363,17 @@ void StateMapper::firstFix(VehicleState &s)
     }
 }
 
-void StateMapper::gpsRawInt(const MavMessage &mm, VehicleState &s, std::int64_t now)
+void StateMapper::gpsRaw(const MavMessage &mm, VehicleState &s, std::int64_t now)
 {
-    mavlink_gps_raw_int_t g;
-    mavlink_msg_gps_raw_int_decode(&mm.msg, &g);
-    s.gpsFix = g.fix_type;
+    // GPS_RAW_INT is the first receiver, GPS2_RAW the second: the better one heard lately is shown
+    const int rx = m_gps.feed(mm.msg, now);
+    if (rx < 0 || m_gps.best(now) != rx) return;
+    const GpsReading &g = m_gps.at(rx);
+    s.gpsReceiver = rx + 1;
+    s.gpsFix = g.fix;
     s.gpsDataTime = now;
-    s.gpsNumSat = g.satellites_visible;
-    if (g.eph != UINT16_MAX) s.gpsHdop = g.eph / 100.0;
+    s.gpsNumSat = g.sats;
+    s.gpsHdop = g.hdop;
 
     // Raw GPS fills position / velocity only while no GLOBAL_POSITION_INT arrived recently
     if (now - m_lastGlobalPosTs <= kGlobalPosStaleMs) return;
@@ -363,11 +382,51 @@ void StateMapper::gpsRawInt(const MavMessage &mm, VehicleState &s, std::int64_t 
     if (g.lat != 0 && g.lon != 0) {
         s.lat = g.lat / 1e7;
         s.lon = g.lon / 1e7;
-        if (g.fix_type >= 2) firstFix(s);
+        if (g.fix >= 2) firstFix(s);
     }
-    if (!mm.synthetic) s.rawAlt = g.alt / 1000.0;
+    if (!mm.synthetic) s.rawAlt = g.altMm / 1000.0;
     if (g.vel != UINT16_MAX) s.gs = g.vel / 100.0;
     if (g.cog != UINT16_MAX) s.track = (g.cog / 100.0) * kDeg;
+}
+
+void StateMapper::batteryStatus(const mavlink_message_t &m, VehicleState &s)
+{
+    // Cell voltages of the first battery. ArduPilot puts the whole pack in the first
+    // slot when it measures no cells, so a single value says nothing about the count
+    mavlink_battery_status_t b;
+    mavlink_msg_battery_status_decode(&m, &b);
+    if (b.id != 0) return;
+    int n = 0;
+    for (const std::uint16_t v : b.voltages) n += v != UINT16_MAX && v > 0;
+    for (const std::uint16_t v : b.voltages_ext) n += v > 0;   // extension: 0 = no cell
+    if (n >= 2) {
+        m_vehicleCells = n;
+        batteryCells(s);
+    }
+}
+
+void StateMapper::batteryCells(VehicleState &s)
+{
+    // The count set in SYS CONFIG, else the cells the vehicle measures, else from the pack
+    // voltage: the highest since the link opened (it only falls in flight) over the most a
+    // cell holds, rounded up
+    const double v = s.batteryVoltage;
+    if (v >= kNoPackV) m_detectedCells = std::max(m_detectedCells, int(std::ceil(v / kCellMaxV)));
+    s.batteryCellsSource = m_fixedCells > 0 ? 2 : m_vehicleCells > 0 ? 1 : 0;
+    s.batteryCells = m_fixedCells > 0 ? m_fixedCells : m_vehicleCells > 0 ? m_vehicleCells : m_detectedCells;
+}
+
+void StateMapper::setBatteryGauge(double cellEmpty, double cellFull, int cells)
+{
+    m_cellEmpty = cellEmpty;
+    m_cellFull = cellFull;
+    m_fixedCells = std::max(0, cells);
+}
+
+void StateMapper::newVehicle()
+{
+    m_gps.reset();
+    m_vehicleCells = m_detectedCells = 0;
 }
 
 void StateMapper::scaledImu(const mavlink_message_t &m, VehicleState &s, bool primary, std::int64_t now)
@@ -630,6 +689,7 @@ void StateMapper::resetTelemetry(VehicleState &s)
     m_lastGlobalPosTs = 0;
     m_imuPrimaryActive = false;
     m_subSurfaceKey.clear();
+    newVehicle();
 }
 
 } // namespace corv

@@ -74,8 +74,12 @@ void VehicleHub::newVehicle()
     m_state.gpsFix = fresh.gpsFix;
     m_state.gpsNumSat = fresh.gpsNumSat;
     m_state.gpsHdop = fresh.gpsHdop;
+    m_state.gpsReceiver = fresh.gpsReceiver;
     m_state.batteryVoltage = m_state.batteryCurrent = 0;
     m_state.batteryRemaining = fresh.batteryRemaining;
+    m_state.batteryCells = fresh.batteryCells;
+    m_state.batteryCellsSource = fresh.batteryCellsSource;
+    m_mapper.newVehicle();
     m_state.rssi.reset();
     m_state.remRssi.reset();
     m_state.homeLat.reset();
@@ -153,9 +157,9 @@ void VehicleHub::setAdsbEnabled(bool on)
     });
 }
 
-void VehicleHub::setBatteryRange(double vmin, double vmax)
+void VehicleHub::setBatteryGauge(double cellEmpty, double cellFull, int cells)
 {
-    post([this, vmin, vmax] { m_mapper.setBatteryRange(vmin, vmax); });
+    post([this, cellEmpty, cellFull, cells] { m_mapper.setBatteryGauge(cellEmpty, cellFull, cells); });
 }
 
 void VehicleHub::setAltitudeOffset(double metres)

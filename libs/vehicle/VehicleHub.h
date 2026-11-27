@@ -36,7 +36,8 @@ public:
 
     void setMode(const QString &mode);
     void setAdsbEnabled(bool on);
-    void setBatteryRange(double vmin, double vmax);
+    /// SYS CONFIG -> BATTERY GAUGE: volts per cell empty and full, cell count (0 = automatic).
+    void setBatteryGauge(double cellEmpty, double cellFull, int cells);
     /// SYS CONFIG -> ALTITUDE OFFSET: added to every altitude drawn (m). A log loaded or closed clears it.
     void setAltitudeOffset(double metres);
     /// What a sub's depth is measured from: the water (else the ground) at a point. Before the first message.

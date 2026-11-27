@@ -98,9 +98,8 @@ void GcsController::startLink()
     });
     // No link: the demo racetrack around the scene origin, on the real terrain
     m_hub->startDemo([](double lat, double lon) { return HgtStore::instance().elevation(lat, lon); });
-    // Battery range when the vehicle reports no percentage (SYS CONFIG; localStorage bat-vmin / bat-vmax)
-    m_hub->setBatteryRange(Settings::instance().value(u"bat-vmin"_s, 9.6).toDouble(),
-                           Settings::instance().value(u"bat-vmax"_s, 12.6).toDouble());
+    // Battery gauge when the vehicle reports no percentage (SYS CONFIG -> BATTERY GAUGE)
+    SysConfig::loadBatteryGauge(m_hub);
 }
 
 void GcsController::createViewModels()

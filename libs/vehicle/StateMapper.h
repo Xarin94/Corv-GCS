@@ -12,6 +12,7 @@
 #pragma once
 
 #include "link/MavMessage.h"
+#include "vehicle/GpsReceivers.h"
 #include "vehicle/RelativeNav.h"
 #include "vehicle/SceneOrigin.h"
 #include "vehicle/VehicleState.h"
@@ -41,8 +42,18 @@ public:
     SceneOrigin &origin() { return m_origin; }
     RelativeNav &relativeNav() { return m_relNav; }
 
-    /// Battery range used when the vehicle reports no percentage (SYS CONFIG).
-    void setBatteryRange(double vmin, double vmax) { m_batVMin = vmin; m_batVMax = vmax; }
+    /// Battery gauge for a vehicle that reports no percentage (SYS CONFIG): volts per
+    /// cell when empty and full, and the cell count (0 = automatic).
+    void setBatteryGauge(double cellEmpty, double cellFull, int cells);
+    static constexpr double kCellEmptyV = 3.2, kCellFullV = 4.2;
+    /// The most a cell holds (HV LiPo 4.35 V, and some margin): the automatic count is
+    /// the pack voltage over this, rounded up.
+    static constexpr double kCellMaxV = 4.4;
+    /// Under this the board runs on USB or bench power: no pack to count or to gauge.
+    static constexpr double kNoPackV = 2.5;
+
+    /// A new link or vehicle: forget its GPS receivers and its battery.
+    void newVehicle();
 
     /// Map one message. Returns true when the state changed in a way readers care about.
     void apply(const MavMessage &m, VehicleState &s);
@@ -58,7 +69,9 @@ public:
 private:
     void heartbeat(const mavlink_message_t &m, VehicleState &s);
     void sysStatus(const mavlink_message_t &m, VehicleState &s, std::int64_t now);
-    void gpsRawInt(const MavMessage &mm, VehicleState &s, std::int64_t now);
+    void gpsRaw(const MavMessage &mm, VehicleState &s, std::int64_t now);
+    void batteryStatus(const mavlink_message_t &m, VehicleState &s);
+    void batteryCells(VehicleState &s);
     void scaledImu(const mavlink_message_t &m, VehicleState &s, bool primary, std::int64_t now);
     void attitude(const MavMessage &mm, VehicleState &s, std::int64_t now);
     void globalPositionInt(const MavMessage &mm, VehicleState &s, std::int64_t now);
@@ -76,7 +89,11 @@ private:
     Hooks m_hooks;
     SceneOrigin m_origin;
     RelativeNav m_relNav;
-    double m_batVMin = 9.6, m_batVMax = 12.6;
+    GpsReceivers m_gps;
+    double m_cellEmpty = kCellEmptyV, m_cellFull = kCellFullV;
+    int m_fixedCells = 0;      // SYS CONFIG; 0 = automatic
+    int m_vehicleCells = 0;    // cells the vehicle measures (BATTERY_STATUS)
+    int m_detectedCells = 0;   // from the highest pack voltage since the link opened
     std::int64_t m_lastGlobalPosTs = 0;
     bool m_imuPrimaryActive = false;
     std::int64_t m_imuPrimaryLastTime = 0;

@@ -133,6 +133,8 @@ Rectangle {
             id: gpsSection
             Ico { parts: Icons.gps; color: bar.hasGps ? gpsSection.fixColor : Theme.textDim }
             Val { text: Theme.tr(!bar.hasGps ? "No GPS" : Vehicle.gpsFixName); color: gpsSection.fixColor }
+            // The values come from the second receiver (GPS2_RAW): the first reports nothing better
+            Val { visible: bar.hasGps && Vehicle.gpsReceiver === 2; text: "GPS2"; color: Theme.textDim }
             Val { text: (bar.hasGps ? Vehicle.gpsNumSat : 0) + qsTr(" sat"); color: Theme.textDim }
             Val { visible: bar.hasGps && Vehicle.gpsHdop < 99 && Theme.winW > 1400; text: "HDOP " + Vehicle.gpsHdop.toFixed(1); color: Theme.textDim }
         }

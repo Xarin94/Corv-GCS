@@ -59,10 +59,15 @@ class VehicleModel : public QObject
     Q_PROPERTY(double batteryVoltage READ batteryVoltage NOTIFY updated)
     Q_PROPERTY(double batteryCurrent READ batteryCurrent NOTIFY updated)
     Q_PROPERTY(int batteryRemaining READ batteryRemaining NOTIFY updated)
+    /// The pack's cells (0 = not known) and where the count comes from: 0 the voltage, 1 the vehicle, 2 SYS CONFIG
+    Q_PROPERTY(int batteryCells READ batteryCells NOTIFY updated)
+    Q_PROPERTY(int batteryCellsSource READ batteryCellsSource NOTIFY updated)
     Q_PROPERTY(int gpsFix READ gpsFix NOTIFY updated)
     Q_PROPERTY(QString gpsFixName READ gpsFixName NOTIFY updated)
     Q_PROPERTY(int gpsNumSat READ gpsNumSat NOTIFY updated)
     Q_PROPERTY(double gpsHdop READ gpsHdop NOTIFY updated)
+    /// The receiver the GPS values come from: 1 or 2 (GPS2_RAW), 0 none yet
+    Q_PROPERTY(int gpsReceiver READ gpsReceiver NOTIFY updated)
     Q_PROPERTY(bool gpsStale READ gpsStale NOTIFY updated)
     Q_PROPERTY(double linkQuality READ linkQuality NOTIFY updated)
     Q_PROPERTY(QString flightTime READ flightTime NOTIFY updated)
@@ -135,10 +140,13 @@ public:
     double batteryVoltage() const { return m_s->batteryVoltage; }
     double batteryCurrent() const { return m_s->batteryCurrent; }
     int batteryRemaining() const { return m_s->batteryRemaining; }
+    int batteryCells() const { return m_s->batteryCells; }
+    int batteryCellsSource() const { return m_s->batteryCellsSource; }
     int gpsFix() const { return m_s->gpsFix; }
     QString gpsFixName() const;
     int gpsNumSat() const { return m_s->gpsNumSat; }
     double gpsHdop() const { return m_s->gpsHdop; }
+    int gpsReceiver() const { return m_s->gpsReceiver; }
     bool gpsStale() const;
     double linkQuality() const { return m_s->linkQuality; }
     QString flightTime() const;

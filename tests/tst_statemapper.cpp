@@ -4,7 +4,9 @@
 
 #include <QTest>
 #include <QtEndian>
+#include <algorithm>
 #include <cstring>
+#include <iterator>
 
 using namespace corv;
 
@@ -153,6 +155,132 @@ private slots:
         QCOMPARE(s.sceneOrigin.lat, -34.0);
         QVERIFY(s.homeLat.has_value());
         QCOMPARE(*s.homeAlt, 5.0);
+    }
+
+    void homeNearKeepsOrigin()
+    {
+        // ArduPlane moves its home where it stands every few seconds while disarmed
+        StateMapper mapper;
+        VehicleState s;
+        mapper.origin().awaitFix();
+        mapper.apply(msgAt(gpi(445832000, 109350630, 70000, 0, 0, 0), 1000), s);
+        QCOMPARE(s.sceneOriginEpoch, 1);
+        mavlink_message_t h;
+        const float q[4] = {1, 0, 0, 0};
+        mavlink_msg_home_position_pack(1, 1, &h, 445831949, 109350389, 72210, 0, 0, 0, q, 0, 0, 0, 0);
+        mapper.apply(msgAt(h, 1200), s);
+        mavlink_msg_home_position_pack(1, 1, &h, 445830927, 109349410, 66880, 0, 0, 0, q, 0, 0, 0, 0);
+        mapper.apply(msgAt(h, 6200), s);
+        QCOMPARE(s.sceneOriginEpoch, 1);            // no terrain rebuilt for metres
+        QCOMPARE(s.sceneOrigin.lat, 44.5832);
+        QCOMPARE(*s.homeLat, 44.5830927);           // the home itself is the vehicle's
+        // A home kilometres away (another field) moves it
+        mavlink_msg_home_position_pack(1, 1, &h, 446000000, 109350000, 50000, 0, 0, 0, q, 0, 0, 0, 0);
+        mapper.apply(msgAt(h, 7000), s);
+        QCOMPARE(s.sceneOriginEpoch, 2);
+        QCOMPARE(s.sceneOrigin.lat, 44.6);
+    }
+
+    void secondGpsReceiver()
+    {
+        // The receiver on the second GPS port: GPS_RAW_INT says no GPS, GPS2_RAW has the fix
+        StateMapper mapper;
+        VehicleState s;
+        mavlink_message_t g1, g2;
+        mavlink_msg_gps_raw_int_pack(1, 1, &g1, 0, 0, 0, 0, 0, UINT16_MAX, UINT16_MAX, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        mavlink_msg_gps2_raw_pack(1, 1, &g2, 0, 3, 445832000, 109350630, 70000, 137, 200, 10, 0, 16, 0, 0, 0, 0, 0, 0, 0, 0);
+        mapper.apply(msgAt(g1, 10000), s);
+        QCOMPARE(s.gpsFix, 0);
+        QCOMPARE(s.gpsReceiver, 1);
+        mapper.apply(msgAt(g2, 10010), s);
+        mapper.apply(msgAt(g1, 10500), s);           // the first one goes on saying nothing
+        QCOMPARE(s.gpsFix, 3);
+        QCOMPARE(s.gpsNumSat, 16);
+        QCOMPARE(s.gpsHdop, 1.37);
+        QCOMPARE(s.gpsReceiver, 2);
+        QCOMPARE(s.gpsDataTime, std::int64_t(10010));
+        // Position from it when there is no GLOBAL_POSITION_INT
+        QCOMPARE(s.lat, 44.5832);
+        // The second falls silent: after 5 s the first is shown again
+        mapper.apply(msgAt(g1, 15100), s);
+        QCOMPARE(s.gpsFix, 0);
+        QCOMPARE(s.gpsReceiver, 1);
+        // Both with a fix: the one with more satellites
+        mavlink_msg_gps_raw_int_pack(1, 1, &g1, 0, 3, 445832000, 109350630, 70000, 90, 200, 10, 0, 12, 0, 0, 0, 0, 0, 0);
+        mapper.apply(msgAt(g1, 16000), s);
+        mapper.apply(msgAt(g2, 16010), s);
+        QCOMPARE(s.gpsReceiver, 2);
+        QCOMPARE(s.gpsNumSat, 16);
+        // A new vehicle forgets both
+        mapper.newVehicle();
+        mapper.apply(msgAt(g1, 16100), s);
+        QCOMPARE(s.gpsReceiver, 1);
+        QCOMPARE(s.gpsNumSat, 12);
+    }
+
+    void batteryCellsFromVoltage()
+    {
+        StateMapper mapper;
+        VehicleState s;
+        mavlink_message_t m;
+        auto sys = [&](uint16_t mv, std::int64_t t) {
+            mavlink_msg_sys_status_pack(1, 1, &m, 0, 0, 0, 0, mv, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            mapper.apply(msgAt(m, t), s);
+        };
+        // A charged 2S on the default 3.2-4.2 V per cell: no BATT LOW (the 3S range gave 0 %)
+        sys(8342, 1000);
+        QCOMPARE(s.batteryCells, 2);
+        QCOMPARE(s.batteryCellsSource, 0);
+        QCOMPARE(s.batteryRemaining, 97);
+        // USB power only: no pack, no percentage
+        StateMapper bench;
+        VehicleState b;
+        mavlink_msg_sys_status_pack(1, 1, &m, 0, 0, 0, 0, 120, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        bench.apply(msgAt(m, 1000), b);
+        QCOMPARE(b.batteryCells, 0);
+        QCOMPARE(b.batteryRemaining, -1);
+        // A full 6S, then sagging in flight: the count stays
+        mapper.newVehicle();
+        sys(25200, 2000);
+        QCOMPARE(s.batteryCells, 6);
+        QCOMPARE(s.batteryRemaining, 100);
+        sys(21000, 3000);
+        QCOMPARE(s.batteryCells, 6);
+        QCOMPARE(s.batteryRemaining, 30);
+        // A high-voltage LiPo just off the charger is not one cell more
+        mapper.newVehicle();
+        sys(8700, 4000);
+        QCOMPARE(s.batteryCells, 2);
+        // A count set by hand wins
+        mapper.setBatteryGauge(3.0, 4.2, 3);
+        sys(12000, 5000);
+        QCOMPARE(s.batteryCells, 3);
+        QCOMPARE(s.batteryCellsSource, 2);
+        QCOMPARE(s.batteryRemaining, 83);
+    }
+
+    void batteryCellsFromVehicle()
+    {
+        StateMapper mapper;
+        VehicleState s;
+        mavlink_message_t m;
+        // ArduPilot without cell monitoring: the pack in the first slot only, no count
+        uint16_t v[10];
+        std::fill(std::begin(v), std::end(v), UINT16_MAX);
+        const uint16_t ext[4] = {};
+        v[0] = 15800;
+        mavlink_msg_battery_status_pack(1, 1, &m, 0, 0, 0, INT16_MAX, v, -1, -1, -1, -1, 0, 0, ext, 0, 0);
+        mapper.apply(msgAt(m, 1000), s);
+        QCOMPARE(s.batteryCells, 0);
+        // A smart battery with its cells: that count, even nearly flat (13.2 V would read 3S)
+        v[0] = v[1] = v[2] = v[3] = 3300;
+        mavlink_msg_battery_status_pack(1, 1, &m, 0, 0, 0, INT16_MAX, v, -1, -1, -1, -1, 0, 0, ext, 0, 0);
+        mapper.apply(msgAt(m, 1100), s);
+        mavlink_msg_sys_status_pack(1, 1, &m, 0, 0, 0, 0, 13200, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        mapper.apply(msgAt(m, 1200), s);
+        QCOMPARE(s.batteryCells, 4);
+        QCOMPARE(s.batteryCellsSource, 1);
+        QCOMPARE(s.batteryRemaining, 10);
     }
 
     void firmwareVersion()

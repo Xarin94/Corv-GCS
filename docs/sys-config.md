@@ -18,7 +18,7 @@ The page is three columns, one theme each, read top to bottom:
 | VEHICLE & LINK | DISPLAY | DATA & TOOLS |
 |----------------|---------|--------------|
 | [FLIGHT STACK](#flight-stack) — ArduPilot, INAV or Betaflight | [3D VIEW](#3d-view) — model, terrain, light, quality and range | [AIRSPACE](#airspace) — ADS-B traffic, UAS geo zones |
-| [NAVIGATION](#navigation) — absolute (GPS) or relative position | [HUD DATA FIELDS](#hud-data-fields) — the six data cells beside the HUD | [BATTERY GAUGE](#battery-gauge) — voltage range for the percentage |
+| [NAVIGATION](#navigation) — absolute (GPS) or relative position | [HUD DATA FIELDS](#hud-data-fields) — the six data cells beside the HUD | [BATTERY GAUGE](#battery-gauge) — cells and voltage per cell for the percentage |
 | [ROTOR LOAD](#rotor-load) — the motor output schematic | [SIYI CAMERA STREAM](#siyi-camera-stream) — the FPV video address | [OFFLINE DATA DOWNLOAD](#offline-data-download) — imagery and elevation ahead of time |
 | [MAVLINK STREAM RATES](#mavlink-stream-rates) — how often the vehicle sends each group | | [FFT FROM LOGS](#fft-from-logs) — resolution of the spectra computed from a `.bin` |
 | | | [APPLICATION](#application) — language, debug log |
@@ -202,15 +202,22 @@ The downloads are kept under `data/geozones` and work offline once fetched.
 
 ## BATTERY GAUGE
 
-The voltage range behind the battery percentage, used when the vehicle does not report one.
+The battery percentage when the vehicle does not report one (no current sensor or no capacity set): the pack voltage divided by the cells, placed between the empty and full voltage of a cell.
 
 | Field | Default | |
 |-------|---------|---|
-| **MIN VOLTAGE (EMPTY)** | 9.6 V | The empty voltage. |
-| **MAX VOLTAGE (FULL)** | 12.6 V | The full voltage. |
-| **CELLS (AUTO)** | 3S | The cell count worked out from the maximum (4.2 V per cell): check it matches your pack. |
+| **CELLS** | AUTO | AUTO takes the cells the vehicle measures when it sends them (BATTERY_STATUS with one voltage per cell), otherwise counts them from the pack voltage: the highest since connecting, divided by 4.4 V (the most a cell holds, high-voltage LiPo included) and rounded up. Or choose 1S to 14S. |
+| **IN USE** | | The count the gauge uses now and where it comes from (the voltage, the vehicle, set here), with the voltage per cell. |
+| **EMPTY PER CELL (V)** | 3.2 V | The voltage of an empty cell: 0 %. |
+| **FULL PER CELL (V)** | 4.2 V | The voltage of a full cell: 100 %. |
 
-Example for a 6S Li-ion pack: min 18.0 V (3.0 V per cell), max 25.2 V.
+Under 2.5 V there is no pack to measure (a board powered by USB): the bar shows *--%* and no BATT LOW.
+
+A pack connected nearly flat can count one cell short: a 6S under 22 V (3.67 V per cell) reads 5S. Check IN USE after connecting, and choose the count when it is wrong.
+
+Example for a 6S Li-ion pack: CELLS 6S, empty 3.0 V, full 4.2 V.
+
+From version 1.x and 2.0.4 a voltage range set by hand (MIN / MAX VOLTAGE) becomes a fixed count (max ÷ 4.2, rounded) and volts per cell at the first start; the untouched default 9.6 – 12.6 V becomes AUTO.
 
 ## OFFLINE DATA DOWNLOAD
 

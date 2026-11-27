@@ -25,6 +25,7 @@
 #include <QJsonArray>
 #include <QLocale>
 #include <QPointer>
+#include <algorithm>
 #include <cmath>
 
 using namespace Qt::StringLiterals;
@@ -263,26 +264,67 @@ void SysConfig::setAdsbEnabled(bool on)
     emit adsbChanged();
 }
 
-QString SysConfig::batVMin() const { return QString::number(Settings::instance().value(u"bat-vmin"_s, 9.6).toDouble()); }
-QString SysConfig::batVMax() const { return QString::number(Settings::instance().value(u"bat-vmax"_s, 12.6).toDouble()); }
+namespace {
+constexpr int kMaxCells = 14;
+double cellVMin() { return Settings::instance().value(u"bat-cell-vmin"_s, StateMapper::kCellEmptyV).toDouble(); }
+double cellVMax() { return Settings::instance().value(u"bat-cell-vmax"_s, StateMapper::kCellFullV).toDouble(); }
+int fixedCells() { return std::clamp(Settings::instance().value(u"bat-cells"_s, 0).toInt(), 0, kMaxCells); }
+} // namespace
+
+QString SysConfig::batCellVMin() const { return QString::number(cellVMin()); }
+QString SysConfig::batCellVMax() const { return QString::number(cellVMax()); }
 QString SysConfig::batCells() const
 {
-    return u"%1S"_s.arg(qRound(Settings::instance().value(u"bat-vmax"_s, 12.6).toDouble() / 4.2));
+    const int n = fixedCells();
+    return n > 0 ? QString::number(n) : u"auto"_s;
 }
 
-void SysConfig::setBatteryRange(const QString &vminText, const QString &vmaxText)
+void SysConfig::setBatCells(const QString &v)
+{
+    const int n = v == "auto"_L1 ? 0 : std::clamp(v.toInt(), 0, kMaxCells);
+    if (n == fixedCells()) return;
+    Settings::instance().setValue(u"bat-cells"_s, n);
+    if (m_hub) m_hub->setBatteryGauge(cellVMin(), cellVMax(), n);
+    emit batteryChanged();
+}
+
+void SysConfig::setCellRange(const QString &vminText, const QString &vmaxText)
 {
     bool ok1 = false, ok2 = false;
-    double vmin = QLocale::c().toDouble(vminText.trimmed(), &ok1);
-    double vmax = QLocale::c().toDouble(vmaxText.trimmed(), &ok2);
-    if (!ok1 || vmin <= 0) vmin = 9.6;
-    if (!ok2 || vmax <= 0) vmax = 12.6;
+    double vmin = QLocale::c().toDouble(vminText.trimmed().replace(','_L1, '.'_L1), &ok1);
+    double vmax = QLocale::c().toDouble(vmaxText.trimmed().replace(','_L1, '.'_L1), &ok2);
+    if (!ok1 || vmin <= 0 || vmin > 5) vmin = StateMapper::kCellEmptyV;
+    if (!ok2 || vmax <= 0 || vmax > 5) vmax = StateMapper::kCellFullV;
     // vmax <= vmin would divide by zero / invert the estimate downstream
-    if (vmax <= vmin) { vmin = 9.6; vmax = 12.6; }
-    Settings::instance().setValue(u"bat-vmin"_s, vmin);
-    Settings::instance().setValue(u"bat-vmax"_s, vmax);
-    if (m_hub) m_hub->setBatteryRange(vmin, vmax);
+    if (vmax <= vmin) { vmin = StateMapper::kCellEmptyV; vmax = StateMapper::kCellFullV; }
+    Settings::instance().setValue(u"bat-cell-vmin"_s, vmin);
+    Settings::instance().setValue(u"bat-cell-vmax"_s, vmax);
+    if (m_hub) m_hub->setBatteryGauge(vmin, vmax, fixedCells());
     emit batteryChanged();
+}
+
+void SysConfig::loadBatteryGauge(VehicleHub *hub)
+{
+    Settings &st = Settings::instance();
+    // The Electron version kept a pack range (bat-vmin / bat-vmax) and only showed vmax / 4.2
+    // as the count. A range set by hand becomes that many cells, fixed, and volts per cell;
+    // the untouched default (9.6 / 12.6) becomes the automatic count.
+    if (!st.contains(u"bat-cell-vmin"_s) && st.contains(u"bat-vmax"_s)) {
+        const double vmin = st.value(u"bat-vmin"_s, 9.6).toDouble(), vmax = st.value(u"bat-vmax"_s, 12.6).toDouble();
+        const bool byHand = std::abs(vmin - 9.6) > 1e-6 || std::abs(vmax - 12.6) > 1e-6;
+        const int n = std::clamp(int(std::lround(vmax / 4.2)), 1, kMaxCells);
+        if (byHand && vmax > vmin && vmin > 0) {
+            st.setValue(u"bat-cells"_s, n);
+            st.setValue(u"bat-cell-vmin"_s, vmin / n);
+            st.setValue(u"bat-cell-vmax"_s, vmax / n);
+        } else {
+            st.setValue(u"bat-cell-vmin"_s, StateMapper::kCellEmptyV);
+            st.setValue(u"bat-cell-vmax"_s, StateMapper::kCellFullV);
+        }
+        LOG_I("battery") << "gauge from the pack range" << vmin << "-" << vmax << "V:"
+                         << (byHand ? u"%1 cells fixed"_s.arg(n) : u"automatic count"_s);
+    }
+    if (hub) hub->setBatteryGauge(cellVMin(), cellVMax(), fixedCells());
 }
 
 // ── 3D view ──────────────────────────────────────────────────────────────────

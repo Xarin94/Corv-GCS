@@ -49,6 +49,7 @@ void EkfMonitor::reset()
 {
     m_series.clear();
     m_ap = ArduPilot{};
+    m_gps.reset();
     m_lastSource.clear();
     m_attitude.clear();
     m_pendingAhrs2.reset();
@@ -95,20 +96,23 @@ void EkfMonitor::ingestMavlink(const mavlink_message_t &msg, double now)
             get(u"apTas"_s).push(now, d.airspeed_variance);
         break;
     }
-    case MAVLINK_MSG_ID_GPS_RAW_INT: {   // accuracies in mm and mm/s, 0 = not reported
-        mavlink_gps_raw_int_t d;
-        mavlink_msg_gps_raw_int_decode(&msg, &d);
-        m_ap.fix = int(d.fix_type);
-        if (d.satellites_visible != 255) m_ap.sats = int(d.satellites_visible);
-        if (d.eph != 65535) {
-            m_ap.hdop = d.eph / 100.0;
-            get(u"apHdop"_s).push(now, d.eph / 100.0);
+    case MAVLINK_MSG_ID_GPS_RAW_INT:     // accuracies in mm and mm/s, 0 = not reported
+    case MAVLINK_MSG_ID_GPS2_RAW: {      // the second receiver: drawn when it is the better one
+        const auto t = std::int64_t(now);
+        const int rx = m_gps.feed(msg, t);
+        if (rx < 0 || m_gps.best(t) != rx) break;
+        const GpsReading &d = m_gps.at(rx);
+        m_ap.fix = d.fix;
+        m_ap.sats = d.sats;
+        if (d.hdop < 99) {
+            m_ap.hdop = d.hdop;
+            get(u"apHdop"_s).push(now, d.hdop);
         }
         // Without a fix the receiver may still quote its last accuracy: not plotted
-        if (d.fix_type < 2) break;
-        if (d.h_acc > 0) get(u"apHAcc"_s).push(now, d.h_acc / 1000.0);
-        if (d.v_acc > 0) get(u"apVAcc"_s).push(now, d.v_acc / 1000.0);
-        if (d.vel_acc > 0) get(u"apVelAcc"_s).push(now, d.vel_acc / 1000.0);
+        if (d.fix < 2) break;
+        if (d.hAcc > 0) get(u"apHAcc"_s).push(now, d.hAcc);
+        if (d.vAcc > 0) get(u"apVAcc"_s).push(now, d.vAcc);
+        if (d.velAcc > 0) get(u"apVelAcc"_s).push(now, d.velAcc);
         break;
     }
     case MAVLINK_MSG_ID_ATTITUDE: {   // the EKF's

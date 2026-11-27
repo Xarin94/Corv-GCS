@@ -49,6 +49,7 @@
 #pragma once
 
 #include "link/MavMessage.h"
+#include "vehicle/GpsReceivers.h"
 
 #include <QByteArray>
 #include <QFile>
@@ -223,6 +224,7 @@ private:
         double ekfPosVar = 0, ekfVelVar = 0;
         qint64 ekfTime = 0;
     } m_nav;
+    GpsReceivers m_gps;   // GPS_RAW_INT and GPS2_RAW: the gate looks at the better one
 
     // Cloud origin - set at the first accepted point, cleared with the map. The
     // epoch stamps every origin/points event so the renderer can drop a batch

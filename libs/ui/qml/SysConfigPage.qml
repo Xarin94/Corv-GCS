@@ -624,14 +624,32 @@ Item {
                     title: "BATTERY GAUGE"
                     SysRow { note: "For the percentage when the vehicle does not report one."; noteTop: true }
                     SysRow {
-                        label: "MIN VOLTAGE (EMPTY)"
-                        NumField { id: vmin; text: SysConfig.batVMin; onCommitted: SysConfig.setBatteryRange(vmin.text, vmax.text) }
+                        label: "CELLS"
+                        tip: "AUTO: the cells the vehicle measures when it sends them, else the pack voltage over 4.4 V rounded up (the highest since connecting). A pack connected nearly flat can count one cell short (a 6S under 22 V reads 5S): then choose the count"
+                        CfgSelect {
+                            width: 96
+                            options: [{ value: "auto", label: "AUTO" }].concat(Array.from({ length: 14 }, (_, i) => ({ value: String(i + 1), label: (i + 1) + "S" })))
+                            value: SysConfig.batCells
+                            onPicked: (v) => SysConfig.batCells = v
+                        }
                     }
                     SysRow {
-                        label: "MAX VOLTAGE (FULL)"
-                        NumField { id: vmax; text: SysConfig.batVMax; onCommitted: SysConfig.setBatteryRange(vmin.text, vmax.text) }
+                        label: "IN USE"
+                        tip: "The count the gauge is using now, and the voltage per cell"
+                        Val {
+                            text: Vehicle.batteryCells <= 0 ? "--"
+                                : Vehicle.batteryCells + "S " + Theme.tr(["from the voltage", "from the vehicle", "set here"][Vehicle.batteryCellsSource])
+                                  + (Vehicle.batteryVoltage > 0 ? " · " + (Vehicle.batteryVoltage / Vehicle.batteryCells).toFixed(2) + " V/" + Theme.tr("cell") : "")
+                        }
                     }
-                    SysRow { label: "CELLS (AUTO)"; Val { text: SysConfig.batCells } }
+                    SysRow {
+                        label: "EMPTY PER CELL (V)"
+                        NumField { id: vmin; text: SysConfig.batCellVMin; onCommitted: SysConfig.setCellRange(vmin.text, vmax.text) }
+                    }
+                    SysRow {
+                        label: "FULL PER CELL (V)"
+                        NumField { id: vmax; text: SysConfig.batCellVMax; onCommitted: SysConfig.setCellRange(vmin.text, vmax.text) }
+                    }
                 }
 
                 SysPanel {

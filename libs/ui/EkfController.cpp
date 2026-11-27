@@ -29,7 +29,7 @@ constexpr int kDrawMs = 50;         // charts at 20 Hz
 constexpr int kTextEvery = 4;       // legends, chips and flags at 5 Hz
 constexpr double kGapMs = 2500;     // samples further apart are not joined
 constexpr int kArduPilot = 3;       // MAV_AUTOPILOT_ARDUPILOTMEGA
-const std::pair<std::uint32_t, double> kApRates[] = {{193, 5}, {178, 5}, {24, 5}};   // EKF_STATUS_REPORT, AHRS2, GPS_RAW_INT
+const std::pair<std::uint32_t, double> kApRates[] = {{193, 5}, {178, 5}, {24, 5}, {124, 5}};   // EKF_STATUS_REPORT, AHRS2, GPS_RAW_INT, GPS2_RAW
 
 // Series colours: a series keeps its colour; status colours only for thresholds and flags
 const char *const kSeriesColors[] = {"#3987e5", "#d95926", "#199e70", "#c98500", "#d55181"};
@@ -83,7 +83,7 @@ EkfController::EkfController(MessageBus *bus, LinkManager *link, CommandSender *
 {
     s_instance = this;
     m_enabled = Settings::instance().value(QLatin1String(kEnabledKey)).toString() == "1"_L1;
-    for (std::uint32_t id : {193u, 24u, 30u, 178u, 241u})
+    for (std::uint32_t id : {193u, 24u, 124u, 30u, 178u, 241u})
         m_bus->subscribe(id, this, [this](const MavMessage &m) { m_monitor.ingestMavlink(m.msg, monoMs()); });
     m_draw.setInterval(kDrawMs);
     connect(&m_draw, &PacedTimer::timeout, this, &EkfController::tickDraw);

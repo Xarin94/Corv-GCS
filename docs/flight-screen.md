@@ -468,8 +468,8 @@ Left to right:
 | **Heartbeat dot** | Green and pulsing while heartbeats arrive from the vehicle; red when none has arrived for a few seconds (or no link). |
 | **Link** | `DISCONNECTED`, or the link type and the data rate received (`SERIAL 4.2 kbps`, `UDP`, `TCP`, `LTE`). |
 | **Signal bars** | Five bars, green / orange / red: the radio RSSI (`RADIO_STATUS`, SiK-style radios) — the number beside them, and `R:` the remote end's RSSI — or, without a radio report, the link quality in %. On a cellular link the LTE signal in dBm. |
-| **Battery** | Voltage, a bar and the percentage — from the vehicle, or computed from the voltage range set in [SYS CONFIG → BATTERY GAUGE](sys-config.md#battery-gauge) when the vehicle reports none. |
-| **GPS** | Fix type — colour: green RTK fixed, yellow RTK float, cyan 3D / DGPS, red below — satellites, HDOP. A fix older than 5 s shows as *No GPS*. |
+| **Battery** | Voltage, a bar and the percentage — from the vehicle, or computed from the cells and the voltage per cell of [SYS CONFIG → BATTERY GAUGE](sys-config.md#battery-gauge) when the vehicle reports none. |
+| **GPS** | Fix type — colour: green RTK fixed, yellow RTK float, cyan 3D / DGPS, red below — satellites, HDOP. The better of the vehicle's two receivers (GPS_RAW_INT and GPS2_RAW): *GPS2* beside the fix when it is the second, e.g. a receiver on the second GPS port while the first is set but empty. Nothing from either for 5 s shows as *No GPS*. |
 | **Timer** | Flight time: counts while armed (cyan), pauses when disarmed, adds up over the session. |
 | **Target** | Shown when a target is set: a red arrow pointing to it relative to the vehicle's heading, and the distance. See [side panel → TARGET](side-panel.md#target). |
 | **Flight mode** | The current mode, coloured by kind — yellow manual, cyan assisted, green automatic, orange return / land — and the list to change it. See [Flight modes](flight-modes.md). |

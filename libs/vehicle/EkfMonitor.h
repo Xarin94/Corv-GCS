@@ -11,6 +11,7 @@
 #pragma once
 
 #include "link/Mavlink.h"
+#include "vehicle/GpsReceivers.h"
 
 #include <QByteArray>
 #include <QHash>
@@ -83,6 +84,7 @@ private:
 
     QHash<QString, EkfSeries> m_series;
     ArduPilot m_ap;
+    GpsReceivers m_gps;                    // GPS_RAW_INT and GPS2_RAW: the better one is drawn
     QString m_lastSource;
     std::vector<Att> m_attitude;           // last two ATTITUDE samples (deg), arrival time
     std::optional<Att> m_pendingAhrs2;

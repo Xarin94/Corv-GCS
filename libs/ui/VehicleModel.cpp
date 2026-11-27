@@ -75,7 +75,7 @@ QString VehicleModel::gpsFixName() const { return modes::gpsFixName(m_s->gpsFix)
 
 bool VehicleModel::gpsStale() const
 {
-    // A GPS_RAW_INT older than 5 s shows as no GPS: a vehicle without GPS sends none
+    // A GPS_RAW_INT / GPS2_RAW older than 5 s shows as no GPS: a vehicle without GPS sends none
     return m_s->connected && wallMs() - m_s->gpsDataTime > 5000;
 }
 

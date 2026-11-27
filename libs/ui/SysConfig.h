@@ -2,12 +2,14 @@
 //
 // Every setting keeps the localStorage key of the Electron version in
 // settings.json, so a migrated installation opens with the operator's values:
-//   corv.platform (Plan), corv-relnav, adsb-enabled, bat-vmin / bat-vmax,
+//   corv.platform (Plan), corv-relnav, adsb-enabled,
 //   datad-hud-cells, rotor-load-cfg, fpv-settings, log-fft-cfg, gcs-lang,
 //   selectedModel, modelScale, ground-clamp-enabled, renderFpsCap,
 //   renderQuality, satDetailMaxZoom, satelliteRadiusM, terrainRadiusM, hgt-folder.
 // Every one is applied live. New in this version, under keys of their own:
-//   motionSmoothing, mapBrightness (remembered; Electron kept them for the session).
+//   motionSmoothing, mapBrightness (remembered; Electron kept them for the session),
+//   bat-cells, bat-cell-vmin, bat-cell-vmax (the pack range bat-vmin / bat-vmax of
+//   the Electron version becomes volts per cell and a fixed count, once).
 // Not remembered: ALTITUDE OFFSET and TIME OF DAY.
 #pragma once
 
@@ -37,9 +39,10 @@ class SysConfig : public QObject
     Q_PROPERTY(QString navStatus READ navStatus NOTIFY navStatusChanged)
     // AIRSPACE / BATTERY
     Q_PROPERTY(bool adsbEnabled READ adsbEnabled WRITE setAdsbEnabled NOTIFY adsbChanged)
-    Q_PROPERTY(QString batVMin READ batVMin NOTIFY batteryChanged)
-    Q_PROPERTY(QString batVMax READ batVMax NOTIFY batteryChanged)
-    Q_PROPERTY(QString batCells READ batCells NOTIFY batteryChanged)
+    Q_PROPERTY(QString batCellVMin READ batCellVMin NOTIFY batteryChanged)
+    Q_PROPERTY(QString batCellVMax READ batCellVMax NOTIFY batteryChanged)
+    /// "auto" or the fixed count, "1" to "14"
+    Q_PROPERTY(QString batCells READ batCells WRITE setBatCells NOTIFY batteryChanged)
     // 3D VIEW
     Q_PROPERTY(QStringList models READ models CONSTANT)
     /// The model drawn, as picked here or as the vehicle type set it
@@ -92,11 +95,14 @@ public:
 
     bool adsbEnabled() const;
     void setAdsbEnabled(bool on);
-    QString batVMin() const;
-    QString batVMax() const;
+    QString batCellVMin() const;
+    QString batCellVMax() const;
     QString batCells() const;
-    /// The two fields as typed; invalid values fall back to 9.6 / 12.6 as in the Electron version.
-    Q_INVOKABLE void setBatteryRange(const QString &vmin, const QString &vmax);
+    void setBatCells(const QString &v);
+    /// Volts per cell, empty and full, as typed; invalid values fall back to 3.2 / 4.2.
+    Q_INVOKABLE void setCellRange(const QString &vmin, const QString &vmax);
+    /// The gauge from the settings to the vehicle hub, at start (the Electron pack range migrated once).
+    static void loadBatteryGauge(VehicleHub *hub);
 
     QStringList models() const;
     QString selectedModel() const;
